@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Lucky Draw App</title>
+    <style>
+        body {
+            background: #111;
+            color: #eee;
+            font-family: sans-serif;
+            margin: 0;
+        }
+
+        header {
+            display: flex;
+            background: #222;
+            padding: 10px;
+        }
+
+        header button {
+            margin-right: 10px;
+            padding: 6px 12px;
+            border: none;
+            background: #444;
+            color: #eee;
+            cursor: pointer;
+        }
+
+        header button.active {
+            background: #555;
+        }
+
+        main {
+            padding: 10px;
+        }
+
+        #csv-editor-table table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        #csv-editor-table th, #csv-editor-table td {
+            border: 1px solid #666;
+            padding: 6px;
+        }
+
+        #csv-editor-table th {
+            background: #333;
+        }
+
+        #csv-editor-table td {
+            background: #222;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <button id="tab-loader" class="active">CSV Loader</button>
+        <button id="tab-editor">CSV Editor</button>
+    </header>
+
+    <main>
+        <div id="loader-container">
+            <button id="load-csv-btn">Load CSV</button>
+            <p id="loader-status">No CSV loaded.</p>
+        </div>
+
+        <div id="editor-container" style="display:none;"></div>
+    </main>
+
+    <script type="module">
+        import { renderCSVEditor } from "./modules/CSVEditor.js";
+
+        let csvData = null;
+        let editorInstance = null;
+
+        const loaderContainer = document.getElementById("loader-container");
+        const editorContainer = document.getElementById("editor-container");
+        const loaderStatus = document.getElementById("loader-status");
+
+        const tabLoader = document.getElementById("tab-loader");
+        const tabEditor = document.getElementById("tab-editor");
+
+        // Tab switch
+        tabLoader.addEventListener("click", () => {
+            tabLoader.classList.add("active");
+            tabEditor.classList.remove("active");
+            loaderContainer.style.display = "block";
+            editorContainer.style.display = "none";
+        });
+
+        tabEditor.addEventListener("click", () => {
+            if (!csvData) {
+                alert("Load a CSV first!");
+                return;
+            }
+            tabEditor.classList.add("active");
+            tabLoader.classList.remove("active");
+            loaderContainer.style.display = "none";
+            editorContainer.style.display = "block";
+
+            editorContainer.innerHTML = "";
+            editorInstance = renderCSVEditor(editorContainer, csvData);
+        });
+
+        // Load CSV
+        document.getElementById("load-csv-btn").addEventListener("click", async () => {
+            const result = await window.api.loadCSV();
+            if (!result) return;
+
+            csvData = result;
+            loaderStatus.textContent = `Loaded ${csvData.length} rows.`;
+            alert("CSV loaded! You can now switch to CSV Editor tab.");
+        });
+    </script>
+</body>
+</html>
