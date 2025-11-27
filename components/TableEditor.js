@@ -20,11 +20,11 @@ export function renderTableEditor(container, initialData = []) {
         <div id="dashboard-container">
             <div class="csv-toolbar">
                 <button id="importBtn">Import</button>
-                <div style="position: relative;">
+                <div style="position: relative; display: flex; align-items: center;">
                     <button id="editBtn" class="secondary">Edit</button>
+                    <button id="editSubBtn" class="secondary" style="margin-left:4px;display:none;">▼</button>
                     <div id="editDropdown" class="edit-dropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;">
-                        <div id="saveBtn" style="padding:5px 10px;cursor:pointer;">Save</div>
-                        <div id="discardBtn" style="padding:5px 10px;cursor:pointer;">Discard</div>
+                        <!-- Nội dung dropdown sẽ render động -->
                     </div>
                 </div>
                 <button id="dedupBtn" class="secondary">Deduplicate</button>
@@ -38,14 +38,23 @@ export function renderTableEditor(container, initialData = []) {
     const table = container.querySelector("#csvTable");
     const importBtn = container.querySelector("#importBtn");
     const editBtn = container.querySelector("#editBtn");
+    const editSubBtn = container.querySelector("#editSubBtn");
     const dedupBtn = container.querySelector("#dedupBtn");
     const editDropdown = container.querySelector("#editDropdown");
-    const saveBtn = container.querySelector("#saveBtn");
-    const discardBtn = container.querySelector("#discardBtn");
 
     function updateDraftCount() {
         const count = draftRows.size;
         editBtn.textContent = isEditing ? `Save (${count})` : `Edit${count ? ` (${count})` : ""}`;
+    }
+
+    function toggleEditSubBtn() {
+        // Hiển thị nếu đang edit và có row được chọn hoặc có draft rows
+        if (isEditing && (selectedRows.size || draftRows.size)) {
+            editSubBtn.style.display = "inline-block";
+            editSubBtn.style.height = `${editBtn.offsetHeight}px`;
+        } else {
+            editSubBtn.style.display = "none";
+        }
     }
 
     function renderTable() {
@@ -79,9 +88,9 @@ export function renderTableEditor(container, initialData = []) {
             const tr = document.createElement("tr");
 
             if (duplicateRows.has(i)) tr.classList.add("duplicate-row");
-            if (selectedRows.has(i)) tr.classList.add("selected-row");
             if (isEditing && selectedRows.has(i)) tr.classList.add("editing-row");
-            if (draftRows.has(i)) tr.classList.add("draft-row");
+            else if (draftRows.has(i)) tr.classList.add("draft-row");
+            if (selectedRows.has(i)) tr.classList.add("selected-row");
 
             const tdCheck = document.createElement("td");
             tdCheck.style.textAlign = "center";
@@ -92,6 +101,7 @@ export function renderTableEditor(container, initialData = []) {
                 if (cb.checked) selectedRows.add(i);
                 else selectedRows.delete(i);
                 renderTable();
+                toggleEditSubBtn();
             });
             tdCheck.appendChild(cb);
             tr.appendChild(tdCheck);
@@ -107,6 +117,7 @@ export function renderTableEditor(container, initialData = []) {
                         draftRows.add(i);
                         updateDraftCount();
                         duplicateRows.clear();
+                        toggleEditSubBtn();
                     }
                 });
 
@@ -117,10 +128,10 @@ export function renderTableEditor(container, initialData = []) {
         });
         table.appendChild(tbody);
         updateDraftCount();
+        toggleEditSubBtn();
     }
 
     // ================== 4. BUTTON LOGIC ==================
-
     importBtn.addEventListener("click", async () => {
         if (!window.api || !window.api.loadCSV) return;
         const result = await window.api.loadCSV();
@@ -132,41 +143,67 @@ export function renderTableEditor(container, initialData = []) {
         }
     });
 
-    // Edit button toggle
-    editBtn.addEventListener("click", (e) => {
-        if (!selectedRows.size && !isEditing) return alert("Select at least one row to edit");
-        if (!isEditing) {
-            isEditing = true;
-            editDropdown.style.display = "block";
-        } else {
-            // Khi click lần nữa trong trạng thái editing -> toggle dropdown
-            editDropdown.style.display = editDropdown.style.display === "block" ? "none" : "block";
+    editBtn.addEventListener("click", () => {
+        if (!selectedRows.size && !isEditing && !draftRows.size) return alert("Select at least one row to edit");
+        isEditing = true;
+        renderTable();
+    });
+
+    // Sub button toggle dropdown + dynamic options
+    editSubBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // ngăn click lan ra document
+        editDropdown.innerHTML = "";
+
+        // 1. Save All Drafts nếu có draftRows
+        if (draftRows.size) {
+            const saveAllDrafts = document.createElement("div");
+            saveAllDrafts.textContent = `Save All Drafts (${draftRows.size})`;
+            saveAllDrafts.style.padding = "5px 10px";
+            saveAllDrafts.style.cursor = "pointer";
+            saveAllDrafts.addEventListener("click", () => {
+                console.log("Saved all draft rows:", Array.from(draftRows).map(i => data[i]));
+                draftRows.clear();
+                isEditing = false;
+                renderTable();
+                editDropdown.style.display = "none";
+            });
+            editDropdown.appendChild(saveAllDrafts);
         }
-        renderTable();
+
+        // 2. Save Selected (nếu có selectedRows)
+        if (selectedRows.size) {
+            const saveSelected = document.createElement("div");
+            saveSelected.textContent = "Save Selected";
+            saveSelected.style.padding = "5px 10px";
+            saveSelected.style.cursor = "pointer";
+            saveSelected.addEventListener("click", () => {
+                console.log("Saved selected rows:", Array.from(draftRows).filter(i => selectedRows.has(i)).map(i => data[i]));
+                selectedRows.forEach(i => draftRows.delete(i));
+                renderTable();
+                editDropdown.style.display = "none";
+            });
+            editDropdown.appendChild(saveSelected);
+
+            const discardSelected = document.createElement("div");
+            discardSelected.textContent = "Discard Selected";
+            discardSelected.style.padding = "5px 10px";
+            discardSelected.style.cursor = "pointer";
+            discardSelected.addEventListener("click", () => {
+                selectedRows.forEach(i => draftRows.delete(i));
+                renderTable();
+                editDropdown.style.display = "none";
+            });
+            editDropdown.appendChild(discardSelected);
+        }
+
+        editDropdown.style.display = editDropdown.style.display === "block" ? "none" : "block";
     });
 
-    // Save
-    saveBtn.addEventListener("click", () => {
-        console.log("Saved rows:", Array.from(draftRows).map(i => data[i]));
-        draftRows.clear();
-        updateDraftCount();
-        isEditing = false;
-        editDropdown.style.display = "none";
-        renderTable();
-    });
-
-    // Discard
-    discardBtn.addEventListener("click", () => {
-        // Reload data từ trạng thái trước khi chỉnh sửa (Draft)
-        draftRows.forEach(i => {
-            // reset các ô về data gốc trước khi edit
-            // do đây demo, coi như dữ liệu gốc vẫn giữ
-        });
-        draftRows.clear();
-        updateDraftCount();
-        isEditing = false;
-        editDropdown.style.display = "none";
-        renderTable();
+    // Click ra ngoài đóng dropdown
+    document.addEventListener("click", (e) => {
+        if (!editDropdown.contains(e.target) && e.target !== editSubBtn) {
+            editDropdown.style.display = "none";
+        }
     });
 
     // Deduplicate
@@ -202,6 +239,16 @@ export function renderTableEditor(container, initialData = []) {
             else seen.set(key, i);
         });
         renderTable();
+    });
+
+    // ESC để thoát edit mode
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape" && isEditing) {
+            draftRows.clear();
+            isEditing = false;
+            editDropdown.style.display = "none";
+            renderTable();
+        }
     });
 
     renderTable();
