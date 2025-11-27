@@ -9,6 +9,7 @@
     background-color: #f9f9f9;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    color: #222; /* chữ chung */
 }
 
 /* Toolbar */
@@ -42,9 +43,9 @@
 }
 
 .csv-toolbar button.danger {
-    background-color: #ff4d4f;
+    background-color: #ff6b6b;
 }
-.csv-toolbar button.danger:hover { background-color: #d9363e; }
+.csv-toolbar button.danger:hover { background-color: #e63946; }
 
 .csv-toolbar button.secondary {
     background-color: #6c757d;
@@ -53,13 +54,13 @@
 
 /* Table Wrapper */
 .csv-table-wrapper {
-    border: 1px solid #333;
+    border: 1px solid #ccc;
     background: #fff;
     border-radius: 6px;
     overflow: auto;
     max-height: 600px;
     padding: 5px;
-    box-shadow: inset 0 0 3px rgba(0,0,0,0.1);
+    box-shadow: inset 0 0 3px rgba(0,0,0,0.05);
 }
 
 /* Table */
@@ -68,6 +69,7 @@
     border-collapse: collapse;
     min-width: 400px;
     font-size: 14px;
+    color: #222; /* chữ đen / tối */
 }
 
 .csv-table th {
@@ -76,13 +78,15 @@
     font-weight: 600;
     text-align: left;
     border-bottom: 2px solid #ccc;
+    color: #111;
 }
 
 .csv-table td {
     padding: 8px 10px;
     border-bottom: 1px solid #e0e0e0;
     cursor: text;
-    transition: background 0.2s;
+    transition: background 0.2s, color 0.2s;
+    color: #222;
 }
 
 .csv-table td:first-child {
@@ -96,22 +100,25 @@
 }
 
 .csv-table tr:nth-child(even) {
-    background: #f9f9f9;
+    background: #fafafa;
 }
 
 /* Selected row */
 .csv-table tr.selected-row {
-    background-color: rgba(45, 125, 255, 0.2);
+    background-color: rgba(45, 125, 255, 0.15); /* nhẹ nhàng hơn */
+    color: #0d3b99;
 }
 
 /* Duplicate row */
 .csv-table tr.duplicate-row {
-    background-color: rgba(255, 77, 79, 0.2);
+    background-color: rgba(255, 99, 71, 0.15); /* nhẹ nhàng, không chói */
+    color: #c12f2f;
 }
 
 /* Deduplicate highlight */
 .csv-table td.dedup-highlight {
-    background-color: rgba(255, 235, 59, 0.3);
+    background-color: rgba(255, 235, 59, 0.2);
+    color: #8a6d0c;
 }
 
 /* Deduplicate dropdown */
@@ -123,6 +130,7 @@
     padding: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     z-index: 10;
+    color: #222;
 }
 
 .dedup-dropdown input[type="checkbox"] {
