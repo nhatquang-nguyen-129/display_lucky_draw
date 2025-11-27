@@ -12,7 +12,45 @@
     color: #222;
 }
 
-/* Toolbar */
+/* ================== Project Bar ================== */
+#project-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    margin-bottom: 15px;
+    background: linear-gradient(90deg, #2d7dff, #4da6ff);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+}
+
+#project-bar span#current-project-name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* Hover effect */
+#project-bar:hover {
+    background: linear-gradient(90deg, #1c5ed6, #3b8cff);
+    cursor: default;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    #project-bar {
+        font-size: 14px;
+        padding: 10px 12px;
+    }
+    #project-bar span#current-project-name {
+        font-size: 16px;
+    }
+}
+
+/* ================== Toolbar ================== */
 .csv-toolbar {
     display: flex;
     gap: 12px;
@@ -59,7 +97,6 @@
 }
 
 /* ================== Integrated Dropdown Buttons ================== */
-
 .dropdown-button {
     position: relative;
     padding-right: 32px; /* dành chỗ cho mũi tên */
@@ -193,8 +230,8 @@
 
 /* Draft row */
 .csv-table tr.draft-row:not(.editing-row) td {
-    background-color: rgba(255, 193, 7, 0.2);
-    color: #856404;
+    background-color: rgba(255, 193, 7, 0.22) !important;
+    color: #8a6d0c !important;
     font-weight: 600;
 }
 
@@ -204,14 +241,7 @@
     font-weight: 600;
 }
 
-/* ================== Draft Row Highlight ================== */
-.csv-table tr.draft-row:not(.editing-row) td {
-    background-color: rgba(255, 193, 7, 0.22) !important;
-    color: #8a6d0c !important;
-    font-weight: 600;
-}
-
-/* ================== Duplicate Row Group Highlight ================== */
+/* Duplicate group highlight */
 .csv-table tr.duplicate-row.group-even td {
     background-color: rgba(255, 99, 71, 0.15) !important; /* đỏ nhạt */
     color: #c12f2f !important;
@@ -229,4 +259,5 @@
     .csv-toolbar { flex-direction: column; gap: 8px; }
     .dropdown-button { min-width: 100%; }
     .edit-dropdown, .dedup-dropdown { min-width: 160px; }
+    #project-tabs { flex-wrap: wrap; }
 }
