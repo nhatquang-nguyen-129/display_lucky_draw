@@ -2,61 +2,33 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Lucky Draw Dashboard</title>
-
-    <!-- Global Styles -->
-    <link rel="stylesheet" href="styles/global.css">
+    <title>production - KidsPlaza Lucky Draw</title>
+    <link rel="stylesheet" href="./styles/LoadingScreen.css">
+    <link rel="stylesheet" href="./styles/TableEditor.css">
 </head>
-
 <body>
+    <div id="app-loader"></div>
+    <div id="table-editor-container"></div>
 
-    <!-- Top Navigation Tabs -->
-    <div id="menu" class="menu-bar">
-        <button data-tab="csv" class="active">CSV Editor</button>
-    </div>
-
-    <!-- App container where modules render -->
-    <div id="app" class="app-container"></div>
-
-    <!-- Main Script -->
     <script type="module">
+        import { renderLoadingScreen } from './components/LoadingScreen.js';
         import { renderTableEditor } from './components/TableEditor.js';
-        import { loadComponentCSS } from './utils/loadComponentCSS.js';
 
-        const app = document.getElementById('app');
-        const buttons = document.querySelectorAll('#menu button');
+        const loaderContainer = document.getElementById('app-loader');
+        const tableContainer = document.getElementById('table-editor-container');
 
-        let currentModule = null;
+        // Hiển thị LoadingScreen trước
+        renderLoadingScreen(loaderContainer, () => {
+            // Khi nhấn button → ẩn loader, show TableEditor
+            loaderContainer.style.display = 'none';
+            tableContainer.style.display = 'block';
 
-        function showModule(moduleName) {
-            app.innerHTML = '';
-            buttons.forEach(btn => btn.classList.remove('active'));
-
-            document.querySelector(`#menu button[data-tab="${moduleName}"]`)
-                    .classList.add('active');
-
-            switch (moduleName) {
-                case 'csv':
-                    // Load CSS cho TableEditor nếu chưa load
-                    loadComponentCSS('styles/TableEditor.css');
-                    currentModule = renderTableEditor(app);
-                    break;
-                default:
-                    app.innerHTML = `<p>Module not implemented yet.</p>`;
-            }
-        }
-
-        // Load default module
-        showModule('csv');
-
-        // Bind tab events
-        buttons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tab = btn.getAttribute('data-tab');
-                showModule(tab);
-            });
+            // TableEditor khởi tạo trống
+            renderTableEditor(tableContainer, []);
         });
-    </script>
 
+        // Ẩn TableEditor trước khi nhấn button
+        tableContainer.style.display = 'none';
+    </script>
 </body>
 </html>
