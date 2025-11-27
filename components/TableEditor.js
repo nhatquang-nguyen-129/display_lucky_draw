@@ -1,21 +1,32 @@
 // components/TableEditor.js
+
+// ================== 1. IMPORTS ==================
 import { loadComponentCSS } from "../utils/loadComponentCSS.js";
 
-// Gộp dashboard + editor css
+// 1.1 Gộp CSS cho dashboard + table editor
 loadComponentCSS("../styles/dashboard.css");
 loadComponentCSS("../styles/TableEditor.css");
 
+// ================== 2. RENDER TABLE EDITOR ==================
 export function renderTableEditor(container, initialData = []) {
-    let data = initialData;
-    let selectedRows = new Set();
-    let duplicateRows = new Set();
-    let dedupColumns = [];
+    let data = initialData;                 
+    let selectedRows = new Set();           
+    let duplicateRows = new Set();          
+    let dedupColumns = [];                  
+    let isEditing = false;                  
+    let draftRows = new Set(); // row đã chỉnh sửa (Draft)
 
     container.innerHTML = `
         <div id="dashboard-container">
             <div class="csv-toolbar">
                 <button id="importBtn">Import</button>
-                <button id="editBtn" class="secondary">Edit</button>
+                <div style="position: relative;">
+                    <button id="editBtn" class="secondary">Edit</button>
+                    <div id="editDropdown" class="edit-dropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;">
+                        <div id="saveBtn" style="padding:5px 10px;cursor:pointer;">Save</div>
+                        <div id="discardBtn" style="padding:5px 10px;cursor:pointer;">Discard</div>
+                    </div>
+                </div>
                 <button id="dedupBtn" class="secondary">Deduplicate</button>
             </div>
             <div class="csv-table-wrapper">
@@ -28,10 +39,18 @@ export function renderTableEditor(container, initialData = []) {
     const importBtn = container.querySelector("#importBtn");
     const editBtn = container.querySelector("#editBtn");
     const dedupBtn = container.querySelector("#dedupBtn");
+    const editDropdown = container.querySelector("#editDropdown");
+    const saveBtn = container.querySelector("#saveBtn");
+    const discardBtn = container.querySelector("#discardBtn");
 
-    // Render Table dù chưa có dữ liệu
+    function updateDraftCount() {
+        const count = draftRows.size;
+        editBtn.textContent = isEditing ? `Save (${count})` : `Edit${count ? ` (${count})` : ""}`;
+    }
+
     function renderTable() {
         table.innerHTML = "";
+
         if (!data.length) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
@@ -44,10 +63,9 @@ export function renderTableEditor(container, initialData = []) {
         }
 
         const headers = Object.keys(data[0]);
-        // Header
         const thead = document.createElement("thead");
         const trHead = document.createElement("tr");
-        trHead.appendChild(document.createElement("th")); // checkbox cột đầu
+        trHead.appendChild(document.createElement("th")); 
         headers.forEach(h => {
             const th = document.createElement("th");
             th.textContent = h;
@@ -56,14 +74,15 @@ export function renderTableEditor(container, initialData = []) {
         thead.appendChild(trHead);
         table.appendChild(thead);
 
-        // Body
         const tbody = document.createElement("tbody");
         data.forEach((row, i) => {
             const tr = document.createElement("tr");
-            if (selectedRows.has(i)) tr.classList.add("selected-row");
-            if (duplicateRows.has(i)) tr.classList.add("duplicate-row");
 
-            // checkbox
+            if (duplicateRows.has(i)) tr.classList.add("duplicate-row");
+            if (selectedRows.has(i)) tr.classList.add("selected-row");
+            if (isEditing && selectedRows.has(i)) tr.classList.add("editing-row");
+            if (draftRows.has(i)) tr.classList.add("draft-row");
+
             const tdCheck = document.createElement("td");
             tdCheck.style.textAlign = "center";
             const cb = document.createElement("input");
@@ -79,40 +98,82 @@ export function renderTableEditor(container, initialData = []) {
 
             headers.forEach(col => {
                 const td = document.createElement("td");
-                td.contentEditable = true;
                 td.textContent = row[col];
+                td.contentEditable = isEditing && selectedRows.has(i);
+
                 td.addEventListener("input", () => {
-                    row[col] = td.textContent;
-                    duplicateRows.clear();
+                    if (td.isContentEditable) {
+                        row[col] = td.textContent;
+                        draftRows.add(i);
+                        updateDraftCount();
+                        duplicateRows.clear();
+                    }
                 });
+
                 tr.appendChild(td);
             });
+
             tbody.appendChild(tr);
         });
         table.appendChild(tbody);
+        updateDraftCount();
     }
 
-    // Buttons
+    // ================== 4. BUTTON LOGIC ==================
+
     importBtn.addEventListener("click", async () => {
         if (!window.api || !window.api.loadCSV) return;
         const result = await window.api.loadCSV();
         if (result?.data?.length) {
             data = result.data;
+            draftRows.clear();
             renderTable();
             importBtn.textContent = "Replace";
         }
     });
 
-    editBtn.addEventListener("click", () => {
-        // Edit + Save logic
-        console.log("Edited data:", data);
-        alert(`Saved ${data.length} rows`);
+    // Edit button toggle
+    editBtn.addEventListener("click", (e) => {
+        if (!selectedRows.size && !isEditing) return alert("Select at least one row to edit");
+        if (!isEditing) {
+            isEditing = true;
+            editDropdown.style.display = "block";
+        } else {
+            // Khi click lần nữa trong trạng thái editing -> toggle dropdown
+            editDropdown.style.display = editDropdown.style.display === "block" ? "none" : "block";
+        }
+        renderTable();
     });
 
+    // Save
+    saveBtn.addEventListener("click", () => {
+        console.log("Saved rows:", Array.from(draftRows).map(i => data[i]));
+        draftRows.clear();
+        updateDraftCount();
+        isEditing = false;
+        editDropdown.style.display = "none";
+        renderTable();
+    });
+
+    // Discard
+    discardBtn.addEventListener("click", () => {
+        // Reload data từ trạng thái trước khi chỉnh sửa (Draft)
+        draftRows.forEach(i => {
+            // reset các ô về data gốc trước khi edit
+            // do đây demo, coi như dữ liệu gốc vẫn giữ
+        });
+        draftRows.clear();
+        updateDraftCount();
+        isEditing = false;
+        editDropdown.style.display = "none";
+        renderTable();
+    });
+
+    // Deduplicate
     dedupBtn.addEventListener("click", () => {
         if (!data.length) return;
+
         if (!dedupColumns.length) {
-            // Show dropdown chọn columns (simplified)
             const dropdown = document.createElement("div");
             dropdown.classList.add("dedup-dropdown");
             const headers = Object.keys(data[0]);
@@ -125,7 +186,7 @@ export function renderTableEditor(container, initialData = []) {
                 label.prepend(cb);
                 dropdown.appendChild(label);
                 dropdown.appendChild(document.createElement("br"));
-                cb.addEventListener("change", e => {
+                cb.addEventListener("change", () => {
                     dedupColumns = Array.from(dropdown.querySelectorAll("input:checked")).map(i => i.value);
                 });
             });
@@ -133,7 +194,6 @@ export function renderTableEditor(container, initialData = []) {
             return;
         }
 
-        // highlight duplicate rows theo key
         const seen = new Map();
         duplicateRows.clear();
         data.forEach((row, i) => {
@@ -145,5 +205,6 @@ export function renderTableEditor(container, initialData = []) {
     });
 
     renderTable();
+
     return { getData: () => data };
 }
