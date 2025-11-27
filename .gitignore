@@ -24,3 +24,7 @@ Thumbs.db
 
 # temp
 *.tmp
+
+# Ignore all subfolders inside projects (level 2)
+projects/*/
+!projects/.gitkeep

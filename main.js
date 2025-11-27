@@ -9,7 +9,9 @@ function createWindow() {
         height: 800,
         icon: path.join(__dirname, "assets/app-icon.png"),
         webPreferences: {
-            preload: path.join(__dirname, "preload.js")
+            preload: path.join(__dirname, "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false
         }
     });
 
@@ -18,7 +20,7 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
-// CSV handler
+// ================= CSV Handler =================
 ipcMain.handle("loadCSV", async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ["openFile"],
@@ -41,4 +43,27 @@ ipcMain.handle("loadCSV", async () => {
         filePath,
         data: records
     };
+});
+
+// ================= Project Folder Handler =================
+ipcMain.handle("createProjectFolder", async (event, projectName) => {
+    try {
+        const projectsDir = path.join(__dirname, "projects"); // folder cấp 1
+        if (!fs.existsSync(projectsDir)) {
+            fs.mkdirSync(projectsDir);
+        }
+
+        const projectFolder = path.join(projectsDir, projectName);
+        if (!fs.existsSync(projectFolder)) {
+            fs.mkdirSync(projectFolder);
+            console.log("Project folder created:", projectFolder);
+        } else {
+            console.warn("Folder already exists:", projectFolder);
+        }
+
+        return { success: true, path: projectFolder };
+    } catch (err) {
+        console.error("Failed to create project folder:", err);
+        return { success: false, error: err.message };
+    }
 });

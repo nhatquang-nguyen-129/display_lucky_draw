@@ -11,6 +11,7 @@ export function renderTableEditor(container, initialData = []) {
     let dedupColumns = [];                  
     let isEditing = false;                  
     let draftRows = new Set();
+    let originalRows = new Map(); // lưu bản gốc của row để discard
 
     container.innerHTML = `
         <div id="dashboard-container">
@@ -18,7 +19,7 @@ export function renderTableEditor(container, initialData = []) {
                 <button id="importBtn">Import</button>
                 <div style="position: relative; display: flex; align-items: center;">
                     <button id="editBtn" class="secondary">Edit</button>
-                    <button id="editSubBtn" class="secondary" style="margin-left:4px;display:none;">▼</button>
+                    <button id="editSubBtn" class="secondary" style="margin-left:4px;">▼</button>
                     <div id="editDropdown" class="edit-dropdown" style="display:none;"></div>
                 </div>
                 <button id="dedupBtn" class="secondary">Deduplicate</button>
@@ -42,10 +43,8 @@ export function renderTableEditor(container, initialData = []) {
     }
 
     function toggleEditSubBtn() {
-        if (isEditing && (selectedRows.size || draftRows.size)) {
-            editSubBtn.style.display = "inline-block";
-            editSubBtn.style.height = `${editBtn.offsetHeight}px`;
-        } else editSubBtn.style.display = "none";
+        editSubBtn.style.display = "inline-block"; 
+        editSubBtn.style.height = `${editBtn.offsetHeight}px`;
     }
 
     // ================== PREVIEW DATA SORT DUPLICATES ==================
@@ -178,9 +177,18 @@ export function renderTableEditor(container, initialData = []) {
     editBtn.addEventListener("click", () => {
         if (!selectedRows.size && !isEditing && !draftRows.size) return alert("Select at least one row to edit");
         isEditing = true;
+
+        // lưu bản gốc khi bắt đầu edit
+        selectedRows.forEach(idx => {
+            if (!originalRows.has(idx)) {
+                originalRows.set(idx, { ...data[idx] });
+            }
+        });
+
         renderTable();
     });
 
+    // ================== EDIT DROPDOWN ==================
     editSubBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         editDropdown.innerHTML = "";
@@ -192,6 +200,7 @@ export function renderTableEditor(container, initialData = []) {
             saveAllDrafts.style.cursor = "pointer";
             saveAllDrafts.addEventListener("click", () => {
                 console.log("Saved all draft rows:", Array.from(draftRows).map(i => data[i]));
+                draftRows.forEach(i => originalRows.delete(i));
                 draftRows.clear();
                 isEditing = false;
                 renderTable();
@@ -207,7 +216,10 @@ export function renderTableEditor(container, initialData = []) {
             saveSelected.style.cursor = "pointer";
             saveSelected.addEventListener("click", () => {
                 console.log("Saved selected rows:", Array.from(draftRows).filter(i => selectedRows.has(i)).map(i => data[i]));
-                selectedRows.forEach(i => draftRows.delete(i));
+                selectedRows.forEach(i => {
+                    draftRows.delete(i);
+                    originalRows.delete(i);
+                });
                 renderTable();
                 editDropdown.style.display = "none";
             });
@@ -218,11 +230,31 @@ export function renderTableEditor(container, initialData = []) {
             discardSelected.style.padding = "5px 10px";
             discardSelected.style.cursor = "pointer";
             discardSelected.addEventListener("click", () => {
-                selectedRows.forEach(i => draftRows.delete(i));
+                selectedRows.forEach(i => {
+                    if (originalRows.has(i)) data[i] = originalRows.get(i); // restore giá trị gốc
+                    draftRows.delete(i);
+                    originalRows.delete(i);
+                });
                 renderTable();
                 editDropdown.style.display = "none";
             });
             editDropdown.appendChild(discardSelected);
+
+            const deleteSelected = document.createElement("div");
+            deleteSelected.textContent = "Delete Selected Rows";
+            deleteSelected.style.padding = "5px 10px";
+            deleteSelected.style.cursor = "pointer";
+            deleteSelected.style.color = "#c12f2f";
+            deleteSelected.addEventListener("click", () => {
+                data = data.filter((_, idx) => !selectedRows.has(idx));
+                selectedRows.clear();
+                draftRows.clear();
+                originalRows.clear();
+                duplicateRows.clear();
+                renderTable();
+                editDropdown.style.display = "none";
+            });
+            editDropdown.appendChild(deleteSelected);
         }
 
         editDropdown.style.display = editDropdown.style.display === "block" ? "none" : "block";
@@ -234,9 +266,9 @@ export function renderTableEditor(container, initialData = []) {
         }
     });
 
-    // ================== DEDUPLICATE SUB BUTTON FIXED ==================
+    // ================== DEDUPLICATE SUB BUTTON ==================
     const dedupContainer = document.createElement("div");
-    dedupContainer.style.position = "relative"; // quan trọng để dropdown căn theo đây
+    dedupContainer.style.position = "relative"; 
     dedupContainer.style.display = "inline-flex";
     dedupContainer.style.alignItems = "center";
     dedupContainer.style.marginLeft = "4px";
@@ -318,6 +350,7 @@ export function renderTableEditor(container, initialData = []) {
     document.addEventListener("keydown", e => {
         if (e.key === "Escape" && isEditing) {
             draftRows.clear();
+            originalRows.clear();
             isEditing = false;
             editDropdown.style.display = "none";
             renderTable();
