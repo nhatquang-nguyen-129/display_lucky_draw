@@ -12,7 +12,7 @@
 
     <!-- Top Navigation Tabs -->
     <div id="menu" class="menu-bar">
-        <button data-tab="csv" class="active">CSV Loader</button>
+        <button data-tab="csv" class="active">CSV Editor</button>
     </div>
 
     <!-- App container where modules render -->
@@ -20,7 +20,8 @@
 
     <!-- Main Script -->
     <script type="module">
-        import { renderCSVModule } from './components/CSVLoader.js';
+        import { renderTableEditor } from './components/TableEditor.js';
+        import { loadComponentCSS } from './utils/loadComponentCSS.js';
 
         const app = document.getElementById('app');
         const buttons = document.querySelectorAll('#menu button');
@@ -31,23 +32,25 @@
             app.innerHTML = '';
             buttons.forEach(btn => btn.classList.remove('active'));
 
-            document
-                .querySelector(`#menu button[data-tab="${moduleName}"]`)
-                .classList.add('active');
+            document.querySelector(`#menu button[data-tab="${moduleName}"]`)
+                    .classList.add('active');
 
             switch (moduleName) {
                 case 'csv':
-                    currentModule = renderCSVModule(app);
+                    // Load CSS cho TableEditor nếu chưa load
+                    loadComponentCSS('styles/dashboard.css');
+                    // Render module: toolbar + editor + loader đã gộp
+                    currentModule = renderTableEditor(app);
                     break;
                 default:
                     app.innerHTML = `<p>Module not implemented yet.</p>`;
             }
         }
 
-        // Default load
+        // Load default module
         showModule('csv');
 
-        // Bind events
+        // Bind tab events
         buttons.forEach(btn => {
             btn.addEventListener('click', () => {
                 const tab = btn.getAttribute('data-tab');
