@@ -7,7 +7,7 @@ export function renderTableEditor(container, initialData = [], projectName = "")
     let data = initialData;
     let selectedRows = new Set();
     let duplicateRows = new Set();
-    let dedupColumns = []; 
+    let dedupColumns = [];
     let isEditing = false;
     let draftRows = new Set();
     let originalRows = new Map();
@@ -17,9 +17,10 @@ export function renderTableEditor(container, initialData = [], projectName = "")
             <div class="csv-toolbar">
                 <button id="importBtn">Import</button>
                 <button id="saveBtn">Save</button>
-                <div style="position: relative; display: flex; align-items: center;">
-                    <button id="editBtn" class="secondary">Edit</button>
-                    <button id="editSubBtn" class="secondary" style="margin-left:4px;">▼</button>
+
+                <!-- Unified EDIT button (with dropdown) -->
+                <div style="position: relative;">
+                    <button id="editBtn" class="secondary">Edit ▼</button>
                     <div id="editDropdown" class="edit-dropdown" style="display:none;">
                         <button id="saveDraftBtn">Save</button>
                         <button id="saveAllDraftsBtn">Save All Drafts</button>
@@ -28,11 +29,14 @@ export function renderTableEditor(container, initialData = [], projectName = "")
                         <button id="editAllBtn">Edit All Rows</button>
                     </div>
                 </div>
-                <div style="position: relative; display: flex; align-items: center;">
+
+                <!-- Unified DEDUP button -->
+                <div style="position: relative;">
                     <button id="dedupBtn" class="secondary">Deduplicate ▼</button>
                     <div id="dedupDropdown" class="edit-dropdown" style="display:none;"></div>
                 </div>
             </div>
+
             <div class="csv-table-wrapper">
                 <table id="csvTable" class="csv-table"></table>
             </div>
@@ -42,66 +46,69 @@ export function renderTableEditor(container, initialData = [], projectName = "")
     const table = container.querySelector("#csvTable");
     const importBtn = container.querySelector("#importBtn");
     const saveBtn = container.querySelector("#saveBtn");
+
     const editBtn = container.querySelector("#editBtn");
-    const editSubBtn = container.querySelector("#editSubBtn");
-    const dedupBtn = container.querySelector("#dedupBtn");
     const editDropdown = container.querySelector("#editDropdown");
+
+    const dedupBtn = container.querySelector("#dedupBtn");
     const dedupDropdown = container.querySelector("#dedupDropdown");
+
     const saveDraftBtn = editDropdown.querySelector("#saveDraftBtn");
     const saveAllDraftsBtn = editDropdown.querySelector("#saveAllDraftsBtn");
     const discardAllDraftsBtn = editDropdown.querySelector("#discardAllDraftsBtn");
     const deleteSelectedBtn = editDropdown.querySelector("#deleteSelectedBtn");
     const editAllBtn = editDropdown.querySelector("#editAllBtn");
 
-    // ================== HELPER FUNCTIONS ==================
+    // ---------------- Helper ----------------
+
     function updateDraftCount() {
         const count = draftRows.size;
-        editBtn.textContent = isEditing ? `Save (${count})` : `Edit${count ? ` (${count})` : ""}`;
-    }
-
-    function toggleEditSubBtn() {
-        editSubBtn.style.display = "inline-block";
-        editSubBtn.style.height = `${editBtn.offsetHeight}px`;
+        editBtn.textContent = isEditing ? `Save (${count}) ▼` : `Edit${count ? ` (${count})` : ""} ▼`;
     }
 
     function getPreviewData() {
-        if (!dedupColumns.length) return data.map((row, idx) => ({ row, idx }));
+        if (!dedupColumns.length)
+            return data.map((row, idx) => ({ row, idx }));
+
         const groups = new Map();
-        const uniqueRows = [];
+
+        // Gom nhóm theo key
         data.forEach((row, idx) => {
             const key = dedupColumns.map(c => row[c]).join("|");
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push({ row, idx });
         });
-        const sortedData = [];
+
+        const duplicatePart = [];
+        const uniquePart = [];
+
         duplicateRows.clear();
-        groups.forEach(group => {
+
+        // Tách phần duplicate và unique
+        groups.forEach((group, key) => {
             if (group.length > 1) {
-                group.forEach(({ row, idx }) => {
-                    sortedData.push({ row, idx });
-                    duplicateRows.add(sortedData.length - 1);
-                });
-            } else uniqueRows.push(group[0]);
+                group.forEach(item => duplicatePart.push(item));
+                group.forEach(item => duplicateRows.add(item.idx));
+            } else {
+                uniquePart.push(group[0]);
+            }
         });
-        uniqueRows.forEach(item => sortedData.push(item));
-        return sortedData;
+
+        // 🟢 Sort duplicate lên trước
+        return [...duplicatePart, ...uniquePart];
     }
+
+    // ---------------- Render ----------------
 
     function renderTable() {
         table.innerHTML = "";
-
         if (!data.length) {
-            const tr = document.createElement("tr");
-            const td = document.createElement("td");
-            td.colSpan = 2;
-            td.textContent = "No data yet";
-            td.style.textAlign = "center";
-            tr.appendChild(td);
-            table.appendChild(tr);
+            table.innerHTML = `<tr><td>No data yet</td></tr>`;
             return;
         }
 
         const headers = Object.keys(data[0]);
+
         const thead = document.createElement("thead");
         const trHead = document.createElement("tr");
         trHead.appendChild(document.createElement("th"));
@@ -114,53 +121,96 @@ export function renderTableEditor(container, initialData = [], projectName = "")
         table.appendChild(thead);
 
         const tbody = document.createElement("tbody");
-        const previewData = getPreviewData();
-        let lastKey = null;
-        let duplicateGroupCounter = -1;
+        const preview = getPreviewData();
 
-        previewData.forEach(({ row, idx }, displayIdx) => {
-            const tr = document.createElement("tr");
-            const key = dedupColumns.map(c => row[c]).join("|");
+        // ---- NEW: tạo group duplicate để tô màu xen kẽ ----
+        const duplicateGroupMap = new Map();
+        if (dedupColumns.length) {
+            let currentGroupId = 0;
+            let lastKey = null;
 
-            if (dedupColumns.length > 0 && duplicateRows.has(displayIdx)) {
-                if (key !== lastKey) duplicateGroupCounter++;
+            preview.forEach(({ row }) => {
+                const key = dedupColumns.map(c => row[c]).join("|");
+
+                if (key !== lastKey) currentGroupId++;
+                duplicateGroupMap.set(key, currentGroupId);
+
                 lastKey = key;
-                const shade = duplicateGroupCounter % 2 === 0 ? 'rgba(255, 99, 71, 0.15)' : 'rgba(255, 99, 71, 0.25)';
-                tr.style.backgroundColor = shade;
-                tr.classList.add("duplicate-row");
+            });
+        }
+
+        preview.forEach(({ row, idx }) => {
+            const tr = document.createElement("tr");
+
+            // Remove old inline styling
+            tr.style.backgroundColor = "";
+            tr.style.outline = "";
+
+            // --- LEGACY CLASS MARKERS (giữ nguyên) ---
+            if (duplicateRows.has(idx)) tr.classList.add("duplicate-row");
+            if (selectedRows.has(idx)) tr.classList.add("selected-row");
+            if (draftRows.has(idx)) tr.classList.add("draft-row");
+
+            // --- NEW COLOR LOGIC ---
+
+            // 🟡 Draft row ALWAYS wins (override duplicate)
+            if (draftRows.has(idx)) {
+                tr.style.backgroundColor = "#fff6d1 !important";
+                tr.dataset.forceColor = "draft"; // chặn màu duplicate
             }
 
-            if (isEditing && selectedRows.has(idx)) tr.classList.add("editing-row");
-            else if (draftRows.has(idx)) tr.classList.add("draft-row");
-            if (selectedRows.has(idx)) tr.classList.add("selected-row");
+            // Duplicate groups → alternating red shades
+            if (duplicateRows.has(idx) && tr.dataset.forceColor !== "draft") {
+                const key = dedupColumns.map(c => row[c]).join("|");
+                const gid = duplicateGroupMap.get(key) || 0;
+                const color = gid % 2 === 0 ? "#ffe5e5" : "#ffd1d1";
+                tr.style.backgroundColor = color;
+            }
 
+            // Selected row border highlight
+            if (selectedRows.has(idx)) {
+                tr.style.outline = "2px solid #2d7dff";
+            }
+
+            // Checkbox
             const tdCheck = document.createElement("td");
-            tdCheck.style.textAlign = "center";
             const cb = document.createElement("input");
             cb.type = "checkbox";
             cb.checked = selectedRows.has(idx);
             cb.addEventListener("change", () => {
-                if (cb.checked) selectedRows.add(idx);
-                else selectedRows.delete(idx);
+                cb.checked ? selectedRows.add(idx) : selectedRows.delete(idx);
                 renderTable();
-                toggleEditSubBtn();
             });
             tdCheck.appendChild(cb);
             tr.appendChild(tdCheck);
 
+            // Cells
             headers.forEach(col => {
                 const td = document.createElement("td");
                 td.textContent = row[col];
+
+                // Double click --> start editing that row
+                td.addEventListener("dblclick", () => {
+                    isEditing = true;
+                    selectedRows.clear();
+                    selectedRows.add(idx);
+
+                    if (!originalRows.has(idx))
+                        originalRows.set(idx, { ...row });
+
+                    renderTable();
+                });
+
                 td.contentEditable = isEditing && selectedRows.has(idx);
+
                 td.addEventListener("input", () => {
                     if (td.isContentEditable) {
                         row[col] = td.textContent;
                         draftRows.add(idx);
                         updateDraftCount();
-                        duplicateRows.clear();
-                        toggleEditSubBtn();
                     }
                 });
+
                 tr.appendChild(td);
             });
 
@@ -169,67 +219,54 @@ export function renderTableEditor(container, initialData = [], projectName = "")
 
         table.appendChild(tbody);
         updateDraftCount();
-        toggleEditSubBtn();
     }
 
-    // ================== BUTTON LOGIC ==================
+    // ---------------- Buttons ----------------
+
+    // Import
     importBtn.addEventListener("click", async () => {
-        if (!window.api || !window.api.loadCSV) return;
+        if (!window.api?.loadCSV) return;
         const result = await window.api.loadCSV();
         if (result?.data?.length) {
             data = result.data;
             draftRows.clear();
             renderTable();
-            importBtn.textContent = "Replace";
         }
     });
 
+    // Save to backend
     saveBtn.addEventListener("click", async () => {
         if (!projectName) return alert("Project name not specified.");
-        if (!window.api || !window.api.saveProjectData) return alert("Save API not available.");
-        try {
-            await window.api.saveProjectData(projectName, data);
-            draftRows.clear();
-            selectedRows.clear();
-            alert("Project saved successfully!");
-            renderTable();
-        } catch (err) {
-            console.error(err);
-            alert("Error saving project: " + err.message);
-        }
-    });
-
-    editBtn.addEventListener("click", () => {
-        isEditing = true;
-        if (!selectedRows.size) data.forEach((_, idx) => selectedRows.add(idx));
-        selectedRows.forEach(idx => {
-            if (!originalRows.has(idx)) originalRows.set(idx, { ...data[idx] });
-        });
+        if (!window.api?.saveProjectData) return alert("Save API not available.");
+        await window.api.saveProjectData(projectName, data);
+        draftRows.clear();
+        selectedRows.clear();
         renderTable();
+        alert("Saved!");
     });
 
-    editSubBtn.addEventListener("click", () => {
-        editDropdown.style.display = editDropdown.style.display === "none" ? "block" : "none";
+    // EDIT button toggle dropdown
+    editBtn.addEventListener("click", () => {
+        editDropdown.style.display =
+            editDropdown.style.display === "none" ? "block" : "none";
     });
 
-    // Edit Dropdown Actions
+    // Edit actions
     saveDraftBtn.addEventListener("click", () => {
-        draftRows.forEach(idx => originalRows.set(idx, { ...data[idx] }));
+        draftRows.forEach(i => originalRows.set(i, { ...data[i] }));
         draftRows.clear();
         renderTable();
     });
 
     saveAllDraftsBtn.addEventListener("click", () => {
-        data.forEach((row, idx) => {
-            if (draftRows.has(idx)) originalRows.set(idx, { ...row });
-        });
+        draftRows.forEach(i => originalRows.set(i, { ...data[i] }));
         draftRows.clear();
         renderTable();
     });
 
     discardAllDraftsBtn.addEventListener("click", () => {
-        draftRows.forEach(idx => {
-            if (originalRows.has(idx)) data[idx] = { ...originalRows.get(idx) };
+        draftRows.forEach(i => {
+            if (originalRows.has(i)) data[i] = { ...originalRows.get(i) };
         });
         draftRows.clear();
         renderTable();
@@ -243,18 +280,19 @@ export function renderTableEditor(container, initialData = [], projectName = "")
     });
 
     editAllBtn.addEventListener("click", () => {
-        data.forEach((_, idx) => selectedRows.add(idx));
+        selectedRows = new Set(data.map((_, i) => i));
         isEditing = true;
-        selectedRows.forEach(idx => {
-            if (!originalRows.has(idx)) originalRows.set(idx, { ...data[idx] });
+        data.forEach((row, idx) => {
+            if (!originalRows.has(idx)) originalRows.set(idx, { ...row });
         });
         renderTable();
         editDropdown.style.display = "none";
     });
 
-    // Deduplicate Dropdown
+    // DEDUP button toggle dropdown
     dedupBtn.addEventListener("click", () => {
-        dedupDropdown.style.display = dedupDropdown.style.display === "none" ? "block" : "none";
+        dedupDropdown.style.display =
+            dedupDropdown.style.display === "none" ? "block" : "none";
         renderDedupDropdown();
     });
 
@@ -272,14 +310,11 @@ export function renderTableEditor(container, initialData = [], projectName = "")
                 renderTable();
             });
             div.appendChild(cb);
-            const label = document.createElement("label");
-            label.textContent = col;
-            div.appendChild(label);
+            div.appendChild(document.createTextNode(col));
             dedupDropdown.appendChild(div);
         });
     }
 
     renderTable();
-
     return { getData: () => data };
 }
