@@ -1,4 +1,4 @@
-// components/ProjectSelector.js
+// components/editor-project-select.js
 import { loadComponentCSS } from "../utils/loadComponentCSS.js";
 loadComponentCSS("../styles/ProjectSelector.css");
 
