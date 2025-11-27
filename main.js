@@ -69,7 +69,7 @@ ipcMain.handle("createProjectFolder", async (event, projectName) => {
 });
 
 // ================= Save Project Data Handler =================
-ipcMain.handle("saveProjectData", async (event, projectName, data) => {
+ipcMain.handle("saveProjectData", async (event, projectName, data, options = {}) => {
     try {
         const projectsDir = path.join(__dirname, "projects");
         const projectFolder = path.join(projectsDir, projectName);
@@ -78,8 +78,15 @@ ipcMain.handle("saveProjectData", async (event, projectName, data) => {
             fs.mkdirSync(projectFolder, { recursive: true });
         }
 
-        const filePath = path.join(projectFolder, "data.json");
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+        // Lưu CSV hoặc JSON
+        let filePath;
+        if (options.isCSV) {
+            filePath = path.join(projectFolder, "data.csv");
+            fs.writeFileSync(filePath, data, "utf8");
+        } else {
+            filePath = path.join(projectFolder, "data.json");
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+        }
 
         console.log(`Project data saved: ${filePath}`);
         return { success: true, path: filePath };
@@ -88,3 +95,4 @@ ipcMain.handle("saveProjectData", async (event, projectName, data) => {
         return { success: false, error: err.message };
     }
 });
+
