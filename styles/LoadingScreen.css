@@ -2,32 +2,27 @@
     width: 100%;
     height: 100vh;
     display: flex;
-    flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: #222;
+    background: url('assets/app-loading-screen.jpg') no-repeat center center;
+    background-size: cover;
     color: white;
     font-size: 24px;
     font-family: 'Segoe UI', sans-serif;
 }
 
+/* 2. CONFIG 'PRESS ANY BUTTON TO CONTINUE' */
 .loader-text {
+    
+    /* 2.1. Align 'Press Any Button to Continue*/
     text-align: center;
-    margin-bottom: 20px;
+    
+    /* 2.2. Change animation speed of 'Press Any Button to Continue' */
+    animation: blink 3s infinite;
 }
 
-.app-loader-screen button {
-    margin-top: 20px;
-    padding: 12px 24px;
-    font-size: 18px;
-    border: none;
-    border-radius: 6px;
-    background-color: #2d7dff;
-    color: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.app-loader-screen button:hover {
-    background-color: #1c5ed6;
+    /* 2.3. Setup animation of 'Press Any Button to Continue' */
+@keyframes blink {
+    0%, 50%, 100% { opacity: 1; }
+    25%, 75% { opacity: 0; }
 }
