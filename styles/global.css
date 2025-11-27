@@ -1,0 +1,123 @@
+/* ========== RESET ========== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Inter", "Segoe UI", sans-serif;
+    background: #1b1c1f;
+    color: #e6e6e6;
+    padding: 20px;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ========== LAYOUT ========== */
+.module-block {
+    background: #242529;
+    border: 1px solid #2f3035;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    transition: 0.2s ease;
+}
+
+.module-block:hover {
+    border-color: #3a82ff;
+}
+
+/* ========== TITLES ========== */
+h1, h2, h3 {
+    font-weight: 600;
+    margin-bottom: 14px;
+    color: #ffffff;
+}
+
+/* ========== BUTTONS ========== */
+button {
+    background: #3a82ff;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    font-size: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.15s ease;
+}
+
+button:hover {
+    background: #1f6fe0;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+/* ========== STATUS TEXT ========== */
+.status-text {
+    margin-top: 10px;
+    font-size: 14px;
+    opacity: 0.85;
+}
+
+/* ========== TABLES (for CSV editor) ========== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 14px;
+    font-size: 15px;
+}
+
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #323338;
+}
+
+th {
+    background: #2c2d31;
+    font-weight: 600;
+}
+
+tr:hover td {
+    background: #2a2b30;
+}
+
+/* ========== INPUTS ========== */
+input {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid #3a3b40;
+    background: #1f2023;
+    color: #ffffff;
+}
+
+input:focus {
+    border-color: #3a82ff;
+    outline: none;
+}
+
+/* ========== SCROLLBAR ========== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #3a3b40;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4b4c51;
+}
+
+/* ========== ANIMATION UTILS ========== */
+.fade-in {
+    animation: fadeIn 0.35s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
