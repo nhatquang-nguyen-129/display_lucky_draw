@@ -17,6 +17,7 @@
     display: flex;
     gap: 10px;
     margin-bottom: 15px;
+    position: relative; /* cho dropdown absolute */
 }
 
 .csv-toolbar button {
@@ -40,6 +41,20 @@
     background-color: #6c757d;
 }
 .csv-toolbar button.secondary:hover { background-color: #5a6268; }
+
+/* Sub-button (luôn hiển thị khi có draft hoặc selected) */
+#editSubBtn {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    background-color: #6c757d;
+    color: white;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    margin-left: 4px;
+    display: none; /* JS sẽ toggle */
+}
 
 /* Table Wrapper */
 .csv-table-wrapper {
@@ -93,22 +108,22 @@
 }
 
 /* Selected row (chọn nhưng chưa Edit) */
-.csv-table tr.selected-row {
+.csv-table tr.selected-row td {
     background-color: rgba(45, 125, 255, 0.15);
     color: #0d3b99;
 }
 
-/* Editing row (float luôn) */
+/* Editing row (ưu tiên hơn draft) */
 .csv-table tr.editing-row td {
-    background-color: #4da6ff;
-    color: #fff;
+    background-color: #4da6ff !important;
+    color: #fff !important;
     font-weight: 600;
     border-radius: 6px;
     box-shadow: 0 3px 8px rgba(0,0,0,0.2);
 }
 
-/* Draft row */
-.csv-table tr.draft-row td {
+/* Draft row (hiển thị nếu chưa editing) */
+.csv-table tr.draft-row:not(.editing-row) td {
     background-color: rgba(255, 193, 7, 0.2);
     color: #856404;
     font-weight: 600;
@@ -142,7 +157,25 @@
     margin-right: 5px;
 }
 
-/* Edit dropdown */
+/* Edit dropdown (sub-button) */
+.edit-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    color: #222;
+    z-index: 10;
+    min-width: 150px;
+}
+
+.edit-dropdown div {
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
 .edit-dropdown div:hover {
     background-color: #f0f0f0;
 }
@@ -150,4 +183,6 @@
 /* Responsive */
 @media (max-width: 600px) {
     .csv-toolbar { flex-direction: column; gap: 8px; }
+    #editSubBtn { margin-left: 0; margin-top: 4px; }
+    .edit-dropdown { min-width: 120px; }
 }
