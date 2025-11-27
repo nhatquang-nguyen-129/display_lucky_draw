@@ -4,13 +4,13 @@ import { loadComponentCSS } from "../utils/loadComponentCSS.js";
 loadComponentCSS("../styles/TableEditor.css");
 
 export function renderTableEditor(container, initialData = [], projectName = "") {
-    let data = initialData;                 
-    let selectedRows = new Set();           
-    let duplicateRows = new Set();          
-    let dedupColumns = [];                  
-    let isEditing = false;                  
+    let data = initialData;
+    let selectedRows = new Set();
+    let duplicateRows = new Set();
+    let dedupColumns = []; 
+    let isEditing = false;
     let draftRows = new Set();
-    let originalRows = new Map(); 
+    let originalRows = new Map();
 
     container.innerHTML = `
         <div id="dashboard-container">
@@ -20,9 +20,18 @@ export function renderTableEditor(container, initialData = [], projectName = "")
                 <div style="position: relative; display: flex; align-items: center;">
                     <button id="editBtn" class="secondary">Edit</button>
                     <button id="editSubBtn" class="secondary" style="margin-left:4px;">▼</button>
-                    <div id="editDropdown" class="edit-dropdown" style="display:none;"></div>
+                    <div id="editDropdown" class="edit-dropdown" style="display:none;">
+                        <button id="saveDraftBtn">Save</button>
+                        <button id="saveAllDraftsBtn">Save All Drafts</button>
+                        <button id="discardAllDraftsBtn">Discard All Drafts</button>
+                        <button id="deleteSelectedBtn">Delete Selected Rows</button>
+                        <button id="editAllBtn">Edit All Rows</button>
+                    </div>
                 </div>
-                <button id="dedupBtn" class="secondary">Deduplicate</button>
+                <div style="position: relative; display: flex; align-items: center;">
+                    <button id="dedupBtn" class="secondary">Deduplicate ▼</button>
+                    <div id="dedupDropdown" class="edit-dropdown" style="display:none;"></div>
+                </div>
             </div>
             <div class="csv-table-wrapper">
                 <table id="csvTable" class="csv-table"></table>
@@ -37,14 +46,21 @@ export function renderTableEditor(container, initialData = [], projectName = "")
     const editSubBtn = container.querySelector("#editSubBtn");
     const dedupBtn = container.querySelector("#dedupBtn");
     const editDropdown = container.querySelector("#editDropdown");
+    const dedupDropdown = container.querySelector("#dedupDropdown");
+    const saveDraftBtn = editDropdown.querySelector("#saveDraftBtn");
+    const saveAllDraftsBtn = editDropdown.querySelector("#saveAllDraftsBtn");
+    const discardAllDraftsBtn = editDropdown.querySelector("#discardAllDraftsBtn");
+    const deleteSelectedBtn = editDropdown.querySelector("#deleteSelectedBtn");
+    const editAllBtn = editDropdown.querySelector("#editAllBtn");
 
+    // ================== HELPER FUNCTIONS ==================
     function updateDraftCount() {
         const count = draftRows.size;
         editBtn.textContent = isEditing ? `Save (${count})` : `Edit${count ? ` (${count})` : ""}`;
     }
 
     function toggleEditSubBtn() {
-        editSubBtn.style.display = "inline-block"; 
+        editSubBtn.style.display = "inline-block";
         editSubBtn.style.height = `${editBtn.offsetHeight}px`;
     }
 
@@ -88,7 +104,7 @@ export function renderTableEditor(container, initialData = [], projectName = "")
         const headers = Object.keys(data[0]);
         const thead = document.createElement("thead");
         const trHead = document.createElement("tr");
-        trHead.appendChild(document.createElement("th")); 
+        trHead.appendChild(document.createElement("th"));
         headers.forEach(h => {
             const th = document.createElement("th");
             th.textContent = h;
@@ -184,16 +200,84 @@ export function renderTableEditor(container, initialData = [], projectName = "")
     });
 
     editBtn.addEventListener("click", () => {
-        if (!selectedRows.size && !isEditing && !draftRows.size) return alert("Select at least one row to edit");
         isEditing = true;
+        if (!selectedRows.size) data.forEach((_, idx) => selectedRows.add(idx));
         selectedRows.forEach(idx => {
             if (!originalRows.has(idx)) originalRows.set(idx, { ...data[idx] });
         });
         renderTable();
     });
 
-    // ================== EDIT DROPDOWN ==================
-    // ... giữ nguyên logic editDropdown và dedup như cũ
+    editSubBtn.addEventListener("click", () => {
+        editDropdown.style.display = editDropdown.style.display === "none" ? "block" : "none";
+    });
+
+    // Edit Dropdown Actions
+    saveDraftBtn.addEventListener("click", () => {
+        draftRows.forEach(idx => originalRows.set(idx, { ...data[idx] }));
+        draftRows.clear();
+        renderTable();
+    });
+
+    saveAllDraftsBtn.addEventListener("click", () => {
+        data.forEach((row, idx) => {
+            if (draftRows.has(idx)) originalRows.set(idx, { ...row });
+        });
+        draftRows.clear();
+        renderTable();
+    });
+
+    discardAllDraftsBtn.addEventListener("click", () => {
+        draftRows.forEach(idx => {
+            if (originalRows.has(idx)) data[idx] = { ...originalRows.get(idx) };
+        });
+        draftRows.clear();
+        renderTable();
+    });
+
+    deleteSelectedBtn.addEventListener("click", () => {
+        data = data.filter((_, idx) => !selectedRows.has(idx));
+        selectedRows.clear();
+        draftRows.clear();
+        renderTable();
+    });
+
+    editAllBtn.addEventListener("click", () => {
+        data.forEach((_, idx) => selectedRows.add(idx));
+        isEditing = true;
+        selectedRows.forEach(idx => {
+            if (!originalRows.has(idx)) originalRows.set(idx, { ...data[idx] });
+        });
+        renderTable();
+        editDropdown.style.display = "none";
+    });
+
+    // Deduplicate Dropdown
+    dedupBtn.addEventListener("click", () => {
+        dedupDropdown.style.display = dedupDropdown.style.display === "none" ? "block" : "none";
+        renderDedupDropdown();
+    });
+
+    function renderDedupDropdown() {
+        dedupDropdown.innerHTML = "";
+        const headers = Object.keys(data[0] || {});
+        headers.forEach(col => {
+            const div = document.createElement("div");
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = dedupColumns.includes(col);
+            cb.addEventListener("change", () => {
+                if (cb.checked) dedupColumns.push(col);
+                else dedupColumns = dedupColumns.filter(c => c !== col);
+                renderTable();
+            });
+            div.appendChild(cb);
+            const label = document.createElement("label");
+            label.textContent = col;
+            div.appendChild(label);
+            dedupDropdown.appendChild(div);
+        });
+    }
 
     renderTable();
 
