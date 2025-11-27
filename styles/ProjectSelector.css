@@ -3,12 +3,18 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100vh; /* full height */
+    height: 100vh; 
     width: 100%;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #f9f9f9; /* giống LoadingScreen */
     color: #222;
+
+    /* background */
+    background-image: url("../assets/app-loading-screen.jpg"); /* đường dẫn tương đối so với css */
+    background-size: cover;       /* phóng to đầy đủ */
+    background-position: center;  /* căn giữa */
+    background-repeat: no-repeat; /* không lặp lại */
 }
+
 
 .project-toolbar {
     display: flex;

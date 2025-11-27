@@ -67,3 +67,24 @@ ipcMain.handle("createProjectFolder", async (event, projectName) => {
         return { success: false, error: err.message };
     }
 });
+
+// ================= Save Project Data Handler =================
+ipcMain.handle("saveProjectData", async (event, projectName, data) => {
+    try {
+        const projectsDir = path.join(__dirname, "projects");
+        const projectFolder = path.join(projectsDir, projectName);
+
+        if (!fs.existsSync(projectFolder)) {
+            fs.mkdirSync(projectFolder, { recursive: true });
+        }
+
+        const filePath = path.join(projectFolder, "data.json");
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+
+        console.log(`Project data saved: ${filePath}`);
+        return { success: true, path: filePath };
+    } catch (err) {
+        console.error("Failed to save project data:", err);
+        return { success: false, error: err.message };
+    }
+});
