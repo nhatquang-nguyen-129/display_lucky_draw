@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
-const CSVLoader = require("./modules/CSVLoader");
-const csvLoader = new CSVLoader();
+const fs = require("fs");
+const { parse } = require("csv-parse/sync");
 
 function createWindow() {
     const win = new BrowserWindow({
@@ -17,23 +17,26 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
-ipcMain.handle("open-csv-dialog", async () => {
-    const result = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+ipcMain.handle("loadCSV", async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ["openFile"],
+        filters: [{ name: "CSV Files", extensions: ["csv"] }]
     });
 
-    return result.canceled ? null : result.filePaths[0];
-});
+    if (canceled || filePaths.length === 0) {
+        return { filePath: null, data: [] };
+    }
 
-ipcMain.handle("load-csv", async () => {
-    const filePath = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: [{ name: 'CSV Files', extensions: ['csv'] }]
-    }).then(r => r.canceled ? null : r.filePaths[0]);
+    const filePath = filePaths[0];
+    const content = fs.readFileSync(filePath, "utf8");
 
-    if (!filePath) return null;
+    const records = parse(content, {
+        columns: true,
+        skip_empty_lines: true
+    });
 
-    const result = await csvLoader.loadCSV(() => filePath);
-    return result;
+    return {
+        filePath,
+        data: records
+    };
 });
