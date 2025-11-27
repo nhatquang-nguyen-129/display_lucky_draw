@@ -5,30 +5,41 @@
     <title>production - KidsPlaza Lucky Draw</title>
     <link rel="stylesheet" href="./styles/LoadingScreen.css">
     <link rel="stylesheet" href="./styles/TableEditor.css">
+    <link rel="stylesheet" href="./styles/ProjectSelector.css">
 </head>
 <body>
     <div id="app-loader"></div>
+    <div id="project-selector-container"></div>
     <div id="table-editor-container"></div>
 
     <script type="module">
         import { renderLoadingScreen } from './components/LoadingScreen.js';
+        import { renderProjectSelector } from './components/ProjectSelector.js';
         import { renderTableEditor } from './components/TableEditor.js';
 
         const loaderContainer = document.getElementById('app-loader');
+        const projectContainer = document.getElementById('project-selector-container');
         const tableContainer = document.getElementById('table-editor-container');
 
-        // Hiển thị LoadingScreen trước
-        renderLoadingScreen(loaderContainer, () => {
-            // Khi nhấn button → ẩn loader, show TableEditor
-            loaderContainer.style.display = 'none';
-            tableContainer.style.display = 'block';
-
-            // TableEditor khởi tạo trống
-            renderTableEditor(tableContainer, []);
-        });
-
-        // Ẩn TableEditor trước khi nhấn button
+        loaderContainer.style.display = 'block';
+        projectContainer.style.display = 'none';
         tableContainer.style.display = 'none';
+
+        // 1️⃣ LoadingScreen
+        renderLoadingScreen(loaderContainer, () => {
+            loaderContainer.style.display = 'none';
+            projectContainer.style.display = 'block';
+
+            // 2️⃣ ProjectSelector
+            renderProjectSelector(projectContainer, (selectedProject) => {
+                projectContainer.style.display = 'none';
+                tableContainer.style.display = 'block';
+
+                // 3️⃣ TableEditor → chỉ load data của project đã chọn
+                const initialData = selectedProject.data || [];
+                renderTableEditor(tableContainer, initialData);
+            });
+        });
     </script>
 </body>
 </html>
