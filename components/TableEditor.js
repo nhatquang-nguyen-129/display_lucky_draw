@@ -1,20 +1,16 @@
 // components/TableEditor.js
 
-// ================== 1. IMPORTS ==================
 import { loadComponentCSS } from "../utils/loadComponentCSS.js";
 
-// 1.1 Gộp CSS cho dashboard + table editor
-loadComponentCSS("../styles/dashboard.css");
 loadComponentCSS("../styles/TableEditor.css");
 
-// ================== 2. RENDER TABLE EDITOR ==================
 export function renderTableEditor(container, initialData = []) {
     let data = initialData;                 
     let selectedRows = new Set();           
     let duplicateRows = new Set();          
     let dedupColumns = [];                  
     let isEditing = false;                  
-    let draftRows = new Set(); // row đã chỉnh sửa (Draft)
+    let draftRows = new Set();
 
     container.innerHTML = `
         <div id="dashboard-container">
@@ -23,9 +19,7 @@ export function renderTableEditor(container, initialData = []) {
                 <div style="position: relative; display: flex; align-items: center;">
                     <button id="editBtn" class="secondary">Edit</button>
                     <button id="editSubBtn" class="secondary" style="margin-left:4px;display:none;">▼</button>
-                    <div id="editDropdown" class="edit-dropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;">
-                        <!-- Nội dung dropdown sẽ render động -->
-                    </div>
+                    <div id="editDropdown" class="edit-dropdown" style="display:none;"></div>
                 </div>
                 <button id="dedupBtn" class="secondary">Deduplicate</button>
             </div>
@@ -48,13 +42,40 @@ export function renderTableEditor(container, initialData = []) {
     }
 
     function toggleEditSubBtn() {
-        // Hiển thị nếu đang edit và có row được chọn hoặc có draft rows
         if (isEditing && (selectedRows.size || draftRows.size)) {
             editSubBtn.style.display = "inline-block";
             editSubBtn.style.height = `${editBtn.offsetHeight}px`;
-        } else {
-            editSubBtn.style.display = "none";
-        }
+        } else editSubBtn.style.display = "none";
+    }
+
+    // ================== PREVIEW DATA SORT DUPLICATES ==================
+    function getPreviewData() {
+        if (!dedupColumns.length) return data.map((row, idx) => ({ row, idx }));
+
+        const groups = new Map();
+        const uniqueRows = [];
+
+        data.forEach((row, idx) => {
+            const key = dedupColumns.map(c => row[c]).join("|");
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push({ row, idx });
+        });
+
+        const sortedData = [];
+        duplicateRows.clear();
+        groups.forEach(group => {
+            if (group.length > 1) {
+                group.forEach(({ row, idx }) => {
+                    sortedData.push({ row, idx });
+                    duplicateRows.add(sortedData.length - 1);
+                });
+            } else {
+                uniqueRows.push(group[0]);
+            }
+        });
+
+        uniqueRows.forEach(item => sortedData.push(item));
+        return sortedData;
     }
 
     function renderTable() {
@@ -84,22 +105,34 @@ export function renderTableEditor(container, initialData = []) {
         table.appendChild(thead);
 
         const tbody = document.createElement("tbody");
-        data.forEach((row, i) => {
-            const tr = document.createElement("tr");
+        const previewData = getPreviewData();
+        let lastKey = null;
+        let duplicateGroupCounter = -1;
 
-            if (duplicateRows.has(i)) tr.classList.add("duplicate-row");
-            if (isEditing && selectedRows.has(i)) tr.classList.add("editing-row");
-            else if (draftRows.has(i)) tr.classList.add("draft-row");
-            if (selectedRows.has(i)) tr.classList.add("selected-row");
+        previewData.forEach(({ row, idx }, displayIdx) => {
+            const tr = document.createElement("tr");
+            const key = dedupColumns.map(c => row[c]).join("|");
+
+            if (dedupColumns.length > 0 && duplicateRows.has(displayIdx)) {
+                if (key !== lastKey) duplicateGroupCounter++;
+                lastKey = key;
+                const shade = duplicateGroupCounter % 2 === 0 ? 'rgba(255, 99, 71, 0.15)' : 'rgba(255, 99, 71, 0.25)';
+                tr.style.backgroundColor = shade;
+                tr.classList.add("duplicate-row");
+            }
+
+            if (isEditing && selectedRows.has(idx)) tr.classList.add("editing-row");
+            else if (draftRows.has(idx)) tr.classList.add("draft-row");
+            if (selectedRows.has(idx)) tr.classList.add("selected-row");
 
             const tdCheck = document.createElement("td");
             tdCheck.style.textAlign = "center";
             const cb = document.createElement("input");
             cb.type = "checkbox";
-            cb.checked = selectedRows.has(i);
+            cb.checked = selectedRows.has(idx);
             cb.addEventListener("change", () => {
-                if (cb.checked) selectedRows.add(i);
-                else selectedRows.delete(i);
+                if (cb.checked) selectedRows.add(idx);
+                else selectedRows.delete(idx);
                 renderTable();
                 toggleEditSubBtn();
             });
@@ -109,29 +142,28 @@ export function renderTableEditor(container, initialData = []) {
             headers.forEach(col => {
                 const td = document.createElement("td");
                 td.textContent = row[col];
-                td.contentEditable = isEditing && selectedRows.has(i);
-
+                td.contentEditable = isEditing && selectedRows.has(idx);
                 td.addEventListener("input", () => {
                     if (td.isContentEditable) {
                         row[col] = td.textContent;
-                        draftRows.add(i);
+                        draftRows.add(idx);
                         updateDraftCount();
                         duplicateRows.clear();
                         toggleEditSubBtn();
                     }
                 });
-
                 tr.appendChild(td);
             });
 
             tbody.appendChild(tr);
         });
+
         table.appendChild(tbody);
         updateDraftCount();
         toggleEditSubBtn();
     }
 
-    // ================== 4. BUTTON LOGIC ==================
+    // ================== BUTTON LOGIC ==================
     importBtn.addEventListener("click", async () => {
         if (!window.api || !window.api.loadCSV) return;
         const result = await window.api.loadCSV();
@@ -149,12 +181,10 @@ export function renderTableEditor(container, initialData = []) {
         renderTable();
     });
 
-    // Sub button toggle dropdown + dynamic options
     editSubBtn.addEventListener("click", (e) => {
-        e.stopPropagation(); // ngăn click lan ra document
+        e.stopPropagation();
         editDropdown.innerHTML = "";
 
-        // 1. Save All Drafts nếu có draftRows
         if (draftRows.size) {
             const saveAllDrafts = document.createElement("div");
             saveAllDrafts.textContent = `Save All Drafts (${draftRows.size})`;
@@ -170,7 +200,6 @@ export function renderTableEditor(container, initialData = []) {
             editDropdown.appendChild(saveAllDrafts);
         }
 
-        // 2. Save Selected (nếu có selectedRows)
         if (selectedRows.size) {
             const saveSelected = document.createElement("div");
             saveSelected.textContent = "Save Selected";
@@ -199,49 +228,93 @@ export function renderTableEditor(container, initialData = []) {
         editDropdown.style.display = editDropdown.style.display === "block" ? "none" : "block";
     });
 
-    // Click ra ngoài đóng dropdown
     document.addEventListener("click", (e) => {
         if (!editDropdown.contains(e.target) && e.target !== editSubBtn) {
             editDropdown.style.display = "none";
         }
     });
 
-    // Deduplicate
-    dedupBtn.addEventListener("click", () => {
+    // ================== DEDUPLICATE SUB BUTTON FIXED ==================
+    const dedupContainer = document.createElement("div");
+    dedupContainer.style.position = "relative"; // quan trọng để dropdown căn theo đây
+    dedupContainer.style.display = "inline-flex";
+    dedupContainer.style.alignItems = "center";
+    dedupContainer.style.marginLeft = "4px";
+
+    const dedupSubBtn = document.createElement("button");
+    dedupSubBtn.id = "dedupSubBtn";
+    dedupSubBtn.className = "secondary";
+    dedupSubBtn.textContent = "▼";
+    dedupSubBtn.style.width = "24px";
+    dedupSubBtn.style.height = "36px";
+    dedupSubBtn.style.fontSize = "0";
+    dedupSubBtn.style.padding = "0";
+    dedupSubBtn.style.marginLeft = "2px";
+
+    const dedupDropdown = document.createElement("div");
+    dedupDropdown.className = "dedup-dropdown";
+    dedupDropdown.style.top = "100%";
+    dedupDropdown.style.left = "0";
+
+    dedupContainer.appendChild(dedupSubBtn);
+    dedupContainer.appendChild(dedupDropdown);
+
+    container.querySelector(".csv-toolbar").appendChild(dedupContainer);
+
+    function renderDedupColumns() {
+        dedupDropdown.innerHTML = "";
         if (!data.length) return;
 
-        if (!dedupColumns.length) {
-            const dropdown = document.createElement("div");
-            dropdown.classList.add("dedup-dropdown");
-            const headers = Object.keys(data[0]);
-            headers.forEach(h => {
-                const cb = document.createElement("input");
-                cb.type = "checkbox";
-                cb.value = h;
-                const label = document.createElement("label");
-                label.textContent = h;
-                label.prepend(cb);
-                dropdown.appendChild(label);
-                dropdown.appendChild(document.createElement("br"));
-                cb.addEventListener("change", () => {
-                    dedupColumns = Array.from(dropdown.querySelectorAll("input:checked")).map(i => i.value);
-                });
+        Object.keys(data[0]).forEach(col => {
+            const label = document.createElement("label");
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.value = col;
+            cb.checked = dedupColumns.includes(col);
+            cb.addEventListener("change", () => {
+                dedupColumns = Array.from(dedupDropdown.querySelectorAll("input:checked")).map(i => i.value);
             });
-            container.querySelector(".csv-toolbar").appendChild(dropdown);
-            return;
-        }
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(col));
+            dedupDropdown.appendChild(label);
+        });
+    }
 
-        const seen = new Map();
-        duplicateRows.clear();
+    dedupSubBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        renderDedupColumns();
+        dedupDropdown.style.display = dedupDropdown.style.display === "block" ? "none" : "block";
+    });
+
+    document.addEventListener("click", e => {
+        if (!dedupDropdown.contains(e.target) && e.target !== dedupSubBtn) {
+            dedupDropdown.style.display = "none";
+        }
+    });
+
+    dedupBtn.addEventListener("click", () => {
+        if (!data.length || !dedupColumns.length) return;
+
+        const groups = new Map();
         data.forEach((row, i) => {
             const key = dedupColumns.map(c => row[c]).join("|");
-            if (seen.has(key)) duplicateRows.add(i);
-            else seen.set(key, i);
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(row);
         });
+
+        const newData = [];
+        duplicateRows.clear();
+        groups.forEach(group => {
+            group.forEach((row, idx) => {
+                if (idx > 0) duplicateRows.add(newData.length);
+                newData.push({ ...row });
+            });
+        });
+
+        data = newData;
         renderTable();
     });
 
-    // ESC để thoát edit mode
     document.addEventListener("keydown", e => {
         if (e.key === "Escape" && isEditing) {
             draftRows.clear();

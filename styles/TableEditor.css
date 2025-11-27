@@ -15,48 +15,134 @@
 /* Toolbar */
 .csv-toolbar {
     display: flex;
-    gap: 10px;
+    gap: 12px; /* khoảng cách giữa các nhóm button */
     margin-bottom: 15px;
     position: relative; /* cho dropdown absolute */
+    flex-wrap: wrap; /* responsive xuống hàng khi màn hình nhỏ */
 }
 
+/* Main button base */
 .csv-toolbar button {
-    padding: 8px 18px;
     font-size: 14px;
     font-weight: 500;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
-    color: white;
-    background-color: #2d7dff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px; /* đồng đều chiều cao */
+    padding: 0 16px; /* padding ngang */
+    min-width: 80px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
-.csv-toolbar button:hover {
+/* Main button colors */
+.csv-toolbar button#importBtn,
+.csv-toolbar button:not(.secondary) {
+    background-color: #2d7dff;
+    color: #fff;
+}
+.csv-toolbar button#importBtn:hover,
+.csv-toolbar button:not(.secondary):hover {
     background-color: #1c5ed6;
 }
 
+/* Secondary buttons (Edit / Dedup) */
 .csv-toolbar button.secondary {
     background-color: #6c757d;
+    color: #fff;
 }
-.csv-toolbar button.secondary:hover { background-color: #5a6268; }
+.csv-toolbar button.secondary:hover {
+    background-color: #5a6268;
+}
 
-/* Sub-button (luôn hiển thị khi có draft hoặc selected) */
+/* ================== Sub buttons ================== */
+
+/* Edit sub button */
 #editSubBtn {
-    padding: 4px 8px;
     font-size: 12px;
     border-radius: 4px;
-    background-color: #6c757d;
-    color: white;
-    cursor: pointer;
-    border: none;
-    transition: all 0.2s ease;
-    margin-left: 4px;
-    display: none; /* JS sẽ toggle */
+    margin-left: 2px; /* sát button chính */
+    height: 36px;
+    padding: 0 10px;
 }
 
-/* Table Wrapper */
+/* Deduplicate sub button (mũi tên nhỏ) */
+#dedupSubBtn {
+    font-size: 0;         /* ẩn text nếu có */
+    width: 24px;          /* vừa đủ chứa mũi tên */
+    height: 36px;         /* đồng bộ chiều cao main button */
+    padding: 0;           /* reset padding */
+    margin-left: 2px;     /* sát button chính */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background-color: #6c757d;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    position: relative;   /* để dropdown căn theo sub button */
+}
+
+#dedupSubBtn::after {
+    content: "▼";         /* mũi tên */
+    font-size: 12px;
+    color: white;
+}
+
+/* Hover effect for sub buttons */
+#editSubBtn:hover,
+#dedupSubBtn:hover {
+    background-color: #5a6268;
+}
+
+/* Active effect */
+.csv-toolbar button:active,
+#editSubBtn:active,
+#dedupSubBtn:active {
+    transform: scale(0.95);
+}
+
+/* ================== Dropdown (edit / dedup) ================== */
+.edit-dropdown, .dedup-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%; /* ngay dưới sub button */
+    left: 0;    /* căn trái sub button */
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    z-index: 10;
+    min-width: 150px;
+    color: #222;
+    transition: all 0.2s ease;
+}
+
+/* Checkbox spacing trong dropdown */
+.dedup-dropdown input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+/* Label mỗi checkbox */
+.dedup-dropdown label {
+    display: block;
+    cursor: pointer;
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+/* Hover trên mỗi label */
+.dedup-dropdown label:hover {
+    background-color: #f0f0f0;
+}
+
+/* ================== Table wrapper ================== */
 .csv-table-wrapper {
     border: 1px solid #ccc;
     background: #fff;
@@ -107,13 +193,13 @@
     background: #fafafa;
 }
 
-/* Selected row (chọn nhưng chưa Edit) */
+/* Selected row */
 .csv-table tr.selected-row td {
     background-color: rgba(45, 125, 255, 0.15);
     color: #0d3b99;
 }
 
-/* Editing row (ưu tiên hơn draft) */
+/* Editing row */
 .csv-table tr.editing-row td {
     background-color: #4da6ff !important;
     color: #fff !important;
@@ -122,67 +208,29 @@
     box-shadow: 0 3px 8px rgba(0,0,0,0.2);
 }
 
-/* Draft row (hiển thị nếu chưa editing) */
+/* Draft row */
 .csv-table tr.draft-row:not(.editing-row) td {
     background-color: rgba(255, 193, 7, 0.2);
     color: #856404;
     font-weight: 600;
 }
 
-/* Duplicate row */
-.csv-table tr.duplicate-row {
-    background-color: rgba(255, 99, 71, 0.15);
+/* Duplicate row highlight */
+.csv-table tr.duplicate-row td {
     color: #c12f2f;
+    font-weight: 600;
 }
 
-/* Deduplicate highlight */
+/* Optional: cell highlight */
 .csv-table td.dedup-highlight {
     background-color: rgba(255, 235, 59, 0.2);
     color: #8a6d0c;
 }
 
-/* Deduplicate dropdown */
-.dedup-dropdown {
-    position: absolute;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    padding: 10px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    z-index: 10;
-    color: #222;
-}
-
-.dedup-dropdown input[type="checkbox"] {
-    margin-right: 5px;
-}
-
-/* Edit dropdown (sub-button) */
-.edit-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    color: #222;
-    z-index: 10;
-    min-width: 150px;
-}
-
-.edit-dropdown div {
-    padding: 5px 10px;
-    cursor: pointer;
-}
-
-.edit-dropdown div:hover {
-    background-color: #f0f0f0;
-}
-
-/* Responsive */
+/* ================== Responsive ================== */
 @media (max-width: 600px) {
     .csv-toolbar { flex-direction: column; gap: 8px; }
     #editSubBtn { margin-left: 0; margin-top: 4px; }
-    .edit-dropdown { min-width: 120px; }
+    #dedupSubBtn { margin-left: 0; margin-top: 4px; }
+    .edit-dropdown, .dedup-dropdown { min-width: 120px; }
 }
