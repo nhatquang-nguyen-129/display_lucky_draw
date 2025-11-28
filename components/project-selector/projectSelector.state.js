@@ -1,5 +1,9 @@
-/* projectSelector.state.js
-File này chịu trách nhiệm hoàn toàn về State tức dữ liệu trong browser
+/* components/project-selector/projectSelector.state.js
+Quản lý dữ liệu project trong localStorage
+- Load danh sách project
+- Lưu danh sách project
+- Thêm project
+- Kiểm tra project tồn tại
 */
 
 // 1. LƯU/LOAD DANH SÁCH PROJECT TRONG LOCAL STORAGE
