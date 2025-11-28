@@ -1,3 +1,5 @@
+// components/loader-screen-initial.js
+
 // Render hiển thị màn hình Loading Screen
 export function renderLoadingScreen(container, onContinue) {
     container.innerHTML = `
