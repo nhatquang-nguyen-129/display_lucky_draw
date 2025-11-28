@@ -1,7 +1,8 @@
 /* components/project-selector/projectSelector.modal.js
-
-- Hiển thị popup nhập tên project
-- Không gọi API, không xử lý state
+UI modal nhập tên Project
+- Tạo modal popup
+- Gắn sự kiện OK / Cancel
+- Gọi callback onSubmit(name) sau khi nhập tên
 */
 
 // 1. MODAL NHẬP TÊN PROJECT
