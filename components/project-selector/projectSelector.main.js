@@ -1,8 +1,8 @@
-// projectSelector.main.js
+/* components/project-selector/projectSelector.main.js
 // ------------------------------------------------------------
-// MAIN CONTROLLER cho Project Selector
-// Kết nối UI ↔ Logic ↔ API
-// ------------------------------------------------------------
+Main Entrypoint Controller cho Project Selector module
+- Kết nối UI ↔ Logic ↔ API
+*/
 
 import { renderProjectSelectorUI } from "./projectSelector.ui.js";
 import {
@@ -19,17 +19,18 @@ import {
     handleProjectChangeLogic,
 } from "./projectSelector.logic.js";
 
-/**
- * Hàm initProjectSelector
- * - Render UI selector
+/* 1. Hàm initProjectSelector  Render UI selector
  * - Load project list từ API
  * - Hook các sự kiện từ UI vào logic
  */
+
+//. 1.1. Khởi tạo Project Selector
 export async function initProjectSelector(container, onProjectSelected) {
-    // --- Render UI trước (để có khung hiển thị)
+    
+    // 1.1.1. Trigger to render UI
     const ui = renderProjectSelectorUI(container);
 
-    // --- Load project list (có cache để giảm call API)
+    // 1.1.2. Trigger to get project list with cached to reduce API call
     let cached = getCachedProjects();
     if (!cached) {
         const apiProjects = await loadProjectsFromAPI();
@@ -37,27 +38,21 @@ export async function initProjectSelector(container, onProjectSelected) {
         cached = apiProjects;
     }
 
-    // --- Render danh sách vào UI
+    // 1.1.3. Trigger to render project list into UI
     ui.renderOptions(cached);
 
-    // =====================================================
-    // 1) EVENT: Chọn Project
-    // =====================================================
+    // 1.1.4. Trigger to send project select event
     ui.onSelect(async (projectId) => {
         const updatedState = handleProjectChangeLogic(projectId);
-
-        // Lưu vào state global
+        
         setActiveProject(updatedState.activeProject);
-
-        // Callback sang App lớn
+        
         if (onProjectSelected) {
             onProjectSelected(updatedState.activeProject);
         }
     });
 
-    // =====================================================
-    // 2) EVENT: Tạo Project mới
-    // =====================================================
+    // 1.1.5. Trigger to send project create event
     ui.onAdd(async (projectName) => {
         const { newProject, updatedList } = await handleProjectAddLogic(
             projectName,
@@ -68,10 +63,9 @@ export async function initProjectSelector(container, onProjectSelected) {
             }
         );
 
-        // Render lại danh sách
+
         ui.renderOptions(updatedList);
 
-        // Set project vừa tạo làm active
         ui.setSelected(newProject.id);
         setActiveProject(newProject);
 
