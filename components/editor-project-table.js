@@ -67,7 +67,7 @@ export function renderTableEditor(container, initialData = [], initialProjectNam
     const deleteSelectedBtn = editDropdown.querySelector("#deleteSelectedBtn");
     const editAllBtn = editDropdown.querySelector("#editAllBtn");
 
-    // ---------------- Helper ----------------
+    /* Render số lượng Rows đang Draft */
     function updateDraftCount() {
         const count = draftRows.size;
         editBtn.textContent = isEditing ? `Save (${count}) ▼` : `Edit${count ? ` (${count})` : ""} ▼`;
@@ -84,9 +84,9 @@ export function renderTableEditor(container, initialData = [], initialProjectNam
         renderTable();
     }
 
+    /* Render Preview Table sau khi chỉnh sửa*/
     function getPreviewData() {
-        if (!dedupColumns.length)
-            return data.map((row, idx) => ({ row, idx }));
+        if (!dedupColumns.length) return data.map((row, idx) => ({ row, idx }));
 
         const groups = new Map();
         data.forEach((row, idx) => {
@@ -99,14 +99,29 @@ export function renderTableEditor(container, initialData = [], initialProjectNam
         const uniquePart = [];
         duplicateRows.clear();
 
+        let groupCounter = 0;
+        const groupIndexes = new Map(); // idx → groupIndex (0,1,2...)
+
         groups.forEach((group) => {
             if (group.length > 1) {
-                group.forEach(item => duplicatePart.push(item));
-                group.forEach(item => duplicateRows.add(item.idx));
-            } else uniquePart.push(group[0]);
+                group.forEach(item => {
+                    duplicatePart.push(item);
+                    duplicateRows.add(item.idx);
+                    groupIndexes.set(item.idx, groupCounter);
+                });
+                groupCounter++;
+            } else {
+                uniquePart.push(group[0]);
+            }
         });
 
-        return [...duplicatePart, ...uniquePart];
+        const preview = [...duplicatePart, ...uniquePart];
+
+        // gắn groupIndex cho zebra coloring
+        return preview.map(item => ({
+            ...item,
+            groupIndex: groupIndexes.get(item.idx) ?? null
+        }));
     }
 
     function renderTable() {
@@ -131,12 +146,17 @@ export function renderTableEditor(container, initialData = [], initialProjectNam
         const tbody = document.createElement("tbody");
         const preview = getPreviewData();
 
-        preview.forEach(({ row, idx }) => {
+        preview.forEach(({ row, idx, groupIndex }) => {
             const tr = document.createElement("tr");
 
             if (duplicateRows.has(idx)) tr.classList.add("duplicate-row");
             if (selectedRows.has(idx)) tr.classList.add("selected-row");
             if (draftRows.has(idx)) tr.classList.add("draft-row");
+
+            // zebra duplicate group
+            if (groupIndex !== null) {
+                tr.classList.add(groupIndex % 2 === 0 ? "group-even" : "group-odd");
+            }
 
             const tdCheck = document.createElement("td");
             const cb = document.createElement("input");
