@@ -1,7 +1,8 @@
 /* components/project-selector/projectSelector.ui.js
-// - Render khung HTML Project Selector
-// - Render danh sách project
-// - Không xử lý logic Create/Open
+Render UI chính của Project Selector
+- Render HTML selector
+- Render danh sách project
+- Tạo các element như createBtn, openBtn
 */
 
 // 1. RENDER UI TỔNG THỂ CỦA PROJECT SELECTOR

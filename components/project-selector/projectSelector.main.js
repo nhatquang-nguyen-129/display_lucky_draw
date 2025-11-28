@@ -4,7 +4,7 @@ Main Entrypoint Controller cho Project Selector module
 - Kết nối UI ↔ Logic ↔ API
 */
 
-import { renderProjectSelectorUI } from "./projectSelector.ui.js";
+import { renderProjectSelectorUI } from "./projectSelector.interface.js";
 import {
     loadProjectsFromAPI,
     createNewProject,
