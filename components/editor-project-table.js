@@ -153,7 +153,7 @@ export function renderTableEditor(container, initialData = [], initialProjectNam
             if (selectedRows.has(idx)) tr.classList.add("selected-row");
             if (draftRows.has(idx)) tr.classList.add("draft-row");
 
-            // zebra duplicate group
+    // zebra duplicate group
             if (groupIndex !== null) {
                 tr.classList.add(groupIndex % 2 === 0 ? "group-even" : "group-odd");
             }
