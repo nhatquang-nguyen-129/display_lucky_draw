@@ -1,5 +1,4 @@
-/* 
-components/project-selector/projectSelector.api.js
+/* components/project-selector/projectSelector.api.js
 - Gọi và trả kết quả từ window.api.
 */
 
