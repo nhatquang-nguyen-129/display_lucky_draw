@@ -2,99 +2,150 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>production - KidsPlaza Lucky Draw</title>
+    <title>KidsPlaza Lucky Draw - Table Editor</title>
 </head>
 <body>
-    <div id="app-loader"></div>
+    <!-- Containers -->
     <div id="project-selector-container"></div>
     <div id="table-editor-container"></div>
 
     <script type="module">
-        // -------------------------------
-        // Entry points
-        // -------------------------------
-        import { renderLoadingScreen } from './components/screen-loader-init/screenLoaderInit.main.js';
+        // -------------------------------------------------
+        // IMPORT MODULES
+        // -------------------------------------------------
         import { initProjectSelector } from './components/project-selector/projectSelector.index.js';
-        import { renderTableEditor } from './components/table-editor-file/tableEditorFile.index.js';
+        import { initTableEditorFile } from './components/table-editor-file/tableEditorFile.index.js';
         import { initTableEditorDedup } from './components/table-editor-dedup/tableEditorDedup.index.js';
         import { initTableEditorEdit } from './components/table-editor-edit/tableEditorEdit.index.js';
+        import { initTableEditorText } from './components/table-editor-text/tableEditorText.index.js';
 
-        // -------------------------------
-        // DOM containers
-        // -------------------------------
-        const loaderContainer = document.getElementById('app-loader');
+        // -------------------------------------------------
+        // DOM CONTAINERS
+        // -------------------------------------------------
         const projectContainer = document.getElementById('project-selector-container');
         const tableContainer = document.getElementById('table-editor-container');
 
-        loaderContainer.style.display = 'block';
-        projectContainer.style.display = 'none';
+        projectContainer.style.display = 'block';
         tableContainer.style.display = 'none';
 
-        // -------------------------------
-        // 1️⃣ Loading Screen
-        // -------------------------------
-        renderLoadingScreen(loaderContainer, () => {
-            loaderContainer.style.display = 'none';
-            projectContainer.style.display = 'block';
+        // -------------------------------------------------
+        // HELPER: renderTable chung
+        // -------------------------------------------------
+        let currentData = []; // mảng duy nhất shared giữa các module
 
-            // -------------------------------
-            // 2️⃣ Project Selector
-            // -------------------------------
-            initProjectSelector(projectContainer, (selectedProject) => {
-                projectContainer.style.display = 'none';
-                tableContainer.style.display = 'block';
+        function renderTableEditor() {
+            tableContainer.querySelector('#table-content')?.remove();
 
-                // -------------------------------
-                // 3️⃣ Table Editor
-                // -------------------------------
-                const initialData = selectedProject.data || [];
+            const tableEl = document.createElement('div');
+            tableEl.id = 'table-content';
+            tableEl.innerHTML = `
+                <table class="csv-table" border="1" cellpadding="4">
+                    <thead>
+                        <tr>
+                            ${Object.keys(currentData[0] || {}).map(h => `<th>${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${currentData.map(row => `
+                            <tr>
+                                ${Object.keys(row).map(k => `<td>${row[k]}</td>`).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            tableContainer.appendChild(tableEl);
+        }
 
-                // File handling module
-                renderTableEditor({
-                    container: tableContainer,
-                    projectName: selectedProject.name,
-                    data: initialData
-                });
+        // -------------------------------------------------
+        // 1️⃣ PROJECT SELECTOR
+        // -------------------------------------------------
+        initProjectSelector(projectContainer, (selectedProject) => {
+            projectContainer.style.display = 'none';
+            tableContainer.style.display = 'block';
 
-                // Dedup module
-                const dedupBtn = document.getElementById('dedup-btn');
-                const dedupDropdown = document.getElementById('dedup-dropdown');
-                const duplicateRows = new Set();
-                const dedupColumns = [];
-                initTableEditorDedup({
-                    dedupBtn,
-                    dedupDropdown,
-                    data: initialData,
-                    dedupColumns,
-                    duplicateRows,
-                    renderTable: () => renderTableEditor({ container: tableContainer, projectName: selectedProject.name, data: initialData })
-                });
+            currentData = selectedProject.data || [];
 
-                // Edit module
-                const editDropdown = document.getElementById('edit-dropdown');
-                const saveDraftBtn = document.getElementById('save-draft-btn');
-                const saveAllDraftsBtn = document.getElementById('save-all-drafts-btn');
-                const discardAllDraftsBtn = document.getElementById('discard-all-drafts-btn');
-                const deleteSelectedBtn = document.getElementById('delete-selected-btn');
-                const editAllBtn = document.getElementById('edit-all-btn');
-                const draftRows = new Set();
-                const selectedRows = new Set();
-                const originalRows = new Map();
+            // -------------------------------------------------
+            // 2️⃣ FILE MODULE
+            // -------------------------------------------------
+            const fileUIContainer = document.createElement('div');
+            tableContainer.appendChild(fileUIContainer);
 
-                initTableEditorEdit({
-                    editDropdown,
-                    saveDraftBtn,
-                    saveAllDraftsBtn,
-                    discardAllDraftsBtn,
-                    deleteSelectedBtn,
-                    editAllBtn,
-                    data: initialData,
-                    draftRows,
-                    selectedRows,
-                    originalRows,
-                    renderTable: () => renderTableEditor({ container: tableContainer, projectName: selectedProject.name, data: initialData })
-                });
+            const fileUIElements = initTableEditorFile({
+                container: fileUIContainer,
+                data: currentData,
+                renderTable: renderTableEditor
             });
+
+            // -------------------------------------------------
+            // 3️⃣ DEDUP MODULE
+            // -------------------------------------------------
+            const dedupUIContainer = document.createElement('div');
+            tableContainer.appendChild(dedupUIContainer);
+
+            const dedupBtn = document.createElement('button');
+            dedupBtn.id = 'dedup-btn';
+            dedupBtn.textContent = 'Dedup';
+            const dedupDropdown = document.createElement('div');
+            dedupDropdown.id = 'dedup-dropdown';
+            dedupDropdown.className = 'dedup-dropdown';
+            dedupUIContainer.appendChild(dedupBtn);
+            dedupUIContainer.appendChild(dedupDropdown);
+
+            initTableEditorDedup({
+                dedupBtn,
+                dedupDropdown,
+                data: currentData,
+                dedupColumns: [],
+                duplicateRows: new Set(),
+                renderTable: renderTableEditor
+            });
+
+            // -------------------------------------------------
+            // 4️⃣ EDIT MODULE
+            // -------------------------------------------------
+            const editUIContainer = document.createElement('div');
+            tableContainer.appendChild(editUIContainer);
+
+            const editDropdown = document.createElement('select'); editDropdown.id='edit-dropdown';
+            const saveDraftBtn = document.createElement('button'); saveDraftBtn.id='save-draft-btn'; saveDraftBtn.textContent='Save Draft';
+            const saveAllDraftsBtn = document.createElement('button'); saveAllDraftsBtn.id='save-all-drafts-btn'; saveAllDraftsBtn.textContent='Save All';
+            const discardAllDraftsBtn = document.createElement('button'); discardAllDraftsBtn.id='discard-all-drafts-btn'; discardAllDraftsBtn.textContent='Discard All';
+            const deleteSelectedBtn = document.createElement('button'); deleteSelectedBtn.id='delete-selected-btn'; deleteSelectedBtn.textContent='Delete Selected';
+            const editAllBtn = document.createElement('button'); editAllBtn.id='edit-all-btn'; editAllBtn.textContent='Edit All';
+            editUIContainer.append(editDropdown, saveDraftBtn, saveAllDraftsBtn, discardAllDraftsBtn, deleteSelectedBtn, editAllBtn);
+
+            initTableEditorEdit({
+                editDropdown,
+                saveDraftBtn,
+                saveAllDraftsBtn,
+                discardAllDraftsBtn,
+                deleteSelectedBtn,
+                editAllBtn,
+                data: currentData,
+                draftRows: new Set(),
+                selectedRows: new Set(),
+                originalRows: new Map(),
+                renderTable: renderTableEditor
+            });
+
+            // -------------------------------------------------
+            // 5️⃣ TEXT MODULE
+            // -------------------------------------------------
+            const textUIContainer = document.createElement('div');
+            tableContainer.appendChild(textUIContainer);
+
+            initTableEditorText({
+                container: textUIContainer,
+                data: currentData,
+                renderTable: renderTableEditor
+            });
+
+            // -------------------------------------------------
+            // 6️⃣ Render Table lần đầu
+            // -------------------------------------------------
+            renderTableEditor();
         });
     </script>
 </body>

@@ -4,14 +4,15 @@
 // - Import các file phụ trợ
 // - Export main function để renderer import duy nhất
 
-// 1️⃣ Style riêng module
-import './ProjectSelector.style.css';
+// 0️⃣ CSS loader
+import { loadComponentCSS } from '../_shared/css-loader.js';
+loadComponentCSS('./components/project-selector/projectSelector.style.css');
 
-// 2️⃣ Interface, API, State, Logic
-import './projectSelector.interface.js';
+// 1️⃣ Interface, API, State, Logic
 import '../api/project.api.js';
+import './projectSelector.interface.js';
 import './projectSelector.state.js';
-import './projectSelector.logic.js';
+import './projectSelector.main.js';
 
-// 3️⃣ Export main function
+// 2️⃣ Export main function
 export { initProjectSelector } from './projectSelector.main.js';

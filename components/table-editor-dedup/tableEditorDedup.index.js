@@ -1,16 +1,14 @@
-// tableEditorDedup.entry.js
-// -----------------------------
-// Entry point tổng hợp cho TableEditor Dedup module
-// -----------------------------
+// Entry point tổng hợp TableEditorDedup module
+// - CSS loader
+// - Import các file phụ trợ
+// - Export init function duy nhất
 
-// Import style (nếu có)
-import './tableEditorDedup.style.css';
+import { loadComponentCSS } from '../_shared/css-loader.js';
+loadComponentCSS('./components/table-editor-dedup/tableEditorDedup.style.css');
 
-// Import interface (nếu có)
-import './tableEditorDedup.interface.js';
-
-// Import API helper
 import './tableEditorDedup.api.js';
+import './tableEditorDedup.state.js';
+import './tableEditorDedup.interface.js';
+import './tableEditorDedup.main.js';
 
-// Export main function
 export { initTableEditorDedup } from './tableEditorDedup.main.js';

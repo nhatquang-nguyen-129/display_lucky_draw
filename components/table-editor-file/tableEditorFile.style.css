@@ -1,0 +1,18 @@
+.file-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.file-toolbar button {
+    padding: 6px 12px;
+    background: #2d7dff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.file-toolbar button:hover {
+    background: #1c5dcc;
+}

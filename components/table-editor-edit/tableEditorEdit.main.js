@@ -1,56 +1,47 @@
-// tableEditorEdit.main.js
-import * as TableEditAPI from "./tableEditorEdit.api.js";
+import { editState, updateDraft, updateSelected } from './tableEditorEdit.state.js';
+import { applyDraft, deleteSelectedRows } from './tableEditorEdit.api.js';
+import { renderRowSelection } from './tableEditorEdit.ui.js';
 
-/**
- * Gắn sự kiện Edit toolbar cho Table Editor
- * @param {Object} config
- *   - editDropdown: HTMLElement dropdown chứa các nút Edit
- *   - data: Array bảng dữ liệu
- *   - draftRows: Set các row đang chỉnh sửa
- *   - selectedRows: Set các row được chọn
- *   - originalRows: Map row gốc
- *   - renderTable: function render lại bảng
- */
-export function initTableEditorEdit({
-    editDropdown,
-    saveDraftBtn,
-    saveAllDraftsBtn,
-    discardAllDraftsBtn,
-    deleteSelectedBtn,
-    editAllBtn,
-    data,
-    draftRows,
-    selectedRows,
-    originalRows,
-    renderTable
-}) {
-    // Save draft row hiện tại
-    saveDraftBtn.addEventListener("click", () => {
-        TableEditAPI.saveDraft(draftRows, originalRows, data);
+export function initTableEditorEdit(config) {
+    const {
+        editDropdown,
+        saveDraftBtn,
+        saveAllDraftsBtn,
+        discardAllDraftsBtn,
+        deleteSelectedBtn,
+        editAllBtn,
+        data,
+        draftRows,
+        selectedRows,
+        originalRows,
+        renderTable
+    } = config;
+
+    // Bind nút save draft
+    saveDraftBtn.addEventListener('click', () => {
+        draftRows.clear(); // ví dụ chỉ clear hoặc lưu tạm, tùy logic
         renderTable();
     });
 
-    // Save all drafts (giống saveDraft cho tất cả)
-    saveAllDraftsBtn.addEventListener("click", () => {
-        TableEditAPI.saveDraft(draftRows, originalRows, data);
+    saveAllDraftsBtn.addEventListener('click', () => {
+        // Áp dụng tất cả draft lên data
+        const newData = applyDraft(data, draftRows);
+        draftRows.clear();
+        renderTable(newData);
+    });
+
+    discardAllDraftsBtn.addEventListener('click', () => {
+        draftRows.clear();
         renderTable();
     });
 
-    // Discard draft row
-    discardAllDraftsBtn.addEventListener("click", () => {
-        TableEditAPI.discardDraft(draftRows, originalRows, data);
-        renderTable();
+    deleteSelectedBtn.addEventListener('click', () => {
+        const newData = deleteSelectedRows(data, selectedRows);
+        selectedRows.clear();
+        renderTable(newData);
     });
 
-    // Delete selected row
-    deleteSelectedBtn.addEventListener("click", () => {
-        data = TableEditAPI.deleteSelectedRows(selectedRows, draftRows, data);
-        renderTable();
-    });
-
-    // Edit all rows
-    editAllBtn.addEventListener("click", () => {
-        TableEditAPI.editAllRows(data, selectedRows, originalRows);
-        renderTable();
+    editAllBtn.addEventListener('click', () => {
+        // Logic edit tất cả row, ví dụ hiện modal chỉnh sửa (nếu có)
     });
 }
