@@ -1,8 +1,10 @@
 // components/editor-project-select.js
+
+// Load cấu hình CSS trong Project Selector
 import { loadComponentCSS } from "../utils/loadComponentCSS.js";
 loadComponentCSS("../styles/ProjectSelector.css");
 
-// API gọi Electron để tạo folder
+// API gọi Electron để tạo Folder Project
 async function createProjectFolder(projectName) {
     if (!window.api || !window.api.createProjectFolder) {
         console.warn("API createProjectFolder not defined");
