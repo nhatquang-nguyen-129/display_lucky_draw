@@ -9,8 +9,11 @@
  * @param {Array} dedupColumns - mảng tên cột cần dedup
  * @returns {Object} { preview: Array, duplicateRows: Set }
  */
+// Deduplicate logic: xác định các row trùng dựa trên cột
+
 export function getDedupPreview(data, dedupColumns) {
-    if (!dedupColumns.length) return { preview: data.map((row, idx) => ({ row, idx })), duplicateRows: new Set() };
+    if (!dedupColumns.length) 
+        return { preview: data.map((row, idx) => ({ row, idx })), duplicateRows: new Set() };
 
     const groups = new Map();
     const duplicateRows = new Set();
@@ -23,9 +26,8 @@ export function getDedupPreview(data, dedupColumns) {
 
     const duplicatePart = [];
     const uniquePart = [];
-
     let groupCounter = 0;
-    const groupIndexes = new Map(); // idx → groupIndex
+    const groupIndexes = new Map();
 
     groups.forEach((group) => {
         if (group.length > 1) {

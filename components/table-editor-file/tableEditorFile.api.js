@@ -1,33 +1,31 @@
-// tableEditorFile.api.js
-// -----------------------------
-// File operations: load CSV, save CSV
-// -----------------------------
+// Logic xử lý file import/replace/save
 
 /**
- * Load CSV thông qua Electron
- * @returns {Promise<{data: Array}|null>}
+ * Parse CSV text thành mảng object
+ * @param {string} csvText
+ * @returns {Array<Object>}
  */
-export async function loadCSV() {
-    if (!window.api?.loadCSV) return null;
-    return await window.api.loadCSV();
+export function parseCSV(csvText) {
+    const lines = csvText.trim().split(/\r?\n/);
+    if (!lines.length) return [];
+
+    const headers = lines[0].split(',');
+    return lines.slice(1).map(line => {
+        const values = line.split(',');
+        const obj = {};
+        headers.forEach((h, idx) => obj[h] = values[idx] || '');
+        return obj;
+    });
 }
 
 /**
- * Save CSV dữ liệu project
- * @param {string} projectName - tên project hiện tại
- * @param {Array} data - dữ liệu bảng
- * @returns {Promise<void>}
+ * Export mảng object thành CSV string
+ * @param {Array<Object>} data
+ * @returns {string}
  */
-export async function saveProjectCSV(projectName, data) {
-    if (!window.api?.saveProjectData) return;
-
-    const headers = Object.keys(data[0] || {});
-    const csvContent = [
-        headers.join(","),
-        ...data.map(row =>
-            headers.map(h => `"${String(row[h]).replace(/"/g, '""')}"`).join(",")
-        )
-    ].join("\n");
-
-    await window.api.saveProjectData(projectName, csvContent, { isCSV: true });
+export function exportCSV(data) {
+    if (!data.length) return '';
+    const headers = Object.keys(data[0]);
+    const lines = data.map(row => headers.map(h => row[h]).join(','));
+    return [headers.join(','), ...lines].join('\n');
 }

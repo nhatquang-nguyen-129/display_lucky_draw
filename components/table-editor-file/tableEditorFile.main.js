@@ -1,28 +1,37 @@
-// tableEditorFile.main.js
-// -----------------------------
-// Xử lý các button Import / Save
-// -----------------------------
+import { parseCSV, exportCSV } from './tableEditorFile.api.js';
+import { fileState, updateFileData } from './tableEditorFile.state.js';
 
-import { loadCSV, saveProjectCSV } from "./tableEditorFile.api.js";
+export function initTableEditorFile(config) {
+    const { container, renderTable } = config;
+    const { importFileInput, importFileBtn, replaceFileBtn, saveFileBtn } = config.uiElements;
 
-export function initTableEditorFile({ importBtn, saveBtn, currentProject, data, draftRows, selectedRows, renderTable }) {
-    importBtn.addEventListener("click", async () => {
-        const result = await loadCSV();
-        if (result?.data?.length) {
-            data.length = 0;
-            result.data.forEach(row => data.push(row));
-            draftRows.clear();
-            selectedRows.clear();
+    // Import file
+    importFileBtn.addEventListener('click', () => importFileInput.click());
+
+    importFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const csvText = ev.target.result;
+            const data = parseCSV(csvText);
+            updateFileData(data);
             renderTable();
-        }
+        };
+        reader.readAsText(file);
     });
 
-    saveBtn.addEventListener("click", async () => {
-        if (!currentProject) return alert("Project name not specified.");
-        await saveProjectCSV(currentProject, data);
-        draftRows.clear();
-        selectedRows.clear();
-        renderTable();
-        alert("Saved!");
+    // Replace file: tương tự import nhưng giữ nguyên tên file
+    replaceFileBtn.addEventListener('click', () => importFileInput.click());
+
+    // Save file
+    saveFileBtn.addEventListener('click', () => {
+        const csvText = exportCSV(fileState.data);
+        const blob = new Blob([csvText], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileState.currentFileName || 'export.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
     });
 }

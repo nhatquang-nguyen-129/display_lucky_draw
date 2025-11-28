@@ -1,16 +1,10 @@
-// tableEditorFile.entry.js
-// -----------------------------
-// Entry point tổng hợp cho TableEditor File module
-// -----------------------------
+// Entry point tổng hợp TableEditorFile module
+import { loadComponentCSS } from '../_shared/css-loader.js';
+loadComponentCSS('./components/table-editor-file/tableEditorFile.style.css');
 
-// Import style (nếu có)
-import './tableEditorFile.style.css';
-
-// Import interface (nếu có)
-import './tableEditorFile.interface.js';
-
-// Import API helper
 import './tableEditorFile.api.js';
+import './tableEditorFile.state.js';
+import './tableEditorFile.main.js';
+import './tableEditorFile.main.js';
 
-// Export main function
 export { initTableEditorFile } from './tableEditorFile.main.js';
