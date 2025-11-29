@@ -3,7 +3,7 @@
 // - Import các file phụ trợ
 // - Export init function duy nhất
 
-import { loadComponentCSS } from '../_shared/css-loader.js';
+import { loadComponentCSS } from '../shared/componentCSSLoader.js';
 loadComponentCSS('./components/table-editor-dedup/tableEditorDedup.style.css');
 
 import './tableEditorDedup.api.js';
