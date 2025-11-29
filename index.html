@@ -1,184 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>production - KidsPlaza Lucky Draw</title>
+    <meta charset="UTF-8" />
+    <title>Project Selector</title>
 </head>
 <body>
-    <!-- Containers -->
+
     <div id="project-selector-container"></div>
-    <div id="table-editor-container"></div>
 
     <script type="module">
-        console.log("[INDEX] index.html script is loading...");
+        console.log("[INDEX] index.html start");
 
-        // -------------------------------------------------
-        // IMPORT MODULES
-        // -------------------------------------------------
         try {
-            console.log("[INDEX] Attempting to import modules...");
+            const module = await import(
+                new URL('./components/project-selector/projectSelector.index.js', import.meta.url)
+            );
 
-            const imports = await Promise.all([
-                import(new URL('./components/project-selector/projectSelector.index.js', import.meta.url)),
-                import(new URL('./components/table-editor-file/tableEditorFile.index.js', import.meta.url)),
-                import(new URL('./components/table-editor-dedup/tableEditorDedup.index.js', import.meta.url)),
-                import(new URL('./components/table-editor-edit/tableEditorEdit.index.js', import.meta.url)),
-                import(new URL('./components/table-editor-text/tableEditorText.index.js', import.meta.url))
-            ]);
+            const initProjectSelector = module.initProjectSelector;
 
-            const [projectSelectorModule, tableEditorFileModule, tableEditorDedupModule, tableEditorEditModule, tableEditorTextModule] = imports;
+            const container = document.getElementById('project-selector-container');
 
-            console.log("[INDEX] Modules imported successfully");
-
-            const initProjectSelector = projectSelectorModule.initProjectSelector;
-            const initTableEditorFile = tableEditorFileModule.initTableEditorFile;
-            const initTableEditorDedup = tableEditorDedupModule.initTableEditorDedup;
-            const initTableEditorEdit = tableEditorEditModule.initTableEditorEdit;
-            const initTableEditorText = tableEditorTextModule.initTableEditorText;
-
-            console.log("[INDEX] APP LOADED OK");
-            console.log("[INDEX] Modules:", {
-                initProjectSelector,
-                initTableEditorFile,
-                initTableEditorDedup,
-                initTableEditorEdit,
-                initTableEditorText
-            });
-
-            // DOM CONTAINERS
-            const projectContainer = document.getElementById('project-selector-container');
-            const tableContainer = document.getElementById('table-editor-container');
-
-            projectContainer.style.display = 'block';
-            tableContainer.style.display = 'none';
-
-            // HELPER: renderTable chung
-            let currentData = []; // mảng duy nhất shared giữa các module
-
-            function renderTableEditor() {
-                console.log("[INDEX] renderTableEditor called, currentData length:", currentData.length);
-                tableContainer.querySelector('#table-content')?.remove();
-
-                const tableEl = document.createElement('div');
-                tableEl.id = 'table-content';
-                tableEl.innerHTML = `
-                    <table class="csv-table" border="1" cellpadding="4">
-                        <thead>
-                            <tr>${Object.keys(currentData[0] || {}).map(h => `<th>${h}</th>`).join('')}</tr>
-                        </thead>
-                        <tbody>
-                            ${currentData.map(row => `
-                                <tr>${Object.keys(row).map(k => `<td>${row[k]}</td>`).join('')}</tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-                tableContainer.appendChild(tableEl);
-            }
-
-            // -------------------------------------------------
-            // 1️⃣ PROJECT SELECTOR
-            // -------------------------------------------------
-            console.log("[INDEX] Initializing Project Selector");
-            initProjectSelector(projectContainer, (selectedProject) => {
-                console.log("[INDEX] Project selected callback fired:", selectedProject);
-
-                projectContainer.style.display = 'none';
-                tableContainer.style.display = 'block';
-
-                currentData = selectedProject.data || [];
-                console.log("[INDEX] currentData updated, length:", currentData.length);
-
-                // -------------------------------------------------
-                // 2️⃣ FILE MODULE
-                // -------------------------------------------------
-                console.log("[INDEX] Initializing Table Editor File module");
-                const fileUIContainer = document.createElement('div');
-                tableContainer.appendChild(fileUIContainer);
-
-                initTableEditorFile({
-                    container: fileUIContainer,
-                    data: currentData,
-                    renderTable: renderTableEditor
-                });
-
-                // -------------------------------------------------
-                // 3️⃣ DEDUP MODULE
-                // -------------------------------------------------
-                console.log("[INDEX] Initializing Table Editor Dedup module");
-                const dedupUIContainer = document.createElement('div');
-                tableContainer.appendChild(dedupUIContainer);
-
-                const dedupBtn = document.createElement('button');
-                dedupBtn.id = 'dedup-btn';
-                dedupBtn.textContent = 'Dedup';
-                const dedupDropdown = document.createElement('div');
-                dedupDropdown.id = 'dedup-dropdown';
-                dedupDropdown.className = 'dedup-dropdown';
-                dedupUIContainer.appendChild(dedupBtn);
-                dedupUIContainer.appendChild(dedupDropdown);
-
-                initTableEditorDedup({
-                    dedupBtn,
-                    dedupDropdown,
-                    data: currentData,
-                    dedupColumns: [],
-                    duplicateRows: new Set(),
-                    renderTable: renderTableEditor
-                });
-
-                // -------------------------------------------------
-                // 4️⃣ EDIT MODULE
-                // -------------------------------------------------
-                console.log("[INDEX] Initializing Table Editor Edit module");
-                const editUIContainer = document.createElement('div');
-                tableContainer.appendChild(editUIContainer);
-
-                const editDropdown = document.createElement('select'); editDropdown.id='edit-dropdown';
-                const saveDraftBtn = document.createElement('button'); saveDraftBtn.id='save-draft-btn'; saveDraftBtn.textContent='Save Draft';
-                const saveAllDraftsBtn = document.createElement('button'); saveAllDraftsBtn.id='save-all-drafts-btn'; saveAllDraftsBtn.textContent='Save All';
-                const discardAllDraftsBtn = document.createElement('button'); discardAllDraftsBtn.id='discard-all-drafts-btn'; discardAllDraftsBtn.textContent='Discard All';
-                const deleteSelectedBtn = document.createElement('button'); deleteSelectedBtn.id='delete-selected-btn'; deleteSelectedBtn.textContent='Delete Selected';
-                const editAllBtn = document.createElement('button'); editAllBtn.id='edit-all-btn'; editAllBtn.textContent='Edit All';
-                editUIContainer.append(editDropdown, saveDraftBtn, saveAllDraftsBtn, discardAllDraftsBtn, deleteSelectedBtn, editAllBtn);
-
-                initTableEditorEdit({
-                    editDropdown,
-                    saveDraftBtn,
-                    saveAllDraftsBtn,
-                    discardAllDraftsBtn,
-                    deleteSelectedBtn,
-                    editAllBtn,
-                    data: currentData,
-                    draftRows: new Set(),
-                    selectedRows: new Set(),
-                    originalRows: new Map(),
-                    renderTable: renderTableEditor
-                });
-
-                // -------------------------------------------------
-                // 5️⃣ TEXT MODULE
-                // -------------------------------------------------
-                console.log("[INDEX] Initializing Table Editor Text module");
-                const textUIContainer = document.createElement('div');
-                tableContainer.appendChild(textUIContainer);
-
-                initTableEditorText({
-                    container: textUIContainer,
-                    data: currentData,
-                    renderTable: renderTableEditor
-                });
-
-                // -------------------------------------------------
-                // 6️⃣ Render Table lần đầu
-                // -------------------------------------------------
-                console.log("[INDEX] Rendering Table Editor lần đầu");
-                renderTableEditor();
+            initProjectSelector(container, (project) => {
+                console.log("[INDEX] Project selected:", project);
+                alert("Selected Project: " + project.name);
             });
 
         } catch (err) {
-            console.error("[INDEX] Failed to load index.html script or modules:", err);
+            console.error("[INDEX] Failed to load Project Selector:", err);
         }
     </script>
+
 </body>
 </html>
