@@ -1,5 +1,5 @@
 // Entry point tổng hợp TableEditorEdit module
-import { loadComponentCSS } from '../_shared/css-loader.js';
+import { loadComponentCSS } from '../shared/componentCSSLoader.js';
 loadComponentCSS('./components/table-editor-edit/tableEditorEdit.style.css');
 
 import './tableEditorEdit.api.js';

@@ -1,18 +1,30 @@
-// components/project-selector/projectSelector.index.js
-// ------------------------------------------------------------
-// Entry point tổng hợp cho ProjectSelector module
-// - Import các file phụ trợ
-// - Export main function để renderer import duy nhất
+// projectSelector.index.js
 
+// ===============================
 // 0️⃣ CSS loader
-import { loadComponentCSS } from '../_shared/css-loader.js';
-loadComponentCSS('./components/project-selector/projectSelector.style.css');
+// ===============================
+import { loadComponentCSS } from '../shared/componentCSSLoader.js';
+console.log("[PROJECT SELECTOR][INDEX] Loading CSS...");
 
-// 1️⃣ Interface, API, State, Logic
-import '../api/project.api.js';
-import './projectSelector.interface.js';
-import './projectSelector.state.js';
-import './projectSelector.main.js';
+// Sử dụng new URL() để ES module tính đúng đường dẫn tuyệt đối
+loadComponentCSS(new URL('./projectSelector.style.css', import.meta.url));
+console.log("[PROJECT SELECTOR][INDEX] CSS loaded");
 
+// ===============================
+// 1️⃣ Import các module con
+// ===============================
+console.log("[PROJECT SELECTOR][INDEX] Importing modules...");
+
+// Relative path từ chính file này, dùng new URL() cho chắc
+await import(new URL('./projectSelector.api.js', import.meta.url));
+await import(new URL('./projectSelector.interface.js', import.meta.url));
+await import(new URL('./projectSelector.state.js', import.meta.url));
+await import(new URL('./projectSelector.main.js', import.meta.url));
+
+console.log("[PROJECT SELECTOR][INDEX] Modules imported successfully");
+
+// ===============================
 // 2️⃣ Export main function
+// ===============================
 export { initProjectSelector } from './projectSelector.main.js';
+console.log("[PROJECT SELECTOR][INDEX] initProjectSelector exported");
