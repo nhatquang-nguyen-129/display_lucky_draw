@@ -1,0 +1,17 @@
+<!--?xml version="1.0" encoding="utf-8"?-->
+<svg width="64" height="64" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Delete trashcan icon">
+  <g fill="none" fill-rule="evenodd" stroke="none" stroke-width="1">
+    <!-- Trash body -->
+    <path d="M144 176 L368 176 L336 432 C334.7 454.5 316.5 472 294 472 L218 472 C195.5 472 177.3 454.5 176 432 L144 176 Z" fill="#FFFFFF"></path>
+    <!-- Lid -->
+    <rect x="112" y="96" width="288" height="48" rx="6" fill="#FFFFFF"></rect>
+    <!-- Handle -->
+    <rect x="216" y="56" width="80" height="20" rx="6" fill="#FFFFFF"></rect>
+    <!-- Inner vertical lines (to represent slats) -->
+    <g opacity="0.06" fill="#000000">
+      <rect x="220" y="208" width="16" height="184" rx="6"></rect>
+      <rect x="280" y="208" width="16" height="184" rx="6"></rect>
+      <rect x="172" y="208" width="16" height="184" rx="6"></rect>
+    </g>
+  </g>
+</svg>

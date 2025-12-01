@@ -1,0 +1,15 @@
+<!--?xml version="1.0" encoding="utf-8"?-->
+<svg width="64" height="64" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open folder icon">
+  <!-- Transparent background by default -->
+  <g fill="none" fill-rule="evenodd" stroke="none" stroke-width="1">
+    <!-- Folder body -->
+    <path d="M64 160c0-26.51 21.49-48 48-48h96l32 32h160c26.51 0 48 21.49 48 48v176c0 26.51-21.49 48-48 48H112c-26.51 0-48-21.49-48-48V160z" fill="#FFFFFF"></path>
+    <!-- Folder flap (slightly darker by using opacity only to shape, but still white) -->
+    <path d="M64 160c0-26.51 21.49-48 48-48h96l32 32h160" fill="#FFFFFF" opacity="0.06"></path>
+    <!-- Open indicator: arrow pointing right (cutout-style stroke) -->
+    <g transform="translate(176,240)">
+      <path d="M0 0 L80 48 L0 96 Z" fill="#000000" opacity="0"></path>
+      <path d="M8 8 L72 48 L8 88 L8 8 Z" fill="#FFFFFF"></path>
+    </g>
+  </g>
+</svg>
