@@ -10,13 +10,29 @@ export function renderProjectSelector(container, onSelect) {
             <ul id="ps-list" class="ps-list"></ul>
 
             <div class="ps-actions">
-                <button id="ps-open" class="ps-button" disabled>Open</button>
-                <button id="ps-create" class="ps-button">Create</button>
-                <button id="ps-delete" class="ps-button ps-delete" disabled>Delete</button>
+
+                <!-- OPEN BUTTON -->
+                <button id="ps-open" class="ps-button" disabled>
+                    <img class="ps-btn-icon" src="assets/project-selector/button-open-project.svg" />
+                    <span>Open</span>
+                </button>
+
+                <!-- CREATE BUTTON -->
+                <button id="ps-create" class="ps-button">
+                    <img class="ps-btn-icon" src="assets/project-selector/button-create-project.svg" />
+                    <span>Create</span>
+                </button>
+
+                <!-- DELETE BUTTON -->
+                <button id="ps-delete" class="ps-button ps-delete" disabled>
+                    <img class="ps-btn-icon" src="assets/project-selector/button-delete-project.svg" />
+                    <span>Delete</span>
+                </button>
+
             </div>
         </div>
 
-        <!-- Popup tạo project -->
+        <!-- Popup -->
         <div id="ps-popup" class="ps-popup">
             <div class="ps-popup-content">
                 <h3>Create New Project</h3>
@@ -39,31 +55,48 @@ export function renderProjectSelector(container, onSelect) {
     const popupCancel = container.querySelector('#ps-popup-cancel');
     const popupConfirm = container.querySelector('#ps-popup-confirm');
 
-    // =====================================
     // LOAD LIST PROJECT
-    // =====================================
     async function loadProjects() {
         const projects = await projectSelectorAPI.listProjects();
         list.innerHTML = "";
 
         projects.forEach(name => {
             const li = document.createElement("li");
-            li.textContent = name;
             li.classList.add("ps-item");
 
+            // --- tick icon SVG inline (hoặc src SVG) ---
+            li.innerHTML = `
+                <img class="ps-radio-icon" src="assets/project-selector/selector-radio-off.svg" />
+                <span class="ps-item-label">${name}</span>
+            `;
+
+            // Nếu đang chọn, đổi icon
             if (projectSelectorState.selectedProject === name) {
                 li.classList.add("selected");
+                li.querySelector(".ps-radio-icon").src = "assets/project-selector/selector-radio-on.svg";
             }
 
             li.addEventListener("click", () => {
-                if (projectSelectorState.selectedProject === name) {
-                    projectSelectorState.selectedProject = null;
-                    li.classList.remove("selected");
-                } else {
-                    projectSelectorState.selectedProject = name;
-                    list.querySelectorAll(".ps-item").forEach(i => i.classList.remove("selected"));
-                    li.classList.add("selected");
+                const previouslySelected = projectSelectorState.selectedProject;
+                projectSelectorState.selectedProject = previouslySelected === name ? null : name;
+
+                // Reset tất cả icon về off
+                list.querySelectorAll(".ps-item").forEach(item => {
+                    item.classList.remove("selected");
+                    item.querySelector(".ps-radio-icon").src = "assets/project-selector/selector-radio-off.svg";
+                });
+
+                // Nếu chọn lại, bật icon on
+                if (projectSelectorState.selectedProject) {
+                    const selectedLi = Array.from(list.children).find(li => 
+                        li.querySelector(".ps-item-label").textContent === projectSelectorState.selectedProject
+                    );
+                    if (selectedLi) {
+                        selectedLi.classList.add("selected");
+                        selectedLi.querySelector(".ps-radio-icon").src = "assets/project-selector/selector-radio-on.svg";
+                    }
                 }
+
                 updateButtons();
             });
 
@@ -79,9 +112,7 @@ export function renderProjectSelector(container, onSelect) {
         btnDelete.disabled = !selected;
     }
 
-    // =====================================
     // POPUP CREATE PROJECT
-    // =====================================
     btnCreate.addEventListener("click", () => {
         popup.classList.add("visible");
         popupInput.value = "";
