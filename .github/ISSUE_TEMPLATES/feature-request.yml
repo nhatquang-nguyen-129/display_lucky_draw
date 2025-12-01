@@ -1,0 +1,12 @@
+name: Feature Request
+description: Đề xuất tính năng mới
+title: "[FEATURE]: "
+labels: [enhancement]
+
+body:
+  - type: textarea
+    attributes:
+      label: Mô tả tính năng
+  - type: textarea
+    attributes:
+      label: Lý do / nhu cầu
