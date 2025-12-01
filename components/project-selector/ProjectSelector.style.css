@@ -51,16 +51,20 @@
 .ps-actions {
     margin-top: 20px;
     display: flex;
-    justify-content: space-between;
+    justify-content: space-around; /* khoảng cách đều và tự nhiên */
+    gap: 12px;                     /* thêm khoảng cách cố định giữa các nút */
 }
 
 .ps-button {
-    padding: 8px 18px;
+    padding: 12px 24px;   /* to hơn trước */
+    font-size: 16px;       /* chữ to hơn */
     border: none;
     background: #007bff;
     color: white;
     border-radius: 6px;
     cursor: pointer;
+    flex: 1;               /* mỗi nút chiếm khoảng bằng nhau */
+    max-width: 120px;      /* giới hạn kích thước tối đa */
 }
 
 .ps-button:disabled {
