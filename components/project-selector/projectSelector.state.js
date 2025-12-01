@@ -1,3 +1,4 @@
 export const projectSelectorState = {
-    currentProjectName: ""
+    currentProjectName: "",      
+    selectedProject: null        // dùng để lưu project được chọn từ danh sách
 };
