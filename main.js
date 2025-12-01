@@ -49,19 +49,7 @@ ipcMain.handle("loadCSV", async () => {
     return { filePath, data: records };
 });
 
-
-// ===== Create Project Folder =====
-// Tạo thư mục project mới trong ./projects/<projectName>
-ipcMain.handle("createProjectFolder", async (event, projectName) => {
-    const p = path.join(__dirname, "projects", projectName);
-    fs.mkdirSync(p, { recursive: true });
-    return { success: true, path: p };
-});
-
-
-// ===== List Existing Projects =====
-// Trả về danh sách các thư mục trong folder ./projects
-// Mỗi thư mục được coi là một Project
+// IPC trả danh sách các Project Folder trong ./projects/<projectName>
 ipcMain.handle("listProjects", async () => {
     const projectsDir = path.join(__dirname, "projects");
 
@@ -78,4 +66,25 @@ ipcMain.handle("listProjects", async () => {
         .map(dirent => dirent.name);
 
     return projectNames;
+});
+
+// IPC tạo mới Project Folder trong ./projects/<projectName>
+ipcMain.handle("createProjectFolder", async (event, projectName) => {
+    const p = path.join(__dirname, "projects", projectName);
+    fs.mkdirSync(p, { recursive: true });
+    return { success: true, path: p };
+});
+
+// IPC xóa Project Folder trong ./projects/<projectName>
+ipcMain.handle("deleteProjectFolder", async (event, projectName) => {
+    const p = path.join(__dirname, "projects", projectName);
+
+    if (!fs.existsSync(p)) {
+        return { success: false, message: "Project not found" };
+    }
+
+    // ⚠️ Xóa cả folder + toàn bộ file con
+    fs.rmSync(p, { recursive: true, force: true });
+
+    return { success: true };
 });
