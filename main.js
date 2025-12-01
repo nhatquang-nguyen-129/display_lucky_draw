@@ -3,6 +3,11 @@ const path = require("path");
 const fs = require("fs");
 const { parse } = require("csv-parse/sync");
 
+// =============================
+//  Create Main Window
+//  - Thiết lập cửa sổ chính của ứng dụng
+//  - Thêm icon app-main-icon.png
+// =============================
 function createWindow() {
     const win = new BrowserWindow({
         width: 1200,
@@ -18,11 +23,17 @@ function createWindow() {
     win.loadFile("index.html");
 }
 
-
 app.whenReady().then(createWindow);
 
-// ===== IPC =====
-// Load CSV
+
+// =============================
+//  IPC HANDLERS
+//  - Các API giao tiếp giữa Renderer ↔ Main
+// =============================
+
+
+// ===== Load CSV =====
+// Cho phép renderer mở file CSV và lấy nội dung đã parse
 ipcMain.handle("loadCSV", async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ["openFile"],
@@ -38,9 +49,33 @@ ipcMain.handle("loadCSV", async () => {
     return { filePath, data: records };
 });
 
-// Create project folder
+
+// ===== Create Project Folder =====
+// Tạo thư mục project mới trong ./projects/<projectName>
 ipcMain.handle("createProjectFolder", async (event, projectName) => {
     const p = path.join(__dirname, "projects", projectName);
     fs.mkdirSync(p, { recursive: true });
     return { success: true, path: p };
+});
+
+
+// ===== List Existing Projects =====
+// Trả về danh sách các thư mục trong folder ./projects
+// Mỗi thư mục được coi là một Project
+ipcMain.handle("listProjects", async () => {
+    const projectsDir = path.join(__dirname, "projects");
+
+    // Nếu thư mục chưa tồn tại → tạo để tránh lỗi
+    if (!fs.existsSync(projectsDir)) {
+        fs.mkdirSync(projectsDir, { recursive: true });
+    }
+
+    // Lấy danh sách thư mục con (project folders)
+    const items = fs.readdirSync(projectsDir, { withFileTypes: true });
+
+    const projectNames = items
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
+
+    return projectNames;
 });
