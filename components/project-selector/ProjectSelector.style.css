@@ -1,4 +1,19 @@
-/* Box chính Project Selector */
+/*!
+==================================================================
+PROJECT SELECTOR STYLE
+------------------------------------------------------------------
+Defines styles for the Project Selector module modal, search, dropdown, 
+project list, buttons, and popup interactions in the app UI.
+
+✔️ Styles main modal box, project list, and selection highlight  
+✔️ Adds search input and dropdown with tick icons for selection  
+✔️ Handles buttons, disabled states, and create/delete popup  
+
+⚠️ Only contains styling; does not include JS logic or data handling
+==================================================================
+*/
+
+/* 1. PROJECT SELECTOR BOX */
 .ps-center-box {
     width: 360px;
     max-height: 80vh;
@@ -17,19 +32,19 @@
     flex-direction: column;
 }
 
-/* Tiêu đề */
+/* 1.2. Project Selector Title */
 .ps-title {
     margin-bottom: 10px;
     font-size: 20px;
     font-weight: bold;
 }
 
-/* List Project */
+/* 1.3. Project Selector Listing */
 .ps-list {
     list-style: none;
     padding: 0;
     margin-top: 15px;
-    overflow-y: auto;        /* scroll khi nhiều project */
+    overflow-y: auto;
     flex: 1;
     max-height: 220px;
 }
@@ -42,11 +57,73 @@
     border-radius: 6px;
     display: flex;
     align-items: center;
-    gap: 10px;               /* icon — text */
+    gap: 10px;
 }
 
 .ps-item.selected {
     background: #cde5ff;
+}
+
+/* 2. PROJECT SELECTOR SEARCH WRAPPER */
+
+/* 2.1. Project Selector Search Wrapper Position*/
+.ps-search-wrapper {
+    position: relative;
+    width: 100%;
+    margin-top: 10px;
+}
+
+/* 2.2. Project Selector Search Wrapper Input */
+.ps-search-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+/* 2.3. Project Selector Search Dropdown */
+.ps-search-dropdown {
+    position: absolute;
+    top: 44px;                
+    left: 0;
+    width: calc(100%);
+    max-height: 200px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow-y: auto;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.15);
+    display: none;
+    z-index: 20;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.ps-search-dropdown.visible {
+    display: block;
+}
+
+.ps-search-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;          /* ⭐ padding ngang khớp với input */
+    height: 40px;             /* ⭐ fix chiều cao để căn icon */
+    cursor: pointer;
+    box-sizing: border-box;   /* ⭐ tránh tính padding ra ngoài width */
+}
+
+.ps-search-item img {
+    width: 20px;               /* ⭐ đồng bộ với .ps-radio-icon */
+    height: 20px;
+    flex-shrink: 0;            /* không bị co lại */
+}
+
+.ps-search-item span {
+    flex: 1;                   /* chiếm hết khoảng còn lại */
+    text-align: left;
 }
 
 /* Icon tick trước project */
@@ -97,7 +174,9 @@
     cursor: not-allowed;
 }
 
-/* Popup Create Project */
+/* ==============================
+   POPUP CREATE PROJECT
+   ============================== */
 .ps-popup {
     position: fixed;
     left: 0; top: 0;
@@ -115,14 +194,65 @@
 
 .ps-popup-content {
     background: white;
-    padding: 20px;
-    width: 300px;
+    padding: 25px 20px;       /* padding to ra hơn */
+    width: 320px;             /* rộng hơn 1 chút */
     border-radius: 10px;
     text-align: center;
 }
 
+/* Popup Title */
+.ps-popup-content h3 {
+    font-size: 22px;          /* tăng cỡ chữ */
+    margin-bottom: 15px;
+}
+
+/* Popup Input */
+#ps-popup-input {
+    width: 100%;
+    padding: 12px 14px;       /* lớn hơn, dễ nhập */
+    font-size: 16px;           /* chữ to hơn */
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+    margin-bottom: 20px;       /* cách lề dưới vừa đủ */
+}
+
+/* Popup buttons container */
 .ps-popup-actions {
-    margin-top: 12px;
     display: flex;
-    justify-content: space-between;
+    justify-content: space-between;  /* cách xa nhau */
+    gap: 12px;                       /* khoảng cách 2 nút */
+}
+
+/* Hai nút popup style (nhỏ hơn so với nút chính) */
+.ps-popup-actions button {
+    flex: 1;                       /* 2 nút chia đều chiều ngang */
+    padding: 8px 0;                /* cao thấp hơn nút chính */
+    font-size: 14px;               /* chữ nhỏ hơn nút chính */
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: white;
+}
+
+/* Cancel button màu đỏ */
+#ps-popup-cancel {
+    background: #d9534f;
+}
+
+/* Create button màu xanh */
+#ps-popup-confirm {
+    background: #007bff;
+}
+
+/* Icon trong popup buttons */
+.ps-popup-actions button .ps-btn-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
 }
