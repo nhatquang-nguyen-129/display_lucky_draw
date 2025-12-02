@@ -1,5 +1,5 @@
 import { editState, updateDraft, updateSelected } from './tableEditorEdit.state.js';
-import { applyDraft, deleteSelectedRows } from './tableEditorEdit.api.js';
+import { applyDraft, deleteSelectedRows } from './tableEditor.api.js';
 import { renderRowSelection } from './tableEditorEdit.ui.js';
 
 export function initTableEditorEdit(config) {
