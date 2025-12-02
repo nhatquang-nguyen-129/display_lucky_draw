@@ -3,15 +3,21 @@ const path = require("path");
 const fs = require("fs");
 const { parse } = require("csv-parse/sync");
 
-// =============================
-//  Create Main Window
-//  - Thiết lập cửa sổ chính của ứng dụng
-//  - Thêm icon app-main-icon.png
-// =============================
+// 1. THIẾT LẬP CỬA SỔ APP 
 function createWindow() {
     const win = new BrowserWindow({
-        width: 1200,
-        height: 800,
+        
+        // 1.1. Kích thước App
+        width: 1920,
+        height: 1080,
+        
+        // 1.2. Chạy App ở chế độ Windowed
+        fullscreen: false,
+        fullscreenable: false,
+        resizable: true,
+        frame: true,      
+        
+        // 1.3. Thêm App Icon
         icon: path.join(__dirname, "assets/app-main-icon.png"),
         webPreferences: {
             preload: path.join(__dirname, "preload.js"),
