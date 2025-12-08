@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/nhatquang-nguyen-129/display_lucky_draw#readme",
   "devDependencies": {
-    "electron": "^39.2.4"
+    "electron": "^39.2.6"
   },
   "dependencies": {
     "csv-parse": "^6.1.0"
