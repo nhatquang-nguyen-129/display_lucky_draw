@@ -1,96 +1,20 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const path = require("path");
-const fs = require("fs");
-const { parse } = require("csv-parse/sync");
+const { app, BrowserWindow } = require('electron');
+const path = require('path');
 
-// 1. THIẾT LẬP CỬA SỔ APP 
 function createWindow() {
     const win = new BrowserWindow({
-        
-        // 1.1. Kích thước App
-        width: 1920,
-        height: 1080,
-        
-        // 1.2. Chạy App ở chế độ Windowed
-        fullscreen: false,
-        fullscreenable: false,
-        resizable: true,
-        frame: true,      
-        
-        // 1.3. Thêm App Icon
-        icon: path.join(__dirname, "assets/app-main-icon.png"),
+        width: 1200,
+        height: 800,
         webPreferences: {
-            preload: path.join(__dirname, "preload.js"),
-            contextIsolation: true,
-            nodeIntegration: false
+            preload: path.join(__dirname, 'preload.js')
         }
     });
 
-    win.loadFile("index.html");
+    win.loadFile('index.html');
 }
 
 app.whenReady().then(createWindow);
 
-
-// =============================
-//  IPC HANDLERS
-//  - Các API giao tiếp giữa Renderer ↔ Main
-// =============================
-
-
-// ===== Load CSV =====
-// Cho phép renderer mở file CSV và lấy nội dung đã parse
-ipcMain.handle("loadCSV", async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-        properties: ["openFile"],
-        filters: [{ name: "CSV Files", extensions: ["csv"] }]
-    });
-
-    if (canceled || filePaths.length === 0) return { filePath: null, data: [] };
-
-    const filePath = filePaths[0];
-    const content = fs.readFileSync(filePath, "utf8");
-    const records = parse(content, { columns: true, skip_empty_lines: true });
-
-    return { filePath, data: records };
-});
-
-// IPC trả danh sách các Project Folder trong ./projects/<projectName>
-ipcMain.handle("listProjects", async () => {
-    const projectsDir = path.join(__dirname, "projects");
-
-    // Nếu thư mục chưa tồn tại → tạo để tránh lỗi
-    if (!fs.existsSync(projectsDir)) {
-        fs.mkdirSync(projectsDir, { recursive: true });
-    }
-
-    // Lấy danh sách thư mục con (project folders)
-    const items = fs.readdirSync(projectsDir, { withFileTypes: true });
-
-    const projectNames = items
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
-
-    return projectNames;
-});
-
-// IPC tạo mới Project Folder trong ./projects/<projectName>
-ipcMain.handle("createProjectFolder", async (event, projectName) => {
-    const p = path.join(__dirname, "projects", projectName);
-    fs.mkdirSync(p, { recursive: true });
-    return { success: true, path: p };
-});
-
-// IPC xóa Project Folder trong ./projects/<projectName>
-ipcMain.handle("deleteProjectFolder", async (event, projectName) => {
-    const p = path.join(__dirname, "projects", projectName);
-
-    if (!fs.existsSync(p)) {
-        return { success: false, message: "Project not found" };
-    }
-
-    // ⚠️ Xóa cả folder + toàn bộ file con
-    fs.rmSync(p, { recursive: true, force: true });
-
-    return { success: true };
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
 });
