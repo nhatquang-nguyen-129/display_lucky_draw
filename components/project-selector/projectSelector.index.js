@@ -1,13 +1,9 @@
-import { loadComponentCSS } from '../../shared/componentCSSLoader.js';
+import { loadComponentCSS } from "../shared/componentCSSLoader.js";
+loadComponentCSS(new URL("./projectSelector.style.css", import.meta.url).href);
 
-// Load CSS
-loadComponentCSS(new URL('./projectSelector.style.css', import.meta.url).pathname);
+await import(new URL("./projectSelector.api.js", import.meta.url));
+await import(new URL("./projectSelector.state.js", import.meta.url));
+await import(new URL("./projectSelector.interface.js", import.meta.url));
+await import(new URL("./projectSelector.main.js", import.meta.url));
 
-// Load internal modules
-await import(new URL('./projectSelector.api.js', import.meta.url));
-await import(new URL('./projectSelector.state.js', import.meta.url));
-await import(new URL('./projectSelector.interface.js', import.meta.url));
-await import(new URL('./projectSelector.main.js', import.meta.url));
-
-// Export ONLY init
-export { initProjectSelector } from './projectSelector.main.js';
+export { initProjectSelector } from "./projectSelector.main.js";

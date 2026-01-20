@@ -6,29 +6,9 @@
 </head>
 <body>
 
-    <div id="project-selector-container"></div>
+    <div id="app"></div>
 
-    <script type="module">
-        console.log("[INDEX] index.html start");
-
-        try {
-            const module = await import(
-                new URL('./components/project-selector/projectSelector.index.js', import.meta.url)
-            );
-
-            const initProjectSelector = module.initProjectSelector;
-
-            const container = document.getElementById('project-selector-container');
-
-            initProjectSelector(container, (project) => {
-                console.log("[INDEX] Project selected:", project);
-                alert("Selected Project: " + project.name);
-            });
-
-        } catch (err) {
-            console.error("[INDEX] Failed to load Project Selector:", err);
-        }
-    </script>
+    <script type="module" src="./renderer.js"></script>
 
 </body>
 </html>
