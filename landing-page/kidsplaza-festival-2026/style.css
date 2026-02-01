@@ -1,0 +1,123 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at center, #111 0%, #000 70%);
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* EFFECT LAYER */
+.effects-layer {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(0,255,255,0.15), transparent 40%),
+    radial-gradient(circle at 70% 60%, rgba(255,0,255,0.12), transparent 45%);
+  animation: pulse 4s infinite alternate;
+  pointer-events: none; /* 🔥 QUAN TRỌNG */
+}
+
+@keyframes pulse {
+  from { opacity: 0.4; }
+  to   { opacity: 0.9; }
+}
+
+/* STAGE */
+.stage {
+  position: relative;
+  z-index: 10;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  color: #fff;
+  font-size: 48px;
+  margin-bottom: 40px;
+  text-shadow: 0 0 20px #0ff;
+}
+
+/* SLOT */
+.slot {
+  font-size: 64px;
+  font-weight: bold;
+  color: #0ff;
+  margin-bottom: 40px;
+  text-shadow:
+    0 0 10px #0ff,
+    0 0 30px #0ff;
+}
+
+/* BUTTON */
+button {
+  padding: 18px 40px;
+  font-size: 20px;
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(45deg, #ff00ff, #00ffff);
+  color: #000;
+  font-weight: bold;
+  z-index: 20;
+}
+
+button:hover {
+  transform: scale(1.05);
+}
+
+
+/* WINNER EFFECT */
+.winner {
+  animation: winnerPop 1s ease-out forwards;
+  color: #fff;
+  text-shadow:
+    0 0 20px #fff,
+    0 0 40px #0ff,
+    0 0 80px #ff00ff;
+}
+
+@keyframes winnerPop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.4);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* SHAKE IMPACT */
+.impact {
+  animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+  100% { transform: translateX(0); }
+}
+
+/* FIREWORK CANVAS */
+#firework {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
