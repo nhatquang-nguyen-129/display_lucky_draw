@@ -2,7 +2,7 @@
   <img src="kidsplaza.png" alt="KidsPlaza Logo" width="300"/>
 </p>
 
-This repository contains an **automatic lucky draw application** designed for offline and event-based prize drawing, running on PC environments and built using **Electron**.
+This repository contains an **Lucky Draw Application** designed for offline and event-based prize drawing, running on PC environments and built using **Electron**.
 
 The application enables organizers to configure prize structures, participant lists, draw rules, and display logic, ensuring transparency, repeatability, and operational stability during live events.
 
