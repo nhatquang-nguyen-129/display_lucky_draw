@@ -1,24 +1,34 @@
-/* DATA SOURCE SETTINGS */
+import express from "express";
+import { loadData } from "./modules/dataLoader/index.js";
+import { createRandomizer } from "./randomizer.js";
 
-const DATA_SOURCE_SETTINGS = {
-  type: "local",
-  /*
-    type:
-    - "local"  : Fetch data from local
-    - "remote" : Fetch data from API
-  */
+/* CONFIG  */
 
-  local: {
-    path: "./data/users.json"
-  },
+// Data source config
 
-  remote: {
-    endpoint: "https://api.yoursource.com/users"
-  }
+const LOADER_DATA_CONFIG = {
+  sourceType: "csv",
+/*
+    sourceType:
+    - xlsx: Excel file
+    - csv: CSV file
+*/
+
+  storage: "local",
+/*
+    storage:
+    - local: Stored in local memory
+*/
+
+  direction: "./data/kidsplaza-festival-2026.csv"
+/*
+    direction:
+    - local: File location in disk
+*/
+
 };
 
-
-/* RANDOMIZER SETTINGS */
+// Randomizer config
 
 const RANDOMIZER_SESSION_SETTINGS = {
   sessionId: "TestSession"
@@ -115,46 +125,20 @@ const RANDOMIZER_WEIGHT_SETTINGS = {
 };
 
 
-/* IMPORT DATA SOURCE */
-import fs from "fs";
+// Landing page config
 
-async function loadData() {
-
-  if (DATA_SOURCE_SETTINGS.type === "local") {
-
-    const raw = fs.readFileSync(
-      DATA_SOURCE_SETTINGS.local.path,
-      "utf-8"
-    );
-
-    return JSON.parse(raw);
-  }
-
-  if (DATA_SOURCE_SETTINGS.type === "remote") {
-
-    const response = await fetch(
-      DATA_SOURCE_SETTINGS.remote.endpoint
-    );
-
-    return await response.json();
-  }
-}
-
-/* IMPORT LANDING PAGE */
-import landingA from "./landings/landingA.js";
-import landingB from "./landings/landingB.js";
-
-const CURRENT_LANDING = "landingA";
-
-const LANDING_MAP = {
-  landingA,
-  landingB
+const LANDING_PAGE_CONFIG = {
+  port: 3000,
+  landingFolder: "landing/kidsplaza-festival-2026"
 };
 
-const landingData = LANDING_MAP[CURRENT_LANDING];
+/* FLOW */
 
-/* IMPORT RANDOMIZER*/
-import { createRandomizer } from "./randomizer.js";
+// Load Data
+
+const dataSource = await loadData(LOADER_DATA_CONFIG);
+
+// Create Randomizer
 
 const randomizer = createRandomizer({
   sessionSettings: RANDOMIZER_SESSION_SETTINGS,
@@ -163,17 +147,46 @@ const randomizer = createRandomizer({
   weightSettings: RANDOMIZER_WEIGHT_SETTINGS
 });
 
-/* ===============================
-   EXECUTION FLOW
-================================ */
+// Express server
 
-function runSpin() {
+const app = express();
 
-  const result = randomizer.pick(landingData);
+app.use(express.json());
+app.use(express.static(SERVER_CONFIG.landingFolder));
 
-  console.log("Spin Result:", result);
+app.post("/api/spin", (req, res) => {
 
-  return result;
-}
+  try {
+    const result = randomizer.pick(dataSource);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 
-runSpin();
+});
+
+app.post("/api/confirm", (req, res) => {
+
+  try {
+    randomizer.confirm(req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+
+});
+
+app.post("/api/reject", (req, res) => {
+
+  try {
+    randomizer.reject(req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+
+});
+
+app.listen(SERVER_CONFIG.port, () => {
+  console.log(`Server running at http://localhost:${SERVER_CONFIG.port}`);
+});
