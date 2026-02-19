@@ -1,184 +1,32 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8" />
-<title>Lucky Draw Demo</title>
-<style>
-html, body {
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at center, #222 0%, #000 70%);
-  overflow: hidden;
-  font-family: "Segoe UI", Arial, sans-serif;
-}
+  <!-- Basic Meta -->
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-/* ===== CONTAINER ===== */
-.stage {
-  position: relative;
-  width: 1920px;
-  height: 1080px;
-  margin: auto;
-  transform-origin: top left;
-}
+  <!-- SEO -->
+  <title>Lucky Draw App</title>
+  <meta name="description" content="Ứng dụng quay số may mắn từ danh sách CSV" />
+  <meta name="author" content="Your Company" />
 
-/* ===== CENTER TEXT ===== */
-.name {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotateX(12deg);
-  font-size: 120px;
-  font-weight: 900;
-  color: #fff;
-  letter-spacing: 4px;
-  text-shadow:
-    0 4px 0 #bbb,
-    0 8px 0 #999,
-    0 12px 20px rgba(0,0,0,.6);
-  will-change: transform, opacity;
-  transition: transform .6s ease, opacity .3s ease;
-}
+  <!-- Favicon -->
+  <link rel="icon" href="/public/favicon.ico" />
 
-/* ===== RESULT STATE ===== */
-.name.result {
-  transform: translate(-50%, -50%) scale(1.2);
-}
-
-/* ===== LIGHT SWEEP ===== */
-.light {
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 200%;
-  height: 100%;
-  background: linear-gradient(
-    120deg,
-    transparent 30%,
-    rgba(255,255,255,.35),
-    transparent 70%
-  );
-  mix-blend-mode: screen;
-  animation: sweep 2s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes sweep {
-  0% { transform: translateX(-30%); }
-  100% { transform: translateX(30%); }
-}
-
-/* ===== BUTTON ===== */
-button {
-  position: absolute;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 16px 40px;
-  font-size: 24px;
-  border: none;
-  border-radius: 40px;
-  cursor: pointer;
-  background: linear-gradient(135deg, #ffcc00, #ff6600);
-  color: #000;
-  font-weight: 700;
-}
-</style>
+  <!-- Styles -->
+  <link rel="stylesheet" href="/src/styles/base.css" />
+  <link rel="stylesheet" href="/src/styles/layout.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
 </head>
 
 <body>
-<div class="stage" id="stage">
-  <canvas id="fx"></canvas>
-  <div class="name" id="name">READY</div>
-  <div class="light"></div>
-  <button onclick="startDraw()">QUAY SỐ</button>
-</div>
 
-<script>
-/* ===== SCALE FULLSCREEN ===== */
-function resize() {
-  const scale = Math.min(
-    window.innerWidth / 1920,
-    window.innerHeight / 1080
-  );
-  document.getElementById("stage").style.transform = `scale(${scale})`;
-}
-window.addEventListener("resize", resize);
-resize();
+  <!-- Root container -->
+  <div id="app"></div>
 
-/* ===== DATA ===== */
-const names = [
-  "NGUYỄN VĂN A",
-  "TRẦN THỊ B",
-  "LÊ MINH C",
-  "PHẠM HOÀNG D",
-  "VŨ THU E",
-  "ĐỖ QUANG F"
-];
+  <!-- JavaScript entry -->
+  <script type="module" src="/src/main.js"></script>
 
-const nameEl = document.getElementById("name");
-
-/* ===== CANVAS PARTICLE ===== */
-const canvas = document.getElementById("fx");
-const ctx = canvas.getContext("2d");
-canvas.width = 1920;
-canvas.height = 1080;
-
-let particles = [];
-
-function spawnParticles() {
-  for (let i = 0; i < 120; i++) {
-    particles.push({
-      x: 960,
-      y: 540,
-      vx: (Math.random() - 0.5) * 12,
-      vy: (Math.random() - 0.5) * 12,
-      life: 60 + Math.random() * 40
-    });
-  }
-}
-
-function updateParticles() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  particles.forEach(p => {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life--;
-    ctx.fillStyle = `rgba(255,200,50,${p.life / 100})`;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  particles = particles.filter(p => p.life > 0);
-  requestAnimationFrame(updateParticles);
-}
-updateParticles();
-
-/* ===== DRAW LOGIC ===== */
-let rolling;
-
-function startDraw() {
-  nameEl.classList.remove("result");
-
-  rolling = setInterval(() => {
-    nameEl.textContent =
-      names[Math.floor(Math.random() * names.length)];
-    nameEl.style.opacity = Math.random() * 0.4 + 0.6;
-  }, 80);
-
-  setTimeout(stopDraw, 3000);
-}
-
-function stopDraw() {
-  clearInterval(rolling);
-
-  const winner = names[Math.floor(Math.random() * names.length)];
-  nameEl.textContent = winner;
-  nameEl.style.opacity = 1;
-  nameEl.classList.add("result");
-
-  spawnParticles();
-}
-</script>
 </body>
 </html>
