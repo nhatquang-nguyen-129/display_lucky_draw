@@ -1,63 +1,74 @@
-body {
+/* RESET */
+* {
   margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* BODY */
+body {
   background: #000;
-  color: #fff;
   font-family: Arial, sans-serif;
+  height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
 }
 
+/* CONTAINER */
 .container {
   text-align: center;
+  color: #fff;
 }
 
-.slots {
-  display: flex;
-  gap: 20px;
+.title {
   margin-bottom: 40px;
 }
 
-.slot {
-  width: 100px;
-  height: 120px;
-  background: #111;
-  border: 2px solid #444;
-  border-radius: 10px;
-  font-size: 48px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  transition: transform 0.6s ease;
-}
-
-.primary-btn {
-  background: #00ff88;
-  color: #000;
-  padding: 12px 30px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.secondary-btn {
-  background: #444;
-  color: #fff;
-  padding: 12px 30px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.hidden {
-  display: none;
-}
-
-.action-buttons {
-  margin-top: 20px;
+/* SLOT AREA */
+.slots {
   display: flex;
   gap: 20px;
   justify-content: center;
+  margin-bottom: 40px;
+}
+
+/* SINGLE SLOT BOX */
+.slot {
+  width: 100px;
+  height: 120px;
+  background: #fff;
+  border-radius: 20px; /* rounded border */
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* DIGIT CONTAINER (rolling column) */
+.digit-container {
+  position: absolute;
+  top: 0;
+  transition: transform 0.2s linear;
+}
+
+/* EACH DIGIT */
+.digit {
+  height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 60px;
+  font-weight: bold;
+  color: #000;
+}
+
+/* BUTTON */
+button {
+  padding: 12px 20px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
 }

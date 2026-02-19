@@ -2,25 +2,34 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <title>Landing Test</title>
+  <title>Rolling Randomizer</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <div class="container">
 
+    <h1 class="title">🎲 QUAY SỐ</h1>
+
+    <!-- SLOT CONTAINER -->
     <div class="slots">
-      <div class="slot" id="slot1">0</div>
-      <div class="slot" id="slot2">0</div>
-      <div class="slot" id="slot3">0</div>
+
+      <!-- Each slot -->
+      <div class="slot" id="slot-1">
+        <div class="digit-container"></div>
+      </div>
+
+      <div class="slot" id="slot-2">
+        <div class="digit-container"></div>
+      </div>
+
+      <div class="slot" id="slot-3">
+        <div class="digit-container"></div>
+      </div>
+
     </div>
 
-    <button id="spinBtn" class="primary-btn">QUAY</button>
-
-    <div class="action-buttons hidden">
-      <button id="rejectBtn" class="secondary-btn">Quay lại</button>
-      <button id="confirmBtn" class="primary-btn">Xác nhận</button>
-    </div>
+    <button id="spinBtn">Quay</button>
 
   </div>
 
