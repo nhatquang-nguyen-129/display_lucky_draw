@@ -1,3 +1,23 @@
+/* DATA SOURCE SETTINGS */
+
+const DATA_SOURCE_SETTINGS = {
+  type: "local",
+  /*
+    type:
+    - "local"  : Fetch data from local
+    - "remote" : Fetch data from API
+  */
+
+  local: {
+    path: "./data/users.json"
+  },
+
+  remote: {
+    endpoint: "https://api.yoursource.com/users"
+  }
+};
+
+
 /* RANDOMIZER SETTINGS */
 
 const RANDOMIZER_SESSION_SETTINGS = {
@@ -94,6 +114,31 @@ const RANDOMIZER_WEIGHT_SETTINGS = {
   }
 };
 
+
+/* IMPORT DATA SOURCE */
+import fs from "fs";
+
+async function loadData() {
+
+  if (DATA_SOURCE_SETTINGS.type === "local") {
+
+    const raw = fs.readFileSync(
+      DATA_SOURCE_SETTINGS.local.path,
+      "utf-8"
+    );
+
+    return JSON.parse(raw);
+  }
+
+  if (DATA_SOURCE_SETTINGS.type === "remote") {
+
+    const response = await fetch(
+      DATA_SOURCE_SETTINGS.remote.endpoint
+    );
+
+    return await response.json();
+  }
+}
 
 /* IMPORT LANDING PAGE */
 import landingA from "./landings/landingA.js";
