@@ -128,14 +128,7 @@ function runSpin() {
 
   console.log("Spin Result:", result);
 
-  if (RANDOMIZER_SESSION_SETTINGS.requireConfirm) {
-    console.log("Waiting confirm before finalizing...");
-    return result;
-  }
-
   return result;
 }
-
-/* MAIN ENTRYPOINT */
 
 runSpin();
