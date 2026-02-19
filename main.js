@@ -1,7 +1,7 @@
 /* RANDOMIZER SETTINGS */
 
 const RANDOMIZER_SESSION_SETTINGS = {
-  sessionId: "campaign-2026-01"
+  sessionId: "TestSession"
 };
 
 
