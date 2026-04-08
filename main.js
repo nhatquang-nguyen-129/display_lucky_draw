@@ -1,96 +1,176 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const path = require("path");
-const fs = require("fs");
-const { parse } = require("csv-parse/sync");
+import * as THREE from 'three'
+import { gsap } from 'gsap'
 
-// 1. THIẾT LẬP CỬA SỔ APP 
-function createWindow() {
-    const win = new BrowserWindow({
-        
-        // 1.1. Kích thước App
-        width: 1920,
-        height: 1080,
-        
-        // 1.2. Chạy App ở chế độ Windowed
-        fullscreen: false,
-        fullscreenable: false,
-        resizable: true,
-        frame: true,      
-        
-        // 1.3. Thêm App Icon
-        icon: path.join(__dirname, "assets/app-main-icon.png"),
-        webPreferences: {
-            preload: path.join(__dirname, "preload.js"),
-            contextIsolation: true,
-            nodeIntegration: false
-        }
-    });
+// IMPORTANT: phải có .js
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 
-    win.loadFile("index.html");
+// =====================
+// BASIC HTML SETUP
+// =====================
+document.body.style.margin = 0
+document.body.style.overflow = 'hidden'
+
+// =====================
+// SCENE
+// =====================
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(0x000000)
+
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
+)
+camera.position.set(0, 0, 8)
+
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(window.innerWidth, window.innerHeight)
+document.body.appendChild(renderer.domElement)
+
+// =====================
+// LIGHT
+// =====================
+const ambient = new THREE.AmbientLight(0xffffff, 0.2)
+scene.add(ambient)
+
+const point = new THREE.PointLight(0x00ffcc, 3, 20)
+point.position.set(0, 2, 5)
+scene.add(point)
+
+// =====================
+// BLOOM
+// =====================
+const composer = new EffectComposer(renderer)
+composer.addPass(new RenderPass(scene, camera))
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.8,
+  0.4,
+  0.85
+)
+composer.addPass(bloom)
+
+// =====================
+// DIGIT COLUMN
+// =====================
+class DigitColumn {
+  constructor(x) {
+    this.group = new THREE.Group()
+    this.group.position.x = x
+
+    this.speed = 0
+    this.isSpinning = false
+
+    this.createDigits()
+  }
+
+    createDigits() {
+    for (let i = 0; i < 20; i++) {
+        const num = i % 10
+
+        const material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(`hsl(${num * 36}, 100%, 50%)`),
+        emissive: new THREE.Color(`hsl(${num * 36}, 100%, 50%)`),
+        emissiveIntensity: 1.5,
+        wireframe: false
+        })
+
+        const geo = new THREE.BoxGeometry(
+        0.6 + num * 0.03,  // mỗi số size khác nhau
+        1,
+        0.2
+        )
+
+        const mesh = new THREE.Mesh(geo, material)
+
+        mesh.position.y = -i * 1.2
+
+        this.group.add(mesh)
+    }
+    }
+
+  start() {
+    this.isSpinning = true
+    this.speed = 0.6 + Math.random() * 0.3
+  }
+
+  stop(num) {
+    this.isSpinning = false
+
+    const targetIndex = num + 10
+    const targetY = -targetIndex * 1.2
+
+    gsap.to(this.group.position, {
+      y: targetY,
+      duration: 1.2,
+      ease: "power3.out"
+    })
+  }
+
+  update() {
+    this.group.position.y -= this.speed * 1.5
+    if (this.isSpinning) {
+      this.group.position.y -= this.speed
+
+      if (this.group.position.y < -12) {
+        this.group.position.y = 0
+      }
+    }
+  }
 }
 
-app.whenReady().then(createWindow);
+// =====================
+// CREATE COLUMNS
+// =====================
+const columns = [
+  new DigitColumn(-1.5),
+  new DigitColumn(0),
+  new DigitColumn(1.5)
+]
 
+columns.forEach(c => scene.add(c.group))
 
-// =============================
-//  IPC HANDLERS
-//  - Các API giao tiếp giữa Renderer ↔ Main
-// =============================
+// =====================
+// CLICK TO SPIN
+// =====================
+window.addEventListener('click', () => {
+  columns.forEach(c => c.start())
 
+  setTimeout(() => {
+    const result = [
+      Math.floor(Math.random() * 10),
+      Math.floor(Math.random() * 10),
+      Math.floor(Math.random() * 10)
+    ]
 
-// ===== Load CSV =====
-// Cho phép renderer mở file CSV và lấy nội dung đã parse
-ipcMain.handle("loadCSV", async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-        properties: ["openFile"],
-        filters: [{ name: "CSV Files", extensions: ["csv"] }]
-    });
+    columns.forEach((c, i) => {
+      setTimeout(() => c.stop(result[i]), i * 200)
+    })
+  }, 2000)
+})
 
-    if (canceled || filePaths.length === 0) return { filePath: null, data: [] };
+// =====================
+// RESIZE
+// =====================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(window.innerWidth, window.innerHeight)
+})
 
-    const filePath = filePaths[0];
-    const content = fs.readFileSync(filePath, "utf8");
-    const records = parse(content, { columns: true, skip_empty_lines: true });
+// =====================
+// LOOP
+// =====================
+function animate() {
+  requestAnimationFrame(animate)
 
-    return { filePath, data: records };
-});
+  columns.forEach(c => c.update())
 
-// IPC trả danh sách các Project Folder trong ./projects/<projectName>
-ipcMain.handle("listProjects", async () => {
-    const projectsDir = path.join(__dirname, "projects");
+  composer.render()
+}
 
-    // Nếu thư mục chưa tồn tại → tạo để tránh lỗi
-    if (!fs.existsSync(projectsDir)) {
-        fs.mkdirSync(projectsDir, { recursive: true });
-    }
-
-    // Lấy danh sách thư mục con (project folders)
-    const items = fs.readdirSync(projectsDir, { withFileTypes: true });
-
-    const projectNames = items
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
-
-    return projectNames;
-});
-
-// IPC tạo mới Project Folder trong ./projects/<projectName>
-ipcMain.handle("createProjectFolder", async (event, projectName) => {
-    const p = path.join(__dirname, "projects", projectName);
-    fs.mkdirSync(p, { recursive: true });
-    return { success: true, path: p };
-});
-
-// IPC xóa Project Folder trong ./projects/<projectName>
-ipcMain.handle("deleteProjectFolder", async (event, projectName) => {
-    const p = path.join(__dirname, "projects", projectName);
-
-    if (!fs.existsSync(p)) {
-        return { success: false, message: "Project not found" };
-    }
-
-    // ⚠️ Xóa cả folder + toàn bộ file con
-    fs.rmSync(p, { recursive: true, force: true });
-
-    return { success: true };
-});
+animate()
