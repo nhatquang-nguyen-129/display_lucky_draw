@@ -1,11 +1,10 @@
 {
   "name": "display_lucky_draw",
   "version": "1.0.0",
-  "description": "",
+  "description": "RE",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
@@ -18,10 +17,9 @@
     "url": "https://github.com/nhatquang-nguyen-129/display_lucky_draw/issues"
   },
   "homepage": "https://github.com/nhatquang-nguyen-129/display_lucky_draw#readme",
-  "devDependencies": {
-    "electron": "^39.2.4"
-  },
   "dependencies": {
-    "csv-parse": "^6.1.0"
+    "gsap": "^3.14.2",
+    "three": "^0.183.2",
+    "vite": "^8.0.7"
   }
 }
