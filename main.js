@@ -1,176 +1,135 @@
-import * as THREE from 'three'
 import { gsap } from 'gsap'
 
-// IMPORTANT: phải có .js
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-
 // =====================
-// BASIC HTML SETUP
+// STYLE
 // =====================
 document.body.style.margin = 0
-document.body.style.overflow = 'hidden'
+document.body.style.background = '#222'
+document.body.style.display = 'flex'
+document.body.style.justifyContent = 'center'
+document.body.style.alignItems = 'center'
+document.body.style.height = '100vh'
 
-// =====================
-// SCENE
-// =====================
-const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x000000)
-
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100
-)
-camera.position.set(0, 0, 8)
-
-const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setSize(window.innerWidth, window.innerHeight)
-document.body.appendChild(renderer.domElement)
-
-// =====================
-// LIGHT
-// =====================
-const ambient = new THREE.AmbientLight(0xffffff, 0.2)
-scene.add(ambient)
-
-const point = new THREE.PointLight(0x00ffcc, 3, 20)
-point.position.set(0, 2, 5)
-scene.add(point)
-
-// =====================
-// BLOOM
-// =====================
-const composer = new EffectComposer(renderer)
-composer.addPass(new RenderPass(scene, camera))
-
-const bloom = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
-  1.8,
-  0.4,
-  0.85
-)
-composer.addPass(bloom)
+const container = document.createElement('div')
+container.style.display = 'flex'
+container.style.gap = '20px'
+document.body.appendChild(container)
 
 // =====================
 // DIGIT COLUMN
 // =====================
 class DigitColumn {
-  constructor(x) {
-    this.group = new THREE.Group()
-    this.group.position.x = x
+  constructor() {
+    this.wrapper = document.createElement('div')
+    this.wrapper.style.width = '120px'
+    this.wrapper.style.height = '160px'
+    this.wrapper.style.background = '#fff'
+    this.wrapper.style.borderRadius = '20px'
+    this.wrapper.style.overflow = 'hidden'
+    this.wrapper.style.position = 'relative'
+    this.wrapper.style.display = 'flex'
+    this.wrapper.style.justifyContent = 'center'
+    this.wrapper.style.alignItems = 'center'
+    this.wrapper.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)'
 
-    this.speed = 0
-    this.isSpinning = false
+    // viewport mask (quan trọng)
+    this.viewport = document.createElement('div')
+    this.viewport.style.height = '100%'
+    this.viewport.style.width = '100%'
+    this.viewport.style.overflow = 'hidden'
+    this.viewport.style.display = 'flex'
+    this.viewport.style.justifyContent = 'center'
+    this.viewport.style.alignItems = 'center'
 
-    this.createDigits()
+    this.inner = document.createElement('div')
+    this.inner.style.display = 'flex'
+    this.inner.style.flexDirection = 'column'
+    this.inner.style.alignItems = 'center'
+
+    this.viewport.appendChild(this.inner)
+    this.wrapper.appendChild(this.viewport)
+
+    // tạo số
+    this.itemHeight = 160
+
+    for (let i = 0; i < 30; i++) {
+      const num = i % 10
+      const el = document.createElement('div')
+
+      el.innerText = num
+      el.style.height = this.itemHeight + 'px'
+      el.style.display = 'flex'
+      el.style.alignItems = 'center'
+      el.style.justifyContent = 'center'
+      el.style.fontSize = '90px'
+      el.style.fontWeight = 'bold'
+      el.style.color = '#000'
+      el.style.fontFamily = 'monospace'
+
+      this.inner.appendChild(el)
+    }
+
+    // placeholder "-"
+    this.placeholder = document.createElement('div')
+    this.placeholder.innerText = '-'
+    this.placeholder.style.position = 'absolute'
+    this.placeholder.style.fontSize = '90px'
+    this.placeholder.style.fontWeight = 'bold'
+    this.placeholder.style.color = '#000'
+
+    this.wrapper.appendChild(this.placeholder)
+
+    // fix vị trí ban đầu (ẩn số thật đi)
+    this.inner.style.transform = `translateY(${-this.itemHeight * 10}px)`
   }
 
-    createDigits() {
-    for (let i = 0; i < 20; i++) {
-        const num = i % 10
+  startSpin(finalNumber) {
+    this.placeholder.style.display = 'none'
 
-        const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(`hsl(${num * 36}, 100%, 50%)`),
-        emissive: new THREE.Color(`hsl(${num * 36}, 100%, 50%)`),
-        emissiveIntensity: 1.5,
-        wireframe: false
-        })
+    const loops = 20
+    const finalIndex = loops + finalNumber
+    const finalY = -finalIndex * this.itemHeight
 
-        const geo = new THREE.BoxGeometry(
-        0.6 + num * 0.03,  // mỗi số size khác nhau
-        1,
-        0.2
+    // spin + slow down
+    gsap.to(this.inner, {
+      y: finalY,
+      duration: 3,
+      ease: 'power3.out',
+      onComplete: () => {
+        // bounce nhẹ
+        gsap.fromTo(
+          this.inner,
+          { y: finalY - 20 },
+          {
+            y: finalY,
+            duration: 0.4,
+            ease: 'bounce.out'
+          }
         )
-
-        const mesh = new THREE.Mesh(geo, material)
-
-        mesh.position.y = -i * 1.2
-
-        this.group.add(mesh)
-    }
-    }
-
-  start() {
-    this.isSpinning = true
-    this.speed = 0.6 + Math.random() * 0.3
-  }
-
-  stop(num) {
-    this.isSpinning = false
-
-    const targetIndex = num + 10
-    const targetY = -targetIndex * 1.2
-
-    gsap.to(this.group.position, {
-      y: targetY,
-      duration: 1.2,
-      ease: "power3.out"
-    })
-  }
-
-  update() {
-    this.group.position.y -= this.speed * 1.5
-    if (this.isSpinning) {
-      this.group.position.y -= this.speed
-
-      if (this.group.position.y < -12) {
-        this.group.position.y = 0
       }
-    }
+    })
   }
 }
 
 // =====================
-// CREATE COLUMNS
+// CREATE
 // =====================
-const columns = [
-  new DigitColumn(-1.5),
-  new DigitColumn(0),
-  new DigitColumn(1.5)
-]
-
-columns.forEach(c => scene.add(c.group))
+const cols = [new DigitColumn(), new DigitColumn(), new DigitColumn()]
+cols.forEach(c => container.appendChild(c.wrapper))
 
 // =====================
-// CLICK TO SPIN
+// INTERACTION
 // =====================
 window.addEventListener('click', () => {
-  columns.forEach(c => c.start())
+  const result = [
+    Math.floor(Math.random() * 10),
+    Math.floor(Math.random() * 10),
+    Math.floor(Math.random() * 10)
+  ]
 
-  setTimeout(() => {
-    const result = [
-      Math.floor(Math.random() * 10),
-      Math.floor(Math.random() * 10),
-      Math.floor(Math.random() * 10)
-    ]
-
-    columns.forEach((c, i) => {
-      setTimeout(() => c.stop(result[i]), i * 200)
-    })
-  }, 2000)
+  cols.forEach((col, i) => {
+    setTimeout(() => {
+      col.startSpin(result[i])
+    }, i * 1200)
+  })
 })
-
-// =====================
-// RESIZE
-// =====================
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-})
-
-// =====================
-// LOOP
-// =====================
-function animate() {
-  requestAnimationFrame(animate)
-
-  columns.forEach(c => c.update())
-
-  composer.render()
-}
-
-animate()
