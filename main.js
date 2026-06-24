@@ -1,135 +1,235 @@
-import { gsap } from 'gsap'
+import {
+  buildPrizePool,
+  pickPrize,
+  canReceivePrize,
+  allocatePrize
+} from "./prize.js";
 
-// =====================
-// STYLE
-// =====================
-document.body.style.margin = 0
-document.body.style.background = '#222'
-document.body.style.display = 'flex'
-document.body.style.justifyContent = 'center'
-document.body.style.alignItems = 'center'
-document.body.style.height = '100vh'
+import {
+  randomPick
+} from "./random.js";
 
-const container = document.createElement('div')
-container.style.display = 'flex'
-container.style.gap = '20px'
-document.body.appendChild(container)
+/**
+ * MAIN ORCHESTRATOR
+ *
+ * Flow:
+ * 1. Load data
+ * 2. Pick prize (prize-centric)
+ * 3. Pick winner (random under constraint)
+ * 4. Validate rule
+ * 5. Allocate
+ * 6. Return result
+ */
 
-// =====================
-// DIGIT COLUMN
-// =====================
-class DigitColumn {
-  constructor() {
-    this.wrapper = document.createElement('div')
-    this.wrapper.style.width = '120px'
-    this.wrapper.style.height = '160px'
-    this.wrapper.style.background = '#fff'
-    this.wrapper.style.borderRadius = '20px'
-    this.wrapper.style.overflow = 'hidden'
-    this.wrapper.style.position = 'relative'
-    this.wrapper.style.display = 'flex'
-    this.wrapper.style.justifyContent = 'center'
-    this.wrapper.style.alignItems = 'center'
-    this.wrapper.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)'
 
-    // viewport mask (quan trọng)
-    this.viewport = document.createElement('div')
-    this.viewport.style.height = '100%'
-    this.viewport.style.width = '100%'
-    this.viewport.style.overflow = 'hidden'
-    this.viewport.style.display = 'flex'
-    this.viewport.style.justifyContent = 'center'
-    this.viewport.style.alignItems = 'center'
+/**
+ * RUN 1 DRAW ROUND
+ */
+export function runLuckyDraw({
+  rawParticipants,
+  rawPrizes,
+  history = []
+}) {
 
-    this.inner = document.createElement('div')
-    this.inner.style.display = 'flex'
-    this.inner.style.flexDirection = 'column'
-    this.inner.style.alignItems = 'center'
+  /**
+   * =================================================
+   * 1. BUILD PRIZE POOL
+   * =================================================
+   */
+  const prizePool =
+    buildPrizePool(rawPrizes);
 
-    this.viewport.appendChild(this.inner)
-    this.wrapper.appendChild(this.viewport)
 
-    // tạo số
-    this.itemHeight = 160
+  /**
+   * =================================================
+   * 2. PICK PRIZE FIRST (IMPORTANT CHANGE)
+   * =================================================
+   */
+  const prize =
+    pickPrize(prizePool);
 
-    for (let i = 0; i < 30; i++) {
-      const num = i % 10
-      const el = document.createElement('div')
+  if (!prize) {
 
-      el.innerText = num
-      el.style.height = this.itemHeight + 'px'
-      el.style.display = 'flex'
-      el.style.alignItems = 'center'
-      el.style.justifyContent = 'center'
-      el.style.fontSize = '90px'
-      el.style.fontWeight = 'bold'
-      el.style.color = '#000'
-      el.style.fontFamily = 'monospace'
+    return {
+      success: false,
+      message: "No prize available"
+    };
 
-      this.inner.appendChild(el)
-    }
-
-    // placeholder "-"
-    this.placeholder = document.createElement('div')
-    this.placeholder.innerText = '-'
-    this.placeholder.style.position = 'absolute'
-    this.placeholder.style.fontSize = '90px'
-    this.placeholder.style.fontWeight = 'bold'
-    this.placeholder.style.color = '#000'
-
-    this.wrapper.appendChild(this.placeholder)
-
-    // fix vị trí ban đầu (ẩn số thật đi)
-    this.inner.style.transform = `translateY(${-this.itemHeight * 10}px)`
   }
 
-  startSpin(finalNumber) {
-    this.placeholder.style.display = 'none'
 
-    const loops = 20
-    const finalIndex = loops + finalNumber
-    const finalY = -finalIndex * this.itemHeight
+  /**
+   * =================================================
+   * 3. FILTER ELIGIBLE PARTICIPANTS
+   * =================================================
+   *
+   * Randomizer không chọn bừa
+   * mà phải filter theo rule của prize
+   */
+  const eligibleParticipants =
+    rawParticipants.filter(user => {
 
-    // spin + slow down
-    gsap.to(this.inner, {
-      y: finalY,
-      duration: 3,
-      ease: 'power3.out',
-      onComplete: () => {
-        // bounce nhẹ
-        gsap.fromTo(
-          this.inner,
-          { y: finalY - 20 },
-          {
-            y: finalY,
-            duration: 0.4,
-            ease: 'bounce.out'
-          }
-        )
-      }
-    })
+      return canReceivePrize({
+        customerId: user.id,
+        prize,
+        history
+      });
+
+    });
+
+
+  if (!eligibleParticipants.length) {
+
+    return {
+      success: false,
+      message: "No eligible participants for this prize",
+      prize
+    };
+
   }
+
+
+  /**
+   * =================================================
+   * 4. PICK WINNER (RANDOM)
+   * =================================================
+   */
+  const winner =
+    randomPick(eligibleParticipants);
+
+
+  /**
+   * =================================================
+   * 5. FINAL VALIDATION (SAFETY LAYER)
+   * =================================================
+   */
+  const canWin =
+    canReceivePrize({
+      customerId: winner.id,
+      prize,
+      history
+    });
+
+  if (!canWin) {
+
+    return {
+      success: false,
+      message: "Rule violation after selection",
+      prize
+    };
+
+  }
+
+
+  /**
+   * =================================================
+   * 6. ALLOCATE PRIZE
+   * =================================================
+   */
+  const allocation =
+    allocatePrize({
+      prizePool,
+      prizeCode: prize.prizeCode,
+      customerId: winner.id,
+      history
+    });
+
+
+  /**
+   * =================================================
+   * 7. RETURN RESULT
+   * =================================================
+   */
+  return {
+
+    success: true,
+
+    winner: {
+      id: winner.id,
+      name: winner.name
+    },
+
+    prize: {
+      code: prize.prizeCode,
+      name: prize.prizeName
+    },
+
+    allocation
+
+  };
+
 }
 
-// =====================
-// CREATE
-// =====================
-const cols = [new DigitColumn(), new DigitColumn(), new DigitColumn()]
-cols.forEach(c => container.appendChild(c.wrapper))
 
-// =====================
-// INTERACTION
-// =====================
-window.addEventListener('click', () => {
-  const result = [
-    Math.floor(Math.random() * 10),
-    Math.floor(Math.random() * 10),
-    Math.floor(Math.random() * 10)
-  ]
+/**
+ * =====================================================
+ * OPTIONAL: RUN FULL CAMPAIGN (AUTO SEQUENCE MODE)
+ * =====================================================
+ *
+ * Dùng khi:
+ * - quay tự động 1000 giải
+ * - chạy event offline
+ */
+export function runCampaign({
+  rawParticipants,
+  rawPrizes
+}) {
 
-  cols.forEach((col, i) => {
-    setTimeout(() => {
-      col.startSpin(result[i])
-    }, i * 1200)
-  })
-})
+  const history = [];
+  const results = [];
+
+  const prizePool =
+    buildPrizePool(rawPrizes);
+
+  while (true) {
+
+    const availablePrizes =
+      prizePool.filter(
+        p => p.remainingQuantity > 0
+      );
+
+    if (!availablePrizes.length) {
+      break;
+    }
+
+    const prize =
+      pickPrize(prizePool);
+
+    if (!prize) break;
+
+    const eligible =
+      rawParticipants.filter(user =>
+        canReceivePrize({
+          customerId: user.id,
+          prize,
+          history
+        })
+      );
+
+    if (!eligible.length) continue;
+
+    const winner =
+      randomPick(eligible);
+
+    const allocation =
+      allocatePrize({
+        prizePool,
+        prizeCode: prize.prizeCode,
+        customerId: winner.id,
+        history
+      });
+
+    results.push({
+      winner,
+      prize,
+      allocation
+    });
+
+  }
+
+  return {
+    total: results.length,
+    results
+  };
+
+}
