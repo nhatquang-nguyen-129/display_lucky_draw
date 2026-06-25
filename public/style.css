@@ -1,0 +1,114 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    background:#000;
+    color:#fff;
+    font-family:Arial, Helvetica, sans-serif;
+    overflow:hidden;
+}
+
+.container{
+    width:100vw;
+    height:100vh;
+
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+}
+
+.number-board{
+    display:flex;
+    gap:24px;
+}
+
+.digit-box{
+    width:180px;
+    height:220px;
+
+    background:#fff;
+    border-radius:12px;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    box-shadow:
+        0 0 30px rgba(255,255,255,.15);
+}
+
+.digit{
+    font-size:140px;
+    font-weight:700;
+    color:#111;
+}
+
+.stop-bounce{
+    animation:bounce .4s ease-out;
+}
+
+@keyframes bounce{
+
+    0%{
+        transform:translateY(0);
+    }
+
+    40%{
+        transform:translateY(-18px);
+    }
+
+    100%{
+        transform:translateY(0);
+    }
+}
+
+#congrats{
+    margin-top:40px;
+    font-size:40px;
+    color:#ff9b3d;
+    font-weight:bold;
+}
+
+#winnerName{
+    margin-top:20px;
+    min-height:80px;
+
+    font-size:72px;
+    font-weight:bold;
+    color:#37e2b3;
+
+    text-align:center;
+}
+
+.hidden{
+    opacity:0;
+}
+
+.show{
+    opacity:1;
+    transition:opacity .5s;
+}
+
+#drawBtn{
+    margin-top:60px;
+
+    border:none;
+
+    background:#df3f30;
+    color:white;
+
+    padding:18px 48px;
+
+    font-size:24px;
+    border-radius:10px;
+
+    cursor:pointer;
+}
+
+#drawBtn:hover{
+    opacity:.9;
+}
