@@ -4,9 +4,9 @@ import crypto from "crypto";
  * 1. LOGIC
  */
 
-  /**
-   * 1.1. Normalize name
-   */
+/**
+ * 1.1. Normalize name
+ */
 function normalizeName(name) {
 
   if (!name) return "";
@@ -30,9 +30,9 @@ function normalizeName(name) {
 
 }
 
-  /**
-   * 1.2. Normalize phone
-   */
+/**
+ * 1.2. Normalize phone
+ */
 function normalizePhone(phone) {
 
   if (!phone) return "";
@@ -91,7 +91,7 @@ function generateLast3(phone) {
 }
 
 /**
-  * 1.4. Generate masked phone
+ * 1.4. Generate masked phone
  */
 function generateMaskedPhone(phone) {
 
@@ -122,7 +122,6 @@ function generateCustomerId() {
 
 }
 
-
 /**
  * 2. PUBLIC
  */
@@ -137,29 +136,62 @@ export function cleanParticipants(records = []) {
   return records
 
     /// Clean each record and keep all original fields
-    .map(record => ({
+    .map(record => {
 
-      ...record,
-
-      customerId:
-
-        record.customerId ||
-
-        generateCustomerId(),
-
-      fullName:
-
-        normalizeName(
-          record.fullName
-        ),
-
-      phone:
-
+      const phone =
         normalizePhone(
           record.phone
-        )
+        );
 
-    }))
+      return {
+
+        ...record,
+
+        customerId:
+
+          record.customerId ||
+
+          generateCustomerId(),
+
+        fullName:
+
+          normalizeName(
+            record.fullName
+          ),
+
+        phone,
+
+        /**
+         * Hiển thị cho UI quay số
+         *
+         * Ví dụ:
+         * 0901234567
+         * =>
+         * 567
+         */
+        displayLast3:
+
+          generateLast3(
+            phone
+          ),
+
+        /**
+         * Hiển thị cho UI công khai
+         *
+         * Ví dụ:
+         * 0901234567
+         * =>
+         * 0901xxx567
+         */
+        displayMaskedPhone:
+
+          generateMaskedPhone(
+            phone
+          )
+
+      };
+
+    })
 
     /**
      * 2.2. Filter out invalid records
