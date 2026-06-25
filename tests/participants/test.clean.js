@@ -54,7 +54,6 @@ describe(
             {
               fullName:
                 "A",
-
               phone:
                 "+84901234567"
             }
@@ -83,7 +82,6 @@ describe(
             {
               fullName:
                 "A",
-
               phone:
                 "84901234567"
             }
@@ -112,7 +110,6 @@ describe(
             {
               fullName:
                 "A",
-
               phone:
                 "901234567"
             }
@@ -141,15 +138,13 @@ describe(
             {
               fullName:
                 "A",
-
               phone:
                 "0901234567"
             }
           ]);
 
         expect(
-          result[0]
-            .customerId
+          result[0].customerId
         ).toBeDefined();
 
         expect(
@@ -176,10 +171,8 @@ describe(
             {
               customerId:
                 "CUS001",
-
               fullName:
                 "A",
-
               phone:
                 "0901234567"
             }
@@ -197,6 +190,64 @@ describe(
 
     /**
      * -----------------------------------------
+     * Generate displayLast3
+     * -----------------------------------------
+     */
+    it(
+      "should generate displayLast3",
+      () => {
+
+        const result =
+          cleanParticipants([
+            {
+              fullName:
+                "A",
+              phone:
+                "0901234567"
+            }
+          ]);
+
+        expect(
+          result[0]
+            .displayLast3
+        ).toBe(
+          "567"
+        );
+
+      }
+    );
+
+    /**
+     * -----------------------------------------
+     * Generate displayMaskedPhone
+     * -----------------------------------------
+     */
+    it(
+      "should generate displayMaskedPhone",
+      () => {
+
+        const result =
+          cleanParticipants([
+            {
+              fullName:
+                "A",
+              phone:
+                "0901234567"
+            }
+          ]);
+
+        expect(
+          result[0]
+            .displayMaskedPhone
+        ).toBe(
+          "0901xxx567"
+        );
+
+      }
+    );
+
+    /**
+     * -----------------------------------------
      * Remove duplicate phones
      * -----------------------------------------
      */
@@ -206,23 +257,18 @@ describe(
 
         const result =
           cleanParticipants([
-
             {
               fullName:
                 "A",
-
               phone:
                 "0901234567"
             },
-
             {
               fullName:
                 "B",
-
               phone:
                 "0901234567"
             }
-
           ]);
 
         expect(
@@ -245,15 +291,12 @@ describe(
 
         const result =
           cleanParticipants([
-
             {
               fullName:
                 "A",
-
               phone:
                 ""
             }
-
           ]);
 
         expect(
@@ -279,13 +322,10 @@ describe(
             {
               fullName:
                 "A",
-
               phone:
                 "0901234567",
-
               province:
                 "Ha Noi",
-
               source:
                 "Google Form"
             }
@@ -304,6 +344,53 @@ describe(
         ).toBe(
           "Google Form"
         );
+
+      }
+    );
+
+    /**
+     * -----------------------------------------
+     * Remove special characters
+     * -----------------------------------------
+     */
+    it(
+      "should remove phone special characters",
+      () => {
+
+        const result =
+          cleanParticipants([
+            {
+              fullName:
+                "A",
+              phone:
+                "(090) 123-4567"
+            }
+          ]);
+
+        expect(
+          result[0].phone
+        ).toBe(
+          "0901234567"
+        );
+
+      }
+    );
+
+    /**
+     * -----------------------------------------
+     * Empty array
+     * -----------------------------------------
+     */
+    it(
+      "should return empty array",
+      () => {
+
+        const result =
+          cleanParticipants([]);
+
+        expect(
+          result
+        ).toEqual([]);
 
       }
     );
