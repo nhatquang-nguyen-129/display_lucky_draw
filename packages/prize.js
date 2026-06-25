@@ -2,18 +2,11 @@ import crypto from "crypto";
 
 /**
  * 1. LOGIC
- * =====================================================
  */
 
-
-/**
- * -----------------------------------------------------
- * 1.1. Normalize string
- * -----------------------------------------------------
- *
- * Loại bỏ khoảng trắng đầu cuối.
- *
- */
+  /**
+   * 1.1. Normalize string
+   */
 function normalizeString(value) {
 
   if (!value) return "";
@@ -22,22 +15,9 @@ function normalizeString(value) {
 
 }
 
-
-/**
- * -----------------------------------------------------
- * 1.2. Normalize number
- * -----------------------------------------------------
- *
- * Chuyển dữ liệu từ Google Sheet / CSV
- * về Number.
- *
- * Ví dụ:
- *
- * "100"
- * =>
- * 100
- *
- */
+  /**
+   * 1.2. Normalize number
+   */
 function normalizeNumber(value) {
 
   const number =
@@ -49,21 +29,9 @@ function normalizeNumber(value) {
 
 }
 
-
-/**
- * -----------------------------------------------------
- * 1.3. Normalize boolean
- * -----------------------------------------------------
- *
- * Hỗ trợ:
- *
- * TRUE
- * true
- * 1
- * yes
- * y
- *
- */
+  /**
+   * 1.3. Normalize boolean
+   */
 function normalizeBoolean(value) {
 
   if (
@@ -95,86 +63,31 @@ function normalizeBoolean(value) {
 
 }
 
-
-/**
- * -----------------------------------------------------
- * 1.4. Generate prizeId
- * -----------------------------------------------------
- *
- * Sinh UUID v4 cho giải thưởng.
- *
- */
+  /**
+   * 1.4. Generate prizeId
+   */
 function generatePrizeId() {
 
   return crypto.randomUUID();
 
 }
 
-
 /**
- * =====================================================
- * 2. PUBLIC API
- * =====================================================
- *
- * INPUT:
- *
- * [
- *   {
- *     prize_code,
- *     prize_name,
- *     quantity,
- *     image_url
- *   }
- * ]
- *
- *
- * OUTPUT:
- *
- * [
- *   {
- *     prizeId,
- *     prizeCode,
- *     prizeName,
- *     quantity,
- *
- *     remainingQuantity,
- *     allocatedQuantity,
- *
- *     weight,
- *
- *     allowDuplicateWithOtherPrizes,
- *     allowDuplicateSamePrize,
- *
- *     maxWinCount,
- *
- *     imageUrl,
- *
- *     winners:[]
- *   }
- * ]
- *
+ * 2. PUBLIC 
  */
 export function cleanPrizes(records = []) {
 
   /**
-   * Dùng để kiểm tra
-   * prizeCode trùng lặp.
+   * 2.1. Normalize each record
    */
   const prizeCodeSet =
     new Set();
 
   return records
 
-    /**
-     * -------------------------------------------------
-     * 2.1. Normalize mỗi giải thưởng
-     * -------------------------------------------------
-     */
+    /// Clean each record and keep all original fields
     .map(record => ({
 
-      /**
-       * Giữ lại toàn bộ field gốc
-       */
       ...record,
 
       /**
