@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+
+    "module": "NodeNext",
+
+    "moduleResolution": "NodeNext",
+
+    "strict": true,
+
+    "skipLibCheck": true,
+
+    "esModuleInterop": true,
+
+    "allowSyntheticDefaultImports": true,
+
+    "resolveJsonModule": true,
+
+    "isolatedModules": true,
+
+    "forceConsistentCasingInFileNames": true,
+
+    "baseUrl": ".",
+
+    "paths": {
+      "@shared/*": [
+        "packages/shared-types/src/*"
+      ],
+
+      "@draw-engine/*": [
+        "packages/draw-engine/src/*"
+      ],
+
+      "@database/*": [
+        "packages/database/src/*"
+      ],
+
+      "@socket/*": [
+        "packages/websocket/src/*"
+      ]
+    }
+  }
+}
