@@ -2,9 +2,12 @@
 node_modules/
 dist/
 build/
-data/
 electron/
 *.asar
+
+# Ignore files inside data but keep folder structure
+data/*
+!data/.gitkeep
 
 # binaries
 *.exe
