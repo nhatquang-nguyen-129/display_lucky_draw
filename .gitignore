@@ -1,33 +1,74 @@
-# deps
+# Dependencies
 node_modules/
+
+# Build Output
 dist/
 build/
+out/
+release/
+
+# Electron package
 electron/
 *.asar
 
-# Ignore files inside data but keep folder structure
+# Data
 data/*
 !data/.gitkeep
 
-# binaries
-*.exe
-*.dll
-*.so
-*.dmg
-*.app
+# Ignore all subfolders inside projects
+projects/*/
+!projects/.gitkeep
 
-# logs
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Package Manager
+.pnpm-store/
+.npm/
+
+# Yarn
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Cache
+.cache/
+.vite/
+.parcel-cache/
+.eslintcache
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # OS
 .DS_Store
 Thumbs.db
 
-# temp
-*.tmp
+# IDE
 
-# Ignore all subfolders inside projects (level 2)
-projects/*/
-!projects/.gitkeep
+.vscode/
+.idea/
+
+# Temporary
+*.tmp
+tmp/
+temp/
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dmg
+*.app
