@@ -14,7 +14,7 @@ const digit3 = document.getElementById("digit3");
 // ===================================
 // Chiều cao mỗi số (phải trùng CSS)
 // ===================================
-const DIGIT_HEIGHT = 120;
+const DIGIT_HEIGHT = 220;
 
 // ===================================
 // Tạo danh sách số cho mỗi cột
