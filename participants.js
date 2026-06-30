@@ -3,8 +3,8 @@ const path = require("path");
 const csv = require("csv-parser");
 const { createObjectCsvWriter } = require("csv-writer");
 
-const INPUT_FILE = path.join(__dirname, "participants.csv");
-const OUTPUT_FILE = path.join(__dirname, "cleanedParticipants.csv");
+const INPUT_FILE = path.join(__dirname, "data", "participants.csv");
+const OUTPUT_FILE = path.join(__dirname, "data", "cleanedParticipants.csv");
 
 function normalizePhone(phone) {
   return String(phone || "")
