@@ -1,56 +1,11 @@
-// ================================
-// Danh sách người tham gia
-// ================================
 let participants = [];
 
-// Đang quay hay không
 let isDrawing = false;
 
-// Lấy 3 cột số
 const digit1 = document.getElementById("digit1");
 const digit2 = document.getElementById("digit2");
 const digit3 = document.getElementById("digit3");
 
-// ===================================
-// Chiều cao mỗi số (phải trùng CSS)
-// ===================================
-const DIGIT_HEIGHT = 220;
-
-// ===================================
-// Tạo danh sách số cho mỗi cột
-// 0-9 lặp nhiều lần để quay dài
-// ===================================
-function createDigitStrip(element) {
-
-    element.innerHTML = "";
-
-    for (let loop = 0; loop < 30; loop++) {
-
-        for (let i = 0; i <= 9; i++) {
-
-            const div =
-                document.createElement("div");
-
-            div.className = "digit";
-
-            div.innerText = i;
-
-            element.appendChild(div);
-
-        }
-
-    }
-
-}
-
-// Khởi tạo 3 cột số
-createDigitStrip(digit1);
-createDigitStrip(digit2);
-createDigitStrip(digit3);
-
-// ================================
-// Load danh sách người tham gia
-// ================================
 async function loadParticipants() {
 
     const response =
@@ -62,24 +17,15 @@ async function loadParticipants() {
     console.log(
         `Loaded ${participants.length} participants`
     );
-
 }
 
-// =======================================================
-// Hàm randomDigit vẫn giữ nguyên
-// (Hiện không còn dùng nhưng giữ để không đổi logic khác)
-// =======================================================
 function randomDigit() {
 
     return Math.floor(
         Math.random() * 10
     );
-
 }
 
-// ======================================
-// Quay 1 cột số
-// ======================================
 function spinDigit(
     element,
     finalDigit,
@@ -88,61 +34,94 @@ function spinDigit(
 
     return new Promise(resolve => {
 
-        // Reset về đầu
-        element.style.transition = "none";
+        let current =
+            Math.floor(Math.random() * 10);
 
-        element.style.transform =
-            "translateY(0px)";
+        element.innerText = current;
 
-        // Ép browser render
-        element.offsetHeight;
+        const interval = 70;
 
-        // Số vòng quay
-        const loops = 20;
+        const start = Date.now();
 
-        // Vị trí cuối
-        const finalIndex =
-            loops * 10 +
-            Number(finalDigit);
+        function roll() {
 
-        // Khoảng dịch
-        const translateY =
-            finalIndex *
-            DIGIT_HEIGHT;
+            const elapsed =
+                Date.now() - start;
 
-        // Hiệu ứng chậm dần
-        element.style.transition =
-            `transform ${duration}ms cubic-bezier(0.15,0.85,0.25,1)`;
+            // Kết thúc
+            if (elapsed >= duration) {
 
-        element.style.transform =
-            `translateY(-${translateY}px)`;
+                element.innerText =
+                    finalDigit;
 
-        // Sau khi quay xong
-        setTimeout(() => {
+                element.style.transition =
+                    "transform .25s";
 
-            element.classList.add(
-                "stop-bounce"
-            );
+                element.style.transform =
+                    "translateY(-18px)";
 
-            setTimeout(() => {
+                requestAnimationFrame(() => {
 
-                element.classList.remove(
-                    "stop-bounce"
+                    requestAnimationFrame(() => {
+
+                        element.style.transform =
+                            "translateY(0px)";
+
+                    });
+
+                });
+
+                setTimeout(resolve,300);
+
+                return;
+
+            }
+
+            // Random số tiếp theo
+            current =
+                Math.floor(
+                    Math.random() * 10
                 );
 
-                resolve();
+            // Trượt xuống
+            element.style.transition =
+                "none";
 
-            }, 300);
+            element.style.transform =
+                "translateY(-70px)";
 
-        }, duration);
+            element.style.opacity =
+                "0";
+
+            requestAnimationFrame(() => {
+
+                element.innerText =
+                    current;
+
+                element.style.transition =
+                    "transform 70ms linear, opacity 70ms linear";
+
+                element.style.transform =
+                    "translateY(0px)";
+
+                element.style.opacity =
+                    "1";
+
+            });
+
+            setTimeout(
+                roll,
+                interval
+            );
+
+        }
+
+        roll();
 
     });
 
 }
 
-// ======================================
-// Quay thưởng
-// ======================================
 async function drawWinner() {
 
     if (isDrawing) return;
@@ -169,7 +148,7 @@ async function drawWinner() {
     const lucky =
         winner.lucky_number
             .toString()
-            .padStart(3, "0");
+            .padStart(3,"0");
 
     await spinDigit(
         digit1,
@@ -202,12 +181,8 @@ async function drawWinner() {
         "Unknown";
 
     isDrawing = false;
-
 }
 
-// ================================
-// Nút quay
-// ================================
 document
     .getElementById("drawBtn")
     .addEventListener(
@@ -215,5 +190,4 @@ document
         drawWinner
     );
 
-// Load dữ liệu
 loadParticipants();
