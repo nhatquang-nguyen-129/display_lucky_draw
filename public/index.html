@@ -1,44 +1,112 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
     <title>Lucky Draw</title>
-    <link rel="stylesheet" href="style.css">
+
+    <link
+        rel="stylesheet"
+        href="style.css">
+
 </head>
+
 <body>
 
-<div class="container">
+    <div class="container">
 
-    <div class="number-board">
+        <!-- 
+             Bảng quay số
+        -->
 
-        <div class="digit-window">
-            <div class="digit-strip" id="digit1"></div>
+        <div class="number-board">
+
+            <!-- Digit 1 -->
+            <div class="digit-box">
+
+                <div
+                    class="digit-window">
+
+                    <div
+                        class="digit-strip"
+                        id="digit1">
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Digit 2 -->
+            <div class="digit-box">
+
+                <div
+                    class="digit-window">
+
+                    <div
+                        class="digit-strip"
+                        id="digit2">
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Digit 3 -->
+            <div class="digit-box">
+
+                <div
+                    class="digit-window">
+
+                    <div
+                        class="digit-strip"
+                        id="digit3">
+                    </div>
+
+                </div>
+
+            </div>
+
         </div>
 
-        <div class="digit-window">
-            <div class="digit-strip" id="digit2"></div>
+        <!-- 
+             Congratulations
+        -->
+
+        <div
+            id="congrats"
+            class="hidden">
+
+            🎉 Congratulations 🎉
+
         </div>
 
-        <div class="digit-window">
-            <div class="digit-strip" id="digit3"></div>
-        </div>
+        <!--
+             Winner Name
+        -->
+
+        <div id="winnerName"></div>
+
+        <!--
+             Button
+        -->
+
+        <button
+            id="drawBtn">
+
+            DRAW
+
+        </button>
 
     </div>
 
-    <div id="congrats" class="hidden">
-        🎉 XIN CHÚC MỪNG 🎉
-    </div>
-
-    <div id="winnerName"></div>
-
-    <button id="drawBtn">
-        QUAY SỐ
-    </button>
-
-</div>
-
-<script src="script.js"></script>
+    <script src="script.js"></script>
 
 </body>
+
 </html>
