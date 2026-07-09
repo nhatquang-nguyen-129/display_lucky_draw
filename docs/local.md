@@ -412,3 +412,10 @@ Tiếp theo có thể:
 - Ký ứng dụng (code signing)
 - Tạo installer
 - Phát hành phiên bản mới
+
+
+Giải phóng Localhost trước khi chạy: 
+```bash
+lsof -ti:5173 | xargs kill -9
+npm run electron:dev
+```
