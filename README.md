@@ -1,37 +1,54 @@
-<p align="left">
-  <img src="kidsplaza.png" alt="KidsPlaza Logo" width="300"/>
-</p>
+# Lucky Draw Studio
 
-This repository integrates **Budget Reconcilication data**, supporting both **daily synchronization** and **historical backfills**.
+App desktop quay số trúng thưởng, chạy hoàn toàn local (Electron + React + SQLite).
 
----
+## Đã có trong bản này
 
-## Overviewß
+- **Module 1 — Dữ liệu**: nhập người chơi thủ công hoặc import CSV/Excel (`src/pages/Participants.tsx`).
+  Kết nối Google Sheets mới có placeholder UI ở trang Cài đặt, chưa nối OAuth thật.
+- **Module 2 — Engine quay số**: cấu hình trọng số giải, tạo phiên với 2 tuỳ chọn
+  (cho phép trùng giải / loại người đã trúng), thuật toán weighted random ở
+  `electron/drawEngine.ts`, ghi log seed để sau này đối chiếu.
+- **Module 3 — Present mode**: cửa sổ trình chiếu riêng biệt (không phải drag-drop builder,
+  đang là placeholder tĩnh — sẽ thay bằng canvas kéo thả ở giai đoạn sau như đã thống nhất).
 
-> **This README documents the behavior and scope of the current architecture development branch:**  
-> **`branch_2x`**
+## Cài đặt
 
-`branch_2x` represents the active **2.x development line**.
+```bash
+npm install
+```
 
-## Deployment
-ßß
-development_branch → main → deploy
+## Chạy ở chế độ dev
 
-| Branch | Purpose |
-|------|--------|
-| `main` | **Production** – stable, deployed pipeline |
-| `current_branch` | Active development for oldest version **x.x** |ßß
-| `development_branch` | Major architectural redesigns |
+```bash
+npm run electron:dev
+```
 
----
+Lệnh này chạy song song Vite dev server (renderer) và Electron (main process),
+tự động mở cửa sổ chính. SQLite database được tạo tự động tại thư mục
+`userData` của hệ điều hành (VD trên macOS: `~/Library/Application Support/lucky-draw-app/lucky-draw.db`).
 
-## Ownership
+## Đóng gói thành file cài đặt
 
-```text
-- Internal: quang.nn@kidsplaza.vn  
-- External: nhatquang.nguyen.129@gmail.com  
-Or reach out via the internal Slack channel #data-engineering
+```bash
+npm run package
+```
 
-Disclaimer:
+Kết quả nằm trong thư mục `release/`.
 
-This project is intended for **internal use only**.
+## Lưu ý về `better-sqlite3`
+
+Đây là native module, cần biên dịch theo đúng phiên bản Electron đang dùng.
+Nếu gặp lỗi `NODE_MODULE_VERSION` khi chạy, cài thêm và rebuild:
+
+```bash
+npm install --save-dev electron-rebuild
+npx electron-rebuild
+```
+
+## Việc cần làm tiếp theo
+
+1. Nối OAuth2 Google Sheets thật (trang Settings đang là placeholder).
+2. Xây engine kéo thả cho Present mode (hiện là màn hình tĩnh hiển thị kết quả mới nhất).
+3. Thêm animation quay số (spin effect) trước khi hiện kết quả.
+4. Thêm xác thực/khoá màn hình cấu hình trong lúc trình chiếu để tránh bấm nhầm.
