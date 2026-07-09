@@ -173,11 +173,22 @@ ipcMain.handle("present:open", (_e, sessionId: string) => {
   openPresentWindow(sessionId);
 });
 
-ipcMain.handle("dialog:openFile", async () => {
+import fs from "fs";
+
+ipcMain.handle("dialog:openAndReadFile", async () => {
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
     filters: [{ name: "Data files", extensions: ["csv", "xlsx", "xls"] }],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  return result.filePaths[0];
+
+  const filePath = result.filePaths[0];
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+
+  if (ext === "csv") {
+    const text = fs.readFileSync(filePath, "utf-8");
+    return { ext, text };
+  }
+  const buffer = fs.readFileSync(filePath);
+  return { ext, base64: buffer.toString("base64") };
 });
