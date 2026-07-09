@@ -31,26 +31,22 @@ export default function Participants() {
   }
 
   async function handleImportFile() {
-    const filePath = await window.api.dialog.openFile();
-    if (!filePath) return;
-
-    // Đọc file trực tiếp qua fetch (file://) rồi parse theo phần mở rộng
-    const ext = filePath.split(".").pop()?.toLowerCase();
-    const response = await fetch(`file://${filePath}`);
+    const result = await window.api.dialog.openAndReadFile();
+    if (!result) return;
 
     let rows: any[] = [];
-    if (ext === "csv") {
-      const text = await response.text();
-      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+    if (result.ext === "csv") {
+      const parsed = Papa.parse(result.text!, { header: true, skipEmptyLines: true });
       rows = parsed.data as any[];
     } else {
-      const buffer = await response.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array" });
+      const binary = atob(result.base64!);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const workbook = XLSX.read(bytes, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       rows = XLSX.utils.sheet_to_json(sheet);
     }
 
-    // Chuẩn hoá tên cột phổ biến (linh hoạt cho form Google Forms/Sheets xuất ra)
     const normalized = rows.map((r) => ({
       name: r.name ?? r.Name ?? r["Họ tên"] ?? r["Tên"] ?? "",
       code: r.code ?? r.Code ?? r["Mã"] ?? undefined,
