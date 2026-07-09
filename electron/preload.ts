@@ -31,8 +31,8 @@ const api = {
     open: (sessionId: string) => ipcRenderer.invoke("present:open", sessionId),
   },
   dialog: {
-    openFile: () => ipcRenderer.invoke("dialog:openFile"),
-  },
+    openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
+    },
 };
 
 contextBridge.exposeInMainWorld("api", api);
