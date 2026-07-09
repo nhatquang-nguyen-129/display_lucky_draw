@@ -76,7 +76,7 @@ declare global {
         open: (sessionId: string) => Promise<void>;
       };
       dialog: {
-        openFile: () => Promise<string | null>;
+        openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string } | null>;
       };
     };
   }
