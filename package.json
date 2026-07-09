@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && tsc -p electron/tsconfig.json",
     "electron:dev": "npm run build:electron && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
-    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:electron": "tsc -p electron/tsconfig.json && node electron/write-pkg.mjs",
     "package": "npm run build && electron-builder"
   },
   "dependencies": {
