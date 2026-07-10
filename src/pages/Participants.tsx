@@ -3,11 +3,13 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import Button from "@/components/Button";
 import Modal from "@/components/Modal";
+import DataEditorModal from "@/components/DataEditorModal";
 import { Participant } from "@/types";
 
 export default function Participants() {
   const [items, setItems] = useState<Participant[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const [form, setForm] = useState({ name: "", code: "", phone: "", email: "" });
   const [importMsg, setImportMsg] = useState<string | null>(null);
 
@@ -67,6 +69,9 @@ export default function Participants() {
           <p className="mt-1 text-sm text-base-400">{items.length} người chơi trong hệ thống</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setShowEditor(true)}>
+            Data Editor
+          </Button>
           <Button variant="secondary" onClick={handleImportFile}>
             Nhập file CSV/Excel
           </Button>
@@ -150,6 +155,12 @@ export default function Participants() {
           </Button>
         </div>
       </Modal>
+
+      <DataEditorModal
+        open={showEditor}
+        onClose={() => setShowEditor(false)}
+        onSaved={refresh}
+      />
     </div>
   );
 }
