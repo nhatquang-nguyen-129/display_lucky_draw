@@ -4,6 +4,7 @@ export interface Participant {
   name: string;
   phone: string | null;
   email: string | null;
+  extra_data: string | null; // JSON string chứa các cột optional (vd facebook_post, note)
   source: string;
   status: string;
   created_at: string;
@@ -44,9 +45,20 @@ declare global {
     api: {
       participants: {
         list: () => Promise<Participant[]>;
-        create: (data: Partial<Participant> & { name: string }) => Promise<string>;
-        bulkImport: (rows: Partial<Participant>[]) => Promise<number>;
+        create: (
+          data: Partial<Participant> & { name: string; extra?: Record<string, string> }
+        ) => Promise<string>;
+        update: (data: {
+          id: string;
+          name: string;
+          code?: string | null;
+          phone?: string | null;
+          email?: string | null;
+          extra?: Record<string, string>;
+        }) => Promise<void>;
+        bulkImport: (rows: (Partial<Participant> & { extra?: Record<string, string> })[]) => Promise<number>;
         delete: (id: string) => Promise<void>;
+        bulkDelete: (ids: string[]) => Promise<number>;
       };
       prizes: {
         list: () => Promise<Prize[]>;

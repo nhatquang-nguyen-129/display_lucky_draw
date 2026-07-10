@@ -3,10 +3,19 @@ import { contextBridge, ipcRenderer } from "electron";
 const api = {
   participants: {
     list: () => ipcRenderer.invoke("participants:list"),
-    create: (data: { name: string; code?: string; phone?: string; email?: string }) =>
+    create: (data: { name: string; code?: string; phone?: string; email?: string; extra?: Record<string, string> }) =>
       ipcRenderer.invoke("participants:create", data),
+    update: (data: {
+      id: string;
+      name: string;
+      code?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      extra?: Record<string, string>;
+    }) => ipcRenderer.invoke("participants:update", data),
     bulkImport: (rows: any[]) => ipcRenderer.invoke("participants:bulkImport", rows),
     delete: (id: string) => ipcRenderer.invoke("participants:delete", id),
+    bulkDelete: (ids: string[]) => ipcRenderer.invoke("participants:bulkDelete", ids),
   },
   prizes: {
     list: () => ipcRenderer.invoke("prizes:list"),
