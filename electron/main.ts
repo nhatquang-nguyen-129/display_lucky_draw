@@ -78,36 +78,94 @@ app.on("window-all-closed", () => {
 
 /* ---------------- IPC: Participants ---------------- */
 
+type ExtraData = Record<string, string>;
+
 ipcMain.handle("participants:list", () => {
   return db.prepare(`SELECT * FROM participants ORDER BY created_at DESC`).all();
 });
 
-ipcMain.handle("participants:create", (_e, data: { name: string; code?: string; phone?: string; email?: string }) => {
-  const id = randomUUID();
-  db.prepare(
-    `INSERT INTO participants (id, name, code, phone, email) VALUES (?, ?, ?, ?, ?)`
-  ).run(id, data.name, data.code ?? null, data.phone ?? null, data.email ?? null);
-  return id;
-});
+ipcMain.handle(
+  "participants:create",
+  (_e, data: { name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }) => {
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO participants (id, name, code, phone, email, extra_data) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      data.name,
+      data.code ?? null,
+      data.phone ?? null,
+      data.email ?? null,
+      data.extra && Object.keys(data.extra).length ? JSON.stringify(data.extra) : null
+    );
+    return id;
+  }
+);
 
-ipcMain.handle("participants:bulkImport", (_e, rows: Array<{ name: string; code?: string; phone?: string; email?: string }>) => {
-  const insert = db.prepare(
-    `INSERT OR IGNORE INTO participants (id, name, code, phone, email, source) VALUES (?, ?, ?, ?, ?, 'import')`
-  );
-  const tx = db.transaction((items: typeof rows) => {
-    let inserted = 0;
-    for (const row of items) {
-      if (!row.name) continue;
-      const result = insert.run(randomUUID(), row.name, row.code ?? null, row.phone ?? null, row.email ?? null);
-      if (result.changes > 0) inserted++;
+ipcMain.handle(
+  "participants:update",
+  (
+    _e,
+    data: {
+      id: string;
+      name: string;
+      code?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      extra?: ExtraData;
     }
-    return inserted;
-  });
-  return tx(rows);
-});
+  ) => {
+    db.prepare(
+      `UPDATE participants SET name = ?, code = ?, phone = ?, email = ?, extra_data = ? WHERE id = ?`
+    ).run(
+      data.name,
+      data.code ?? null,
+      data.phone ?? null,
+      data.email ?? null,
+      data.extra && Object.keys(data.extra).length ? JSON.stringify(data.extra) : null,
+      data.id
+    );
+  }
+);
+
+ipcMain.handle(
+  "participants:bulkImport",
+  (_e, rows: Array<{ name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }>) => {
+    const insert = db.prepare(
+      `INSERT OR IGNORE INTO participants (id, name, code, phone, email, extra_data, source) VALUES (?, ?, ?, ?, ?, ?, 'import')`
+    );
+    const tx = db.transaction((items: typeof rows) => {
+      let inserted = 0;
+      for (const row of items) {
+        if (!row.name) continue;
+        const result = insert.run(
+          randomUUID(),
+          row.name,
+          row.code ?? null,
+          row.phone ?? null,
+          row.email ?? null,
+          row.extra && Object.keys(row.extra).length ? JSON.stringify(row.extra) : null
+        );
+        if (result.changes > 0) inserted++;
+      }
+      return inserted;
+    });
+    return tx(rows);
+  }
+);
 
 ipcMain.handle("participants:delete", (_e, id: string) => {
   db.prepare(`DELETE FROM participants WHERE id = ?`).run(id);
+});
+
+ipcMain.handle("participants:bulkDelete", (_e, ids: string[]) => {
+  const del = db.prepare(`DELETE FROM participants WHERE id = ?`);
+  const tx = db.transaction((items: string[]) => {
+    let deleted = 0;
+    for (const id of items) deleted += del.run(id).changes;
+    return deleted;
+  });
+  return tx(ids);
 });
 
 /* ---------------- IPC: Prizes ---------------- */

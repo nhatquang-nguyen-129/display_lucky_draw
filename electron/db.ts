@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS participants (
   name TEXT NOT NULL,
   phone TEXT,
   email TEXT,
+  extra_data TEXT,
   source TEXT DEFAULT 'manual',
   status TEXT DEFAULT 'active',
   created_at TEXT DEFAULT (datetime('now'))
@@ -57,3 +58,10 @@ CREATE TABLE IF NOT EXISTS draw_results (
   rng_seed TEXT
 );
 `);
+
+// Migration an toàn: nếu DB được tạo từ bản cũ trước khi có extra_data,
+// CREATE TABLE IF NOT EXISTS ở trên sẽ không tự thêm cột mới -> thêm thủ công.
+const participantColumns = db.prepare(`PRAGMA table_info(participants)`).all() as { name: string }[];
+if (!participantColumns.some((c) => c.name === "extra_data")) {
+  db.exec(`ALTER TABLE participants ADD COLUMN extra_data TEXT`);
+}
