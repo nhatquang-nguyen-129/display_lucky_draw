@@ -22,15 +22,7 @@ interface DraftRow {
 }
 
 // Gợi ý tên cột optional phổ biến — chỉ là gợi ý qua datalist, người dùng có thể gõ tên khác
-const SUGGESTED_COLUMNS = [
-  "facebook_post", 
-  "note", 
-  "zalo", 
-  "address", 
-  "ghi_chu", 
-  "team", 
-  "khu_vuc"
-];
+const SUGGESTED_COLUMNS = ["facebook_post", "note", "zalo", "address", "ghi_chu", "team", "khu_vuc"];
 
 function parseRow(p: Participant): DraftRow {
   let extra: Record<string, string> = {};
@@ -341,7 +333,7 @@ export default function DataEditorModal({ open, onClose, onSaved }: DataEditorMo
                         className={[
                           marked ? "opacity-40 line-through" : "",
                           !marked && isDuplicate ? "bg-danger-500/10" : "",
-                          !marked && !isDuplicate && dirty ? "bg-gold-500/5" : "",
+                          !marked && !isDuplicate && dirty ? "bg-highlight-500/10" : "",
                         ].join(" ")}
                       >
                         <td className="px-3 py-1">

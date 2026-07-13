@@ -15,7 +15,7 @@ function createMainWindow() {
     height: 820,
     minWidth: 1024,
     minHeight: 700,
-    backgroundColor: "#121116",
+    backgroundColor: "#FFFFFF",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -44,7 +44,7 @@ function openPresentWindow(sessionId: string) {
   presentWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    backgroundColor: "#121116",
+    backgroundColor: "#FFFFFF",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
