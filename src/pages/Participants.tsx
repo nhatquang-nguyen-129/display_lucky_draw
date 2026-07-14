@@ -4,24 +4,31 @@ import * as XLSX from "xlsx";
 import Button from "@/components/Button";
 import Modal from "@/components/Modal";
 import DataEditorModal from "@/components/DataEditorModal";
+import { useSession } from "@/context/SessionContext";
 import { Participant } from "@/types";
 
 export default function Participants() {
+  const { activeSessionId, activeSession } = useSession();
   const [items, setItems] = useState<Participant[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [form, setForm] = useState({ name: "", code: "", phone: "", email: "" });
   const [importMsg, setImportMsg] = useState<string | null>(null);
 
-  const refresh = () => window.api.participants.list().then(setItems);
+  const refresh = () => {
+    if (activeSessionId) window.api.participants.list(activeSessionId).then(setItems);
+    else setItems([]);
+  };
 
   useEffect(() => {
     refresh();
-  }, []);
+    setImportMsg(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   async function handleAdd() {
-    if (!form.name.trim()) return;
-    await window.api.participants.create(form);
+    if (!form.name.trim() || !activeSessionId) return;
+    await window.api.participants.create({ ...form, sessionId: activeSessionId });
     setForm({ name: "", code: "", phone: "", email: "" });
     setShowAdd(false);
     refresh();
@@ -33,6 +40,7 @@ export default function Participants() {
   }
 
   async function handleImportFile() {
+    if (!activeSessionId) return;
     const result = await window.api.dialog.openAndReadFile();
     if (!result) return;
 
@@ -49,16 +57,44 @@ export default function Participants() {
       rows = XLSX.utils.sheet_to_json(sheet);
     }
 
-    const normalized = rows.map((r) => ({
-      name: r.name ?? r.Name ?? r["Họ tên"] ?? r["Tên"] ?? "",
-      code: r.code ?? r.Code ?? r["Mã"] ?? undefined,
-      phone: r.phone ?? r.Phone ?? r["SĐT"] ?? r["Số điện thoại"] ?? undefined,
-      email: r.email ?? r.Email ?? undefined,
-    }));
+    // Danh sách tên cột đã được xử lý thành field chuẩn — mọi cột KHÔNG nằm trong đây
+    // sẽ tự động gom vào extra_data (không bị mất, hiển thị được ở Data Editor).
+    const CORE_KEYS = new Set([
+      "name", "Name", "Họ tên", "Tên", "full_name",
+      "code", "Code", "Mã",
+      "phone", "Phone", "SĐT", "Số điện thoại", "phone_number",
+      "email", "Email",
+    ]);
 
-    const inserted = await window.api.participants.bulkImport(normalized);
+    const normalized = rows.map((r) => {
+      const name = r.name ?? r.Name ?? r.full_name ?? r["Họ tên"] ?? r["Tên"] ?? "";
+      const code = r.code ?? r.Code ?? r["Mã"] ?? undefined;
+      const phone = r.phone ?? r.Phone ?? r.phone_number ?? r["SĐT"] ?? r["Số điện thoại"] ?? undefined;
+      const email = r.email ?? r.Email ?? undefined;
+
+      const extra: Record<string, string> = {};
+      Object.keys(r).forEach((key) => {
+        if (CORE_KEYS.has(key)) return;
+        const value = r[key];
+        if (value !== undefined && value !== null && String(value).trim() !== "") {
+          extra[key] = String(value);
+        }
+      });
+
+      return { name, code, phone, email, extra: Object.keys(extra).length ? extra : undefined };
+    });
+
+    const inserted = await window.api.participants.bulkImport(activeSessionId, normalized);
     setImportMsg(`Đã nhập ${inserted}/${normalized.length} người chơi từ file.`);
     refresh();
+  }
+
+  if (!activeSession) {
+    return (
+      <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
+        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên đầu tiên.
+      </p>
+    );
   }
 
   return (
@@ -66,7 +102,9 @@ export default function Participants() {
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-medium text-base-100">Người chơi</h1>
-          <p className="mt-1 text-sm text-base-400">{items.length} người chơi trong hệ thống</p>
+          <p className="mt-1 text-sm text-base-400">
+            {items.length} người chơi trong phiên "{activeSession.name}"
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowEditor(true)}>
@@ -158,6 +196,7 @@ export default function Participants() {
 
       <DataEditorModal
         open={showEditor}
+        sessionId={activeSessionId!}
         onClose={() => setShowEditor(false)}
         onSaved={refresh}
       />

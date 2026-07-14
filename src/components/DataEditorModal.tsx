@@ -5,6 +5,7 @@ import { Participant } from "@/types";
 
 interface DataEditorModalProps {
   open: boolean;
+  sessionId: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -44,7 +45,7 @@ function cloneRows(rows: DraftRow[]): DraftRow[] {
   return rows.map((r) => ({ ...r, extra: { ...r.extra } }));
 }
 
-export default function DataEditorModal({ open, onClose, onSaved }: DataEditorModalProps) {
+export default function DataEditorModal({ open, sessionId, onClose, onSaved }: DataEditorModalProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [original, setOriginal] = useState<DraftRow[]>([]);
@@ -58,7 +59,7 @@ export default function DataEditorModal({ open, onClose, onSaved }: DataEditorMo
   async function load() {
     setLoading(true);
     setError(null);
-    const list = await window.api.participants.list();
+    const list = await window.api.participants.list(sessionId);
     const rows = list.map(parseRow);
     setOriginal(cloneRows(rows));
     setDraft(cloneRows(rows));
@@ -72,7 +73,7 @@ export default function DataEditorModal({ open, onClose, onSaved }: DataEditorMo
   useEffect(() => {
     if (open) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, sessionId]);
 
   const duplicateGroups = useMemo(() => {
     const map = new Map<string, string[]>();
