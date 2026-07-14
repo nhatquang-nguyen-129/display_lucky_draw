@@ -184,16 +184,76 @@ ipcMain.handle("prizes:list", (_e, sessionId: string) => {
   return db.prepare(`SELECT * FROM prizes WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
 });
 
-ipcMain.handle(
-  "prizes:create",
-  (_e, data: { sessionId: string; name: string; quantity: number; weight: number }) => {
-    const id = randomUUID();
-    db.prepare(
-      `INSERT INTO prizes (id, session_id, name, quantity, remaining, weight) VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(id, data.sessionId, data.name, data.quantity, data.quantity, data.weight);
-    return id;
-  }
-);
+interface PrizeInput {
+  sessionId: string;
+  code?: string;
+  name: string;
+  category?: string;
+  status?: string;
+  quantity: number;
+  weight: number;
+  allowDuplicateWithOtherPrizes?: boolean;
+  allowDuplicateWithSamePrize?: boolean;
+  maxWinCount?: number;
+  displayImage?: string | null; // base64 data URL (PNG)
+}
+
+ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO prizes (
+      id, session_id, code, name, category, status, quantity, remaining, weight,
+      allow_duplicate_with_other_prizes, allow_duplicate_with_same_prize, max_win_count, display_image
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    data.sessionId,
+    data.code ?? null,
+    data.name,
+    data.category ?? null,
+    data.status ?? "active",
+    data.quantity,
+    data.quantity, // remaining = quantity lúc mới tạo
+    data.weight,
+    data.allowDuplicateWithOtherPrizes ?? true ? 1 : 0,
+    data.allowDuplicateWithSamePrize ? 1 : 0,
+    data.maxWinCount ?? 1,
+    data.displayImage ?? null
+  );
+  return id;
+});
+
+ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
+  const existing = db.prepare(`SELECT quantity, remaining FROM prizes WHERE id = ?`).get(data.id) as
+    | { quantity: number; remaining: number }
+    | undefined;
+  if (!existing) return;
+
+  // Nếu sửa số lượng, cộng/trừ đúng phần chênh lệch vào remaining thay vì reset —
+  // giữ nguyên số lượt đã trao trước đó (không cho remaining âm).
+  const delta = data.quantity - existing.quantity;
+  const newRemaining = Math.max(0, existing.remaining + delta);
+
+  db.prepare(
+    `UPDATE prizes SET
+      code = ?, name = ?, category = ?, status = ?, quantity = ?, remaining = ?, weight = ?,
+      allow_duplicate_with_other_prizes = ?, allow_duplicate_with_same_prize = ?, max_win_count = ?, display_image = ?
+    WHERE id = ?`
+  ).run(
+    data.code ?? null,
+    data.name,
+    data.category ?? null,
+    data.status ?? "active",
+    data.quantity,
+    newRemaining,
+    data.weight,
+    data.allowDuplicateWithOtherPrizes ?? true ? 1 : 0,
+    data.allowDuplicateWithSamePrize ? 1 : 0,
+    data.maxWinCount ?? 1,
+    data.displayImage ?? null,
+    data.id
+  );
+});
 
 ipcMain.handle("prizes:delete", (_e, id: string) => {
   db.prepare(`DELETE FROM prizes WHERE id = ?`).run(id);
