@@ -14,11 +14,18 @@ export interface Participant {
 export interface Prize {
   id: string;
   session_id: string;
+  code: string | null;
   name: string;
+  category: string | null;
+  status: string; // "active" | "inactive"
   quantity: number;
   remaining: number;
   weight: number;
-  image_path: string | null;
+  allow_duplicate_with_other_prizes: 0 | 1;
+  allow_duplicate_with_same_prize: 0 | 1;
+  max_win_count: number;
+  display_image: string | null; // base64 data URL (PNG), dùng khi trình chiếu
+  image_path: string | null; // trường cũ, không dùng nữa
   created_at: string;
 }
 
@@ -68,7 +75,33 @@ declare global {
       };
       prizes: {
         list: (sessionId: string) => Promise<Prize[]>;
-        create: (data: { sessionId: string; name: string; quantity: number; weight: number }) => Promise<string>;
+        create: (data: {
+          sessionId: string;
+          code?: string;
+          name: string;
+          category?: string;
+          status?: string;
+          quantity: number;
+          weight: number;
+          allowDuplicateWithOtherPrizes?: boolean;
+          allowDuplicateWithSamePrize?: boolean;
+          maxWinCount?: number;
+          displayImage?: string | null;
+        }) => Promise<string>;
+        update: (data: {
+          id: string;
+          sessionId: string;
+          code?: string;
+          name: string;
+          category?: string;
+          status?: string;
+          quantity: number;
+          weight: number;
+          allowDuplicateWithOtherPrizes?: boolean;
+          allowDuplicateWithSamePrize?: boolean;
+          maxWinCount?: number;
+          displayImage?: string | null;
+        }) => Promise<void>;
         delete: (id: string) => Promise<void>;
       };
       sessions: {
