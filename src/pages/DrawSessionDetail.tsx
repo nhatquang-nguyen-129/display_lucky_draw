@@ -1,31 +1,34 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
 import Button from "@/components/Button";
+import { useSession } from "@/context/SessionContext";
 import { DrawResultRow } from "@/types";
 
 export default function DrawSessionDetail() {
-  const { sessionId } = useParams<{ sessionId: string }>();
+  const { activeSession, activeSessionId, refresh } = useSession();
   const [results, setResults] = useState<DrawResultRow[]>([]);
   const [lastWinner, setLastWinner] = useState<{ name: string; prize: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
 
-  const refresh = () => {
-    if (sessionId) window.api.sessions.results(sessionId).then(setResults);
+  const loadResults = () => {
+    if (activeSessionId) window.api.sessions.results(activeSessionId).then(setResults);
   };
 
   useEffect(() => {
-    refresh();
-  }, [sessionId]);
+    loadResults();
+    setLastWinner(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   async function handleDraw() {
-    if (!sessionId) return;
+    if (!activeSessionId) return;
     setError(null);
     setDrawing(true);
     try {
-      const result = await window.api.draw.one(sessionId);
+      const result = await window.api.draw.one(activeSessionId);
       setLastWinner({ name: result.participantName, prize: result.prizeName });
-      refresh();
+      loadResults();
     } catch (e: any) {
       setError(e?.message ?? "Có lỗi khi quay số");
     } finally {
@@ -34,7 +37,21 @@ export default function DrawSessionDetail() {
   }
 
   function handleOpenPresent() {
-    if (sessionId) window.api.present.open(sessionId);
+    if (activeSessionId) window.api.present.open(activeSessionId);
+  }
+
+  async function handleUpdateOptions(allowDuplicatePrize: boolean, excludePreviousWinners: boolean) {
+    if (!activeSessionId) return;
+    await window.api.sessions.updateOptions({ id: activeSessionId, allowDuplicatePrize, excludePreviousWinners });
+    refresh();
+  }
+
+  if (!activeSession) {
+    return (
+      <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
+        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên quay số đầu tiên.
+      </p>
+    );
   }
 
   return (
@@ -42,12 +59,42 @@ export default function DrawSessionDetail() {
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-medium text-base-100">Điều khiển quay số</h1>
-          <p className="mt-1 text-sm text-base-400">{results.length} lượt đã quay trong phiên này</p>
+          <p className="mt-1 text-sm text-base-400">
+            Phiên "{activeSession.name}" · {results.length} lượt đã quay
+          </p>
         </div>
-        <Button variant="secondary" onClick={handleOpenPresent}>
-          Mở cửa sổ trình chiếu
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setShowOptions((v) => !v)}>
+            Tuỳ chọn phiên
+          </Button>
+          <Button variant="secondary" onClick={handleOpenPresent}>
+            Mở cửa sổ trình chiếu
+          </Button>
+        </div>
       </header>
+
+      {showOptions && (
+        <div className="mb-6 space-y-2 rounded-lg border border-base-800 bg-base-900 p-4">
+          <label className="flex items-center justify-between text-sm">
+            <span className="text-base-200">Cho phép trùng lặp giải</span>
+            <input
+              type="checkbox"
+              checked={!!activeSession.allow_duplicate_prize}
+              onChange={(e) => handleUpdateOptions(e.target.checked, !!activeSession.exclude_previous_winners)}
+              className="accent-gold-500"
+            />
+          </label>
+          <label className="flex items-center justify-between text-sm">
+            <span className="text-base-200">Loại trừ người đã trúng khỏi các lượt sau</span>
+            <input
+              type="checkbox"
+              checked={!!activeSession.exclude_previous_winners}
+              onChange={(e) => handleUpdateOptions(!!activeSession.allow_duplicate_prize, e.target.checked)}
+              className="accent-gold-500"
+            />
+          </label>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">

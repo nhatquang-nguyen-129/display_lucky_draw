@@ -4,7 +4,7 @@ const navItems = [
   { to: "/", label: "Tổng quan", icon: "grid" },
   { to: "/participants", label: "Người chơi", icon: "users" },
   { to: "/prizes", label: "Giải thưởng", icon: "gift" },
-  { to: "/sessions", label: "Phiên quay số", icon: "target" },
+  { to: "/draw", label: "Quay số", icon: "target" },
   { to: "/settings", label: "Cài đặt", icon: "settings" },
 ];
 

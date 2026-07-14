@@ -1,5 +1,6 @@
 export interface Participant {
   id: string;
+  session_id: string;
   code: string | null;
   name: string;
   phone: string | null;
@@ -12,6 +13,7 @@ export interface Participant {
 
 export interface Prize {
   id: string;
+  session_id: string;
   name: string;
   quantity: number;
   remaining: number;
@@ -26,6 +28,7 @@ export interface Session {
   allow_duplicate_prize: 0 | 1;
   exclude_previous_winners: 0 | 1;
   status: string;
+  landing_config: string | null;
   created_at: string;
 }
 
@@ -44,9 +47,9 @@ declare global {
   interface Window {
     api: {
       participants: {
-        list: () => Promise<Participant[]>;
+        list: (sessionId: string) => Promise<Participant[]>;
         create: (
-          data: Partial<Participant> & { name: string; extra?: Record<string, string> }
+          data: Partial<Participant> & { sessionId: string; name: string; extra?: Record<string, string> }
         ) => Promise<string>;
         update: (data: {
           id: string;
@@ -56,23 +59,32 @@ declare global {
           email?: string | null;
           extra?: Record<string, string>;
         }) => Promise<void>;
-        bulkImport: (rows: (Partial<Participant> & { extra?: Record<string, string> })[]) => Promise<number>;
+        bulkImport: (
+          sessionId: string,
+          rows: (Partial<Participant> & { extra?: Record<string, string> })[]
+        ) => Promise<number>;
         delete: (id: string) => Promise<void>;
         bulkDelete: (ids: string[]) => Promise<number>;
       };
       prizes: {
-        list: () => Promise<Prize[]>;
-        create: (data: { name: string; quantity: number; weight: number }) => Promise<string>;
+        list: (sessionId: string) => Promise<Prize[]>;
+        create: (data: { sessionId: string; name: string; quantity: number; weight: number }) => Promise<string>;
         delete: (id: string) => Promise<void>;
       };
       sessions: {
         list: () => Promise<Session[]>;
         create: (data: {
           name: string;
-          prizeIds: string[];
+          allowDuplicatePrize?: boolean;
+          excludePreviousWinners?: boolean;
+        }) => Promise<string>;
+        rename: (data: { id: string; name: string }) => Promise<void>;
+        updateOptions: (data: {
+          id: string;
           allowDuplicatePrize: boolean;
           excludePreviousWinners: boolean;
-        }) => Promise<string>;
+        }) => Promise<void>;
+        delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
       };
       draw: {
