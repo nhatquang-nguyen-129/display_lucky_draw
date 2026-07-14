@@ -1,66 +1,54 @@
-<p align="left">
-  <img src="assets/icon/readme.png" alt="KidsPlaza Logo" width="300"/>
-</p>
+# Lucky Draw Studio
 
-This repository contains an **Lucky Draw Application** designed for offline and event-based prize drawing, running on PC environments and built using **Electron**.
+App desktop quay số trúng thưởng, chạy hoàn toàn local (Electron + React + SQLite).
 
-The application enables organizers to configure prize structures, participant lists, draw rules, and display logic, ensuring transparency, repeatability, and operational stability during live events.
+## Đã có trong bản này
 
-The system is designed with a modular, maintainable architecture, allowing controlled feature expansion while remaining easy to deploy and operate on-site.
+- **Module 1 — Dữ liệu**: nhập người chơi thủ công hoặc import CSV/Excel (`src/pages/Participants.tsx`).
+  Kết nối Google Sheets mới có placeholder UI ở trang Cài đặt, chưa nối OAuth thật.
+- **Module 2 — Engine quay số**: cấu hình trọng số giải, tạo phiên với 2 tuỳ chọn
+  (cho phép trùng giải / loại người đã trúng), thuật toán weighted random ở
+  `electron/drawEngine.ts`, ghi log seed để sau này đối chiếu.
+- **Module 3 — Present mode**: cửa sổ trình chiếu riêng biệt (không phải drag-drop builder,
+  đang là placeholder tĩnh — sẽ thay bằng canvas kéo thả ở giai đoạn sau như đã thống nhất).
 
----
+## Cài đặt
 
-## Overview
+```bash
+npm install
+```
 
-> **This README documents the behavior and scope of the current development branch:**  
-> **`branch_2x`**
+## Chạy ở chế độ dev
 
-`branch_2x` represents the active **2.x.x development line**, where incremental features, framework enhancements, and non-breaking changes are implemented before being promoted to production (`main`).
+```bash
+npm run electron:dev
+```
 
----
+Lệnh này chạy song song Vite dev server (renderer) và Electron (main process),
+tự động mở cửa sổ chính. SQLite database được tạo tự động tại thư mục
+`userData` của hệ điều hành (VD trên macOS: `~/Library/Application Support/lucky-draw-app/lucky-draw.db`).
 
-## Deployment
+## Đóng gói thành file cài đặt
 
-current_branch → main → deploy
+```bash
+npm run package
+```
 
-| Branch | Purpose |
-|------|--------|
-| `main` | **Production** – stable, deployed pipeline |
-| `current_branch` | Active development for oldest version **x.x** (current branch) |
-| `development_branch` | Major architectural redesigns or framework rewrites |
+Kết quả nằm trong thư mục `release/`.
 
----
+## Lưu ý về `better-sqlite3`
 
-## Ownership
+Đây là native module, cần biên dịch theo đúng phiên bản Electron đang dùng.
+Nếu gặp lỗi `NODE_MODULE_VERSION` khi chạy, cài thêm và rebuild:
 
-```text
-This repository is maintained by the Digital Marketng Team at KidsPlaza.
+```bash
+npm install --save-dev electron-rebuild
+npx electron-rebuild
+```
 
-For questions, access requests, or contributions, please contact:
+## Việc cần làm tiếp theo
 
-- Internal: quang.nn@kidsplaza.vn  
-- External: nhatquang.nguyen.129@gmail.com  
-Or reach out via the internal Slack channel #data-engineering
-
-⚠️ Disclaimer:
-
-This project is intended for **internal use only**.
-
-It contains custom business logic tailored specifically to KidsPlaza’s retail data structures, sales processes, reconciliation rules, and naming conventions.  
-Do **not** reuse, replicate, or adapt this codebase outside of KidsPlaza without prior approval.
-
----
-
-📄 License
-
-All content and source code in this repository is **proprietary to KidsPlaza**.
-
-Redistribution, publication, or open-sourcing of any part of this project is strictly prohibited without explicit written consent from the company.
-
----
-
-🤖 AI-Assisted Development
-
-This repository includes code, documentation, and architectural guidance that has been partially developed or enhanced using AI tools (e.g. GitHub Copilot, ChatGPT by OpenAI, Claude Code by Anthropic), under the supervision of the development team.
-
-All AI-assisted output has been reviewed, validated, and adapted to meet KidsPlaza’s internal engineering and production standards.
+1. Nối OAuth2 Google Sheets thật (trang Settings đang là placeholder).
+2. Xây engine kéo thả cho Present mode (hiện là màn hình tĩnh hiển thị kết quả mới nhất).
+3. Thêm animation quay số (spin effect) trước khi hiện kết quả.
+4. Thêm xác thực/khoá màn hình cấu hình trong lúc trình chiếu để tránh bấm nhầm.

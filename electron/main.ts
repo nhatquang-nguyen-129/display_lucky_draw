@@ -3,8 +3,17 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { drawOne } from "./drawEngine";
+import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 
-const isDev = process.env.NODE_ENV === "development";
+// Icon dùng lúc runtime (khác với build.icon trong package.json — đó là icon đóng gói
+// vào file .app/.exe lúc build, còn icon này để BrowserWindow tự set icon cửa sổ/taskbar
+// ngay cả khi chưa build). Dev đọc trực tiếp từ thư mục build/ ở gốc project; production
+// đọc từ resources vì build/ không nằm trong app.asar (được copy qua extraResources).
+function getIconPath(): string {
+  return IS_DEV
+    ? path.join(process.cwd(), "build", "icon.png")
+    : path.join(process.resourcesPath, "icon.png");
+}
 
 let mainWindow: BrowserWindow | null = null;
 let presentWindow: BrowserWindow | null = null;
@@ -16,6 +25,8 @@ function createMainWindow() {
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: "#FFFFFF",
+    title: getWindowTitle(),
+    icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -23,7 +34,11 @@ function createMainWindow() {
     },
   });
 
-  if (isDev) {
+  // Khoá tiêu đề cửa sổ theo config trung tâm — không cho trang web (document.title
+  // từ index.html hoặc React) ghi đè lại tiêu đề đã set.
+  mainWindow.on("page-title-updated", (e) => e.preventDefault());
+
+  if (IS_DEV) {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
@@ -45,6 +60,7 @@ function openPresentWindow(sessionId: string) {
     width: 1280,
     height: 720,
     backgroundColor: "#FFFFFF",
+    icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -53,7 +69,7 @@ function openPresentWindow(sessionId: string) {
   });
 
   const hash = `#/present/${sessionId}`;
-  if (isDev) {
+  if (IS_DEV) {
     presentWindow.loadURL(`http://localhost:5173/${hash}`);
   } else {
     presentWindow.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
@@ -65,6 +81,14 @@ function openPresentWindow(sessionId: string) {
 }
 
 app.whenReady().then(() => {
+  app.setName(APP_NAME);
+
+  // macOS: BrowserWindow "icon" option không đổi icon Dock lúc chạy `electron .` ở dev
+  // (chỉ có tác dụng khi đã đóng gói thành .app) — cần set thủ công qua app.dock.
+  if (process.platform === "darwin" && IS_DEV && app.dock) {
+    app.dock.setIcon(getIconPath());
+  }
+
   createMainWindow();
 
   app.on("activate", () => {
