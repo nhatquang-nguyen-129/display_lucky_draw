@@ -76,22 +76,26 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-/* ---------------- IPC: Participants ---------------- */
+/* ---------------- IPC: Participants (thuộc về 1 session) ---------------- */
 
 type ExtraData = Record<string, string>;
 
-ipcMain.handle("participants:list", () => {
-  return db.prepare(`SELECT * FROM participants ORDER BY created_at DESC`).all();
+ipcMain.handle("participants:list", (_e, sessionId: string) => {
+  return db.prepare(`SELECT * FROM participants WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
 });
 
 ipcMain.handle(
   "participants:create",
-  (_e, data: { name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }) => {
+  (
+    _e,
+    data: { sessionId: string; name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }
+  ) => {
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO participants (id, name, code, phone, email, extra_data) VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO participants (id, session_id, name, code, phone, email, extra_data) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
+      data.sessionId,
       data.name,
       data.code ?? null,
       data.phone ?? null,
@@ -130,9 +134,14 @@ ipcMain.handle(
 
 ipcMain.handle(
   "participants:bulkImport",
-  (_e, rows: Array<{ name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }>) => {
+  (
+    _e,
+    sessionId: string,
+    rows: Array<{ name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }>
+  ) => {
     const insert = db.prepare(
-      `INSERT OR IGNORE INTO participants (id, name, code, phone, email, extra_data, source) VALUES (?, ?, ?, ?, ?, ?, 'import')`
+      `INSERT OR IGNORE INTO participants (id, session_id, name, code, phone, email, extra_data, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'import')`
     );
     const tx = db.transaction((items: typeof rows) => {
       let inserted = 0;
@@ -140,6 +149,7 @@ ipcMain.handle(
         if (!row.name) continue;
         const result = insert.run(
           randomUUID(),
+          sessionId,
           row.name,
           row.code ?? null,
           row.phone ?? null,
@@ -168,47 +178,71 @@ ipcMain.handle("participants:bulkDelete", (_e, ids: string[]) => {
   return tx(ids);
 });
 
-/* ---------------- IPC: Prizes ---------------- */
+/* ---------------- IPC: Prizes (thuộc về 1 session) ---------------- */
 
-ipcMain.handle("prizes:list", () => {
-  return db.prepare(`SELECT * FROM prizes ORDER BY created_at DESC`).all();
+ipcMain.handle("prizes:list", (_e, sessionId: string) => {
+  return db.prepare(`SELECT * FROM prizes WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
 });
 
-ipcMain.handle("prizes:create", (_e, data: { name: string; quantity: number; weight: number }) => {
-  const id = randomUUID();
-  db.prepare(
-    `INSERT INTO prizes (id, name, quantity, remaining, weight) VALUES (?, ?, ?, ?, ?)`
-  ).run(id, data.name, data.quantity, data.quantity, data.weight);
-  return id;
-});
+ipcMain.handle(
+  "prizes:create",
+  (_e, data: { sessionId: string; name: string; quantity: number; weight: number }) => {
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO prizes (id, session_id, name, quantity, remaining, weight) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, data.sessionId, data.name, data.quantity, data.quantity, data.weight);
+    return id;
+  }
+);
 
 ipcMain.handle("prizes:delete", (_e, id: string) => {
   db.prepare(`DELETE FROM prizes WHERE id = ?`).run(id);
 });
 
-/* ---------------- IPC: Sessions ---------------- */
+/* ---------------- IPC: Sessions (= tab, đơn vị chứa 1 sự kiện quay số độc lập) ---------------- */
 
 ipcMain.handle("sessions:list", () => {
-  return db.prepare(`SELECT * FROM sessions ORDER BY created_at DESC`).all();
+  return db.prepare(`SELECT * FROM sessions ORDER BY created_at ASC`).all();
 });
 
 ipcMain.handle(
   "sessions:create",
-  (_e, data: { name: string; prizeIds: string[]; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) => {
+  (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => {
     const id = randomUUID();
-    const tx = db.transaction(() => {
-      db.prepare(
-        `INSERT INTO sessions (id, name, allow_duplicate_prize, exclude_previous_winners, status)
-         VALUES (?, ?, ?, ?, 'draft')`
-      ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, data.excludePreviousWinners ? 1 : 0);
-
-      const link = db.prepare(`INSERT INTO session_prizes (session_id, prize_id) VALUES (?, ?)`);
-      for (const prizeId of data.prizeIds) link.run(id, prizeId);
-    });
-    tx();
+    db.prepare(
+      `INSERT INTO sessions (id, name, allow_duplicate_prize, exclude_previous_winners, status)
+       VALUES (?, ?, ?, ?, 'draft')`
+    ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, data.excludePreviousWinners === false ? 0 : 1);
     return id;
   }
 );
+
+ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => {
+  db.prepare(`UPDATE sessions SET name = ? WHERE id = ?`).run(data.name, data.id);
+});
+
+ipcMain.handle(
+  "sessions:updateOptions",
+  (_e, data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) => {
+    db.prepare(`UPDATE sessions SET allow_duplicate_prize = ?, exclude_previous_winners = ? WHERE id = ?`).run(
+      data.allowDuplicatePrize ? 1 : 0,
+      data.excludePreviousWinners ? 1 : 0,
+      data.id
+    );
+  }
+);
+
+// Xoá tab: xoá luôn toàn bộ participants/prizes/kết quả quay thuộc riêng session đó
+// (an toàn vì dữ liệu này KHÔNG được chia sẻ với session khác trong mô hình mới)
+ipcMain.handle("sessions:delete", (_e, id: string) => {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM draw_results WHERE session_id = ?`).run(id);
+    db.prepare(`DELETE FROM participants WHERE session_id = ?`).run(id);
+    db.prepare(`DELETE FROM prizes WHERE session_id = ?`).run(id);
+    db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+  });
+  tx();
+});
 
 ipcMain.handle("sessions:results", (_e, sessionId: string) => {
   return db

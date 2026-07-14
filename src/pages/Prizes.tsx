@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
 import Button from "@/components/Button";
 import Modal from "@/components/Modal";
+import { useSession } from "@/context/SessionContext";
 import { Prize } from "@/types";
 
 export default function Prizes() {
+  const { activeSessionId, activeSession } = useSession();
   const [items, setItems] = useState<Prize[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", quantity: 1, weight: 1 });
 
-  const refresh = () => window.api.prizes.list().then(setItems);
+  const refresh = () => {
+    if (activeSessionId) window.api.prizes.list(activeSessionId).then(setItems);
+    else setItems([]);
+  };
 
   useEffect(() => {
     refresh();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   async function handleAdd() {
-    if (!form.name.trim()) return;
-    await window.api.prizes.create(form);
+    if (!form.name.trim() || !activeSessionId) return;
+    await window.api.prizes.create({ ...form, sessionId: activeSessionId });
     setForm({ name: "", quantity: 1, weight: 1 });
     setShowAdd(false);
     refresh();
@@ -29,13 +35,21 @@ export default function Prizes() {
 
   const totalWeight = items.reduce((s, p) => s + p.weight, 0);
 
+  if (!activeSession) {
+    return (
+      <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
+        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên đầu tiên.
+      </p>
+    );
+  }
+
   return (
     <div>
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-medium text-base-100">Giải thưởng</h1>
           <p className="mt-1 text-sm text-base-400">
-            Trọng số quyết định tỷ lệ trúng — giải trọng số càng thấp thì càng hiếm.
+            Phiên "{activeSession.name}" — trọng số quyết định tỷ lệ trúng, giải trọng số càng thấp thì càng hiếm.
           </p>
         </div>
         <Button onClick={() => setShowAdd(true)}>+ Thêm giải</Button>

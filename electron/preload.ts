@@ -2,9 +2,15 @@ import { contextBridge, ipcRenderer } from "electron";
 
 const api = {
   participants: {
-    list: () => ipcRenderer.invoke("participants:list"),
-    create: (data: { name: string; code?: string; phone?: string; email?: string; extra?: Record<string, string> }) =>
-      ipcRenderer.invoke("participants:create", data),
+    list: (sessionId: string) => ipcRenderer.invoke("participants:list", sessionId),
+    create: (data: {
+      sessionId: string;
+      name: string;
+      code?: string;
+      phone?: string;
+      email?: string;
+      extra?: Record<string, string>;
+    }) => ipcRenderer.invoke("participants:create", data),
     update: (data: {
       id: string;
       name: string;
@@ -13,24 +19,24 @@ const api = {
       email?: string | null;
       extra?: Record<string, string>;
     }) => ipcRenderer.invoke("participants:update", data),
-    bulkImport: (rows: any[]) => ipcRenderer.invoke("participants:bulkImport", rows),
+    bulkImport: (sessionId: string, rows: any[]) => ipcRenderer.invoke("participants:bulkImport", sessionId, rows),
     delete: (id: string) => ipcRenderer.invoke("participants:delete", id),
     bulkDelete: (ids: string[]) => ipcRenderer.invoke("participants:bulkDelete", ids),
   },
   prizes: {
-    list: () => ipcRenderer.invoke("prizes:list"),
-    create: (data: { name: string; quantity: number; weight: number }) =>
+    list: (sessionId: string) => ipcRenderer.invoke("prizes:list", sessionId),
+    create: (data: { sessionId: string; name: string; quantity: number; weight: number }) =>
       ipcRenderer.invoke("prizes:create", data),
     delete: (id: string) => ipcRenderer.invoke("prizes:delete", id),
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list"),
-    create: (data: {
-      name: string;
-      prizeIds: string[];
-      allowDuplicatePrize: boolean;
-      excludePreviousWinners: boolean;
-    }) => ipcRenderer.invoke("sessions:create", data),
+    create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
+      ipcRenderer.invoke("sessions:create", data),
+    rename: (data: { id: string; name: string }) => ipcRenderer.invoke("sessions:rename", data),
+    updateOptions: (data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) =>
+      ipcRenderer.invoke("sessions:updateOptions", data),
+    delete: (id: string) => ipcRenderer.invoke("sessions:delete", id),
     results: (sessionId: string) => ipcRenderer.invoke("sessions:results", sessionId),
   },
   draw: {

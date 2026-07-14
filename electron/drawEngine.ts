@@ -26,26 +26,23 @@ export function drawOne({ sessionId }: DrawOptions): DrawResult {
     .get(sessionId) as any;
   if (!session) throw new Error("Không tìm thấy phiên quay số");
 
-  // Lấy danh sách giải còn số lượng trong phiên này
+  // Lấy danh sách giải còn số lượng THUỘC VỀ session này (không còn join qua session_prizes)
   const prizes = db
-    .prepare(
-      `SELECT p.* FROM prizes p
-       JOIN session_prizes sp ON sp.prize_id = p.id
-       WHERE sp.session_id = ? AND p.remaining > 0`
-    )
+    .prepare(`SELECT * FROM prizes WHERE session_id = ? AND remaining > 0`)
     .all(sessionId) as any[];
 
   if (prizes.length === 0) {
     throw new Error("Không còn giải nào khả dụng trong phiên này");
   }
 
-  // Lấy danh sách participant khả dụng
-  let participantQuery = `SELECT * FROM participants WHERE status = 'active'`;
+  // Lấy danh sách participant khả dụng — CHỈ trong phạm vi session này, không lấy toàn bộ pool global
+  let participantQuery = `SELECT * FROM participants WHERE session_id = ? AND status = 'active'`;
+  const params: any[] = [sessionId];
   if (session.exclude_previous_winners) {
-    participantQuery += `
-      AND id NOT IN (SELECT participant_id FROM draw_results WHERE session_id = '${sessionId}')`;
+    participantQuery += ` AND id NOT IN (SELECT participant_id FROM draw_results WHERE session_id = ?)`;
+    params.push(sessionId);
   }
-  const participants = db.prepare(participantQuery).all() as any[];
+  const participants = db.prepare(participantQuery).all(...params) as any[];
 
   if (participants.length === 0) {
     throw new Error("Không còn người chơi nào khả dụng để quay");
