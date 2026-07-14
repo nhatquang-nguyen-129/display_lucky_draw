@@ -40,13 +40,13 @@
   "build": {
     "appId": "com.yourcompany.luckydraw",
     "productName": "Lucky Draw Studio",
-    "icon": "build/icon.png",
+    "icon": "assets/icon/app-icon.png",
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
     ],
     "extraResources": [
-      { "from": "build/icon.png", "to": "icon.png" }
+      { "from": "assets/icon/app-icon.png", "to": "app-icon.png" }
     ],
     "directories": {
       "output": "release"
