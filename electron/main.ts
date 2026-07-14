@@ -11,8 +11,8 @@ import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 // đọc từ resources vì build/ không nằm trong app.asar (được copy qua extraResources).
 function getIconPath(): string {
   return IS_DEV
-    ? path.join(process.cwd(), "build", "icon.png")
-    : path.join(process.resourcesPath, "icon.png");
+    ? path.join(process.cwd(), "assets", "icon", "app-icon.png")
+    : path.join(process.resourcesPath, "app-icon.png");
 }
 
 let mainWindow: BrowserWindow | null = null;
