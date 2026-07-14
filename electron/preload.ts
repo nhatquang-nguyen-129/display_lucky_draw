@@ -25,8 +25,33 @@ const api = {
   },
   prizes: {
     list: (sessionId: string) => ipcRenderer.invoke("prizes:list", sessionId),
-    create: (data: { sessionId: string; name: string; quantity: number; weight: number }) =>
-      ipcRenderer.invoke("prizes:create", data),
+    create: (data: {
+      sessionId: string;
+      code?: string;
+      name: string;
+      category?: string;
+      status?: string;
+      quantity: number;
+      weight: number;
+      allowDuplicateWithOtherPrizes?: boolean;
+      allowDuplicateWithSamePrize?: boolean;
+      maxWinCount?: number;
+      displayImage?: string | null;
+    }) => ipcRenderer.invoke("prizes:create", data),
+    update: (data: {
+      id: string;
+      sessionId: string;
+      code?: string;
+      name: string;
+      category?: string;
+      status?: string;
+      quantity: number;
+      weight: number;
+      allowDuplicateWithOtherPrizes?: boolean;
+      allowDuplicateWithSamePrize?: boolean;
+      maxWinCount?: number;
+      displayImage?: string | null;
+    }) => ipcRenderer.invoke("prizes:update", data),
     delete: (id: string) => ipcRenderer.invoke("prizes:delete", id),
   },
   sessions: {

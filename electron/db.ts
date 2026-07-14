@@ -39,10 +39,17 @@ CREATE TABLE IF NOT EXISTS participants (
 CREATE TABLE IF NOT EXISTS prizes (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
+  code TEXT,
   name TEXT NOT NULL,
+  category TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
   quantity INTEGER NOT NULL DEFAULT 1,
   remaining INTEGER NOT NULL DEFAULT 1,
   weight REAL NOT NULL DEFAULT 1,
+  allow_duplicate_with_other_prizes INTEGER NOT NULL DEFAULT 1,
+  allow_duplicate_with_same_prize INTEGER NOT NULL DEFAULT 0,
+  max_win_count INTEGER NOT NULL DEFAULT 1,
+  display_image TEXT,
   image_path TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -139,3 +146,25 @@ function migrateToPerSessionData() {
 }
 
 migrateToPerSessionData();
+
+/**
+ * Migration: thêm các cột thiết kế giải thưởng mới vào DB cũ đã tồn tại trước đó
+ * (code, category, status, 2 cờ trùng lặp, max_win_count, display_image).
+ * An toàn khi chạy nhiều lần — chỉ ALTER cột nào thực sự chưa có, giữ nguyên
+ * quantity/remaining/weight đang có sẵn.
+ */
+function migratePrizeFields() {
+  const cols = (db.prepare(`PRAGMA table_info(prizes)`).all() as { name: string }[]).map((c) => c.name);
+  const addIfMissing = (name: string, ddl: string) => {
+    if (!cols.includes(name)) db.exec(`ALTER TABLE prizes ADD COLUMN ${ddl}`);
+  };
+  addIfMissing("code", "code TEXT");
+  addIfMissing("category", "category TEXT");
+  addIfMissing("status", "status TEXT NOT NULL DEFAULT 'active'");
+  addIfMissing("allow_duplicate_with_other_prizes", "allow_duplicate_with_other_prizes INTEGER NOT NULL DEFAULT 1");
+  addIfMissing("allow_duplicate_with_same_prize", "allow_duplicate_with_same_prize INTEGER NOT NULL DEFAULT 0");
+  addIfMissing("max_win_count", "max_win_count INTEGER NOT NULL DEFAULT 1");
+  addIfMissing("display_image", "display_image TEXT");
+}
+
+migratePrizeFields();
