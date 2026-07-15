@@ -1,24 +1,38 @@
-# Hướng dẫn Setup Môi trường Local — Lucky Draw Studio
+# Local Setup for Lucky Draw Studio
+
+## Purpose
 
 App desktop Electron + React + SQLite, chạy hoàn toàn offline. Tài liệu này hướng dẫn cài đặt môi trường từ đầu đến lúc chạy được `npm run electron:dev`, kèm các lỗi thường gặp.
 
 ---
 
+## Prequisites
 
+### General
 
-# Lucky Draw Studio
+- Git
 
-App desktop quay số trúng thưởng, chạy hoàn toàn local (Electron + React + SQLite).
+```bash
+https://git-scm.com/downloads
+```
 
-## Đã có trong bản này
+- Node.js 20.x LTS
 
-- **Module 1 — Dữ liệu**: nhập người chơi thủ công hoặc import CSV/Excel (`src/pages/Participants.tsx`).
-  Kết nối Google Sheets mới có placeholder UI ở trang Cài đặt, chưa nối OAuth thật.
-- **Module 2 — Engine quay số**: cấu hình trọng số giải, tạo phiên với 2 tuỳ chọn
-  (cho phép trùng giải / loại người đã trúng), thuật toán weighted random ở
-  `electron/drawEngine.ts`, ghi log seed để sau này đối chiếu.
-- **Module 3 — Present mode**: cửa sổ trình chiếu riêng biệt (không phải drag-drop builder,
-  đang là placeholder tĩnh — sẽ thay bằng canvas kéo thả ở giai đoạn sau như đã thống nhất).
+- npm 10.x (bundled with Node.js)
+
+- Python 3.11.x
+
+### Windows
+
+- Visual Studio Build Tools with Desktop development with C+
+
+### MacOS
+
+- Xcode Command Line Tools native build tools
+
+### Linux
+
+- build-essential for Linux
 
 ## Cài đặt
 
