@@ -22,11 +22,15 @@ https://git-scm.com/downloads
 git --version
 ```
 
-### NodeJS NVM
+### NodeJS 20 LTS
 
-- Using **NVM Node Version Manager** is strongly recommended
+- Using **Node.js 20 LTS** for development and testing
 
-- Instal NodeJS NVM for MacOS
+- Using **NVM Node Version Manager** is strongly recommended instead of installing Node.js directly
+
+- Using **NVM** to easily switch between multiple Node.js versions installed
+
+- **MacOS**: Install NodeJS NVM with Homebrew
 
 ```bash
 brew install nvm
@@ -42,20 +46,20 @@ nvm install 20
 nvm use 20
 ```
 
-#### Windows
+- **Windows**: Download the NodeJS NVM installer
 
-Download **nvm-windows**:
-
+```bash
 https://github.com/coreybutler/nvm-windows/releases
+```
 
-After installation:
+- **Windows**: Install NodeJS NVM
 
-```powershell
+```bash
 nvm install 20
 nvm use 20
 ```
 
-#### Linux
+- **Linux**: Install NodeJS NVM
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
@@ -65,24 +69,64 @@ source ~/.bashrc
 nvm install 20
 nvm use 20
 ```
+- Verify NodeJS versions
 
-- Node.js 20.x LTS
+```bash
+node -v
+npm -v
+```
 
-- npm 10.x (bundled with Node.js)
+---
 
-- Python 3.11.x
+### Python 3.11
 
-### Windows 
+- Download the official installer:
+```bash
+https://www.python.org/downloads/release/python-311/
+```
 
-- Visual Studio Build Tools with Desktop development with C+
+- **Windows:** Enable `Add Python to PATH`
 
-### MacOS
+- **macOS:** Use the official installer from Python.org
 
-- Xcode Command Line Tools native build tools
+- **Linux:** Install using your package manager if Python 3.11 is available
 
-### Linux
+### Kiểm tra môi trường
 
-- build-essential for Linux
+- Verify Python 3.11.x versions
+```bash
+python3.11 --version
+```
+
+---
+
+### Native Build Tools
+
+--- These tools are required to compile native Node.js modules such as `better-sqlite3`.
+
+--- **MacOS**: Install `XCode
+
+```bash
+xcode-select --install
+```
+
+--- **Windows**: Download the offilicate Visual Studio Build Tools installer with Desktop development with C++ feature
+
+```bash
+https://visualstudio.microsoft.com/downloads/
+```
+
+--- **Ubuntu/Debian**: Install Linux build-essential
+
+```bash
+sudo apt update
+
+sudo apt install -y \
+build-essential \
+python3 \
+python3-pip \
+git
+```
 
 ## Cài đặt
 
@@ -118,131 +162,6 @@ npm install --save-dev electron-rebuild
 npx electron-rebuild
 ```
 
-## Việc cần làm tiếp theo
-
-1. Nối OAuth2 Google Sheets thật (trang Settings đang là placeholder).
-2. Xây engine kéo thả cho Present mode (hiện là màn hình tĩnh hiển thị kết quả mới nhất).
-3. Thêm animation quay số (spin effect) trước khi hiện kết quả.
-4. Thêm xác thực/khoá màn hình cấu hình trong lúc trình chiếu để tránh bấm nhầm.
-
-
-## 1. Yêu cầu hệ thống
-
-| Thành phần         | Phiên bản khuyến nghị    | Ghi chú                                                                                                                                         |
-| ------------------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js            | **20.x LTS**             | Tránh dùng bản mới nhất (VD 24.x) — native module như `better-sqlite3` thường chưa có prebuilt binary cho bản Node quá mới, dễ gây lỗi compile |
-| npm                | đi kèm Node 20           | npm 10.x trở lên không còn hỗ trợ `npm config set python`                                                                                       |
-| Python             | **3.11.x (khuyến nghị)** | Cài từ Python.org. Không dùng Python 3.12+ nếu project còn dùng `node-gyp` cũ vì `distutils` đã bị xoá                                         |
-| Git                | bất kỳ bản mới           |                                                                                                                                                 |
-| Build tools native | xem theo OS bên dưới     | Cần để compile native module như `better-sqlite3`                                                                                               |
-
----
-
-## 2. Cài đặt theo hệ điều hành
-
-### macOS
-
-### 2.1 Cài Xcode Command Line Tools
-
-```bash
-xcode-select --install
-```
-
-Đây là bước bắt buộc để compile các native module.
-
----
-
-### 2.2 Cài nvm
-
-```bash
-brew install nvm
-
-mkdir -p ~/.nvm
-
-echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc
-echo '[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"' >> ~/.zshrc
-
-source ~/.zshrc
-```
-
----
-
-### 2.3 Cài Node.js 20 LTS
-
-```bash
-nvm install 20
-nvm use 20
-
-node -v
-npm -v
-```
-
-Kết quả mong muốn:
-
-```text
-v20.x.x
-10.x.x
-```
-
----
-
-### 2.4 Cài Python 3.11
-
-Khuyến nghị cài bằng installer chính thức của Python.org:
-
-https://www.python.org/downloads/release/python-311/
-
-Sau khi cài xong, kiểm tra:
-
-```bash
-python3.11 --version
-```
-
-Kết quả mong muốn:
-
-```text
-Python 3.11.x
-```
-
----
-
-### Windows
-
-```powershell
-# Cài Node 20 LTS qua nvm-windows
-# https://github.com/coreybutler/nvm-windows/releases
-
-nvm install 20
-nvm use 20
-
-node -v
-```
-
-Cài Visual Studio Build Tools:
-
-- Mở Visual Studio Installer
-- Chọn **Desktop development with C++**
-
----
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt update
-
-sudo apt install -y \
-build-essential \
-python3 \
-python3-pip \
-git
-
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-
-source ~/.bashrc
-
-nvm install 20
-nvm use 20
-```
 
 ---
 
@@ -261,21 +180,7 @@ rm package-lock.json
 
 ---
 
-### Kiểm tra môi trường
 
-```bash
-node -v
-npm -v
-python3.11 --version
-```
-
-Ví dụ:
-
-```text
-Node v20.x.x
-npm 10.x.x
-Python 3.11.x
-```
 
 ---
 
@@ -382,87 +287,297 @@ Muốn reset dữ liệu:
 
 ---
 
-## 6. Xử lý lỗi thường gặp
+## Troubleshooting
 
 ---
 
-### Lỗi
+### ModuleNotFoundError: No module named 'distutils'
+
+- Python 3.12+ removed the `distutils` module but older versions of `node-gyp` still depend on it.
 
 ```text
 ModuleNotFoundError: No module named 'distutils'
 ```
 
-Nguyên nhân:
-
-- Đang dùng Python 3.12 hoặc 3.13
-- `node-gyp` cũ vẫn cần module `distutils`
-
-Khắc phục:
-
-Đảm bảo đang dùng Python 3.11
+- Verify that Python 3.11 is being used:
 
 ```bash
 python3.11 --version
 ```
 
-Export Python:
+- Export Python before installing dependencies:
 
 ```bash
 export PYTHON=$(which python3.11)
 ```
 
-Xoá cache:
+- Remove previous installation artifacts:
 
 ```bash
 rm -rf node_modules
 rm package-lock.json
 ```
 
-Cài lại:
+- Install dependencies again:
 
 ```bash
 npm install
 ```
 
-Nếu vẫn lỗi:
+- If the issue persists:
 
 ```bash
 npm install -g node-gyp@latest
-```
-
-rồi chạy lại:
-
-```bash
 npm install
 ```
 
 ---
 
-### Lỗi
+## python is not a valid npm option
+
+### Error
 
 ```text
 python is not a valid npm option
 ```
 
-Nguyên nhân:
+### Cause
 
-npm 10 trở lên đã bỏ hỗ trợ:
+npm 10+ removed support for:
 
 ```bash
 npm config set python ...
 ```
 
-Giải pháp:
+### Solution
 
-Không dùng `npm config`.
+Do not configure Python through npm.
 
-Thay bằng:
+Instead:
 
 ```bash
 export PYTHON=$(which python3.11)
+npm install
 ```
 
-rồi chạy:
+---
+
+## NODE_MODULE_VERSION mismatch
+
+### Error
+
+```text
+Error: NODE_MODULE_VERSION mismatch
+```
+
+### Cause
+
+Native modules (such as `better-sqlite3`) were compiled against a different Node.js or Electron runtime.
+
+### Solution
+
+Rebuild native modules:
+
+```bash
+npx electron-rebuild
+```
+
+If the problem remains:
+
+```bash
+rm -rf node_modules
+rm package-lock.json
+
+npm install
+npx electron-rebuild
+```
+
+---
+
+## No prebuilt binaries found
+
+### Error
+
+```text
+No prebuilt binaries found
+```
+
+### Cause
+
+The installed Node.js version is newer than the version currently supported by `better-sqlite3`.
+
+### Solution
+
+Use Node.js 20 LTS:
+
+```bash
+nvm use 20
+```
+
+Verify:
+
+```bash
+node -v
+```
+
+Expected:
+
+```text
+v20.x.x
+```
+
+Then reinstall:
+
+```bash
+rm -rf node_modules
+npm install
+```
+
+---
+
+## gyp ERR! build error
+
+### Error
+
+```text
+gyp ERR! build error
+```
+
+### Cause
+
+Native build tools are missing or incorrectly installed.
+
+### Solution
+
+**macOS**
+
+```bash
+xcode-select --install
+```
+
+**Windows**
+
+Install **Visual Studio Build Tools** with:
+
+- Desktop development with C++
+
+**Ubuntu / Debian**
+
+```bash
+sudo apt install build-essential
+```
+
+---
+
+## Electron shows a blank window
+
+### Cause
+
+The Vite development server was not fully started before Electron attempted to load it.
+
+### Solution
+
+Restart the development server:
+
+```bash
+npm run electron:dev
+```
+
+If the issue continues, ensure port **5173** is available:
+
+```bash
+lsof -ti:5173 | xargs kill -9
+```
+
+Start again:
+
+```bash
+npm run electron:dev
+```
+
+---
+
+## Port 5173 is already in use
+
+### Error
+
+```text
+EADDRINUSE
+```
+
+### Cause
+
+Another Vite instance is already running.
+
+### Solution
+
+Terminate the process using port 5173.
+
+**macOS / Linux**
+
+```bash
+lsof -ti:5173 | xargs kill -9
+```
+
+**Windows**
+
+```cmd
+netstat -ano | findstr :5173
+taskkill /PID <PID> /F
+```
+
+---
+
+## Electron command not found
+
+### Error
+
+```text
+electron: command not found
+```
+
+### Cause
+
+Project dependencies have not been installed.
+
+### Solution
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Then run:
+
+```bash
+npm run electron:dev
+```
+
+---
+
+## Cannot find module 'better-sqlite3'
+
+### Error
+
+```text
+Cannot find module 'better-sqlite3'
+```
+
+### Cause
+
+The package was not installed successfully or the installation was interrupted.
+
+### Solution
+
+Remove existing dependencies:
+
+```bash
+rm -rf node_modules
+rm package-lock.json
+```
+
+Install again:
 
 ```bash
 npm install
@@ -470,70 +585,118 @@ npm install
 
 ---
 
-### Lỗi
+## npm install hangs or fails
 
-```text
-NODE_MODULE_VERSION mismatch
-```
+### Cause
 
-Nguyên nhân:
+Possible reasons include:
 
-Native module chưa rebuild cho Electron.
+- Network issues
+- Corrupted npm cache
+- Interrupted installation
 
-Khắc phục:
+### Solution
+
+Clear the npm cache:
 
 ```bash
-npx electron-rebuild
+npm cache clean --force
+```
+
+Then reinstall:
+
+```bash
+rm -rf node_modules
+rm package-lock.json
+
+npm install
 ```
 
 ---
 
-### Lỗi
+## Permission denied
+
+### Error
 
 ```text
-No prebuilt binaries found
+EACCES
+Permission denied
 ```
 
-Nguyên nhân:
+### Cause
 
-Node.js quá mới nên `better-sqlite3` chưa có binary tương thích.
+Insufficient file permissions.
 
-Khắc phục:
+### Solution
 
-Dùng Node 20 LTS.
+Avoid using `sudo` with npm whenever possible.
 
-```bash
-nvm use 20
-```
+Ensure your project directory is writable by your current user.
 
 ---
 
-### Electron mở màn hình trắng
+## Database is locked
 
-Thông thường do Vite Dev Server chưa kịp khởi động.
+### Error
 
-Thử:
+```text
+SQLITE_BUSY
+database is locked
+```
+
+### Cause
+
+Another instance of the application is currently accessing the SQLite database.
+
+### Solution
+
+- Close all running instances of Lucky Draw Studio.
+- Restart the application.
+
+If necessary, remove the database file and allow it to be recreated.
+
+---
+
+## Changes are not reflected
+
+### Cause
+
+Old build artifacts or cached files are being used.
+
+### Solution
+
+Remove build artifacts:
+
+```bash
+rm -rf dist
+rm -rf dist-electron
+```
+
+Then rebuild:
+
+```bash
+npm run build
+```
+
+or restart development:
 
 ```bash
 npm run electron:dev
 ```
 
-lần nữa.
-
 ---
 
-## 7. Sau khi setup xong
+## Still having issues?
 
-Nếu `npm run electron:dev` chạy ổn định thì môi trường đã sẵn sàng.
+Please include the following information when reporting a problem:
 
-Tiếp theo có thể:
-
-- Build production
-- Đóng gói `.app`
-- Đóng gói `.exe`
-- Ký ứng dụng (code signing)
-- Tạo installer
-- Phát hành phiên bản mới
+- Operating System
+- Node.js version (`node -v`)
+- npm version (`npm -v`)
+- Python version (`python3.11 --version`)
+- Electron version
+- Complete error message
+- Steps to reproduce the issue
 
 
 Giải phóng Localhost trước khi chạy: 
