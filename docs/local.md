@@ -8,12 +8,62 @@ App desktop Electron + React + SQLite, chạy hoàn toàn offline. Tài liệu n
 
 ## Prequisites
 
-### General
+### Git
 
-- Git
+- Download and install Git:
 
 ```bash
 https://git-scm.com/downloads
+```
+
+- Verify the installation:
+
+```bash
+git --version
+```
+
+### NodeJS NVM
+
+- Using **NVM Node Version Manager** is strongly recommended
+
+- Instal NodeJS NVM for MacOS
+
+```bash
+brew install nvm
+
+mkdir -p ~/.nvm
+
+echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc
+echo '[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"' >> ~/.zshrc
+
+source ~/.zshrc
+
+nvm install 20
+nvm use 20
+```
+
+#### Windows
+
+Download **nvm-windows**:
+
+https://github.com/coreybutler/nvm-windows/releases
+
+After installation:
+
+```powershell
+nvm install 20
+nvm use 20
+```
+
+#### Linux
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+
+source ~/.bashrc
+
+nvm install 20
+nvm use 20
 ```
 
 - Node.js 20.x LTS
@@ -22,7 +72,7 @@ https://git-scm.com/downloads
 
 - Python 3.11.x
 
-### Windows
+### Windows 
 
 - Visual Studio Build Tools with Desktop development with C+
 
