@@ -1,14 +1,14 @@
 # Local Setup for Lucky Draw Studio
 
-## Purpose
+## 1. Purpose
 
 App desktop Electron + React + SQLite, chạy hoàn toàn offline. Tài liệu này hướng dẫn cài đặt môi trường từ đầu đến lúc chạy được `npm run electron:dev`, kèm các lỗi thường gặp.
 
 ---
 
-## Prequisites
+## 2. Prequisites
 
-### Git
+### 2.1. Git
 
 - Download and install Git:
 
@@ -29,7 +29,7 @@ git clone https://github.com/nhatquang-nguyen-129/display_lucky_draw.git
 cd display_lucky_draw
 ```
 
-### NodeJS 20 LTS
+### 2.2. NodeJS 20 LTS
 
 - Using **Node.js 20 LTS** for development and testing
 
@@ -105,7 +105,7 @@ npm -v
 
 ---
 
-### Project Dependencies
+### 2.3. Project Dependencies
 
 - Running `nvm install` or `nvm use` only installs **Node.js** and **npm**.
 
@@ -190,7 +190,7 @@ The module was compiled against a different Node.js version.
 
 ---
 
-### Python 3.11
+### 2.3. Python 3.11
 
 - Download the official installer:
 ```bash
@@ -260,7 +260,7 @@ echo $PYTHON
 
 ---
 
-### Native Build Tools
+### 2.5. Native Build Tools
 
 --- These tools are required to compile native Node.js modules such as `better-sqlite3`.
 
@@ -288,554 +288,69 @@ python3-pip \
 git
 ```
 
-## Cài đặt
-
-```bash
-npm install
-```
-
-## Chạy ở chế độ dev
-
-```bash
-npm run electron:dev
-```
-
-Lệnh này chạy song song Vite dev server (renderer) và Electron (main process),
-tự động mở cửa sổ chính. SQLite database được tạo tự động tại thư mục
-`userData` của hệ điều hành (VD trên macOS: `~/Library/Application Support/lucky-draw-app/lucky-draw.db`).
-
-## Đóng gói thành file cài đặt
-
-```bash
-npm run package
-```
-
-Kết quả nằm trong thư mục `release/`.
-
-## Lưu ý về `better-sqlite3`
-
-Đây là native module, cần biên dịch theo đúng phiên bản Electron đang dùng.
-Nếu gặp lỗi `NODE_MODULE_VERSION` khi chạy, cài thêm và rebuild:
-
-```bash
-npm install --save-dev electron-rebuild
-npx electron-rebuild
-```
-
-
 ---
 
-## 3. Clone project và cài dependencies
+## 3. Run Application on Local
+
+### 3.1. Free the development port
+
+- The Vite development server uses port **5173** by default. If port **5173** is already in use, Vite may fail to start or Electron may connect to an old development server.
+
+- Free the development port on macOS/Linux
 
 ```bash
-cd đường-dẫn-tới-project/lucky-draw-app
+lsof -ti:5173 | xargs kill -9
 ```
 
-Nếu từng cài lỗi trước đó:
+- Free the development port on Windows PowerShell
 
-```bash
-rm -rf node_modules
-rm package-lock.json
+```powershell
+Get-NetTCPConnection -LocalPort 5173 | ForEach-Object {
+    Stop-Process -Id $_.OwningProcess -Force
+}
 ```
 
 ---
 
+## 3.2. Rebuild Electron native modules
 
-
----
-
-
----
-
-### Cài dependencies
-
-```bash
-npm install
-```
-
-Nếu `npm install` báo lỗi liên quan `better-sqlite3`, `node-gyp` hoặc `distutils`, xem mục **Xử lý lỗi thường gặp**.
-
----
-
-## 4. Rebuild native module cho Electron
-
-Đây là bước **bắt buộc**.
-
-Sau khi `npm install`, native module được build theo Node.js của hệ thống.
-
-Electron sử dụng Node runtime riêng nên cần rebuild lại.
+- This project uses native Node.js modules such as `better-sqlite3`. After installing dependencies, switching Node.js versions, updating Electron, or performing a clean installation, rebuild all native modules:
 
 ```bash
 npx electron-rebuild
 ```
 
-Nếu bỏ qua bước này, app sẽ báo lỗi:
+- Skipping this step may result in errors such as:
 
 ```text
 NODE_MODULE_VERSION mismatch
 ```
 
+or
+
+```text
+The module was compiled against a different Node.js version.
+```
+
 ---
 
-## 5. Chạy chế độ Development
+## 3.3. Start the development environment
 
+- Builds the Electron main process to starts the Vite development server (`http://localhost:5173`) and opens Developer Tools (development mode)
 ```bash
 npm run electron:dev
 ```
 
-Lệnh này sẽ:
-
-- chạy Vite Dev Server (`localhost:5173`)
-- build Electron Main Process
-- mở Electron
-- mở DevTools
-
 ---
 
-### Kiểm tra nhanh
+## 3.4. Locate SQLite Database
 
-- App mở bình thường
-- Không bị màn hình trắng
-- Import được CSV Participants
-- Tạo Prize
-- Tạo Session
-- Quay thử
-- Present Mode hoạt động
+- The database is created automatically on the first launch.
 
----
-
-### Database SQLite
-
-Lần chạy đầu tiên sẽ tự tạo database.
-
-| OS | Đường dẫn |
-|----|-----------|
+| Operating System | Database Location |
+|-----------------|-------------------|
 | macOS | `~/Library/Application Support/lucky-draw-app/lucky-draw.db` |
-| Windows | `%APPDATA%/lucky-draw-app/lucky-draw.db` |
+| Windows | `%APPDATA%\lucky-draw-app\lucky-draw.db` |
 | Linux | `~/.config/lucky-draw-app/lucky-draw.db` |
 
-Muốn reset dữ liệu:
-
-- Đóng app
-- Xoá file `.db`
-- Chạy lại app
-
----
-
-## Troubleshooting
-
----
-
-### ModuleNotFoundError: No module named 'distutils'
-
-- Python 3.12+ removed the `distutils` module but older versions of `node-gyp` still depend on it.
-
-```text
-ModuleNotFoundError: No module named 'distutils'
-```
-
-- Verify that Python 3.11 is being used:
-
-```bash
-python3.11 --version
-```
-
-- Export Python before installing dependencies:
-
-```bash
-export PYTHON=$(which python3.11)
-```
-
-- Remove previous installation artifacts:
-
-```bash
-rm -rf node_modules
-rm package-lock.json
-```
-
-- Install dependencies again:
-
-```bash
-npm install
-```
-
-- If the issue persists:
-
-```bash
-npm install -g node-gyp@latest
-npm install
-```
-
----
-
-## python is not a valid npm option
-
-### Error
-
-```text
-python is not a valid npm option
-```
-
-### Cause
-
-npm 10+ removed support for:
-
-```bash
-npm config set python ...
-```
-
-### Solution
-
-Do not configure Python through npm.
-
-Instead:
-
-```bash
-export PYTHON=$(which python3.11)
-npm install
-```
-
----
-
-## NODE_MODULE_VERSION mismatch
-
-### Error
-
-```text
-Error: NODE_MODULE_VERSION mismatch
-```
-
-### Cause
-
-Native modules (such as `better-sqlite3`) were compiled against a different Node.js or Electron runtime.
-
-### Solution
-
-Rebuild native modules:
-
-```bash
-npx electron-rebuild
-```
-
-If the problem remains:
-
-```bash
-rm -rf node_modules
-rm package-lock.json
-
-npm install
-npx electron-rebuild
-```
-
----
-
-## No prebuilt binaries found
-
-### Error
-
-```text
-No prebuilt binaries found
-```
-
-### Cause
-
-The installed Node.js version is newer than the version currently supported by `better-sqlite3`.
-
-### Solution
-
-Use Node.js 20 LTS:
-
-```bash
-nvm use 20
-```
-
-Verify:
-
-```bash
-node -v
-```
-
-Expected:
-
-```text
-v20.x.x
-```
-
-Then reinstall:
-
-```bash
-rm -rf node_modules
-npm install
-```
-
----
-
-## gyp ERR! build error
-
-### Error
-
-```text
-gyp ERR! build error
-```
-
-### Cause
-
-Native build tools are missing or incorrectly installed.
-
-### Solution
-
-**macOS**
-
-```bash
-xcode-select --install
-```
-
-**Windows**
-
-Install **Visual Studio Build Tools** with:
-
-- Desktop development with C++
-
-**Ubuntu / Debian**
-
-```bash
-sudo apt install build-essential
-```
-
----
-
-## Electron shows a blank window
-
-### Cause
-
-The Vite development server was not fully started before Electron attempted to load it.
-
-### Solution
-
-Restart the development server:
-
-```bash
-npm run electron:dev
-```
-
-If the issue continues, ensure port **5173** is available:
-
-```bash
-lsof -ti:5173 | xargs kill -9
-```
-
-Start again:
-
-```bash
-npm run electron:dev
-```
-
----
-
-## Port 5173 is already in use
-
-### Error
-
-```text
-EADDRINUSE
-```
-
-### Cause
-
-Another Vite instance is already running.
-
-### Solution
-
-Terminate the process using port 5173.
-
-**macOS / Linux**
-
-```bash
-lsof -ti:5173 | xargs kill -9
-```
-
-**Windows**
-
-```cmd
-netstat -ano | findstr :5173
-taskkill /PID <PID> /F
-```
-
----
-
-## Electron command not found
-
-### Error
-
-```text
-electron: command not found
-```
-
-### Cause
-
-Project dependencies have not been installed.
-
-### Solution
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Then run:
-
-```bash
-npm run electron:dev
-```
-
----
-
-## Cannot find module 'better-sqlite3'
-
-### Error
-
-```text
-Cannot find module 'better-sqlite3'
-```
-
-### Cause
-
-The package was not installed successfully or the installation was interrupted.
-
-### Solution
-
-Remove existing dependencies:
-
-```bash
-rm -rf node_modules
-rm package-lock.json
-```
-
-Install again:
-
-```bash
-npm install
-```
-
----
-
-## npm install hangs or fails
-
-### Cause
-
-Possible reasons include:
-
-- Network issues
-- Corrupted npm cache
-- Interrupted installation
-
-### Solution
-
-Clear the npm cache:
-
-```bash
-npm cache clean --force
-```
-
-Then reinstall:
-
-```bash
-rm -rf node_modules
-rm package-lock.json
-
-npm install
-```
-
----
-
-## Permission denied
-
-### Error
-
-```text
-EACCES
-Permission denied
-```
-
-### Cause
-
-Insufficient file permissions.
-
-### Solution
-
-Avoid using `sudo` with npm whenever possible.
-
-Ensure your project directory is writable by your current user.
-
----
-
-## Database is locked
-
-### Error
-
-```text
-SQLITE_BUSY
-database is locked
-```
-
-### Cause
-
-Another instance of the application is currently accessing the SQLite database.
-
-### Solution
-
-- Close all running instances of Lucky Draw Studio.
-- Restart the application.
-
-If necessary, remove the database file and allow it to be recreated.
-
----
-
-## Changes are not reflected
-
-### Cause
-
-Old build artifacts or cached files are being used.
-
-### Solution
-
-Remove build artifacts:
-
-```bash
-rm -rf dist
-rm -rf dist-electron
-```
-
-Then rebuild:
-
-```bash
-npm run build
-```
-
-or restart development:
-
-```bash
-npm run electron:dev
-```
-
----
-
-## Still having issues?
-
-Please include the following information when reporting a problem:
-
-- Operating System
-- Node.js version (`node -v`)
-- npm version (`npm -v`)
-- Python version (`python3.11 --version`)
-- Electron version
-- Complete error message
-- Steps to reproduce the issue
-
-
-Giải phóng Localhost trước khi chạy: 
-```bash
-lsof -ti:5173 | xargs kill -9
-npm run electron:dev
-```
+- To reset all application data, close the application, delete the database file then start the application again
