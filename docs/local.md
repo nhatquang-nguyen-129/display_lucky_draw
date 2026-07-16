@@ -4,8 +4,6 @@
 
 App desktop Electron + React + SQLite, chạy hoàn toàn offline. Tài liệu này hướng dẫn cài đặt môi trường từ đầu đến lúc chạy được `npm run electron:dev`, kèm các lỗi thường gặp.
 
----
-
 ## 2. Prequisites
 
 ### 2.1. Git
@@ -103,8 +101,6 @@ node -v
 npm -v
 ```
 
----
-
 ### 2.3. Project Dependencies
 
 - Running `nvm install` or `nvm use` only installs **Node.js** and **npm**.
@@ -168,8 +164,6 @@ npm install
 >
 > If Visual Studio Code is running, it is also recommended to completely close the application (not just the project window) before deleting `node_modules`.
 
----
-
 - After reinstalling dependencies, rebuild all native Electron modules:
 
 ```bash
@@ -187,8 +181,6 @@ or
 ```text
 The module was compiled against a different Node.js version.
 ```
-
----
 
 ### 2.3. Python 3.11
 
@@ -258,13 +250,12 @@ echo $PYTHON
 
 - **Linux:** Install using your package manager if Python 3.11 is available
 
----
 
 ### 2.5. Native Build Tools
 
---- These tools are required to compile native Node.js modules such as `better-sqlite3`.
+- These tools are required to compile native Node.js modules such as `better-sqlite3`.
 
---- **MacOS**: Install `XCode
+- **MacOS**: Install `XCode
 
 ```bash
 xcode-select --install
@@ -288,8 +279,6 @@ python3-pip \
 git
 ```
 
----
-
 ## 3. Run Application on Local
 
 ### 3.1. Free the development port
@@ -309,8 +298,6 @@ Get-NetTCPConnection -LocalPort 5173 | ForEach-Object {
     Stop-Process -Id $_.OwningProcess -Force
 }
 ```
-
----
 
 ## 3.2. Rebuild Electron native modules
 
@@ -332,16 +319,12 @@ or
 The module was compiled against a different Node.js version.
 ```
 
----
-
 ## 3.3. Start the development environment
 
 - Builds the Electron main process to starts the Vite development server (`http://localhost:5173`) and opens Developer Tools (development mode)
 ```bash
 npm run electron:dev
 ```
-
----
 
 ## 3.4. Locate SQLite Database
 
