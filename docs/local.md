@@ -22,6 +22,13 @@ https://git-scm.com/downloads
 git --version
 ```
 
+- Clone the repository:
+
+```bash
+git clone https://github.com/nhatquang-nguyen-129/display_lucky_draw.git
+cd display_lucky_draw
+```
+
 ### NodeJS 20 LTS
 
 - Using **Node.js 20 LTS** for development and testing
@@ -78,6 +85,33 @@ npm -v
 
 ---
 
+### Project dependencies
+
+- Running `nvm install` or `nvm use` only installs **Node.js** and **npm**
+
+- Run `npm install` to download all dependencies defined in `package.json` to create the `node_modules` directory and install Electron, React, Vite, TypeScript
+
+```bash
+npm install
+```
+
+- Check that the following directory `node_modules/` exists or verify installation:
+
+```bash
+npm list --depth=0
+```
+
+- If you encounter dependency conflicts after switching Node.js versions or update dependencies, perform a clean installation:
+
+```bash
+rm -rf node_modules
+rm package-lock.json
+
+npm install
+```
+
+---
+
 ### Python 3.11
 
 - Download the official installer:
@@ -91,12 +125,34 @@ https://www.python.org/downloads/release/python-311/
 
 - **Linux:** Install using your package manager if Python 3.11 is available
 
-### Kiểm tra môi trường
-
 - Verify Python 3.11.x versions
 ```bash
 python3.11 --version
 ```
+- Export Python 3.11 before install if your computer has multiple Python versions:
+
+```bash
+export PYTHON=$(which python3.11)
+```
+
+- Verify Python 3.11 environment variable
+
+```bash
+echo $PYTHON
+```
+
+- Expected Python 3.11 environment variable results:
+
+```text
+/usr/local/bin/python3.11
+```
+
+
+```text
+/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11
+```
+
+
 
 ---
 
@@ -184,31 +240,6 @@ rm package-lock.json
 
 ---
 
-### Nếu máy có nhiều phiên bản Python
-
-Export Python 3.11 trước khi cài:
-
-```bash
-export PYTHON=$(which python3.11)
-```
-
-Kiểm tra:
-
-```bash
-echo $PYTHON
-```
-
-Ví dụ:
-
-```text
-/usr/local/bin/python3.11
-```
-
-hoặc
-
-```text
-/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11
-```
 
 ---
 
