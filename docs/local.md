@@ -119,11 +119,26 @@ npm install
 https://www.python.org/downloads/release/python-311/
 ```
 
-- **Windows:** Enable `Add Python to PATH`
+- **Windows:** Enable `Add Python to PATH` during the installation
+
+- Verify Python 3.11.x installation
+
+```bash
+python --version
+```
+- If multiple Python versions are installed, temporarily specify Python 3.11 before installing dependencies:
+
+```bash
+set PYTHON=C:\Path\To\Python311\python.exe
+```
+
+- Verify 3.11.x if multiple Python versions are installed
+
+```bash
+echo %PYTHON%
+```
 
 - **macOS:** Use the official installer from Python.org
-
-- **Linux:** Install using your package manager if Python 3.11 is available
 
 - Verify Python 3.11.x versions
 ```bash
@@ -147,12 +162,11 @@ echo $PYTHON
 /usr/local/bin/python3.11
 ```
 
-
 ```text
 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11
 ```
 
-
+- **Linux:** Install using your package manager if Python 3.11 is available
 
 ---
 
