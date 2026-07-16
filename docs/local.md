@@ -105,23 +105,25 @@ npm -v
 
 ---
 
-### Project dependencies
+### Project Dependencies
 
-- Running `nvm install` or `nvm use` only installs **Node.js** and **npm**
+- Running `nvm install` or `nvm use` only installs **Node.js** and **npm**.
 
-- Run `npm install` to download all dependencies defined in `package.json` to create the `node_modules` directory and install Electron, React, Vite, TypeScript
+- Run `npm install` to download all project dependencies defined in `package.json`, including Electron, React, Vite, TypeScript, and all required packages into the `node_modules` directory.
 
 ```bash
 npm install
 ```
 
-- Check that the following directory `node_modules/` exists or verify installation:
+- Verify that all dependencies were installed successfully:
 
 ```bash
 npm list --depth=0
 ```
 
-- If you encounter dependency conflicts after switching Node.js versions or update dependencies, perform a clean installation on **MacOS**:
+- The `node_modules/` directory should now exist.
+
+- If you encounter dependency conflicts after switching Node.js versions or updating dependencies, perform a clean installation on **macOS / Linux**:
 
 ```bash
 rm -rf node_modules
@@ -129,7 +131,8 @@ rm package-lock.json
 
 npm install
 ```
-- If you encounter dependency conflicts after switching Node.js versions or update dependencies, perform a clean installation on **Windows**:
+
+- If you encounter dependency conflicts after switching Node.js versions or updating dependencies, perform a clean installation on **Windows PowerShell**:
 
 ```powershell
 Remove-Item -Recurse -Force node_modules
@@ -138,7 +141,7 @@ Remove-Item -Force package-lock.json
 npm install
 ```
 
-- Or using aliases:
+- Or using PowerShell aliases:
 
 ```powershell
 rm -Recurse -Force node_modules
@@ -147,17 +150,33 @@ rm -Force package-lock.json
 npm install
 ```
 
+> **Note**
+
+> On Windows, simply closing the Electron application does **not** always terminate all background processes. `electron.exe`, `node.exe`, or `npm.exe` may continue running and lock files inside `node_modules`, causing errors such as:
+
+> - `Access is denied`
+> - `EBUSY: resource busy or locked`
+> - `The process cannot access the file because it is being used by another process`
+
+> Before performing a clean installation, terminate any remaining development processes:
+
+> ```powershell
+> taskkill /F /IM electron.exe
+> taskkill /F /IM node.exe
+> taskkill /F /IM npm.exe
+> ```
+
+> If Visual Studio Code is running, it is also recommended to completely close the application (not just the project window) before deleting `node_modules`.
+
 ---
 
-### Rebuild Native Modules for Electron
-
-- Since this project uses native Node.js modules (e.g. `better-sqlite3`), rebuild them after installing dependencies.
+- After reinstalling dependencies, rebuild all native Electron modules:
 
 ```bash
 npx electron-rebuild
 ```
 
-- Skipping this step may result in errors such as:
+- This step is required because native modules (such as `better-sqlite3`) must be rebuilt against Electron's bundled Node.js runtime. Skipping this step may result in errors such as:
 
 ```text
 NODE_MODULE_VERSION mismatch
