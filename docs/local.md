@@ -121,11 +121,28 @@ npm install
 npm list --depth=0
 ```
 
-- If you encounter dependency conflicts after switching Node.js versions or update dependencies, perform a clean installation:
+- If you encounter dependency conflicts after switching Node.js versions or update dependencies, perform a clean installation on **MacOS**:
 
 ```bash
 rm -rf node_modules
 rm package-lock.json
+
+npm install
+```
+- If you encounter dependency conflicts after switching Node.js versions or update dependencies, perform a clean installation on **Windows**:
+
+```powershell
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Force package-lock.json
+
+npm install
+```
+
+Or using aliases:
+
+```powershell
+rm -Recurse -Force node_modules
+rm -Force package-lock.json
 
 npm install
 ```
