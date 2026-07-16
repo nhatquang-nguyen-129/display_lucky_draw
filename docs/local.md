@@ -151,21 +151,21 @@ npm install
 ```
 
 > **Note**
-
+>
 > On Windows, simply closing the Electron application does **not** always terminate all background processes. `electron.exe`, `node.exe`, or `npm.exe` may continue running and lock files inside `node_modules`, causing errors such as:
-
+>
 > - `Access is denied`
 > - `EBUSY: resource busy or locked`
 > - `The process cannot access the file because it is being used by another process`
-
+>
 > Before performing a clean installation, terminate any remaining development processes:
-
+>
 > ```powershell
 > taskkill /F /IM electron.exe
 > taskkill /F /IM node.exe
 > taskkill /F /IM npm.exe
 > ```
-
+>
 > If Visual Studio Code is running, it is also recommended to completely close the application (not just the project window) before deleting `node_modules`.
 
 ---
