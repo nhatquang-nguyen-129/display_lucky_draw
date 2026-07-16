@@ -135,6 +135,9 @@ declare global {
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string } | null>;
       };
+      editor: {
+        reportDirty: (dirty: boolean) => void;
+      };
     };
   }
 }

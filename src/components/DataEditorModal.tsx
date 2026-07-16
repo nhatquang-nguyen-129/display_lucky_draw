@@ -1,7 +1,30 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
 import { Participant } from "@/types";
+import { CORE_FIELDS, EditorRow, EditorState, getCell, isCoreField } from "@/lib/dataEditor/types";
+import { useCommandHistory } from "@/lib/dataEditor/history";
+import {
+  addColumnCommand,
+  addRowCommand,
+  batchTransformCommand,
+  combineColumnsCommand,
+  combineCommands,
+  deleteRowsCommand,
+  displayPhoneCommand,
+  findDuplicatePhoneIdsToRemove,
+  findEmptyRowIds,
+  editCellCommand,
+  generateIdCommand,
+  insertRowCommand,
+  pasteBlockCommand,
+  removeColumnCommand,
+  removeEmptyColumnsCommand,
+  renameColumnCommand,
+  runningNumberCommand,
+} from "@/lib/dataEditor/commands";
+import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
+import { groupIssuesByRow, validateState } from "@/lib/dataEditor/validate";
 
 interface DataEditorModalProps {
   open: boolean;
@@ -10,63 +33,105 @@ interface DataEditorModalProps {
   onSaved: () => void;
 }
 
-interface DraftRow {
-  id: string;
-  code: string | null;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  extra: Record<string, string>;
-  source: string;
-  status: string;
-  created_at: string;
-}
+type Group = "edit" | "clean" | "generate" | "validate";
+const GROUPS: { key: Group; label: string }[] = [
+  { key: "edit", label: "Edit" },
+  { key: "clean", label: "Clean" },
+  { key: "generate", label: "Generate" },
+  { key: "validate", label: "Validate" },
+];
 
-// Gợi ý tên cột optional phổ biến — chỉ là gợi ý qua datalist, người dùng có thể gõ tên khác
-const SUGGESTED_COLUMNS = ["facebook_post", "note", "zalo", "address", "ghi_chu", "team", "khu_vuc"];
+const COLUMN_LABELS: Record<string, string> = { name: "Tên", phone: "SĐT", code: "Mã", email: "Email" };
+const SUGGESTED_COLUMNS = ["facebook_post", "note", "zalo", "address", "team", "khu_vuc"];
+const AUTOSAVE_DELAY_MS = 20000;
 
-function parseRow(p: Participant): DraftRow {
-  let extra: Record<string, string> = {};
-  if (p.extra_data) {
-    try {
-      extra = JSON.parse(p.extra_data);
-    } catch {
-      extra = {};
-    }
+function safeParseExtra(json: string | null): Record<string, string> {
+  if (!json) return {};
+  try {
+    return JSON.parse(json);
+  } catch {
+    return {};
   }
-  return { ...p, extra };
 }
 
-function normalizePhone(phone: string | null): string {
-  return (phone ?? "").replace(/\D/g, "");
+function rowFromParticipant(p: Participant): EditorRow {
+  return {
+    id: p.id,
+    name: p.name,
+    phone: p.phone ?? "",
+    code: p.code ?? "",
+    email: p.email ?? "",
+    status: p.status,
+    created_at: p.created_at,
+    extra: safeParseExtra(p.extra_data),
+  };
 }
 
-function cloneRows(rows: DraftRow[]): DraftRow[] {
-  return rows.map((r) => ({ ...r, extra: { ...r.extra } }));
+function sameRow(a: EditorRow, b: EditorRow): boolean {
+  return (
+    a.name === b.name &&
+    a.phone === b.phone &&
+    a.code === b.code &&
+    a.email === b.email &&
+    JSON.stringify(a.extra) === JSON.stringify(b.extra)
+  );
 }
 
 export default function DataEditorModal({ open, sessionId, onClose, onSaved }: DataEditorModalProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [original, setOriginal] = useState<DraftRow[]>([]);
-  const [draft, setDraft] = useState<DraftRow[]>([]);
-  const [columns, setColumns] = useState<string[]>([]);
-  const [markedForDelete, setMarkedForDelete] = useState<Set<string>>(new Set());
+  const [originalRows, setOriginalRows] = useState<EditorRow[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const history = useCommandHistory({ columns: [], rows: [] } as EditorState);
+
+  const [activeGroup, setActiveGroup] = useState<Group>("edit");
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [selectedCell, setSelectedCell] = useState<{ rowId: string; col: string } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ rowId: string; col: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [renamingColumn, setRenamingColumn] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [contextMenu, setContextMenu] = useState<
+    | { x: number; y: number; type: "row"; rowId: string; rowIndex: number }
+    | { x: number; y: number; type: "column"; col: string }
+    | null
+  >(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
-  const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
+
+  const [cleanColumn, setCleanColumn] = useState("phone");
+  const [findText, setFindText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+
+  const [genAction, setGenAction] = useState<"id" | "running" | "displayPhone" | "combine">("id");
+  const [genIdMode, setGenIdMode] = useState<"sequential" | "random">("sequential");
+  const [genIdPrefix, setGenIdPrefix] = useState("");
+  const [runningCol, setRunningCol] = useState("stt");
+  const [runningStart, setRunningStart] = useState(1);
+  const [displayPhoneCol, setDisplayPhoneCol] = useState("display_phone");
+  const [displayPhonePattern, setDisplayPhonePattern] = useState<"last3" | "maskLast3" | "maskMost">("maskMost");
+  const [combineCol, setCombineCol] = useState("combined");
+  const [combineSources, setCombineSources] = useState<string[]>([]);
+  const [combineSeparator, setCombineSeparator] = useState(" - ");
+
+  const [onlyShowIssues, setOnlyShowIssues] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
     const list = await window.api.participants.list(sessionId);
-    const rows = list.map(parseRow);
-    setOriginal(cloneRows(rows));
-    setDraft(cloneRows(rows));
-    const keys = new Set<string>();
-    rows.forEach((r) => Object.keys(r.extra).forEach((k) => keys.add(k)));
-    setColumns(Array.from(keys));
-    setMarkedForDelete(new Set());
+    const rows = list.map(rowFromParticipant);
+    const columns = Array.from(new Set(rows.flatMap((r) => Object.keys(r.extra))));
+    setOriginalRows(rows);
+    history.reset({ columns, rows });
+    setSelectedRowIds(new Set());
+    setSelectedCell(null);
     setLoading(false);
   }
 
@@ -75,89 +140,57 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sessionId]);
 
-  const duplicateGroups = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const row of draft) {
-      const key = normalizePhone(row.phone);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(row.id);
-    }
-    for (const [key, ids] of Array.from(map.entries())) {
-      if (ids.length < 2) map.delete(key);
-    }
-    return map;
-  }, [draft]);
+  useEffect(() => {
+    window.api.editor.reportDirty(open && history.dirty);
+  }, [open, history.dirty]);
+  useEffect(() => () => window.api.editor.reportDirty(false), []);
 
-  const duplicateIds = useMemo(() => {
-    const s = new Set<string>();
-    duplicateGroups.forEach((ids) => ids.forEach((id) => s.add(id)));
-    return s;
-  }, [duplicateGroups]);
+  useEffect(() => {
+    if (!open || !history.dirty) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => handleSave(true), AUTOSAVE_DELAY_MS);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.state, open]);
 
-  function isRowDirty(row: DraftRow): boolean {
-    const orig = original.find((o) => o.id === row.id);
-    if (!orig) return false;
-    if (orig.name !== row.name || orig.code !== row.code || orig.phone !== row.phone || orig.email !== row.email) {
-      return true;
-    }
-    return JSON.stringify(orig.extra) !== JSON.stringify(row.extra);
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [contextMenu]);
+
+  const columnOrder = useMemo(() => [...CORE_FIELDS, ...history.state.columns], [history.state.columns]);
+  const issues = useMemo(() => validateState(history.state), [history.state]);
+  const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
+  const duplicatePhoneIds = useMemo(
+    () => new Set(issues.filter((i) => i.message === "SĐT trùng lặp").map((i) => i.rowId)),
+    [issues]
+  );
+  const visibleRows = onlyShowIssues ? history.state.rows.filter((r) => issuesByRow.has(r.id)) : history.state.rows;
+
+  function commitEdit() {
+    if (!editingCell) return;
+    const cmd = editCellCommand(history.state, editingCell.rowId, editingCell.col, editValue);
+    if (cmd) history.run(cmd);
+    setEditingCell(null);
   }
 
-  const dirtyCount = useMemo(() => draft.filter(isRowDirty).length, [draft, original]);
-  const hasChanges = dirtyCount > 0 || markedForDelete.size > 0;
-
-  function updateField(id: string, field: "name" | "code" | "phone" | "email", value: string) {
-    setDraft((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+  function startEdit(rowId: string, col: string) {
+    const row = history.state.rows.find((r) => r.id === rowId);
+    if (!row) return;
+    setEditingCell({ rowId, col });
+    setEditValue(getCell(row, col));
   }
 
-  function updateExtra(id: string, key: string, value: string) {
-    setDraft((prev) => prev.map((r) => (r.id === id ? { ...r, extra: { ...r.extra, [key]: value } } : r)));
-  }
-
-  function addColumn() {
-    const name = newColumnName.trim();
-    if (!name) return;
-    if (columns.includes(name)) {
-      setError(`Cột "${name}" đã tồn tại.`);
-      return;
-    }
-    setColumns((prev) => [...prev, name]);
-    setNewColumnName("");
-    setError(null);
-  }
-
-  function renameColumn(oldName: string, newNameRaw: string) {
-    const newName = newNameRaw.trim();
-    if (!newName || newName === oldName) return;
-    if (columns.includes(newName)) {
-      setError(`Tên cột "${newName}" đã tồn tại.`);
-      return;
-    }
-    setColumns((prev) => prev.map((c) => (c === oldName ? newName : c)));
-    setDraft((prev) =>
-      prev.map((r) => {
-        if (!(oldName in r.extra)) return r;
-        const { [oldName]: value, ...rest } = r.extra;
-        return { ...r, extra: { ...rest, [newName]: value } };
-      })
-    );
-  }
-
-  function removeColumn(name: string) {
-    if (!confirm(`Xoá cột "${name}"? Dữ liệu cột này ở mọi dòng sẽ mất khi bấm Lưu.`)) return;
-    setColumns((prev) => prev.filter((c) => c !== name));
-    setDraft((prev) =>
-      prev.map((r) => {
-        if (!(name in r.extra)) return r;
-        const { [name]: _drop, ...rest } = r.extra;
-        return { ...r, extra: rest };
-      })
-    );
-  }
-
-  function toggleMarkDelete(id: string) {
-    setMarkedForDelete((prev) => {
+  function toggleRowSelect(id: string) {
+    setSelectedRowIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -165,228 +198,614 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
     });
   }
 
-  function quickDeduplicate() {
-    if (duplicateGroups.size === 0) return;
-    const toMark = new Set(markedForDelete);
-    duplicateGroups.forEach((ids) => {
-      const rows = ids.map((id) => draft.find((r) => r.id === id)).filter((r): r is DraftRow => !!r);
-      const scored = rows.map((row) => ({
-        row,
-        score: [row.name, row.code, row.phone, row.email, ...Object.values(row.extra)].filter(
-          (v) => v && v.trim()
-        ).length,
-      }));
-      scored.sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return a.row.created_at.localeCompare(b.row.created_at); // hoà điểm -> giữ dòng tạo sớm hơn
-      });
-      const keepId = scored[0]?.row.id;
-      ids.forEach((id) => {
-        if (id !== keepId) toMark.add(id);
-      });
-    });
-    setMarkedForDelete(toMark);
+  function toggleSelectAll() {
+    setSelectedRowIds((prev) => (prev.size === visibleRows.length ? new Set() : new Set(visibleRows.map((r) => r.id))));
   }
 
-  function validate(): string | null {
-    const activeRows = draft.filter((r) => !markedForDelete.has(r.id));
-    const invalid = activeRows.filter((r) => !r.name.trim() || !r.phone?.trim());
-    if (invalid.length > 0) {
-      return `${invalid.length} dòng đang thiếu Tên hoặc SĐT (2 trường bắt buộc) — sửa lại hoặc đánh dấu xoá dòng đó trước khi lưu.`;
-    }
-    return null;
+  function deleteSelectedRows() {
+    if (selectedRowIds.size === 0) return;
+    const cmd = deleteRowsCommand(history.state, Array.from(selectedRowIds));
+    if (cmd) history.run(cmd);
+    setSelectedRowIds(new Set());
   }
 
-  async function handleSave() {
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
+  function handleAddColumn() {
+    const name = newColumnName.trim();
+    if (!name) return;
+    if (isCoreField(name) || history.state.columns.includes(name)) {
+      setError(`Cột "${name}" đã tồn tại.`);
       return;
     }
-    setSaving(true);
+    history.run(addColumnCommand(name));
+    setNewColumnName("");
     setError(null);
+  }
+
+  function applyClean(label: string, transform: (v: string) => string) {
+    const cmd = batchTransformCommand(history.state, label, cleanColumn, transform);
+    if (cmd) history.run(cmd);
+    else setToast("Không có ô nào cần thay đổi.");
+  }
+
+  function applyQuickClean() {
+    const cmd = combineCommands("Quick Clean (Trim + Normalize)", [
+      batchTransformCommand(history.state, "Trim", "name", trimSpace),
+      batchTransformCommand(history.state, "Trim", "phone", trimSpace),
+      batchTransformCommand(history.state, "Normalize Name", "name", normalizeNameValue),
+      batchTransformCommand(history.state, "Normalize Phone", "phone", normalizePhoneValue),
+    ]);
+    if (cmd) history.run(cmd);
+    else setToast("Dữ liệu đã sạch, không có gì để chuẩn hoá.");
+  }
+
+  function applyFindReplace() {
+    if (!findText) return;
+    const cmd = batchTransformCommand(
+      history.state,
+      `Find & Replace "${findText}"→"${replaceText}"`,
+      cleanColumn,
+      findReplaceTransform(findText, replaceText, findCaseSensitive)
+    );
+    if (cmd) history.run(cmd);
+    else setToast("Không tìm thấy giá trị khớp.");
+  }
+
+  function applyRemoveEmptyRows() {
+    const ids = findEmptyRowIds(history.state);
+    if (ids.length === 0) {
+      setToast("Không có dòng trống.");
+      return;
+    }
+    const cmd = deleteRowsCommand(history.state, ids);
+    if (cmd) history.run(cmd);
+  }
+
+  function applyRemoveEmptyColumns() {
+    const cmd = removeEmptyColumnsCommand(history.state);
+    if (cmd) history.run(cmd);
+    else setToast("Không có cột trống.");
+  }
+
+  function applyRemoveDuplicates() {
+    const ids = findDuplicatePhoneIdsToRemove(history.state);
+    if (ids.length === 0) {
+      setToast("Không phát hiện trùng lặp theo SĐT.");
+      return;
+    }
+    const cmd = deleteRowsCommand(history.state, ids);
+    if (cmd) history.run(cmd);
+  }
+
+  function applyGenerate() {
+    if (genAction === "id") {
+      history.run(generateIdCommand(history.state, "code", genIdMode, genIdPrefix));
+    } else if (genAction === "running") {
+      const col = runningCol.trim();
+      if (!col) return;
+      history.run(runningNumberCommand(history.state, col, runningStart));
+    } else if (genAction === "displayPhone") {
+      const col = displayPhoneCol.trim();
+      if (!col) return;
+      history.run(displayPhoneCommand(history.state, col, displayPhonePattern));
+    } else if (genAction === "combine") {
+      const col = combineCol.trim();
+      if (!col || combineSources.length === 0) return;
+      history.run(combineColumnsCommand(history.state, col, combineSources, combineSeparator));
+    }
+  }
+
+  async function handleSave(silent = false) {
+    setSaving(true);
+    if (!silent) setError(null);
     try {
-      if (markedForDelete.size > 0) {
-        await window.api.participants.bulkDelete(Array.from(markedForDelete));
-      }
-      const toUpdate = draft.filter((r) => !markedForDelete.has(r.id) && isRowDirty(r));
-      for (const row of toUpdate) {
-        await window.api.participants.update({
-          id: row.id,
+      const removedIds = originalRows.filter((o) => !history.state.rows.some((r) => r.id === o.id)).map((o) => o.id);
+      if (removedIds.length) await window.api.participants.bulkDelete(removedIds);
+
+      for (const row of history.state.rows) {
+        const payload = {
           name: row.name,
-          code: row.code,
-          phone: row.phone,
-          email: row.email,
+          code: row.code || undefined,
+          phone: row.phone || undefined,
+          email: row.email || undefined,
           extra: row.extra,
-        });
+        };
+        if (row.__isNew) {
+          await window.api.participants.create({ sessionId, ...payload });
+        } else {
+          const orig = originalRows.find((o) => o.id === row.id);
+          if (orig && sameRow(orig, row)) continue;
+          await window.api.participants.update({ id: row.id, ...payload });
+        }
       }
       await load();
+      setToast(silent ? `Đã tự động lưu lúc ${new Date().toLocaleTimeString("vi-VN")}.` : "Đã lưu thay đổi.");
       onSaved();
-    } catch (e) {
-      setError("Lưu thất bại — thử lại, hoặc kiểm tra terminal để xem lỗi chi tiết.");
+    } catch {
+      if (!silent) setError("Lưu thất bại — thử lại.");
     } finally {
       setSaving(false);
     }
   }
 
-  function handleDiscard() {
-    setDraft(cloneRows(original));
-    setMarkedForDelete(new Set());
-    setError(null);
-    const keys = new Set<string>();
-    original.forEach((r) => Object.keys(r.extra).forEach((k) => keys.add(k)));
-    setColumns(Array.from(keys));
+  function requestClose() {
+    if (history.dirty) {
+      if (!confirm("Data Editor còn thay đổi chưa lưu. Đóng và bỏ qua thay đổi?")) return;
+    }
+    onClose();
   }
 
-  const visibleRows = showOnlyDuplicates ? draft.filter((r) => duplicateIds.has(r.id)) : draft;
-  const cellClass =
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (editingCell) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      e.preventDefault();
+      history.undo();
+    } else if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+      e.preventDefault();
+      history.redo();
+    } else if (mod && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      handleSave();
+    } else if (mod && e.key.toLowerCase() === "c" && selectedCell) {
+      const row = history.state.rows.find((r) => r.id === selectedCell.rowId);
+      if (row) navigator.clipboard.writeText(getCell(row, selectedCell.col));
+    } else if (e.key === "Delete" && selectedRowIds.size > 0) {
+      deleteSelectedRows();
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    if (!selectedCell || editingCell) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    const lines = text.replace(/\r/g, "").split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    const grid = lines.map((line) => line.split("\t"));
+    const cmd = pasteBlockCommand(history.state, selectedCell.rowId, selectedCell.col, columnOrder, grid);
+    if (cmd) history.run(cmd);
+  }
+
+  const inputClass =
     "w-full bg-transparent border-b border-transparent px-1 py-1 text-sm text-base-100 outline-none focus:border-gold-500";
+  const toolbarBtn = "rounded-md px-2.5 py-1.5 text-xs font-medium text-base-200 hover:bg-base-800 disabled:opacity-40 disabled:cursor-not-allowed";
 
   return (
-    <Modal open={open} title="Data Editor — Người chơi" onClose={onClose} maxWidth="max-w-6xl">
+    <Modal open={open} title="Data Editor — Người chơi" onClose={requestClose} maxWidth="max-w-[95vw]">
       {loading ? (
         <div className="py-12 text-center text-sm text-base-400">Đang tải dữ liệu...</div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {/* Thanh công cụ deduplicate */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-base-800 bg-base-950 px-3 py-2">
-            <div className="text-xs text-base-400">
-              {duplicateGroups.size > 0 ? (
-                <span className="text-danger-500">
-                  Phát hiện {duplicateGroups.size} nhóm trùng SĐT ({duplicateIds.size} dòng).
-                </span>
-              ) : (
-                <span>Không phát hiện trùng lặp theo số điện thoại.</span>
-              )}
+        <div
+          ref={containerRef}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          className="flex h-[75vh] flex-col outline-none"
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-base-800 bg-base-900 pb-2">
+            <div className="flex gap-1">
+              {GROUPS.map((g) => (
+                <button
+                  key={g.key}
+                  onClick={() => setActiveGroup(g.key)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                    activeGroup === g.key ? "bg-gold-500 text-base-950" : "text-base-300 hover:bg-base-800"
+                  }`}
+                >
+                  {g.label}
+                  {g.key === "validate" && issues.length > 0 && (
+                    <span className="ml-1.5 rounded-full bg-danger-500 px-1.5 text-[10px] text-white">
+                      {issues.length}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs text-base-300">
-                <input
-                  type="checkbox"
-                  checked={showOnlyDuplicates}
-                  onChange={(e) => setShowOnlyDuplicates(e.target.checked)}
-                  className="accent-gold-500"
-                />
-                Chỉ hiện dòng trùng lặp
-              </label>
-              <Button
-                variant="secondary"
-                onClick={quickDeduplicate}
-                disabled={duplicateGroups.size === 0}
-                className="text-xs"
+              <button className={toolbarBtn} onClick={history.undo} disabled={!history.canUndo} title="Undo (Ctrl+Z)">
+                Undo
+              </button>
+              <button
+                className={toolbarBtn}
+                onClick={history.redo}
+                disabled={!history.canRedo}
+                title="Redo (Ctrl+Shift+Z)"
               >
-                Quick deduplicate
+                Redo
+              </button>
+              <button className={toolbarBtn} onClick={() => setShowHistoryPanel((v) => !v)}>
+                Lịch sử ({history.historyLabels.length})
+              </button>
+              <span className="text-xs text-base-500">
+                {history.dirty ? (
+                  <span className="text-highlight-500">Chưa lưu</span>
+                ) : (
+                  <span className="text-teal-400">Đã lưu</span>
+                )}
+              </span>
+              <Button onClick={() => handleSave()} disabled={!history.dirty || saving} className="text-xs">
+                {saving ? "Đang lưu..." : "Save (Ctrl+S)"}
               </Button>
             </div>
           </div>
 
-          {error && (
-            <div className="rounded-lg border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-xs text-danger-500">
-              {error}
+          {showHistoryPanel && (
+            <div className="max-h-28 overflow-y-auto border-b border-base-800 bg-base-950 px-3 py-2 text-xs text-base-400">
+              {history.historyLabels.length === 0 ? (
+                <span>Chưa có thao tác nào.</span>
+              ) : (
+                <ol className="space-y-0.5">
+                  {history.historyLabels.map((label, i) => (
+                    <li key={i}>
+                      {i + 1}. {label}
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
           )}
 
-          {/* Bảng dữ liệu */}
-          <div className="overflow-x-auto rounded-xl border border-base-800">
+          {toast && (
+            <div className="flex items-center justify-between border-b border-base-800 bg-teal-500/10 px-3 py-1.5 text-xs text-teal-400">
+              {toast}
+              <button onClick={() => setToast(null)} className="text-teal-400/70 hover:text-teal-400">
+                x
+              </button>
+            </div>
+          )}
+          {error && (
+            <div className="flex items-center justify-between border-b border-base-800 bg-danger-500/10 px-3 py-1.5 text-xs text-danger-500">
+              {error}
+              <button onClick={() => setError(null)} className="text-danger-500/70 hover:text-danger-500">
+                x
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-b border-base-800 bg-base-950 px-1 py-2">
+            {activeGroup === "edit" && (
+              <>
+                <button className={toolbarBtn} onClick={() => history.run(addRowCommand())}>
+                  + Thêm dòng
+                </button>
+                <button
+                  className={toolbarBtn}
+                  onClick={deleteSelectedRows}
+                  disabled={selectedRowIds.size === 0}
+                >
+                  Xoá {selectedRowIds.size > 0 ? `${selectedRowIds.size} dòng` : "dòng đã chọn"}
+                </button>
+                <div className="mx-1 h-5 w-px bg-base-800" />
+                <input
+                  list="suggested-columns"
+                  value={newColumnName}
+                  onChange={(e) => setNewColumnName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddColumn()}
+                  placeholder="Tên cột mới (vd: facebook_post)"
+                  className="w-56 rounded-lg border border-base-700 bg-base-800 px-2.5 py-1.5 text-xs text-base-100 outline-none focus:border-gold-500"
+                />
+                <datalist id="suggested-columns">
+                  {SUGGESTED_COLUMNS.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                <button className={toolbarBtn} onClick={handleAddColumn}>
+                  + Thêm cột
+                </button>
+                <span className="ml-auto text-[11px] text-base-500">
+                  Click chọn ô · Đúp-click để sửa · Ctrl+C/Ctrl+V để copy/paste (dán được cả từ Excel)
+                </span>
+              </>
+            )}
+
+            {activeGroup === "clean" && (
+              <>
+                <label className="text-xs text-base-400">Áp dụng cho cột:</label>
+                <select
+                  value={cleanColumn}
+                  onChange={(e) => setCleanColumn(e.target.value)}
+                  className="rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                >
+                  {columnOrder.map((c) => (
+                    <option key={c} value={c}>
+                      {COLUMN_LABELS[c] ?? c}
+                    </option>
+                  ))}
+                </select>
+                <button className={toolbarBtn} onClick={() => applyClean("Trim Space", trimSpace)}>
+                  Trim Space
+                </button>
+                <button className={toolbarBtn} onClick={() => applyClean("Upper Case", toUpperCase)}>
+                  Upper Case
+                </button>
+                <button className={toolbarBtn} onClick={() => applyClean("Lower Case", toLowerCase)}>
+                  Lower Case
+                </button>
+                <button className={toolbarBtn} onClick={() => applyClean("Title Case", toTitleCase)}>
+                  Title Case
+                </button>
+                <button className={toolbarBtn} onClick={() => applyClean("Normalize Phone", normalizePhoneValue)}>
+                  Normalize Phone
+                </button>
+                <button className={toolbarBtn} onClick={() => applyClean("Normalize Name", normalizeNameValue)}>
+                  Normalize Name
+                </button>
+                <div className="mx-1 h-5 w-px bg-base-800" />
+                <input
+                  value={findText}
+                  onChange={(e) => setFindText(e.target.value)}
+                  placeholder="Tìm"
+                  className="w-24 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                />
+                <input
+                  value={replaceText}
+                  onChange={(e) => setReplaceText(e.target.value)}
+                  placeholder="Thay bằng"
+                  className="w-24 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                />
+                <label className="flex items-center gap-1 text-[11px] text-base-400">
+                  <input
+                    type="checkbox"
+                    checked={findCaseSensitive}
+                    onChange={(e) => setFindCaseSensitive(e.target.checked)}
+                    className="accent-gold-500"
+                  />
+                  Phân biệt hoa/thường
+                </label>
+                <button className={toolbarBtn} onClick={applyFindReplace}>
+                  Find &amp; Replace
+                </button>
+                <div className="mx-1 h-5 w-px bg-base-800" />
+                <button className={toolbarBtn} onClick={applyRemoveEmptyRows}>
+                  Remove Empty Rows
+                </button>
+                <button className={toolbarBtn} onClick={applyRemoveEmptyColumns}>
+                  Remove Empty Columns
+                </button>
+                <button className={toolbarBtn} onClick={applyRemoveDuplicates}>
+                  Remove Duplicates (SĐT)
+                </button>
+                <div className="mx-1 h-5 w-px bg-base-800" />
+                <button className={`${toolbarBtn} bg-base-800`} onClick={applyQuickClean} title="Trim + Normalize Name + Normalize Phone, trong 1 bước Undo">
+                  Quick Clean
+                </button>
+              </>
+            )}
+
+            {activeGroup === "generate" && (
+              <>
+                <select
+                  value={genAction}
+                  onChange={(e) => setGenAction(e.target.value as typeof genAction)}
+                  className="rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                >
+                  <option value="id">Generate ID (→ cột Mã)</option>
+                  <option value="running">Running Number</option>
+                  <option value="displayPhone">Display Phone</option>
+                  <option value="combine">Combine Columns</option>
+                </select>
+
+                {genAction === "id" && (
+                  <>
+                    <select
+                      value={genIdMode}
+                      onChange={(e) => setGenIdMode(e.target.value as typeof genIdMode)}
+                      className="rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    >
+                      <option value="sequential">Tuần tự (0001, 0002...)</option>
+                      <option value="random">Ngẫu nhiên</option>
+                    </select>
+                    <input
+                      value={genIdPrefix}
+                      onChange={(e) => setGenIdPrefix(e.target.value)}
+                      placeholder="Tiền tố (vd: KH)"
+                      className="w-28 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    />
+                  </>
+                )}
+
+                {genAction === "running" && (
+                  <>
+                    <input
+                      value={runningCol}
+                      onChange={(e) => setRunningCol(e.target.value)}
+                      placeholder="Tên cột (vd: stt)"
+                      className="w-32 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    />
+                    <input
+                      type="number"
+                      value={runningStart}
+                      onChange={(e) => setRunningStart(Number(e.target.value))}
+                      className="w-20 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    />
+                  </>
+                )}
+
+                {genAction === "displayPhone" && (
+                  <>
+                    <input
+                      value={displayPhoneCol}
+                      onChange={(e) => setDisplayPhoneCol(e.target.value)}
+                      placeholder="Tên cột mới"
+                      className="w-32 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    />
+                    <select
+                      value={displayPhonePattern}
+                      onChange={(e) => setDisplayPhonePattern(e.target.value as typeof displayPhonePattern)}
+                      className="rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    >
+                      <option value="maskMost">0912xxx783 (giữ đầu + 3 số cuối)</option>
+                      <option value="maskLast3">xxxxxxx783 (che hết, giữ 3 số cuối)</option>
+                      <option value="last3">783 (chỉ 3 số cuối)</option>
+                    </select>
+                  </>
+                )}
+
+                {genAction === "combine" && (
+                  <>
+                    <input
+                      value={combineCol}
+                      onChange={(e) => setCombineCol(e.target.value)}
+                      placeholder="Tên cột mới"
+                      className="w-28 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    />
+                    <select
+                      multiple
+                      value={combineSources}
+                      onChange={(e) => setCombineSources(Array.from(e.target.selectedOptions, (o) => o.value))}
+                      className="h-8 w-40 rounded-lg border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
+                    >
+                      {columnOrder.map((c) => (
+                        <option key={c} value={c}>
+                          {COLUMN_LABELS[c] ?? c}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={combineSeparator}
+                      onChange={(e) => setCombineSeparator(e.target.value)}
+                      placeholder="Nối bằng"
+                      className="w-20 rounded-lg border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                    />
+                  </>
+                )}
+
+                <button className={`${toolbarBtn} bg-base-800`} onClick={applyGenerate}>
+                  Áp dụng
+                </button>
+              </>
+            )}
+
+            {activeGroup === "validate" && (
+              <>
+                <span className="text-xs text-base-300">
+                  {issues.length === 0 ? "Không phát hiện vấn đề." : `${issues.length} vấn đề trên ${issuesByRow.size} dòng.`}
+                </span>
+                <label className="ml-2 flex items-center gap-1.5 text-xs text-base-300">
+                  <input
+                    type="checkbox"
+                    checked={onlyShowIssues}
+                    onChange={(e) => setOnlyShowIssues(e.target.checked)}
+                    className="accent-gold-500"
+                  />
+                  Chỉ hiện dòng có vấn đề
+                </label>
+                <span className="text-[11px] text-base-500">
+                  Kiểm tra: thiếu Tên, thiếu/sai định dạng SĐT, trùng SĐT — ô lỗi viền đỏ trong bảng.
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="bg-base-900 text-xs uppercase tracking-wide text-base-400">
+              <thead className="sticky top-0 z-[5] bg-base-900 text-xs uppercase tracking-wide text-base-400">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Tên *</th>
-                  <th className="px-3 py-2 font-medium">SĐT *</th>
-                  <th className="px-3 py-2 font-medium">Mã (khuyến nghị)</th>
-                  <th className="px-3 py-2 font-medium">Email (khuyến nghị)</th>
-                  {columns.map((col) => (
-                    <th key={col} className="px-3 py-2 font-medium">
-                      <div className="flex items-center gap-1">
+                  <th className="w-8 px-2 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.size > 0 && selectedRowIds.size === visibleRows.length}
+                      onChange={toggleSelectAll}
+                      className="accent-gold-500"
+                    />
+                  </th>
+                  {columnOrder.map((col) => (
+                    <th
+                      key={col}
+                      className="px-3 py-2 font-medium"
+                      onContextMenu={(e) => {
+                        if (isCoreField(col)) return;
+                        e.preventDefault();
+                        setContextMenu({ x: e.clientX, y: e.clientY, type: "column", col });
+                      }}
+                    >
+                      {renamingColumn === col ? (
                         <input
-                          defaultValue={col}
-                          onBlur={(e) => renameColumn(col, e.target.value)}
-                          className="w-24 border-b border-base-700 bg-transparent text-xs normal-case text-base-200 outline-none focus:border-gold-500"
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => {
+                            if (renameValue.trim() && renameValue.trim() !== col && !columnOrder.includes(renameValue.trim())) {
+                              history.run(renameColumnCommand(col, renameValue.trim()));
+                            }
+                            setRenamingColumn(null);
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                          className="w-24 border-b border-gold-500 bg-transparent text-xs normal-case text-base-100 outline-none"
                         />
-                        <button
-                          onClick={() => removeColumn(col)}
-                          className="text-base-500 hover:text-danger-500"
-                          title="Xoá cột"
-                        >
-                          ×
-                        </button>
-                      </div>
+                      ) : (
+                        <span>
+                          {COLUMN_LABELS[col] ?? col}
+                          {(col === "name" || col === "phone") && " *"}
+                        </span>
+                      )}
                     </th>
                   ))}
-                  <th className="px-3 py-2 font-medium"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-base-800 bg-base-950">
                 {visibleRows.length === 0 ? (
                   <tr>
-                    <td colSpan={5 + columns.length} className="px-4 py-8 text-center text-base-500">
+                    <td colSpan={columnOrder.length + 1} className="px-4 py-8 text-center text-base-500">
                       Không có dòng nào để hiển thị.
                     </td>
                   </tr>
                 ) : (
-                  visibleRows.map((row) => {
-                    const dirty = isRowDirty(row);
-                    const isDuplicate = duplicateIds.has(row.id);
-                    const marked = markedForDelete.has(row.id);
+                  visibleRows.map((row, rowIndex) => {
+                    const rowIssues = issuesByRow.get(row.id) ?? [];
+                    const isDuplicate = duplicatePhoneIds.has(row.id);
                     return (
                       <tr
                         key={row.id}
-                        className={[
-                          marked ? "opacity-40 line-through" : "",
-                          !marked && isDuplicate ? "bg-danger-500/10" : "",
-                          !marked && !isDuplicate && dirty ? "bg-highlight-500/10" : "",
-                        ].join(" ")}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({ x: e.clientX, y: e.clientY, type: "row", rowId: row.id, rowIndex });
+                        }}
+                        className={isDuplicate ? "bg-danger-500/10" : row.__isNew ? "bg-teal-500/5" : ""}
                       >
-                        <td className="px-3 py-1">
+                        <td className="px-2 py-1">
                           <input
-                            value={row.name}
-                            onChange={(e) => updateField(row.id, "name", e.target.value)}
-                            disabled={marked}
-                            className={`${cellClass} ${!row.name.trim() ? "border-danger-500/50" : ""}`}
+                            type="checkbox"
+                            checked={selectedRowIds.has(row.id)}
+                            onChange={() => toggleRowSelect(row.id)}
+                            className="accent-gold-500"
                           />
                         </td>
-                        <td className="px-3 py-1">
-                          <input
-                            value={row.phone ?? ""}
-                            onChange={(e) => updateField(row.id, "phone", e.target.value)}
-                            disabled={marked}
-                            className={`${cellClass} ${!row.phone?.trim() ? "border-danger-500/50" : ""}`}
-                          />
-                        </td>
-                        <td className="px-3 py-1">
-                          <input
-                            value={row.code ?? ""}
-                            onChange={(e) => updateField(row.id, "code", e.target.value)}
-                            disabled={marked}
-                            className={cellClass}
-                          />
-                        </td>
-                        <td className="px-3 py-1">
-                          <input
-                            value={row.email ?? ""}
-                            onChange={(e) => updateField(row.id, "email", e.target.value)}
-                            disabled={marked}
-                            className={cellClass}
-                          />
-                        </td>
-                        {columns.map((col) => (
-                          <td key={col} className="px-3 py-1">
-                            <input
-                              value={row.extra[col] ?? ""}
-                              onChange={(e) => updateExtra(row.id, col, e.target.value)}
-                              disabled={marked}
-                              className={cellClass}
-                            />
-                          </td>
-                        ))}
-                        <td className="px-3 py-1 text-right">
-                          <button
-                            onClick={() => toggleMarkDelete(row.id)}
-                            className={`text-xs ${marked ? "text-teal-400 hover:underline" : "text-base-500 hover:text-danger-500"}`}
-                          >
-                            {marked ? "Huỷ xoá" : "Xoá"}
-                          </button>
-                        </td>
+                        {columnOrder.map((col) => {
+                          const isEditing = editingCell?.rowId === row.id && editingCell?.col === col;
+                          const isSelected = selectedCell?.rowId === row.id && selectedCell?.col === col;
+                          const cellIssue = rowIssues.find((i) => i.col === col);
+                          const value = getCell(row, col);
+                          return (
+                            <td
+                              key={col}
+                              onClick={() => setSelectedCell({ rowId: row.id, col })}
+                              onDoubleClick={() => startEdit(row.id, col)}
+                              className={`px-1 py-1 ${isSelected ? "ring-1 ring-inset ring-gold-500" : ""} ${
+                                cellIssue ? "bg-danger-500/10" : ""
+                              }`}
+                              title={cellIssue?.message}
+                            >
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEdit}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEdit();
+                                    if (e.key === "Escape") setEditingCell(null);
+                                  }}
+                                  className={inputClass}
+                                />
+                              ) : (
+                                <div className={`truncate px-1 py-1 text-sm ${cellIssue ? "text-danger-500" : "text-base-100"}`}>
+                                  {value || <span className="text-base-600">—</span>}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })
@@ -394,43 +813,73 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
               </tbody>
             </table>
           </div>
+        </div>
+      )}
 
-          {/* Thêm cột optional mới */}
-          <div className="flex items-center gap-2">
-            <input
-              list="suggested-columns"
-              value={newColumnName}
-              onChange={(e) => setNewColumnName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addColumn()}
-              placeholder="Tên cột optional mới (vd: facebook_post)"
-              className="w-64 rounded-lg border border-base-700 bg-base-800 px-3 py-1.5 text-xs text-base-100 outline-none focus:border-gold-500"
-            />
-            <datalist id="suggested-columns">
-              {SUGGESTED_COLUMNS.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-            <Button variant="secondary" onClick={addColumn} className="text-xs">
-              + Thêm cột
-            </Button>
-          </div>
-
-          {/* Thanh Save / Discard */}
-          <div className="flex items-center justify-between border-t border-base-800 pt-3">
-            <div className="text-xs text-base-400">
-              {hasChanges
-                ? `${dirtyCount} dòng sửa, ${markedForDelete.size} dòng đánh dấu xoá — chưa lưu.`
-                : "Không có thay đổi."}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={handleDiscard} disabled={!hasChanges || saving}>
-                Discard
-              </Button>
-              <Button onClick={handleSave} disabled={!hasChanges || saving}>
-                {saving ? "Đang lưu..." : "Save"}
-              </Button>
-            </div>
-          </div>
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] rounded-lg border border-base-700 bg-base-900 py-1 text-sm shadow-2xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.type === "row" && (
+            <>
+              <button
+                className="block w-full px-3 py-1.5 text-left text-base-200 hover:bg-base-800"
+                onClick={() => {
+                  history.run(insertRowCommand(contextMenu.rowIndex));
+                  setContextMenu(null);
+                }}
+              >
+                Thêm dòng phía trên
+              </button>
+              <button
+                className="block w-full px-3 py-1.5 text-left text-base-200 hover:bg-base-800"
+                onClick={() => {
+                  history.run(insertRowCommand(contextMenu.rowIndex + 1));
+                  setContextMenu(null);
+                }}
+              >
+                Thêm dòng phía dưới
+              </button>
+              <div className="my-1 h-px bg-base-800" />
+              <button
+                className="block w-full px-3 py-1.5 text-left text-danger-500 hover:bg-base-800"
+                onClick={() => {
+                  const cmd = deleteRowsCommand(history.state, [contextMenu.rowId]);
+                  if (cmd) history.run(cmd);
+                  setContextMenu(null);
+                }}
+              >
+                Xoá dòng này
+              </button>
+            </>
+          )}
+          {contextMenu.type === "column" && (
+            <>
+              <button
+                className="block w-full px-3 py-1.5 text-left text-base-200 hover:bg-base-800"
+                onClick={() => {
+                  setRenamingColumn(contextMenu.col);
+                  setRenameValue(contextMenu.col);
+                  setContextMenu(null);
+                }}
+              >
+                Đổi tên cột
+              </button>
+              <button
+                className="block w-full px-3 py-1.5 text-left text-danger-500 hover:bg-base-800"
+                onClick={() => {
+                  if (confirm(`Xoá cột "${contextMenu.col}"? Dữ liệu cột này ở mọi dòng sẽ mất khi Save.`)) {
+                    history.run(removeColumnCommand(history.state, contextMenu.col));
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                Xoá cột
+              </button>
+            </>
+          )}
         </div>
       )}
     </Modal>
