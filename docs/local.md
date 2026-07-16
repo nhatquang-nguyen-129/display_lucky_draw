@@ -53,17 +53,32 @@ nvm install 20
 nvm use 20
 ```
 
-- **Windows**: Download the NodeJS NVM installer
+- **Windows**: Download the NodeJS NVM installer `nvm-setup.exe`
 
 ```bash
 https://github.com/coreybutler/nvm-windows/releases
 ```
 
-- **Windows**: Install NodeJS NVM
+- Close all Command Prompt, PowerShell, VS Code windows and open a new terminal.
+
+- Verify NVM:
+
+```bash
+nvm version
+```
+
+- Install Node.js 20 LTS:
 
 ```bash
 nvm install 20
 nvm use 20
+```
+
+- Verify:
+
+```bash
+node -v
+npm -v
 ```
 
 - **Linux**: Install NodeJS NVM
@@ -72,11 +87,16 @@ nvm use 20
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 
 source ~/.bashrc
+```
 
+- Install Node.js 20 LTS:
+
+```bash
 nvm install 20
 nvm use 20
 ```
-- Verify NodeJS versions
+
+- Verify:
 
 ```bash
 node -v
@@ -129,13 +149,25 @@ python --version
 - If multiple Python versions are installed, temporarily specify Python 3.11 before installing dependencies:
 
 ```bash
-set PYTHON=C:\Path\To\Python311\python.exe
+$env:PYTHON="C:\Users\ADMIN\AppData\Local\Programs\Python\Python311\python.exe"
 ```
 
-- Verify 3.11.x if multiple Python versions are installed
+- Verify environment variable
 
 ```bash
-echo %PYTHON%
+echo $env:PYTHON
+```
+
+- Verify Python 3.11.x existence
+
+```bash
+Test-Path $env:PYTHON
+```
+
+- Expected results:
+
+```text
+True
 ```
 
 - **macOS:** Use the official installer from Python.org
