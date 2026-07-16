@@ -17,6 +17,11 @@ function getIconPath(): string {
 
 let mainWindow: BrowserWindow | null = null;
 let presentWindow: BrowserWindow | null = null;
+let hasUnsavedEditorChanges = false;
+
+ipcMain.on("editor:dirty-changed", (_e, dirty: boolean) => {
+  hasUnsavedEditorChanges = dirty;
+});
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -37,6 +42,24 @@ function createMainWindow() {
   // Khoá tiêu đề cửa sổ theo config trung tâm — không cho trang web (document.title
   // từ index.html hoặc React) ghi đè lại tiêu đề đã set.
   mainWindow.on("page-title-updated", (e) => e.preventDefault());
+
+  // Chặn đóng app đột ngột nếu Data Editor còn thay đổi chưa lưu — hỏi xác nhận trước.
+  mainWindow.on("close", (e) => {
+    if (!hasUnsavedEditorChanges) return;
+    e.preventDefault();
+    const choice = dialog.showMessageBoxSync(mainWindow!, {
+      type: "warning",
+      buttons: ["Huỷ", "Đóng và bỏ qua thay đổi"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "Data Editor còn thay đổi chưa lưu",
+      detail: "Nếu đóng ứng dụng bây giờ, các thay đổi chưa lưu sẽ bị mất.",
+    });
+    if (choice === 1) {
+      hasUnsavedEditorChanges = false;
+      mainWindow?.destroy();
+    }
+  });
 
   if (IS_DEV) {
     mainWindow.loadURL("http://localhost:5173");

@@ -73,6 +73,11 @@ const api = {
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
     },
+  editor: {
+    // Data Editor báo trạng thái "còn thay đổi chưa lưu" cho main process,
+    // để chặn đóng app đột ngột và hỏi xác nhận (xem main.ts, sự kiện "close").
+    reportDirty: (dirty: boolean) => ipcRenderer.send("editor:dirty-changed", dirty),
+  },
 };
 
 contextBridge.exposeInMainWorld("api", api);
