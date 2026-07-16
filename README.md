@@ -1,5 +1,5 @@
 <p align="left">
-  <img src="kidsplaza.png" alt="KidsPlaza Logo" width="300"/>
+  <img src="assets/icon/readme-icon.png" alt="KidsPlaza Logo" width="300"/>
 </p>
 
 This repository contains an **Lucky Draw Application** designed for offline and event-based prize drawing, running on PC environments and built using **Electron**.
@@ -13,9 +13,9 @@ The system is designed with a modular, maintainable architecture, allowing contr
 ## Overview
 
 > **This README documents the behavior and scope of the current development branch:**  
-> **`branch_1x`**
+> **`branch_2x`**
 
-`branch_1x` represents the active **1.x.x development line**, where incremental features, framework enhancements, and non-breaking changes are implemented before being promoted to production (`main`).
+`branch_2x` represents the active **2.x.x development line**, where incremental features, framework enhancements, and non-breaking changes are implemented before being promoted to production (`main`).
 
 ---
 
@@ -61,6 +61,6 @@ Redistribution, publication, or open-sourcing of any part of this project is str
 
 🤖 AI-Assisted Development
 
-This repository includes code, documentation, and architectural guidance that has been partially developed or enhanced using AI tools (e.g. GitHub Copilot, ChatGPT by OpenAI), under the supervision of the development team.
+This repository includes code, documentation, and architectural guidance that has been partially developed or enhanced using AI tools (e.g. GitHub Copilot, ChatGPT by OpenAI, Claude Code by Anthropic), under the supervision of the development team.
 
 All AI-assisted output has been reviewed, validated, and adapted to meet KidsPlaza’s internal engineering and production standards.
