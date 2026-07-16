@@ -63,20 +63,20 @@ https://github.com/coreybutler/nvm-windows/releases
 
 - Verify NVM:
 
-```bash
+```powershell
 nvm version
 ```
 
 - Install Node.js 20 LTS:
 
-```bash
+```powershell
 nvm install 20
 nvm use 20
 ```
 
 - Verify:
 
-```bash
+```powershell
 node -v
 npm -v
 ```
@@ -138,13 +138,35 @@ Remove-Item -Force package-lock.json
 npm install
 ```
 
-Or using aliases:
+- Or using aliases:
 
 ```powershell
 rm -Recurse -Force node_modules
 rm -Force package-lock.json
 
 npm install
+```
+
+---
+
+### Rebuild Native Modules for Electron
+
+- Since this project uses native Node.js modules (e.g. `better-sqlite3`), rebuild them after installing dependencies.
+
+```bash
+npx electron-rebuild
+```
+
+- Skipping this step may result in errors such as:
+
+```text
+NODE_MODULE_VERSION mismatch
+```
+
+or
+
+```text
+The module was compiled against a different Node.js version.
 ```
 
 ---
