@@ -22,6 +22,7 @@ const api = {
     bulkImport: (sessionId: string, rows: any[]) => ipcRenderer.invoke("participants:bulkImport", sessionId, rows),
     delete: (id: string) => ipcRenderer.invoke("participants:delete", id),
     bulkDelete: (ids: string[]) => ipcRenderer.invoke("participants:bulkDelete", ids),
+    reorder: (orderedIds: string[]) => ipcRenderer.invoke("participants:reorder", orderedIds),
   },
   prizes: {
     list: (sessionId: string) => ipcRenderer.invoke("prizes:list", sessionId),

@@ -6,6 +6,7 @@ export interface Participant {
   phone: string | null;
   email: string | null;
   extra_data: string | null; // JSON string chứa các cột optional (vd facebook_post, note)
+  sort_order: number | null;
   source: string;
   status: string;
   created_at: string;
@@ -72,6 +73,7 @@ declare global {
         ) => Promise<number>;
         delete: (id: string) => Promise<void>;
         bulkDelete: (ids: string[]) => Promise<number>;
+        reorder: (orderedIds: string[]) => Promise<void>;
       };
       prizes: {
         list: (sessionId: string) => Promise<Prize[]>;

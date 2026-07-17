@@ -15,6 +15,26 @@ export function combineCommands(label: string, commands: (Command | null)[]): Co
   };
 }
 
+export function reorderRowsCommand(state: EditorState, fromIndex: number, toIndex: number): Command | null {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return null;
+  if (fromIndex >= state.rows.length || toIndex >= state.rows.length) return null;
+  return {
+    label: "Sắp xếp lại dòng",
+    execute: (s) => {
+      const rows = [...s.rows];
+      const [moved] = rows.splice(fromIndex, 1);
+      rows.splice(toIndex, 0, moved);
+      return { ...s, rows };
+    },
+    undo: (s) => {
+      const rows = [...s.rows];
+      const [moved] = rows.splice(toIndex, 1);
+      rows.splice(fromIndex, 0, moved);
+      return { ...s, rows };
+    },
+  };
+}
+
 /* ==================== EDIT ==================== */
 
 export function editCellCommand(state: EditorState, rowId: string, col: string, newValue: string): Command | null {
