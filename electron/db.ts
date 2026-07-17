@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS participants (
   phone TEXT,
   email TEXT,
   extra_data TEXT,
+  sort_order INTEGER,
   source TEXT DEFAULT 'manual',
   status TEXT DEFAULT 'active',
   created_at TEXT DEFAULT (datetime('now'))
@@ -168,3 +169,28 @@ function migratePrizeFields() {
 }
 
 migratePrizeFields();
+
+/**
+ * Migration: thêm sort_order cho participants (phục vụ kéo-thả sắp xếp dòng trong Data Editor).
+ * Backfill theo thứ tự đang hiển thị hiện tại (created_at DESC) để không gây xáo trộn bất ngờ
+ * cho dữ liệu đã có sẵn trước khi tính năng này tồn tại.
+ */
+function migrateParticipantSortOrder() {
+  const cols = (db.prepare(`PRAGMA table_info(participants)`).all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("sort_order")) {
+    db.exec(`ALTER TABLE participants ADD COLUMN sort_order INTEGER`);
+  }
+  const needsBackfill = db
+    .prepare(`SELECT COUNT(*) as cnt FROM participants WHERE sort_order IS NULL`)
+    .get() as { cnt: number };
+  if (needsBackfill.cnt > 0) {
+    const rows = db.prepare(`SELECT id FROM participants ORDER BY created_at DESC`).all() as { id: string }[];
+    const update = db.prepare(`UPDATE participants SET sort_order = ? WHERE id = ?`);
+    const tx = db.transaction(() => {
+      rows.forEach((r, i) => update.run(i, r.id));
+    });
+    tx();
+  }
+}
+
+migrateParticipantSortOrder();

@@ -21,6 +21,7 @@ import {
   removeColumnCommand,
   removeEmptyColumnsCommand,
   renameColumnCommand,
+  reorderRowsCommand,
   runningNumberCommand,
 } from "@/lib/dataEditor/commands";
 import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
@@ -119,6 +120,26 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
 
   const [onlyShowIssues, setOnlyShowIssues] = useState(false);
 
+  // Thứ tự hiển thị cột — riêng biệt với history (kéo-thả cột chỉ là view, không cần Undo).
+  // Đồng bộ lại mỗi khi có cột optional được thêm/xoá qua command.
+  const [columnOrder, setColumnOrder] = useState<string[]>([...CORE_FIELDS]);
+  useEffect(() => {
+    setColumnOrder((prev) => {
+      const all = [...CORE_FIELDS, ...history.state.columns];
+      const kept = prev.filter((c) => all.includes(c));
+      const missing = all.filter((c) => !kept.includes(c));
+      return [...kept, ...missing];
+    });
+  }, [history.state.columns]);
+
+  const [dragColKey, setDragColKey] = useState<string | null>(null);
+  const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
+  const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const hasActiveFilterOrSort = sortColumn !== null || Object.values(columnFilters).some((v) => v.trim());
+
   const containerRef = useRef<HTMLDivElement>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -166,14 +187,28 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
     };
   }, [contextMenu]);
 
-  const columnOrder = useMemo(() => [...CORE_FIELDS, ...history.state.columns], [history.state.columns]);
   const issues = useMemo(() => validateState(history.state), [history.state]);
   const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
   const duplicatePhoneIds = useMemo(
     () => new Set(issues.filter((i) => i.message === "SĐT trùng lặp").map((i) => i.rowId)),
     [issues]
   );
-  const visibleRows = onlyShowIssues ? history.state.rows.filter((r) => issuesByRow.has(r.id)) : history.state.rows;
+  const visibleRows = useMemo(() => {
+    let rows = onlyShowIssues ? history.state.rows.filter((r) => issuesByRow.has(r.id)) : history.state.rows;
+    const activeFilters = Object.entries(columnFilters).filter(([, v]) => v.trim());
+    if (activeFilters.length > 0) {
+      rows = rows.filter((r) =>
+        activeFilters.every(([col, term]) => getCell(r, col).toLowerCase().includes(term.trim().toLowerCase()))
+      );
+    }
+    if (sortColumn) {
+      rows = [...rows].sort((a, b) => {
+        const cmp = getCell(a, sortColumn).localeCompare(getCell(b, sortColumn), "vi", { numeric: true });
+        return sortDirection === "asc" ? cmp : -cmp;
+      });
+    }
+    return rows;
+  }, [history.state.rows, onlyShowIssues, issuesByRow, columnFilters, sortColumn, sortDirection]);
 
   function commitEdit() {
     if (!editingCell) return;
@@ -197,6 +232,38 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
       return next;
     });
   }
+
+  function handleColumnDrop(targetCol: string) {
+    if (!dragColKey || dragColKey === targetCol) {
+      setDragColKey(null);
+      return;
+    }
+    setColumnOrder((prev) => {
+      const next = prev.filter((c) => c !== dragColKey);
+      const targetIndex = next.indexOf(targetCol);
+      next.splice(targetIndex, 0, dragColKey);
+      return next;
+    });
+    setDragColKey(null);
+  }
+
+  function handleRowDrop(targetIndex: number) {
+    if (dragRowIndex === null) {
+      setDragRowIndex(null);
+      return;
+    }
+    const cmd = reorderRowsCommand(history.state, dragRowIndex, targetIndex);
+    if (cmd) history.run(cmd);
+    setDragRowIndex(null);
+  }
+
+  // Đóng dropdown filter/sort cột khi click ra ngoài
+  useEffect(() => {
+    if (!openColumnMenu) return;
+    const close = () => setOpenColumnMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [openColumnMenu]);
 
   function toggleSelectAll() {
     setSelectedRowIds((prev) => (prev.size === visibleRows.length ? new Set() : new Set(visibleRows.map((r) => r.id))));
@@ -301,6 +368,7 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
       const removedIds = originalRows.filter((o) => !history.state.rows.some((r) => r.id === o.id)).map((o) => o.id);
       if (removedIds.length) await window.api.participants.bulkDelete(removedIds);
 
+      const finalOrderIds: string[] = [];
       for (const row of history.state.rows) {
         const payload = {
           name: row.name,
@@ -309,14 +377,21 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
           email: row.email || undefined,
           extra: row.extra,
         };
+        let realId = row.id;
         if (row.__isNew) {
-          await window.api.participants.create({ sessionId, ...payload });
+          realId = await window.api.participants.create({ sessionId, ...payload });
         } else {
           const orig = originalRows.find((o) => o.id === row.id);
-          if (orig && sameRow(orig, row)) continue;
-          await window.api.participants.update({ id: row.id, ...payload });
+          if (!(orig && sameRow(orig, row))) {
+            await window.api.participants.update({ id: row.id, ...payload });
+          }
         }
+        finalOrderIds.push(realId);
       }
+      // Ghi lại thứ tự dòng hiện tại (kể cả khi không kéo-thả gì — giữ ổn định) để không bị mất
+      // sau khi reload từ DB, và để id thật của dòng vừa tạo cũng nằm đúng vị trí.
+      await window.api.participants.reorder(finalOrderIds);
+
       await load();
       setToast(silent ? `Đã tự động lưu lúc ${new Date().toLocaleTimeString("vi-VN")}.` : "Đã lưu thay đổi.");
       onSaved();
@@ -416,6 +491,18 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
               <button className={toolbarBtn} onClick={() => setShowHistoryPanel((v) => !v)}>
                 Lịch sử ({history.historyLabels.length})
               </button>
+              {hasActiveFilterOrSort && (
+                <button
+                  className={`${toolbarBtn} text-gold-400`}
+                  onClick={() => {
+                    setColumnFilters({});
+                    setSortColumn(null);
+                  }}
+                  title="Đang lọc/sắp xếp — bấm để xoá hết"
+                >
+                  Lọc/Sắp xếp đang bật ✕
+                </button>
+              )}
               <span className="text-xs text-base-500">
                 {history.dirty ? (
                   <span className="text-highlight-500">Chưa lưu</span>
@@ -712,32 +799,110 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                   {columnOrder.map((col) => (
                     <th
                       key={col}
-                      className="px-3 py-2 font-medium"
+                      draggable
+                      onDragStart={() => setDragColKey(col)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleColumnDrop(col)}
+                      className={`relative cursor-move select-none px-3 py-2 font-medium ${
+                        dragColKey === col ? "opacity-40" : ""
+                      }`}
                       onContextMenu={(e) => {
                         if (isCoreField(col)) return;
                         e.preventDefault();
                         setContextMenu({ x: e.clientX, y: e.clientY, type: "column", col });
                       }}
                     >
-                      {renamingColumn === col ? (
-                        <input
-                          autoFocus
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onBlur={() => {
-                            if (renameValue.trim() && renameValue.trim() !== col && !columnOrder.includes(renameValue.trim())) {
-                              history.run(renameColumnCommand(col, renameValue.trim()));
-                            }
-                            setRenamingColumn(null);
-                          }}
-                          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                          className="w-24 border-b border-gold-500 bg-transparent text-xs normal-case text-base-100 outline-none"
-                        />
-                      ) : (
-                        <span>
-                          {COLUMN_LABELS[col] ?? col}
-                          {(col === "name" || col === "phone") && " *"}
+                      <div className="flex items-center gap-1">
+                        <span className="text-base-600" title="Kéo để sắp xếp cột">
+                          ⋮⋮
                         </span>
+                        {renamingColumn === col ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onBlur={() => {
+                              if (renameValue.trim() && renameValue.trim() !== col && !columnOrder.includes(renameValue.trim())) {
+                                history.run(renameColumnCommand(col, renameValue.trim()));
+                              }
+                              setRenamingColumn(null);
+                            }}
+                            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                            className="w-24 border-b border-gold-500 bg-transparent text-xs normal-case text-base-100 outline-none"
+                          />
+                        ) : (
+                          <span>
+                            {COLUMN_LABELS[col] ?? col}
+                            {(col === "name" || col === "phone") && " *"}
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenColumnMenu(openColumnMenu === col ? null : col);
+                          }}
+                          className={`ml-auto rounded px-1 text-[10px] hover:text-base-200 ${
+                            columnFilters[col]?.trim() || sortColumn === col ? "text-gold-400" : "text-base-600"
+                          }`}
+                          title="Lọc / Sắp xếp"
+                        >
+                          ▾
+                        </button>
+                      </div>
+                      {openColumnMenu === col && (
+                        <div
+                          className="absolute left-0 z-20 mt-1 w-48 rounded-lg border border-base-700 bg-base-900 p-2 text-left normal-case shadow-2xl"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
+                            onClick={() => {
+                              setSortColumn(col);
+                              setSortDirection("asc");
+                            }}
+                          >
+                            Sắp xếp A → Z
+                          </button>
+                          <button
+                            className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
+                            onClick={() => {
+                              setSortColumn(col);
+                              setSortDirection("desc");
+                            }}
+                          >
+                            Sắp xếp Z → A
+                          </button>
+                          {sortColumn === col && (
+                            <button
+                              className="block w-full rounded px-2 py-1 text-left text-xs text-base-500 hover:bg-base-800"
+                              onClick={() => setSortColumn(null)}
+                            >
+                              Bỏ sắp xếp
+                            </button>
+                          )}
+                          <div className="my-1.5 h-px bg-base-800" />
+                          <input
+                            autoFocus
+                            value={columnFilters[col] ?? ""}
+                            onChange={(e) => setColumnFilters((prev) => ({ ...prev, [col]: e.target.value }))}
+                            placeholder="Tìm trong cột..."
+                            className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                          />
+                          {!!columnFilters[col]?.trim() && (
+                            <button
+                              className="mt-1 block w-full rounded px-2 py-1 text-left text-xs text-base-500 hover:bg-base-800"
+                              onClick={() =>
+                                setColumnFilters((prev) => {
+                                  const next = { ...prev };
+                                  delete next[col];
+                                  return next;
+                                })
+                              }
+                            >
+                              Xoá bộ lọc
+                            </button>
+                          )}
+                        </div>
                       )}
                     </th>
                   ))}
@@ -751,17 +916,24 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                     </td>
                   </tr>
                 ) : (
-                  visibleRows.map((row, rowIndex) => {
+                  visibleRows.map((row) => {
+                    const trueIndex = history.state.rows.findIndex((r) => r.id === row.id);
                     const rowIssues = issuesByRow.get(row.id) ?? [];
                     const isDuplicate = duplicatePhoneIds.has(row.id);
                     return (
                       <tr
                         key={row.id}
+                        draggable
+                        onDragStart={() => setDragRowIndex(trueIndex)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => handleRowDrop(trueIndex)}
                         onContextMenu={(e) => {
                           e.preventDefault();
-                          setContextMenu({ x: e.clientX, y: e.clientY, type: "row", rowId: row.id, rowIndex });
+                          setContextMenu({ x: e.clientX, y: e.clientY, type: "row", rowId: row.id, rowIndex: trueIndex });
                         }}
-                        className={isDuplicate ? "bg-danger-500/10" : row.__isNew ? "bg-teal-500/5" : ""}
+                        className={`cursor-move ${
+                          dragRowIndex === trueIndex ? "opacity-40" : isDuplicate ? "bg-danger-500/10" : row.__isNew ? "bg-teal-500/5" : ""
+                        }`}
                       >
                         <td className="px-2 py-1">
                           <input
