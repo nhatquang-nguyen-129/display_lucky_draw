@@ -363,6 +363,18 @@ ipcMain.handle(
   }
 );
 
+// Lưu mapping "cột nào thuộc loại dữ liệu chuẩn hoá nào" — gọi ngay khi người dùng đổi
+// trong Data Editor (không gộp vào nút Save chính, vì đây là metadata không phải data dòng).
+ipcMain.handle(
+  "sessions:updateColumnTypes",
+  (_e, data: { id: string; columnTypes: Record<string, string> }) => {
+    db.prepare(`UPDATE sessions SET participant_column_types = ? WHERE id = ?`).run(
+      JSON.stringify(data.columnTypes),
+      data.id
+    );
+  }
+);
+
 // Xoá tab: xoá luôn toàn bộ participants/prizes/kết quả quay thuộc riêng session đó
 // (an toàn vì dữ liệu này KHÔNG được chia sẻ với session khác trong mô hình mới)
 ipcMain.handle("sessions:delete", (_e, id: string) => {
