@@ -2,7 +2,7 @@ import { Command } from "./history";
 import { EditorRow, EditorState, getCell, isCoreField, makeEmptyRow, withCell } from "./types";
 import { maskPhone, PhoneMaskPattern } from "./transforms";
 
-/* ==================== COMPOSITE ==================== */
+/* COMPOSITE */
 
 /** Gộp nhiều command thành 1 bước Undo/Redo duy nhất — dùng cho Quick Actions. */
 export function combineCommands(label: string, commands: (Command | null)[]): Command | null {
@@ -35,7 +35,7 @@ export function reorderRowsCommand(state: EditorState, fromIndex: number, toInde
   };
 }
 
-/* ==================== EDIT ==================== */
+/* EDIT */
 
 export function editCellCommand(state: EditorState, rowId: string, col: string, newValue: string): Command | null {
   const row = state.rows.find((r) => r.id === rowId);
@@ -183,7 +183,7 @@ export function pasteBlockCommand(
   };
 }
 
-/* ==================== CLEAN ==================== */
+/* CLEAN */
 
 /** Khung dùng chung cho mọi thao tác Clean áp lên 1 cột — chỉ ghi lại Ô THỰC SỰ thay đổi. */
 export function batchTransformCommand(
@@ -281,7 +281,7 @@ export function findDuplicatePhoneIdsToRemove(state: EditorState): string[] {
   return toRemove;
 }
 
-/* ==================== GENERATE ==================== */
+/* GENERATE */
 
 function setColumnValuesCommand(
   state: EditorState,
