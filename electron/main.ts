@@ -128,8 +128,17 @@ app.on("window-all-closed", () => {
 type ExtraData = Record<string, string>;
 
 ipcMain.handle("participants:list", (_e, sessionId: string) => {
-  return db.prepare(`SELECT * FROM participants WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
+  return db
+    .prepare(`SELECT * FROM participants WHERE session_id = ? ORDER BY sort_order ASC, created_at DESC`)
+    .all(sessionId);
 });
+
+function nextSortOrder(sessionId: string): number {
+  const row = db
+    .prepare(`SELECT MAX(sort_order) as maxOrder FROM participants WHERE session_id = ?`)
+    .get(sessionId) as { maxOrder: number | null };
+  return (row.maxOrder ?? -1) + 1;
+}
 
 ipcMain.handle(
   "participants:create",
@@ -139,7 +148,7 @@ ipcMain.handle(
   ) => {
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO participants (id, session_id, name, code, phone, email, extra_data) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO participants (id, session_id, name, code, phone, email, extra_data, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       data.sessionId,
@@ -147,7 +156,8 @@ ipcMain.handle(
       data.code ?? null,
       data.phone ?? null,
       data.email ?? null,
-      data.extra && Object.keys(data.extra).length ? JSON.stringify(data.extra) : null
+      data.extra && Object.keys(data.extra).length ? JSON.stringify(data.extra) : null,
+      nextSortOrder(data.sessionId)
     );
     return id;
   }
@@ -187,11 +197,12 @@ ipcMain.handle(
     rows: Array<{ name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }>
   ) => {
     const insert = db.prepare(
-      `INSERT OR IGNORE INTO participants (id, session_id, name, code, phone, email, extra_data, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'import')`
+      `INSERT OR IGNORE INTO participants (id, session_id, name, code, phone, email, extra_data, sort_order, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'import')`
     );
     const tx = db.transaction((items: typeof rows) => {
       let inserted = 0;
+      let nextOrder = nextSortOrder(sessionId);
       for (const row of items) {
         if (!row.name) continue;
         const result = insert.run(
@@ -201,9 +212,13 @@ ipcMain.handle(
           row.code ?? null,
           row.phone ?? null,
           row.email ?? null,
-          row.extra && Object.keys(row.extra).length ? JSON.stringify(row.extra) : null
+          row.extra && Object.keys(row.extra).length ? JSON.stringify(row.extra) : null,
+          nextOrder
         );
-        if (result.changes > 0) inserted++;
+        if (result.changes > 0) {
+          inserted++;
+          nextOrder++;
+        }
       }
       return inserted;
     });
@@ -223,6 +238,15 @@ ipcMain.handle("participants:bulkDelete", (_e, ids: string[]) => {
     return deleted;
   });
   return tx(ids);
+});
+
+// Ghi lại thứ tự dòng sau khi kéo-thả sắp xếp trong Data Editor — orderedIds đã đúng thứ tự mong muốn.
+ipcMain.handle("participants:reorder", (_e, orderedIds: string[]) => {
+  const update = db.prepare(`UPDATE participants SET sort_order = ? WHERE id = ?`);
+  const tx = db.transaction((ids: string[]) => {
+    ids.forEach((id, index) => update.run(index, id));
+  });
+  tx(orderedIds);
 });
 
 /* ---------------- IPC: Prizes (thuộc về 1 session) ---------------- */
