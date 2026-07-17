@@ -19,6 +19,12 @@ export function isValidVietnamesePhone(v: string): boolean {
   return /^0\d{9,10}$/.test(digits);
 }
 
+const URL_RE = /^(https?:\/\/)?([\w-]+\.)+[a-zA-Z]{2,}(:\d+)?([/?#]\S*)?$/i;
+
+export function isValidUrl(v: string): boolean {
+  return URL_RE.test(v.trim());
+}
+
 export type PhoneMaskPattern = "last3" | "maskLast3" | "maskMost";
 
 /** vd 0912345783 -> last3: "783", maskLast3: "xxxxxxx783", maskMost: "0912xxx783" */

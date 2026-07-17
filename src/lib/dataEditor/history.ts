@@ -9,7 +9,7 @@ import { EditorState } from "./types";
  * nên History có thể replay/undo bao nhiêu lần cũng không lo lệch dữ liệu.
  */
 export interface Command {
-  label: string; // hiển thị trong Edit History, vd "Normalize Phone (12 dòng)"
+  label: string; // hiển thịs trong Edit History, vd "Normalize Phone (12 dòng)"
   execute: (state: EditorState) => EditorState;
   undo: (state: EditorState) => EditorState;
 }

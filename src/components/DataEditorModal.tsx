@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
-import { Participant } from "@/types";
+import { Participant, Session } from "@/types";
 import { CORE_FIELDS, EditorRow, EditorState, getCell, isCoreField } from "@/lib/dataEditor/types";
 import { useCommandHistory } from "@/lib/dataEditor/history";
 import {
@@ -25,11 +25,20 @@ import {
   runningNumberCommand,
 } from "@/lib/dataEditor/commands";
 import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
-import { groupIssuesByRow, validateState } from "@/lib/dataEditor/validate";
+import {
+  ColumnType,
+  COLUMN_TYPE_HINTS,
+  COLUMN_TYPE_LABELS,
+  defaultColumnType,
+  groupIssuesByMessage,
+  groupIssuesByRow,
+  validateState,
+} from "@/lib/dataEditor/validate";
 
 interface DataEditorModalProps {
   open: boolean;
   sessionId: string;
+  session: Session | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -45,6 +54,9 @@ const GROUPS: { key: Group; label: string }[] = [
 const COLUMN_LABELS: Record<string, string> = { name: "Tên", phone: "SĐT", code: "Mã", email: "Email" };
 const SUGGESTED_COLUMNS = ["facebook_post", "note", "zalo", "address", "team", "khu_vuc"];
 const AUTOSAVE_DELAY_MS = 20000;
+const CHECKBOX_COL_WIDTH = 32;
+const DEFAULT_COLUMN_WIDTH = 160;
+const MIN_COLUMN_WIDTH = 60;
 
 function safeParseExtra(json: string | null): Record<string, string> {
   if (!json) return {};
@@ -78,7 +90,7 @@ function sameRow(a: EditorRow, b: EditorRow): boolean {
   );
 }
 
-export default function DataEditorModal({ open, sessionId, onClose, onSaved }: DataEditorModalProps) {
+export default function DataEditorModal({ open, sessionId, session, onClose, onSaved }: DataEditorModalProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [originalRows, setOriginalRows] = useState<EditorRow[]>([]);
@@ -118,7 +130,8 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
   const [combineSources, setCombineSources] = useState<string[]>([]);
   const [combineSeparator, setCombineSeparator] = useState(" - ");
 
-  const [onlyShowIssues, setOnlyShowIssues] = useState(false);
+  const [issueFilter, setIssueFilter] = useState<string | null>(null); // null = không lọc, "__any__" = mọi lỗi, hoặc đúng message 1 loại lỗi
+  const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
 
   // Thứ tự hiển thị cột — riêng biệt với history (kéo-thả cột chỉ là view, không cần Undo).
   // Đồng bộ lại mỗi khi có cột optional được thêm/xoá qua command.
@@ -134,6 +147,25 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
 
   const [dragColKey, setDragColKey] = useState<string | null>(null);
   const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
+  // Độ rộng cột — chỉ là view state như columnOrder, không cần lưu DB/Undo.
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  function handleColumnResizeStart(col: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[col] ?? DEFAULT_COLUMN_WIDTH;
+    function onMove(ev: MouseEvent) {
+      const next = Math.max(MIN_COLUMN_WIDTH, startWidth + (ev.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [col]: next }));
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
   const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -153,7 +185,24 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
     history.reset({ columns, rows });
     setSelectedRowIds(new Set());
     setSelectedCell(null);
+    if (session?.participant_column_types) {
+      try {
+        setColumnTypes(JSON.parse(session.participant_column_types));
+      } catch {
+        setColumnTypes({});
+      }
+    } else {
+      setColumnTypes({});
+    }
     setLoading(false);
+  }
+
+  function updateColumnType(col: string, type: ColumnType) {
+    setColumnTypes((prev) => {
+      const next = { ...prev, [col]: type };
+      window.api.sessions.updateColumnTypes({ id: sessionId, columnTypes: next });
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -187,14 +236,20 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
     };
   }, [contextMenu]);
 
-  const issues = useMemo(() => validateState(history.state), [history.state]);
+  const issues = useMemo(() => validateState(history.state, columnTypes), [history.state, columnTypes]);
   const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
+  const issueGroups = useMemo(() => groupIssuesByMessage(issues), [issues]);
   const duplicatePhoneIds = useMemo(
-    () => new Set(issues.filter((i) => i.message === "SĐT trùng lặp").map((i) => i.rowId)),
+    () => new Set(issues.filter((i) => i.col === "phone" && i.message === "Giá trị trùng lặp").map((i) => i.rowId)),
     [issues]
   );
   const visibleRows = useMemo(() => {
-    let rows = onlyShowIssues ? history.state.rows.filter((r) => issuesByRow.has(r.id)) : history.state.rows;
+    let rows = history.state.rows;
+    if (issueFilter === "__any__") {
+      rows = rows.filter((r) => issuesByRow.has(r.id));
+    } else if (issueFilter) {
+      rows = rows.filter((r) => issuesByRow.get(r.id)?.some((i) => i.message === issueFilter));
+    }
     const activeFilters = Object.entries(columnFilters).filter(([, v]) => v.trim());
     if (activeFilters.length > 0) {
       rows = rows.filter((r) =>
@@ -208,7 +263,7 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
       });
     }
     return rows;
-  }, [history.state.rows, onlyShowIssues, issuesByRow, columnFilters, sortColumn, sortDirection]);
+  }, [history.state.rows, issueFilter, issuesByRow, columnFilters, sortColumn, sortDirection]);
 
   function commitEdit() {
     if (!editingCell) return;
@@ -765,30 +820,65 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
 
             {activeGroup === "validate" && (
               <>
-                <span className="text-xs text-base-300">
-                  {issues.length === 0 ? "Không phát hiện vấn đề." : `${issues.length} vấn đề trên ${issuesByRow.size} dòng.`}
-                </span>
-                <label className="ml-2 flex items-center gap-1.5 text-xs text-base-300">
-                  <input
-                    type="checkbox"
-                    checked={onlyShowIssues}
-                    onChange={(e) => setOnlyShowIssues(e.target.checked)}
-                    className="accent-gold-500"
-                  />
-                  Chỉ hiện dòng có vấn đề
-                </label>
-                <span className="text-[11px] text-base-500">
-                  Kiểm tra: thiếu Tên, thiếu/sai định dạng SĐT, trùng SĐT — ô lỗi viền đỏ trong bảng.
+                {issues.length === 0 ? (
+                  <span className="text-xs text-base-300">Không phát hiện vấn đề.</span>
+                ) : (
+                  <>
+                    <span className="text-xs text-base-300">
+                      {issues.length} vấn đề trên {issuesByRow.size} dòng — bấm để lọc theo loại:
+                    </span>
+                    <button
+                      onClick={() => setIssueFilter((f) => (f === "__any__" ? null : "__any__"))}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                        issueFilter === "__any__" ? "bg-gold-500 text-base-950" : "bg-base-800 text-base-300 hover:bg-base-700"
+                      }`}
+                    >
+                      Tất cả lỗi ({issues.length})
+                    </button>
+                    {issueGroups.map((g) => (
+                      <button
+                        key={g.message}
+                        onClick={() => setIssueFilter((f) => (f === g.message ? null : g.message))}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                          issueFilter === g.message
+                            ? "bg-danger-500 text-white"
+                            : "bg-danger-500/10 text-danger-500 hover:bg-danger-500/20"
+                        }`}
+                      >
+                        {g.message} ({g.count})
+                      </button>
+                    ))}
+                    {issueFilter && (
+                      <button className={toolbarBtn} onClick={() => setIssueFilter(null)}>
+                        Bỏ lọc
+                      </button>
+                    )}
+                  </>
+                )}
+                <span className="ml-auto text-[11px] text-base-500">
+                  Gán "Loại dữ liệu" cho cột lạ (menu ▾ ở header) để Validate kiểm tra đúng quy tắc — vd cột "Số ĐT
+                  liên hệ" → SĐT.
                 </span>
               </>
             )}
           </div>
 
           <div className="flex-1 overflow-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table
+              className="table-fixed text-left text-sm"
+              style={{
+                width: CHECKBOX_COL_WIDTH + columnOrder.reduce((sum, col) => sum + (columnWidths[col] ?? DEFAULT_COLUMN_WIDTH), 0),
+              }}
+            >
+              <colgroup>
+                <col style={{ width: CHECKBOX_COL_WIDTH }} />
+                {columnOrder.map((col) => (
+                  <col key={col} style={{ width: columnWidths[col] ?? DEFAULT_COLUMN_WIDTH }} />
+                ))}
+              </colgroup>
               <thead className="sticky top-0 z-[5] bg-base-900 text-xs uppercase tracking-wide text-base-400">
                 <tr>
-                  <th className="w-8 px-2 py-2">
+                  <th className="px-2 py-2">
                     <input
                       type="checkbox"
                       checked={selectedRowIds.size > 0 && selectedRowIds.size === visibleRows.length}
@@ -812,8 +902,8 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                         setContextMenu({ x: e.clientX, y: e.clientY, type: "column", col });
                       }}
                     >
-                      <div className="flex items-center gap-1">
-                        <span className="text-base-600" title="Kéo để sắp xếp cột">
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className="shrink-0 text-base-600" title="Kéo để sắp xếp cột">
                           ⋮⋮
                         </span>
                         {renamingColumn === col ? (
@@ -831,9 +921,16 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                             className="w-24 border-b border-gold-500 bg-transparent text-xs normal-case text-base-100 outline-none"
                           />
                         ) : (
-                          <span>
-                            {COLUMN_LABELS[col] ?? col}
-                            {(col === "name" || col === "phone") && " *"}
+                          <span className="flex min-w-0 items-center gap-1" title={COLUMN_LABELS[col] ?? col}>
+                            <span className="truncate">
+                              {COLUMN_LABELS[col] ?? col}
+                              {(col === "name" || col === "phone") && " *"}
+                            </span>
+                            {columnTypes[col] && columnTypes[col] !== "text" && (
+                              <span className="shrink-0 rounded bg-gold-500/20 px-1 text-[9px] normal-case text-gold-400">
+                                {COLUMN_TYPE_LABELS[columnTypes[col]]}
+                              </span>
+                            )}
                           </span>
                         )}
                         <button
@@ -841,7 +938,7 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                             e.stopPropagation();
                             setOpenColumnMenu(openColumnMenu === col ? null : col);
                           }}
-                          className={`ml-auto rounded px-1 text-[10px] hover:text-base-200 ${
+                          className={`ml-auto shrink-0 rounded px-1 text-[10px] hover:text-base-200 ${
                             columnFilters[col]?.trim() || sortColumn === col ? "text-gold-400" : "text-base-600"
                           }`}
                           title="Lọc / Sắp xếp"
@@ -849,6 +946,12 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                           ▾
                         </button>
                       </div>
+                      <div
+                        onMouseDown={(e) => handleColumnResizeStart(col, e)}
+                        draggable={false}
+                        className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-gold-500/50"
+                        title="Kéo để đổi độ rộng cột"
+                      />
                       {openColumnMenu === col && (
                         <div
                           className="absolute left-0 z-20 mt-1 w-48 rounded-lg border border-base-700 bg-base-900 p-2 text-left normal-case shadow-2xl"
@@ -902,6 +1005,24 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                               Xoá bộ lọc
                             </button>
                           )}
+                          <div className="my-1.5 h-px bg-base-800" />
+                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">
+                            Loại dữ liệu
+                          </label>
+                          <select
+                            value={columnTypes[col] ?? defaultColumnType(col)}
+                            onChange={(e) => updateColumnType(col, e.target.value as ColumnType)}
+                            className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                          >
+                            {(Object.keys(COLUMN_TYPE_LABELS) as ColumnType[]).map((t) => (
+                              <option key={t} value={t}>
+                                {COLUMN_TYPE_LABELS[t]}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-[10px] text-base-500">
+                            {COLUMN_TYPE_HINTS[columnTypes[col] ?? defaultColumnType(col)]}
+                          </p>
                         </div>
                       )}
                     </th>
@@ -946,17 +1067,16 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                         {columnOrder.map((col) => {
                           const isEditing = editingCell?.rowId === row.id && editingCell?.col === col;
                           const isSelected = selectedCell?.rowId === row.id && selectedCell?.col === col;
-                          const cellIssue = rowIssues.find((i) => i.col === col);
+                          const cellIssues = rowIssues.filter((i) => i.col === col);
                           const value = getCell(row, col);
                           return (
                             <td
                               key={col}
                               onClick={() => setSelectedCell({ rowId: row.id, col })}
                               onDoubleClick={() => startEdit(row.id, col)}
-                              className={`px-1 py-1 ${isSelected ? "ring-1 ring-inset ring-gold-500" : ""} ${
-                                cellIssue ? "bg-danger-500/10" : ""
+                              className={`relative px-1 py-1 ${isSelected ? "ring-1 ring-inset ring-gold-500" : ""} ${
+                                cellIssues.length > 0 ? "bg-danger-500/10" : ""
                               }`}
-                              title={cellIssue?.message}
                             >
                               {isEditing ? (
                                 <input
@@ -971,8 +1091,21 @@ export default function DataEditorModal({ open, sessionId, onClose, onSaved }: D
                                   className={inputClass}
                                 />
                               ) : (
-                                <div className={`truncate px-1 py-1 text-sm ${cellIssue ? "text-danger-500" : "text-base-100"}`}>
-                                  {value || <span className="text-base-600">—</span>}
+                                <div className="group/cell relative">
+                                  <div
+                                    title={value || undefined}
+                                    className={`truncate px-1 py-1 text-sm ${cellIssues.length > 0 ? "text-danger-500" : "text-base-100"}`}
+                                  >
+                                    {value || <span className="text-base-600">—</span>}
+                                  </div>
+                                  {cellIssues.length > 0 && (
+                                    <>
+                                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-danger-500 ring-2 ring-base-950" />
+                                      <div className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[240px] rounded-md border border-danger-500/40 bg-base-900 px-2 py-1 text-[11px] leading-snug text-danger-400 shadow-xl group-hover/cell:block">
+                                        {cellIssues.map((i) => i.message).join(" · ")}
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               )}
                             </td>

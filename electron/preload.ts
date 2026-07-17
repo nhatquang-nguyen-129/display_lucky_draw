@@ -62,6 +62,8 @@ const api = {
     rename: (data: { id: string; name: string }) => ipcRenderer.invoke("sessions:rename", data),
     updateOptions: (data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) =>
       ipcRenderer.invoke("sessions:updateOptions", data),
+    updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) =>
+      ipcRenderer.invoke("sessions:updateColumnTypes", data),
     delete: (id: string) => ipcRenderer.invoke("sessions:delete", id),
     results: (sessionId: string) => ipcRenderer.invoke("sessions:results", sessionId),
   },

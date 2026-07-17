@@ -194,3 +194,17 @@ function migrateParticipantSortOrder() {
 }
 
 migrateParticipantSortOrder();
+
+/**
+ * Migration: thêm participant_column_types vào sessions — lưu mapping "cột nào thuộc loại
+ * dữ liệu chuẩn hoá nào" (vd cột lạ "Số ĐT liên hệ" được gán type "phone" để Validate/Clean
+ * áp đúng quy tắc). JSON dạng { [tênCột]: "phone" | "name" | "email" | "text" ... }.
+ */
+function migrateSessionColumnTypes() {
+  const cols = (db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("participant_column_types")) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN participant_column_types TEXT`);
+  }
+}
+
+migrateSessionColumnTypes();

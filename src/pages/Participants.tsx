@@ -159,6 +159,7 @@ export default function Participants() {
       <DataEditorModal
         open={showEditor}
         sessionId={activeSessionId!}
+        session={activeSession}
         onClose={() => setShowEditor(false)}
         onSaved={refresh}
       />
