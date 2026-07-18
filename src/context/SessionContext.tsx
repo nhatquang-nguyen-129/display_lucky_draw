@@ -89,6 +89,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 export function useSession() {
   const ctx = useContext(SessionContext);
-  if (!ctx) throw new Error("useSession() phải được gọi bên trong <SessionProvider>");
+  if (!ctx) throw new Error("useSession() must be called inside a <SessionProvider>");
   return ctx;
 }

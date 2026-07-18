@@ -32,14 +32,14 @@ export interface DrawResult {
  */
 export function drawOne({ sessionId }: DrawOptions): DrawResult {
   const session = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId) as any;
-  if (!session) throw new Error("Không tìm thấy phiên quay số");
+  if (!session) throw new Error("Draw session not found");
 
   const activePrizes = db
     .prepare(`SELECT * FROM prizes WHERE session_id = ? AND remaining > 0 AND status = 'active'`)
     .all(sessionId) as any[];
 
   if (activePrizes.length === 0) {
-    throw new Error("Không còn giải nào khả dụng trong phiên này (đã hết số lượng hoặc đang bị tạm ẩn)");
+    throw new Error("No prizes available in this session (out of stock or hidden)");
   }
 
   let baseQuery = `SELECT * FROM participants WHERE session_id = ? AND status = 'active'`;
@@ -51,7 +51,7 @@ export function drawOne({ sessionId }: DrawOptions): DrawResult {
   const baseParticipants = db.prepare(baseQuery).all(...baseParams) as any[];
 
   if (baseParticipants.length === 0) {
-    throw new Error("Không còn người chơi nào khả dụng để quay");
+    throw new Error("No participants available to draw");
   }
 
   // Lịch sử trúng thưởng trong session — dùng để áp quy tắc trùng lặp cấp giải
@@ -108,7 +108,7 @@ export function drawOne({ sessionId }: DrawOptions): DrawResult {
   }
 
   if (!chosenPrize) {
-    throw new Error("Không tìm được người chơi phù hợp cho bất kỳ giải nào còn lại (đã áp hết quy tắc trùng lặp)");
+    throw new Error("No eligible participant found for any remaining prize (all duplicate rules exhausted)");
   }
 
   const idx = randomInt(0, eligibleParticipants.length);

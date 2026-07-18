@@ -67,7 +67,7 @@ export default function Participants() {
     });
 
     const inserted = await window.api.participants.bulkImport(activeSessionId, normalized);
-    setImportMsg(`Đã nhập ${inserted}/${normalized.length} người chơi từ file.`);
+    setImportMsg(`Imported ${inserted}/${normalized.length} participants from the file.`);
     refresh();
   }
 
@@ -75,7 +75,7 @@ export default function Participants() {
     if (items.length === 0) return;
     if (
       !confirm(
-        `Xoá toàn bộ ${items.length} người chơi trong phiên "${activeSession?.name}"? Không thể hoàn tác — dùng khi muốn nhập lại file mới từ đầu.`
+        `Delete all ${items.length} participants in session "${activeSession?.name}"? This cannot be undone — use this when you want to re-import a fresh file.`
       )
     )
       return;
@@ -87,7 +87,7 @@ export default function Participants() {
   if (!activeSession) {
     return (
       <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên đầu tiên.
+        No session open yet. Click "+ Add tab" at the top bar to create your first session.
       </p>
     );
   }
@@ -96,10 +96,10 @@ export default function Participants() {
     <div>
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Người chơi</h1>
+          <h1 className="font-display text-2xl font-medium text-base-100">Participants</h1>
           <p className="mt-1 text-sm text-base-400">
-            {items.length} người chơi trong phiên "{activeSession.name}" — xem nhanh tại đây, mọi chỉnh sửa thực hiện
-            trong Data Editor.
+            {items.length} participants in session "{activeSession.name}" — quick view here, all edits happen in
+            the Data Editor.
           </p>
         </div>
         <div className="flex gap-2">
@@ -107,10 +107,10 @@ export default function Participants() {
             Data Editor
           </Button>
           <Button variant="secondary" onClick={handleImportFile}>
-            Nhập file CSV/Excel
+            Import CSV/Excel file
           </Button>
           <Button variant="danger" onClick={handleClearAll} disabled={items.length === 0}>
-            Xoá toàn bộ
+            Delete all
           </Button>
         </div>
       </header>
@@ -127,18 +127,18 @@ export default function Participants() {
         <table className="w-full text-left text-sm">
           <thead className="bg-base-900 text-xs uppercase tracking-wide text-base-400">
             <tr>
-              <th className="px-4 py-3 font-medium">Tên</th>
-              <th className="px-4 py-3 font-medium">Mã</th>
-              <th className="px-4 py-3 font-medium">SĐT</th>
+              <th className="px-4 py-3 font-medium">Name</th>
+              <th className="px-4 py-3 font-medium">Code</th>
+              <th className="px-4 py-3 font-medium">Phone</th>
               <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Nguồn</th>
+              <th className="px-4 py-3 font-medium">Source</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-base-800 bg-base-950">
             {items.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-base-500">
-                  Chưa có người chơi nào. Nhập file để bắt đầu, hoặc mở Data Editor để thêm thủ công.
+                  No participants yet. Import a file to get started, or open the Data Editor to add manually.
                 </td>
               </tr>
             ) : (

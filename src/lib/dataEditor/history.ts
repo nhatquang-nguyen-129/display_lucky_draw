@@ -51,6 +51,33 @@ export function useCommandHistory(initial: EditorState) {
     bump();
   }
 
+  /**
+   * Nhảy thẳng tới 1 mốc trong lịch sử — targetLength = số lệnh đã áp dụng tính từ đầu
+   * (vd targetLength=3 nghĩa là giữ lại đúng 3 lệnh đầu, undo hết phần sau). Dùng cho việc
+   * bấm vào 1 dòng trong panel Lịch sử để rollback thẳng tới đó, thay vì bấm Undo nhiều lần.
+   * Dùng biến cục bộ thay vì `state` React vì nhiều bước undo/execute dồn trong 1 lần gọi,
+   * không thể trông chờ setState cập nhật kịp giữa các bước.
+   */
+  function jumpTo(targetLength: number) {
+    let cur = state;
+    const past = [...pastRef.current];
+    const future = [...futureRef.current];
+    while (past.length > targetLength) {
+      const cmd = past.pop()!;
+      cur = cmd.undo(cur);
+      future.push(cmd);
+    }
+    while (past.length < targetLength && future.length > 0) {
+      const cmd = future.pop()!;
+      cur = cmd.execute(cur);
+      past.push(cmd);
+    }
+    pastRef.current = past;
+    futureRef.current = future;
+    setState(cur);
+    bump();
+  }
+
   /** Nạp lại state hoàn toàn mới (sau khi load từ DB hoặc sau khi Save) — xoá sạch lịch sử. */
   function reset(newState: EditorState) {
     setState(newState);
@@ -70,6 +97,7 @@ export function useCommandHistory(initial: EditorState) {
     run,
     undo,
     redo,
+    jumpTo,
     reset,
     markSaved,
     // dirty = vị trí hiện tại trong lịch sử khác với mốc đã lưu gần nhất.

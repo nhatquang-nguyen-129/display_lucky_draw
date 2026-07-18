@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom";
 
 const navItems = [
-  { to: "/", label: "Tổng quan", icon: "grid" },
-  { to: "/participants", label: "Người chơi", icon: "users" },
-  { to: "/prizes", label: "Giải thưởng", icon: "gift" },
-  { to: "/draw", label: "Quay số", icon: "target" },
-  { to: "/settings", label: "Cài đặt", icon: "settings" },
+  { to: "/", label: "Dashboard", icon: "grid" },
+  { to: "/participants", label: "Participants", icon: "users" },
+  { to: "/prizes", label: "Prizes", icon: "gift" },
+  { to: "/draw", label: "Draw", icon: "target" },
+  { to: "/settings", label: "Settings", icon: "settings" },
 ];
 
 const icons: Record<string, JSX.Element> = {
@@ -54,7 +54,7 @@ export default function Sidebar() {
     <aside className="flex w-60 shrink-0 flex-col border-r border-base-800 bg-base-900 px-4 py-6">
       <div className="mb-8 px-2">
         <p className="font-display text-lg font-medium text-base-100">Lucky Draw</p>
-        <p className="text-xs text-base-400">Studio quản lý sự kiện</p>
+        <p className="text-xs text-base-400">Event management studio</p>
       </div>
 
       <nav className="flex flex-1 flex-col gap-1">
@@ -78,7 +78,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="rounded-lg border border-base-800 bg-base-800/50 px-3 py-3 text-xs text-base-400">
-        Chạy hoàn toàn offline. Dữ liệu lưu cục bộ trên máy này.
+        Runs fully offline. Data is stored locally on this machine.
       </div>
     </aside>
   );

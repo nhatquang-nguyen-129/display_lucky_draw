@@ -23,7 +23,7 @@ export default function Dashboard() {
   if (!activeSession) {
     return (
       <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên đầu tiên.
+        No session open yet. Click "+ Add tab" at the top bar to create your first session.
       </p>
     );
   }
@@ -31,37 +31,37 @@ export default function Dashboard() {
   return (
     <div>
       <header className="mb-8">
-        <h1 className="font-display text-2xl font-medium text-base-100">Tổng quan</h1>
+        <h1 className="font-display text-2xl font-medium text-base-100">Dashboard</h1>
         <p className="mt-1 text-sm text-base-400">
-          Dữ liệu của phiên đang mở: <span className="text-base-200">{activeSession.name}</span> — mỗi tab độc lập
-          hoàn toàn, không chia sẻ người chơi/giải thưởng với tab khác.
+          Data for the open session: <span className="text-base-200">{activeSession.name}</span> — each tab is
+          fully independent, participants/prizes are not shared with other tabs.
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Người chơi" value={participants.length} hint="Trong phiên này" />
+        <StatCard label="Participants" value={participants.length} hint="In this session" />
         <StatCard
-          label="Giải còn lại"
+          label="Prizes remaining"
           value={totalPrizesRemaining}
-          hint={`Trong tổng ${prizes.reduce((s, p) => s + p.quantity, 0)} giải`}
+          hint={`Out of ${prizes.reduce((s, p) => s + p.quantity, 0)} prizes total`}
           accent="gold"
         />
-        <StatCard label="Tổng số tab" value={sessions.length} hint="Phiên quay số đang mở" accent="teal" />
+        <StatCard label="Total tabs" value={sessions.length} hint="Open draw sessions" accent="teal" />
         <StatCard
-          label="Đã trao"
+          label="Awarded"
           value={prizes.reduce((s, p) => s + (p.quantity - p.remaining), 0)}
-          hint="Tổng số lượt trúng trong phiên này"
+          hint="Total wins in this session"
         />
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-base-800 bg-base-900 p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-display text-base font-medium text-base-100">Các tab đang mở</h2>
-            <span className="text-xs text-base-500">{sessions.length} tab</span>
+            <h2 className="font-display text-base font-medium text-base-100">Open tabs</h2>
+            <span className="text-xs text-base-500">{sessions.length} tabs</span>
           </div>
           {sessions.length === 0 ? (
-            <p className="text-sm text-base-400">Chưa có tab nào. Bấm "+ Thêm tab" ở thanh trên cùng.</p>
+            <p className="text-sm text-base-400">No tabs yet. Click "+ Add tab" at the top bar.</p>
           ) : (
             <ul className="divide-y divide-base-800">
               {sessions.map((s) => (
@@ -73,7 +73,7 @@ export default function Dashboard() {
                     }`}
                   >
                     {s.name}
-                    {s.id === activeSessionId && <span className="ml-2 text-xs text-base-500">(đang xem)</span>}
+                    {s.id === activeSessionId && <span className="ml-2 text-xs text-base-500">(viewing)</span>}
                   </button>
                   <span className="text-xs text-base-500">{s.status}</span>
                 </li>
@@ -83,13 +83,13 @@ export default function Dashboard() {
         </section>
 
         <section className="rounded-xl border border-base-800 bg-base-900 p-5">
-          <h2 className="mb-3 font-display text-base font-medium text-base-100">Việc cần làm tiếp (phiên này)</h2>
+          <h2 className="mb-3 font-display text-base font-medium text-base-100">Next steps (this session)</h2>
           <ul className="space-y-2 text-sm text-base-300">
             <li className={participants.length ? "line-through text-base-600" : ""}>
-              1. Nhập danh sách người chơi (CSV/Excel hoặc Google Sheets)
+              1. Import the participant list (CSV/Excel or Google Sheets)
             </li>
-            <li className={prizes.length ? "line-through text-base-600" : ""}>2. Thiết lập danh sách giải thưởng</li>
-            <li>3. Vào mục "Quay số" để bắt đầu quay cho tab này</li>
+            <li className={prizes.length ? "line-through text-base-600" : ""}>2. Set up the prize list</li>
+            <li>3. Go to "Draw" to start drawing for this tab</li>
           </ul>
         </section>
       </div>
