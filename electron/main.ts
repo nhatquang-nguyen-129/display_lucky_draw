@@ -49,11 +49,11 @@ function createMainWindow() {
     e.preventDefault();
     const choice = dialog.showMessageBoxSync(mainWindow!, {
       type: "warning",
-      buttons: ["Huỷ", "Đóng và bỏ qua thay đổi"],
+      buttons: ["Cancel", "Close and discard changes"],
       defaultId: 0,
       cancelId: 0,
-      message: "Data Editor còn thay đổi chưa lưu",
-      detail: "Nếu đóng ứng dụng bây giờ, các thay đổi chưa lưu sẽ bị mất.",
+      message: "The Data Editor has unsaved changes",
+      detail: "If you close the app now, unsaved changes will be lost.",
     });
     if (choice === 1) {
       hasUnsavedEditorChanges = false;
@@ -370,6 +370,18 @@ ipcMain.handle(
   (_e, data: { id: string; columnTypes: Record<string, string> }) => {
     db.prepare(`UPDATE sessions SET participant_column_types = ? WHERE id = ?`).run(
       JSON.stringify(data.columnTypes),
+      data.id
+    );
+  }
+);
+
+// Lưu danh sách cột dùng để xác định trùng lặp trong Data Editor — thay cho quy tắc cũ
+// mặc định tính trùng theo SĐT, giờ người dùng tự chọn 1 hoặc nhiều cột (compound key).
+ipcMain.handle(
+  "sessions:updateDuplicateColumns",
+  (_e, data: { id: string; duplicateColumns: string[] }) => {
+    db.prepare(`UPDATE sessions SET participant_duplicate_columns = ? WHERE id = ?`).run(
+      JSON.stringify(data.duplicateColumns),
       data.id
     );
   }

@@ -21,14 +21,14 @@ export default function PresentMode() {
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-base-950 text-center">
-      <p className="mb-6 font-display text-2xl text-base-400">Kết quả quay số</p>
+      <p className="mb-6 font-display text-2xl text-base-400">Draw results</p>
       {latest ? (
         <>
           <p className="font-display text-6xl font-medium text-gold-400">{latest.participant_name}</p>
-          <p className="mt-4 text-2xl text-base-200">trúng {latest.prize_name}</p>
+          <p className="mt-4 text-2xl text-base-200">won {latest.prize_name}</p>
         </>
       ) : (
-        <p className="text-2xl text-base-500">Đang chờ lượt quay đầu tiên...</p>
+        <p className="text-2xl text-base-500">Waiting for the first draw...</p>
       )}
     </div>
   );

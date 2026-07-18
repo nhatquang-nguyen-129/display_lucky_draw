@@ -30,7 +30,7 @@ export default function DrawSessionDetail() {
       setLastWinner({ name: result.participantName, prize: result.prizeName });
       loadResults();
     } catch (e: any) {
-      setError(e?.message ?? "Có lỗi khi quay số");
+      setError(e?.message ?? "An error occurred while drawing");
     } finally {
       setDrawing(false);
     }
@@ -49,7 +49,7 @@ export default function DrawSessionDetail() {
   if (!activeSession) {
     return (
       <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên quay số đầu tiên.
+        No session open yet. Click "+ Add tab" at the top bar to create your first draw session.
       </p>
     );
   }
@@ -58,17 +58,17 @@ export default function DrawSessionDetail() {
     <div>
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Điều khiển quay số</h1>
+          <h1 className="font-display text-2xl font-medium text-base-100">Draw Control</h1>
           <p className="mt-1 text-sm text-base-400">
-            Phiên "{activeSession.name}" · {results.length} lượt đã quay
+            Session "{activeSession.name}" · {results.length} draws so far
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowOptions((v) => !v)}>
-            Tuỳ chọn phiên
+            Session options
           </Button>
           <Button variant="secondary" onClick={handleOpenPresent}>
-            Mở cửa sổ trình chiếu
+            Open presentation window
           </Button>
         </div>
       </header>
@@ -76,7 +76,7 @@ export default function DrawSessionDetail() {
       {showOptions && (
         <div className="mb-6 space-y-2 rounded-lg border border-base-800 bg-base-900 p-4">
           <label className="flex items-center justify-between text-sm">
-            <span className="text-base-200">Cho phép trùng lặp giải</span>
+            <span className="text-base-200">Allow duplicate prizes</span>
             <input
               type="checkbox"
               checked={!!activeSession.allow_duplicate_prize}
@@ -85,7 +85,7 @@ export default function DrawSessionDetail() {
             />
           </label>
           <label className="flex items-center justify-between text-sm">
-            <span className="text-base-200">Loại trừ người đã trúng khỏi các lượt sau</span>
+            <span className="text-base-200">Exclude previous winners from later draws</span>
             <input
               type="checkbox"
               checked={!!activeSession.exclude_previous_winners}
@@ -99,17 +99,17 @@ export default function DrawSessionDetail() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <div className="rounded-xl border border-base-800 bg-base-900 p-6 text-center">
-            <p className="mb-4 text-xs uppercase tracking-wide text-base-400">Kết quả mới nhất</p>
+            <p className="mb-4 text-xs uppercase tracking-wide text-base-400">Latest result</p>
             {lastWinner ? (
               <div>
                 <p className="font-display text-xl font-medium text-gold-400">{lastWinner.name}</p>
-                <p className="mt-1 text-sm text-base-300">trúng {lastWinner.prize}</p>
+                <p className="mt-1 text-sm text-base-300">won {lastWinner.prize}</p>
               </div>
             ) : (
-              <p className="text-sm text-base-500">Chưa quay lần nào</p>
+              <p className="text-sm text-base-500">No draw yet</p>
             )}
             <Button className="mt-6 w-full" onClick={handleDraw} disabled={drawing}>
-              {drawing ? "Đang quay..." : "Quay ngay"}
+              {drawing ? "Drawing..." : "Draw now"}
             </Button>
             {error && <p className="mt-3 text-xs text-danger-500">{error}</p>}
           </div>
@@ -120,16 +120,16 @@ export default function DrawSessionDetail() {
             <table className="w-full text-left text-sm">
               <thead className="bg-base-900 text-xs uppercase tracking-wide text-base-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Người trúng</th>
-                  <th className="px-4 py-3 font-medium">Giải</th>
-                  <th className="px-4 py-3 font-medium">Thời gian</th>
+                  <th className="px-4 py-3 font-medium">Winner</th>
+                  <th className="px-4 py-3 font-medium">Prize</th>
+                  <th className="px-4 py-3 font-medium">Time</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-base-800 bg-base-950">
                 {results.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-8 text-center text-base-500">
-                      Chưa có kết quả nào.
+                      No results yet.
                     </td>
                   </tr>
                 ) : (

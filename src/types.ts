@@ -37,7 +37,8 @@ export interface Session {
   exclude_previous_winners: 0 | 1;
   status: string;
   landing_config: string | null;
-  participant_column_types: string | null; // JSON: { [tênCột]: "phone" | "name" | "email" | "text" | "code" }
+  participant_column_types: string | null; // JSON: { [tênCột]: "phone" | "name" | "email" | "text" | "code" | "url" }
+  participant_duplicate_columns: string | null; // JSON string[]: các cột xác định trùng lặp (compound key)
   created_at: string;
 }
 
@@ -121,6 +122,7 @@ declare global {
           excludePreviousWinners: boolean;
         }) => Promise<void>;
         updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) => Promise<void>;
+        updateDuplicateColumns: (data: { id: string; duplicateColumns: string[] }) => Promise<void>;
         delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
       };

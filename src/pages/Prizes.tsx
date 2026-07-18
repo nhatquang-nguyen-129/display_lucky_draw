@@ -49,7 +49,7 @@ export default function Prizes() {
   }
 
   async function handleDelete(prize: Prize) {
-    if (!confirm(`Xoá giải "${prize.name}"? Không thể hoàn tác.`)) return;
+    if (!confirm(`Delete prize "${prize.name}"? This cannot be undone.`)) return;
     await window.api.prizes.delete(prize.id);
     refresh();
   }
@@ -63,7 +63,7 @@ export default function Prizes() {
   if (!activeSession) {
     return (
       <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên đầu tiên.
+        No session open yet. Click "+ Add tab" at the top bar to create your first session.
       </p>
     );
   }
@@ -72,12 +72,13 @@ export default function Prizes() {
     <div>
       <header className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Giải thưởng</h1>
+          <h1 className="font-display text-2xl font-medium text-base-100">Prizes</h1>
           <p className="mt-1 text-sm text-base-400">
-            Phiên "{activeSession.name}" — {items.length} giải, nhập trực tiếp qua popup, không hỗ trợ import file.
+            Session "{activeSession.name}" — {items.length} prizes, entered directly through the popup, no file
+            import support.
           </p>
         </div>
-        <Button onClick={openAdd}>+ Thêm giải</Button>
+        <Button onClick={openAdd}>+ Add prize</Button>
       </header>
 
       {toast && (
@@ -91,7 +92,7 @@ export default function Prizes() {
 
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-          Chưa có giải thưởng nào. Bấm "+ Thêm giải" để nhập giải đầu tiên.
+          No prizes yet. Click "+ Add prize" to enter your first prize.
         </p>
       ) : (
         <div className="space-y-2">
@@ -130,26 +131,26 @@ export default function Prizes() {
                       }`}
                     >
                       <span className={`h-1.5 w-1.5 rounded-full ${isInactive ? "bg-base-500" : "bg-teal-400"}`} />
-                      {isInactive ? "Tạm ẩn" : "Đang áp dụng"}
+                      {isInactive ? "Hidden" : "Active"}
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-400">
                     <span>
-                      Còn lại <span className="font-mono text-base-200">{p.remaining}/{p.quantity}</span>
+                      Remaining <span className="font-mono text-base-200">{p.remaining}/{p.quantity}</span>
                     </span>
                     <span>
-                      Trọng số <span className="font-mono text-base-200">{p.weight}</span> (~
+                      Weight <span className="font-mono text-base-200">{p.weight}</span> (~
                       <span className="font-mono text-gold-400">{chance}%</span>)
                     </span>
                     {!!p.allow_duplicate_with_other_prizes && (
-                      <span className="rounded bg-base-800 px-1.5 py-0.5">Trùng giải khác: có</span>
+                      <span className="rounded bg-base-800 px-1.5 py-0.5">Duplicate with other prizes: yes</span>
                     )}
                     {!!p.allow_duplicate_with_same_prize ? (
                       <span className="rounded bg-base-800 px-1.5 py-0.5">
-                        Trùng chính nó: tối đa {p.max_win_count}x
+                        Duplicate with itself: up to {p.max_win_count}x
                       </span>
                     ) : (
-                      <span className="rounded bg-base-800 px-1.5 py-0.5">Trùng chính nó: không</span>
+                      <span className="rounded bg-base-800 px-1.5 py-0.5">Duplicate with itself: no</span>
                     )}
                   </div>
                 </div>
@@ -157,10 +158,10 @@ export default function Prizes() {
                 {/* Hành động */}
                 <div className="flex shrink-0 gap-2">
                   <Button variant="secondary" onClick={() => openEdit(p)} className="text-xs">
-                    Sửa
+                    Edit
                   </Button>
                   <Button variant="danger" onClick={() => handleDelete(p)} className="text-xs">
-                    Xoá
+                    Delete
                   </Button>
                 </div>
               </div>
