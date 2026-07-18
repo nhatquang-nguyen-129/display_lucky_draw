@@ -12,7 +12,7 @@ interface PrizeFormModalProps {
   editing: Prize | null; // null = thêm mới, có giá trị = đang sửa giải này
 }
 
-const CATEGORY_SUGGESTIONS = ["Đặc biệt", "Giải Nhất", "Giải Nhì", "Giải Ba", "Khuyến khích"];
+const CATEGORY_SUGGESTIONS = ["Special", "First Prize", "Second Prize", "Third Prize", "Consolation"];
 
 const DEFAULT_FORM = {
   code: "",
@@ -67,7 +67,7 @@ export default function PrizeFormModal({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== "image/png") {
-      setImageError("Chỉ hỗ trợ file PNG ở thời điểm hiện tại — chọn file khác.");
+      setImageError("Only PNG files are supported at the moment — choose a different file.");
       e.target.value = "";
       return;
     }
@@ -87,23 +87,23 @@ export default function PrizeFormModal({
     const trimmedCode = form.code.trim();
 
     if (!trimmedName) {
-      setError("Tên giải là bắt buộc.");
+      setError("Prize name is required.");
       return;
     }
     if (trimmedCode && existingCodes.includes(trimmedCode)) {
-      setError(`Mã "${trimmedCode}" đã được dùng cho giải khác trong phiên này — đổi mã khác.`);
+      setError(`Code "${trimmedCode}" is already used by another prize in this session — choose a different code.`);
       return;
     }
     if (form.quantity < 1) {
-      setError("Số lượng phải từ 1 trở lên.");
+      setError("Quantity must be at least 1.");
       return;
     }
     if (form.weight <= 0) {
-      setError("Trọng số phải lớn hơn 0.");
+      setError("Weight must be greater than 0.");
       return;
     }
     if (form.allowDuplicateWithSamePrize && form.maxWinCount < 1) {
-      setError("Số lần trúng tối đa phải từ 1 trở lên.");
+      setError("Max win count must be at least 1.");
       return;
     }
 
@@ -124,14 +124,14 @@ export default function PrizeFormModal({
       };
       if (editing) {
         await window.api.prizes.update({ ...payload, id: editing.id });
-        onSaved("Đã cập nhật giải thưởng thành công.");
+        onSaved("Prize updated successfully.");
       } else {
         await window.api.prizes.create(payload);
-        onSaved("Đã nhập thông tin giải thưởng thành công.");
+        onSaved("Prize added successfully.");
       }
       onClose();
     } catch (e) {
-      setError("Lưu thất bại — thử lại.");
+      setError("Save failed — try again.");
     } finally {
       setSaving(false);
     }
@@ -142,7 +142,7 @@ export default function PrizeFormModal({
   const labelClass = "mb-1 block text-xs text-base-400";
 
   return (
-    <Modal open={open} title={editing ? "Sửa giải thưởng" : "Thêm giải thưởng"} onClose={onClose} maxWidth="max-w-lg">
+    <Modal open={open} title={editing ? "Edit Prize" : "Add Prize"} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
         {error && (
           <div className="rounded-lg border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-xs text-danger-500">
@@ -152,20 +152,20 @@ export default function PrizeFormModal({
 
         {/* Ảnh trình chiếu */}
         <div>
-          <label className={labelClass}>Hình ảnh trình chiếu (PNG)</label>
+          <label className={labelClass}>Presentation image (PNG)</label>
           <div className="flex items-center gap-3">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-base-700 bg-base-800">
               {displayImage ? (
                 <img src={displayImage} alt="" className="h-full w-full object-cover" />
               ) : (
-                <span className="text-[10px] text-base-500">Chưa có</span>
+                <span className="text-[10px] text-base-500">None</span>
               )}
             </div>
             <div className="flex flex-col gap-1.5">
               <input type="file" accept="image/png" onChange={handleImageChange} className="text-xs text-base-300" />
               {displayImage && (
                 <button onClick={removeImage} className="text-left text-xs text-danger-500 hover:underline">
-                  Xoá ảnh
+                  Remove image
                 </button>
               )}
               {imageError && <p className="text-xs text-danger-500">{imageError}</p>}
@@ -175,29 +175,29 @@ export default function PrizeFormModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Mã giải</label>
+            <label className={labelClass}>Prize code</label>
             <input
               className={inputClass}
-              placeholder="VD: G01"
+              placeholder="e.g. G01"
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
             />
           </div>
           <div>
-            <label className={labelClass}>Trạng thái</label>
+            <label className={labelClass}>Status</label>
             <select
               className={inputClass}
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
             >
-              <option value="active">Đang áp dụng</option>
-              <option value="inactive">Tạm ẩn (không đưa vào vòng quay)</option>
+              <option value="active">Active</option>
+              <option value="inactive">Hidden (excluded from the draw)</option>
             </select>
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>Tên giải *</label>
+          <label className={labelClass}>Prize name *</label>
           <input
             className={inputClass}
             value={form.name}
@@ -206,11 +206,11 @@ export default function PrizeFormModal({
         </div>
 
         <div>
-          <label className={labelClass}>Danh mục</label>
+          <label className={labelClass}>Category</label>
           <input
             list="prize-category-suggestions"
             className={inputClass}
-            placeholder="VD: Giải Nhất"
+            placeholder="e.g. First Prize"
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
           />
@@ -223,7 +223,7 @@ export default function PrizeFormModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Số lượng</label>
+            <label className={labelClass}>Quantity</label>
             <input
               type="number"
               min={1}
@@ -233,7 +233,7 @@ export default function PrizeFormModal({
             />
           </div>
           <div>
-            <label className={labelClass}>Trọng số (tỷ lệ)</label>
+            <label className={labelClass}>Weight (odds)</label>
             <input
               type="number"
               min={0.01}
@@ -247,7 +247,7 @@ export default function PrizeFormModal({
 
         <div className="space-y-2 rounded-lg border border-base-800 bg-base-900 p-3">
           <label className="flex items-center justify-between text-sm">
-            <span className="text-base-200">Cho phép trùng với giải khác</span>
+            <span className="text-base-200">Allow duplicate with other prizes</span>
             <input
               type="checkbox"
               checked={form.allowDuplicateWithOtherPrizes}
@@ -255,10 +255,10 @@ export default function PrizeFormModal({
               className="accent-gold-500"
             />
           </label>
-          <p className="text-xs text-base-500">1 người trúng giải này rồi vẫn có thể trúng thêm giải khác.</p>
+          <p className="text-xs text-base-500">A winner of this prize can still win other prizes.</p>
 
           <label className="flex items-center justify-between text-sm">
-            <span className="text-base-200">Cho phép trùng với chính giải này</span>
+            <span className="text-base-200">Allow duplicate with itself</span>
             <input
               type="checkbox"
               checked={form.allowDuplicateWithSamePrize}
@@ -266,11 +266,11 @@ export default function PrizeFormModal({
               className="accent-gold-500"
             />
           </label>
-          <p className="text-xs text-base-500">1 người có thể trúng lại đúng giải này nhiều lần.</p>
+          <p className="text-xs text-base-500">The same person can win this exact prize multiple times.</p>
 
           {form.allowDuplicateWithSamePrize && (
             <div>
-              <label className={labelClass}>Số lần trúng tối đa / người</label>
+              <label className={labelClass}>Max wins per person</label>
               <input
                 type="number"
                 min={1}
@@ -283,7 +283,7 @@ export default function PrizeFormModal({
         </div>
 
         <Button className="w-full" onClick={handleSubmit} disabled={saving}>
-          {saving ? "Đang lưu..." : editing ? "Cập nhật giải thưởng" : "Thêm giải thưởng"}
+          {saving ? "Saving..." : editing ? "Update prize" : "Add prize"}
         </Button>
       </div>
     </Modal>

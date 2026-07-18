@@ -92,7 +92,7 @@ function migrateToPerSessionData() {
     const defaultId = randomUUID();
     db.prepare(`INSERT INTO sessions (id, name, status) VALUES (?, ?, 'draft')`).run(
       defaultId,
-      "Phiên mặc định (dữ liệu cũ)"
+      "Default session (legacy data)"
     );
 
     if (!hasParticipantSession) {
@@ -208,3 +208,18 @@ function migrateSessionColumnTypes() {
 }
 
 migrateSessionColumnTypes();
+
+/**
+ * Migration: thêm participant_duplicate_columns vào sessions — danh sách cột (tên) dùng để
+ * xác định trùng lặp trong Data Editor. JSON dạng string[]. Nhiều cột nghĩa là phải trùng
+ * TẤT CẢ các cột đó cùng lúc mới tính là trùng (compound key), thay cho quy tắc cũ mặc định
+ * luôn tính trùng theo SĐT.
+ */
+function migrateSessionDuplicateColumns() {
+  const cols = (db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("participant_duplicate_columns")) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN participant_duplicate_columns TEXT`);
+  }
+}
+
+migrateSessionDuplicateColumns();

@@ -19,7 +19,7 @@ export function reorderRowsCommand(state: EditorState, fromIndex: number, toInde
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return null;
   if (fromIndex >= state.rows.length || toIndex >= state.rows.length) return null;
   return {
-    label: "Sắp xếp lại dòng",
+    label: "Reorder rows",
     execute: (s) => {
       const rows = [...s.rows];
       const [moved] = rows.splice(fromIndex, 1);
@@ -43,7 +43,7 @@ export function editCellCommand(state: EditorState, rowId: string, col: string, 
   const oldValue = getCell(row, col);
   if (oldValue === newValue) return null;
   return {
-    label: `Sửa ô "${col}"`,
+    label: `Edit cell "${col}"`,
     execute: (s) => ({ ...s, rows: s.rows.map((r) => (r.id === rowId ? withCell(r, col, newValue) : r)) }),
     undo: (s) => ({ ...s, rows: s.rows.map((r) => (r.id === rowId ? withCell(r, col, oldValue) : r)) }),
   };
@@ -52,7 +52,7 @@ export function editCellCommand(state: EditorState, rowId: string, col: string, 
 export function insertRowCommand(atIndex: number): Command {
   const newRow = makeEmptyRow();
   return {
-    label: "Thêm dòng",
+    label: "Add row",
     execute: (s) => {
       const rows = [...s.rows];
       rows.splice(Math.max(0, Math.min(atIndex, rows.length)), 0, newRow);
@@ -66,6 +66,21 @@ export function addRowCommand(): Command {
   return insertRowCommand(Number.MAX_SAFE_INTEGER);
 }
 
+/** Chèn nhiều dòng trống cùng lúc tại 1 vị trí — 1 bước Undo duy nhất, dùng cho right-click "Chèn N dòng". */
+export function insertRowsCommand(atIndex: number, count: number): Command {
+  const newRows = Array.from({ length: count }, () => makeEmptyRow());
+  const newIds = new Set(newRows.map((r) => r.id));
+  return {
+    label: `Insert ${count} row(s)`,
+    execute: (s) => {
+      const rows = [...s.rows];
+      rows.splice(Math.max(0, Math.min(atIndex, rows.length)), 0, ...newRows);
+      return { ...s, rows };
+    },
+    undo: (s) => ({ ...s, rows: s.rows.filter((r) => !newIds.has(r.id)) }),
+  };
+}
+
 export function deleteRowsCommand(state: EditorState, rowIds: string[]): Command | null {
   const idSet = new Set(rowIds);
   const removed = state.rows
@@ -73,7 +88,7 @@ export function deleteRowsCommand(state: EditorState, rowIds: string[]): Command
     .filter((r) => idSet.has(r.row.id));
   if (removed.length === 0) return null;
   return {
-    label: `Xoá ${removed.length} dòng`,
+    label: `Delete ${removed.length} row(s)`,
     execute: (s) => ({ ...s, rows: s.rows.filter((r) => !idSet.has(r.id)) }),
     undo: (s) => {
       const rows = [...s.rows];
@@ -88,7 +103,7 @@ export function deleteRowsCommand(state: EditorState, rowIds: string[]): Command
 
 export function addColumnCommand(name: string): Command {
   return {
-    label: `Thêm cột "${name}"`,
+    label: `Add column "${name}"`,
     execute: (s) => ({ ...s, columns: [...s.columns, name] }),
     undo: (s) => ({
       columns: s.columns.filter((c) => c !== name),
@@ -100,10 +115,42 @@ export function addColumnCommand(name: string): Command {
   };
 }
 
+/** Sinh tên cột mới không trùng cột đã có — "New Column", "New Column 2", "New Column 3"... */
+export function nextColumnNames(existing: string[], count: number): string[] {
+  const taken = new Set(existing);
+  const names: string[] = [];
+  let n = 1;
+  while (names.length < count) {
+    const candidate = n === 1 ? "New Column" : `New Column ${n}`;
+    if (!taken.has(candidate)) {
+      names.push(candidate);
+      taken.add(candidate);
+    }
+    n++;
+  }
+  return names;
+}
+
+/** Chèn nhiều cột trống cùng lúc — 1 bước Undo duy nhất, dùng cho right-click "Chèn N cột". */
+export function insertColumnsCommand(names: string[]): Command {
+  return {
+    label: `Insert ${names.length} column(s)`,
+    execute: (s) => ({ ...s, columns: [...s.columns, ...names] }),
+    undo: (s) => ({
+      columns: s.columns.filter((c) => !names.includes(c)),
+      rows: s.rows.map((r) => {
+        const extra = { ...r.extra };
+        names.forEach((n) => delete extra[n]);
+        return { ...r, extra };
+      }),
+    }),
+  };
+}
+
 export function removeColumnCommand(state: EditorState, name: string): Command {
   const before = new Map(state.rows.map((r) => [r.id, r.extra[name]]));
   return {
-    label: `Xoá cột "${name}"`,
+    label: `Delete column "${name}"`,
     execute: (s) => ({
       columns: s.columns.filter((c) => c !== name),
       rows: s.rows.map((r) => {
@@ -128,7 +175,7 @@ export function renameColumnCommand(oldName: string, newName: string): Command {
     return { ...rest, [to]: v };
   };
   return {
-    label: `Đổi tên cột "${oldName}" → "${newName}"`,
+    label: `Rename column "${oldName}" → "${newName}"`,
     execute: (s) => ({
       columns: s.columns.map((c) => (c === oldName ? newName : c)),
       rows: s.rows.map((r) => ({ ...r, extra: rename(r.extra, oldName, newName) })),
@@ -165,7 +212,7 @@ export function pasteBlockCommand(
   if (changes.length === 0) return null;
 
   return {
-    label: `Dán dữ liệu (${changes.length} ô)`,
+    label: `Paste data (${changes.length} cells)`,
     execute: (s) => ({
       ...s,
       rows: s.rows.map((r) => {
@@ -199,7 +246,7 @@ export function batchTransformCommand(
   if (changes.length === 0) return null;
   const changeMap = new Map(changes.map((c) => [c.id, c]));
   return {
-    label: `${label} (${changes.length} dòng)`,
+    label: `${label} (${changes.length} row(s))`,
     execute: (s) => ({
       ...s,
       rows: s.rows.map((r) => {
@@ -235,7 +282,7 @@ export function removeEmptyColumnsCommand(state: EditorState): Command | null {
   if (emptyCols.length === 0) return null;
   const before = new Map(emptyCols.map((col) => [col, new Map(state.rows.map((r) => [r.id, r.extra[col]]))]));
   return {
-    label: `Xoá ${emptyCols.length} cột rỗng`,
+    label: `Delete ${emptyCols.length} empty column(s)`,
     execute: (s) => ({
       columns: s.columns.filter((c) => !emptyCols.includes(c)),
       rows: s.rows.map((r) => {
@@ -258,12 +305,18 @@ export function removeEmptyColumnsCommand(state: EditorState): Command | null {
   };
 }
 
-/** Giữ dòng "đầy đủ thông tin nhất" mỗi nhóm trùng SĐT, xoá phần còn lại — tái dùng deleteRowsCommand. */
-export function findDuplicatePhoneIdsToRemove(state: EditorState): string[] {
+/**
+ * Giữ dòng "đầy đủ thông tin nhất" mỗi nhóm trùng theo compound key trên duplicateColumns
+ * (cấu hình ở tab Overview), xoá phần còn lại — tái dùng deleteRowsCommand. Không cột nào
+ * được chọn thì không có gì để xoá.
+ */
+export function findDuplicateIdsToRemove(state: EditorState, duplicateColumns: string[]): string[] {
+  if (duplicateColumns.length === 0) return [];
   const groups = new Map<string, EditorRow[]>();
   state.rows.forEach((r) => {
-    const key = r.phone.replace(/\D/g, "");
-    if (!key) return;
+    const values = duplicateColumns.map((col) => getCell(r, col).trim());
+    if (values.every((v) => !v)) return;
+    const key = values.join("");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(r);
   });
@@ -310,7 +363,7 @@ export function generateIdCommand(
   mode: "sequential" | "random",
   prefix: string
 ): Command {
-  return setColumnValuesCommand(state, `Generate ID → "${col}" (${state.rows.length} dòng)`, col, (_row, i) =>
+  return setColumnValuesCommand(state, `Generate ID → "${col}" (${state.rows.length} rows)`, col, (_row, i) =>
     mode === "sequential"
       ? `${prefix}${String(i + 1).padStart(4, "0")}`
       : `${prefix}${Math.random().toString(36).slice(2, 8).toUpperCase()}`

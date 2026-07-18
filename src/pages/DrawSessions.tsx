@@ -42,16 +42,16 @@ export default function DrawSessions() {
     <div>
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Phiên quay số</h1>
-          <p className="mt-1 text-sm text-base-400">Mỗi phiên có pool giải và tuỳ chọn quay riêng.</p>
+          <h1 className="font-display text-2xl font-medium text-base-100">Draw Sessions</h1>
+          <p className="mt-1 text-sm text-base-400">Each session has its own prize pool and draw settings.</p>
         </div>
-        <Button onClick={() => setShowAdd(true)}>+ Tạo phiên mới</Button>
+        <Button onClick={() => setShowAdd(true)}>+ Create session</Button>
       </header>
 
       <div className="space-y-3">
         {sessions.length === 0 && (
           <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-            Chưa có phiên nào. Cần có ít nhất 1 giải thưởng trước khi tạo phiên.
+            No sessions yet. You need at least 1 prize before creating a session.
           </p>
         )}
         {sessions.map((s) => (
@@ -63,8 +63,8 @@ export default function DrawSessions() {
             <div>
               <p className="font-medium text-base-100">{s.name}</p>
               <p className="mt-1 text-xs text-base-500">
-                {s.allow_duplicate_prize ? "Cho phép trùng giải" : "Không trùng giải"} ·{" "}
-                {s.exclude_previous_winners ? "Loại người đã trúng" : "Không loại người đã trúng"}
+                {s.allow_duplicate_prize ? "Duplicate prizes allowed" : "No duplicate prizes"} ·{" "}
+                {s.exclude_previous_winners ? "Excludes previous winners" : "Does not exclude previous winners"}
               </p>
             </div>
             <span className="rounded-full bg-base-800 px-3 py-1 text-xs text-base-300">{s.status}</span>
@@ -72,19 +72,19 @@ export default function DrawSessions() {
         ))}
       </div>
 
-      <Modal open={showAdd} title="Tạo phiên quay số" onClose={() => setShowAdd(false)}>
+      <Modal open={showAdd} title="Create Draw Session" onClose={() => setShowAdd(false)}>
         <div className="space-y-4">
           <input
             className="w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-base-100 outline-none focus:border-gold-500"
-            placeholder="Tên phiên (VD: Quay số giờ vàng 14h) *"
+            placeholder="Session name (e.g. Golden Hour Draw 2pm) *"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
 
           <div>
-            <label className="mb-2 block text-xs text-base-400">Giải áp dụng trong phiên này *</label>
+            <label className="mb-2 block text-xs text-base-400">Prizes used in this session *</label>
             {prizes.length === 0 ? (
-              <p className="text-xs text-danger-500">Chưa có giải thưởng nào — hãy thêm giải trước.</p>
+              <p className="text-xs text-danger-500">No prizes yet — add a prize first.</p>
             ) : (
               <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-base-800 p-2">
                 {prizes.map((p) => (
@@ -96,7 +96,7 @@ export default function DrawSessions() {
                       className="accent-gold-500"
                     />
                     <span className="text-base-200">{p.name}</span>
-                    <span className="ml-auto text-xs text-base-500">còn {p.remaining}</span>
+                    <span className="ml-auto text-xs text-base-500">{p.remaining} left</span>
                   </label>
                 ))}
               </div>
@@ -105,7 +105,7 @@ export default function DrawSessions() {
 
           <div className="space-y-2 rounded-lg border border-base-800 p-3">
             <label className="flex items-center justify-between text-sm">
-              <span className="text-base-200">Cho phép trùng lặp giải</span>
+              <span className="text-base-200">Allow duplicate prizes</span>
               <input
                 type="checkbox"
                 checked={form.allowDuplicatePrize}
@@ -114,7 +114,7 @@ export default function DrawSessions() {
               />
             </label>
             <label className="flex items-center justify-between text-sm">
-              <span className="text-base-200">Loại trừ người đã trúng khỏi các lượt sau</span>
+              <span className="text-base-200">Exclude previous winners from later draws</span>
               <input
                 type="checkbox"
                 checked={form.excludePreviousWinners}
@@ -125,7 +125,7 @@ export default function DrawSessions() {
           </div>
 
           <Button className="w-full" onClick={handleCreate} disabled={!form.name || form.prizeIds.length === 0}>
-            Tạo phiên
+            Create session
           </Button>
         </div>
       </Modal>
