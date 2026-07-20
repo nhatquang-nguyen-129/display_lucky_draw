@@ -57,6 +57,7 @@ const api = {
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list"),
+    get: (id: string) => ipcRenderer.invoke("sessions:get", id),
     create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
       ipcRenderer.invoke("sessions:create", data),
     rename: (data: { id: string; name: string }) => ipcRenderer.invoke("sessions:rename", data),
@@ -66,6 +67,8 @@ const api = {
       ipcRenderer.invoke("sessions:updateColumnTypes", data),
     updateDuplicateColumns: (data: { id: string; duplicateColumns: string[] }) =>
       ipcRenderer.invoke("sessions:updateDuplicateColumns", data),
+    updateLandingConfig: (data: { id: string; landingConfig: unknown }) =>
+      ipcRenderer.invoke("sessions:updateLandingConfig", data),
     delete: (id: string) => ipcRenderer.invoke("sessions:delete", id),
     results: (sessionId: string) => ipcRenderer.invoke("sessions:results", sessionId),
   },
@@ -74,6 +77,12 @@ const api = {
   },
   present: {
     open: (sessionId: string) => ipcRenderer.invoke("present:open", sessionId),
+  },
+  landingBuilder: {
+    open: (sessionId: string) => ipcRenderer.invoke("landingBuilder:open", sessionId),
+    // Cửa sổ Builder báo trạng thái "còn thay đổi chưa lưu" — cờ riêng, tách khỏi editor:dirty-changed
+    // của Data Editor vì đây là 1 cửa sổ độc lập (xem main.ts, openLandingBuilderWindow).
+    reportDirty: (dirty: boolean) => ipcRenderer.send("landingBuilder:dirty-changed", dirty),
   },
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
