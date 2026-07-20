@@ -1,3 +1,5 @@
+import { LandingConfig } from "@/lib/landing/types";
+
 export interface Participant {
   id: string;
   session_id: string;
@@ -49,6 +51,7 @@ export interface DrawResultRow {
   prize_id: string;
   participant_name: string;
   prize_name: string;
+  prize_display_image: string | null;
   drawn_at: string;
   rng_seed: string;
 }
@@ -110,6 +113,7 @@ declare global {
       };
       sessions: {
         list: () => Promise<Session[]>;
+        get: (id: string) => Promise<Session | null>;
         create: (data: {
           name: string;
           allowDuplicatePrize?: boolean;
@@ -123,6 +127,7 @@ declare global {
         }) => Promise<void>;
         updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) => Promise<void>;
         updateDuplicateColumns: (data: { id: string; duplicateColumns: string[] }) => Promise<void>;
+        updateLandingConfig: (data: { id: string; landingConfig: LandingConfig }) => Promise<void>;
         delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
       };
@@ -137,6 +142,10 @@ declare global {
       };
       present: {
         open: (sessionId: string) => Promise<void>;
+      };
+      landingBuilder: {
+        open: (sessionId: string) => Promise<void>;
+        reportDirty: (dirty: boolean) => void;
       };
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string } | null>;
