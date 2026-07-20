@@ -103,6 +103,67 @@ function openPresentWindow(sessionId: string) {
   });
 }
 
+let landingBuilderWindow: BrowserWindow | null = null;
+let hasUnsavedLandingBuilderChanges = false;
+
+ipcMain.on("landingBuilder:dirty-changed", (_e, dirty: boolean) => {
+  hasUnsavedLandingBuilderChanges = dirty;
+});
+
+// Cửa sổ phụ chứa Landing Page Builder (canvas + toolbar nổi) — tách riêng khỏi cửa sổ chính vì
+// cần toàn bộ màn hình cho canvas, giống cách Present mode cũng mở cửa sổ riêng.
+function openLandingBuilderWindow(sessionId: string) {
+  if (landingBuilderWindow) {
+    landingBuilderWindow.focus();
+    return;
+  }
+  landingBuilderWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
+    backgroundColor: "#0B0B10",
+    icon: getIconPath(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  // Chặn đóng đột ngột nếu Builder còn thay đổi chưa lưu — giống hệt guard của cửa sổ chính,
+  // nhưng dùng cờ riêng vì đây là 1 cửa sổ độc lập, đóng nó không nên phụ thuộc/ảnh hưởng
+  // tới trạng thái "chưa lưu" của Data Editor ở cửa sổ chính.
+  landingBuilderWindow.on("close", (e) => {
+    if (!hasUnsavedLandingBuilderChanges) return;
+    e.preventDefault();
+    const choice = dialog.showMessageBoxSync(landingBuilderWindow!, {
+      type: "warning",
+      buttons: ["Cancel", "Close and discard changes"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "The Landing Builder has unsaved changes",
+      detail: "If you close this window now, unsaved changes will be lost.",
+    });
+    if (choice === 1) {
+      hasUnsavedLandingBuilderChanges = false;
+      landingBuilderWindow?.destroy();
+    }
+  });
+
+  const hash = `#/landing-builder/${sessionId}`;
+  if (IS_DEV) {
+    landingBuilderWindow.loadURL(`http://localhost:5173/${hash}`);
+  } else {
+    landingBuilderWindow.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
+  }
+
+  landingBuilderWindow.on("closed", () => {
+    landingBuilderWindow = null;
+    hasUnsavedLandingBuilderChanges = false;
+  });
+}
+
 app.whenReady().then(() => {
   app.setName(APP_NAME);
 
@@ -336,6 +397,12 @@ ipcMain.handle("sessions:list", () => {
   return db.prepare(`SELECT * FROM sessions ORDER BY created_at ASC`).all();
 });
 
+// Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
+// không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.
+ipcMain.handle("sessions:get", (_e, id: string) => {
+  return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null;
+});
+
 ipcMain.handle(
   "sessions:create",
   (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => {
@@ -387,6 +454,17 @@ ipcMain.handle(
   }
 );
 
+// Lưu layout Landing Page Builder — Builder chỉ sửa JSON này, PresentMode chỉ render nó.
+ipcMain.handle(
+  "sessions:updateLandingConfig",
+  (_e, data: { id: string; landingConfig: unknown }) => {
+    db.prepare(`UPDATE sessions SET landing_config = ? WHERE id = ?`).run(
+      JSON.stringify(data.landingConfig),
+      data.id
+    );
+  }
+);
+
 // Xoá tab: xoá luôn toàn bộ participants/prizes/kết quả quay thuộc riêng session đó
 // (an toàn vì dữ liệu này KHÔNG được chia sẻ với session khác trong mô hình mới)
 ipcMain.handle("sessions:delete", (_e, id: string) => {
@@ -402,7 +480,7 @@ ipcMain.handle("sessions:delete", (_e, id: string) => {
 ipcMain.handle("sessions:results", (_e, sessionId: string) => {
   return db
     .prepare(
-      `SELECT dr.*, p.name as participant_name, pr.name as prize_name
+      `SELECT dr.*, p.name as participant_name, pr.name as prize_name, pr.display_image as prize_display_image
        FROM draw_results dr
        JOIN participants p ON p.id = dr.participant_id
        JOIN prizes pr ON pr.id = dr.prize_id
@@ -418,6 +496,10 @@ ipcMain.handle("draw:one", (_e, sessionId: string) => {
 
 ipcMain.handle("present:open", (_e, sessionId: string) => {
   openPresentWindow(sessionId);
+});
+
+ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {
+  openLandingBuilderWindow(sessionId);
 });
 
 import fs from "fs";

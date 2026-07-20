@@ -1,35 +1,52 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { DrawResultRow } from "@/types";
+import { useLandingData } from "@/components/landing/useLandingData";
+import LandingRenderer from "@/components/landing/LandingRenderer";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, LandingConfig, parseLandingConfig } from "@/lib/landing/types";
 
-// Đây là trang render trong cửa sổ Present mode riêng biệt (BrowserWindow thứ 2).
-// Không có sidebar/toolbar — chỉ hiển thị kết quả để trình chiếu cho khán giả.
-// Placeholder này sẽ được thay bằng canvas do drag-drop builder tạo ra ở giai đoạn sau.
+const CONFIG_POLL_MS = 2000;
+
+// Cửa sổ trình chiếu — CHỈ render LandingConfig của session, không có logic riêng nào khác.
+// Builder chỉnh sửa JSON, ở đây chỉ đọc. Poll lại session định kỳ để nếu người dùng Save thay đổi
+// trong Builder khi cửa sổ này đang mở, nó tự cập nhật mà không cần mở lại.
 export default function PresentMode() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [results, setResults] = useState<DrawResultRow[]>([]);
+  const [config, setConfig] = useState<LandingConfig | null>(null);
+  const [scale, setScale] = useState(1);
+  const data = useLandingData(sessionId ?? null);
 
   useEffect(() => {
     if (!sessionId) return;
-    const load = () => window.api.sessions.results(sessionId).then(setResults);
+    const load = () =>
+      window.api.sessions.get(sessionId).then((s) => setConfig(parseLandingConfig(s?.landing_config ?? null)));
     load();
-    const interval = setInterval(load, 2000); // poll đơn giản, sau này thay bằng event push
+    const interval = setInterval(load, CONFIG_POLL_MS);
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  const latest = results[0];
+  useEffect(() => {
+    // BrowserWindow trình chiếu có thể bị kéo-thả resize (kể cả sang màn hình 2) — luôn scale để
+    // vừa khung hiện tại nhưng giữ đúng tỉ lệ 16:9, phần dư 2 bên/trên-dưới tô màu nền (letterbox).
+    const compute = () => {
+      setScale(Math.min(window.innerWidth / CANVAS_WIDTH, window.innerHeight / CANVAS_HEIGHT));
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+
+  if (!config) {
+    return <div className="flex h-screen w-screen items-center justify-center bg-base-950 text-base-500">Loading...</div>;
+  }
 
   return (
-    <div className="flex h-screen w-screen flex-col items-center justify-center bg-base-950 text-center">
-      <p className="mb-6 font-display text-2xl text-base-400">Draw results</p>
-      {latest ? (
-        <>
-          <p className="font-display text-6xl font-medium text-gold-400">{latest.participant_name}</p>
-          <p className="mt-4 text-2xl text-base-200">won {latest.prize_name}</p>
-        </>
-      ) : (
-        <p className="text-2xl text-base-500">Waiting for the first draw...</p>
-      )}
+    <div
+      className="flex h-screen w-screen items-center justify-center overflow-hidden"
+      style={{ backgroundColor: config.canvas.background.color }}
+    >
+      <div style={{ width: config.canvas.width * scale, height: config.canvas.height * scale }}>
+        <LandingRenderer config={config} data={data} scale={scale} />
+      </div>
     </div>
   );
 }
