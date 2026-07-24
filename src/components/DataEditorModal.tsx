@@ -23,6 +23,7 @@ import {
   renameColumnCommand,
   reorderRowsCommand,
   runningNumberCommand,
+  sequentialIdDigitWidth,
 } from "@/lib/dataEditor/commands";
 import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
 import {
@@ -825,7 +826,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             onChange={(e) => setGenIdMode(e.target.value as typeof genIdMode)}
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           >
-                            <option value="sequential">Sequential (0001, 0002...)</option>
+                            <option value="sequential">Sequential (auto-padded digits)</option>
                             <option value="random">Random</option>
                           </select>
                           <input
@@ -834,6 +835,20 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             placeholder="Prefix (e.g. KH)"
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
+                          {genIdMode === "sequential" && (
+                            <p className="mb-2 text-[10px] leading-snug text-base-500">
+                              {/* Số chữ số tự tính theo số dòng hiện có — vừa đủ để đánh số không trùng,
+                                  không cố định 4 số như trước (xem sequentialIdDigitWidth). */}
+                              {history.state.rows.length} rows → {sequentialIdDigitWidth(history.state.rows.length)}{" "}
+                              digits, e.g. {genIdPrefix}
+                              {"1".padStart(sequentialIdDigitWidth(history.state.rows.length), "0")} ...{" "}
+                              {genIdPrefix}
+                              {String(history.state.rows.length).padStart(
+                                sequentialIdDigitWidth(history.state.rows.length),
+                                "0"
+                              )}
+                            </p>
+                          )}
                         </>
                       )}
 

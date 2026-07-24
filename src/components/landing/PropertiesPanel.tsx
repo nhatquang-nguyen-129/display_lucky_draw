@@ -1,4 +1,5 @@
 import { BackgroundConfig, LandingComponent, LandingConfig } from "@/lib/landing/types";
+import { Participant, Prize } from "@/types";
 import BackgroundPanel from "./panels/BackgroundPanel";
 import SharedFields from "./panels/SharedFields";
 import TextPanel from "./panels/TextPanel";
@@ -10,11 +11,15 @@ import PrizeListPanel from "./panels/PrizeListPanel";
 import CountdownPanel from "./panels/CountdownPanel";
 import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
+import ButtonPanel from "./panels/ButtonPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
   selected: LandingComponent | null;
   sessionName: string;
+  prizes: Prize[];
+  participants: Participant[];
+  urlFields: string[];
   onChangeBackground: (patch: Partial<BackgroundConfig>) => void;
   onChangeComponent: (patch: Partial<LandingComponent>) => void;
   onChangeProps: (patch: Record<string, any>) => void;
@@ -27,6 +32,9 @@ export default function PropertiesPanel({
   config,
   selected,
   sessionName,
+  prizes,
+  participants,
+  urlFields,
   onChangeBackground,
   onChangeComponent,
   onChangeProps,
@@ -45,17 +53,30 @@ export default function PropertiesPanel({
       {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "luckyWheel" && (
-        <LuckyWheelPanel props={selected.props} sessionName={sessionName} onChange={onChangeProps} />
+        <LuckyWheelPanel
+          props={selected.props}
+          sessionName={sessionName}
+          participants={participants}
+          componentWidth={selected.width}
+          componentHeight={selected.height}
+          onChange={onChangeProps}
+          onChangeComponent={onChangeComponent}
+        />
       )}
       {(selected.type === "winnerName" || selected.type === "prizeName") && (
         <LiveTextPanel props={selected.props} onChange={onChangeProps} />
       )}
-      {selected.type === "prizeImage" && <LiveImagePanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "prizeImage" && (
+        <LiveImagePanel props={selected.props} prizes={prizes} onChange={onChangeProps} />
+      )}
       {selected.type === "prizeList" && <PrizeListPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "countdown" && <CountdownPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "currentTime" && <CurrentTimePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "participantCount" && (
         <ParticipantCountPanel props={selected.props} onChange={onChangeProps} />
+      )}
+      {selected.type === "button" && (
+        <ButtonPanel props={selected.props} urlFields={urlFields} onChange={onChangeProps} />
       )}
       <div className="h-px bg-base-800" />
       <SharedFields component={selected} onChange={onChangeComponent} onDelete={onDelete} />

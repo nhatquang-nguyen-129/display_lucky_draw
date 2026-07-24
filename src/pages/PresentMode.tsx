@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useLandingData } from "@/components/landing/useLandingData";
+import { useDrawSequence } from "@/components/landing/useDrawSequence";
 import LandingRenderer from "@/components/landing/LandingRenderer";
 import { CANVAS_HEIGHT, CANVAS_WIDTH, LandingConfig, parseLandingConfig } from "@/lib/landing/types";
 
@@ -14,6 +15,7 @@ export default function PresentMode() {
   const [config, setConfig] = useState<LandingConfig | null>(null);
   const [scale, setScale] = useState(1);
   const data = useLandingData(sessionId ?? null);
+  const sequence = useDrawSequence(sessionId ?? null, data);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -45,8 +47,13 @@ export default function PresentMode() {
       style={{ backgroundColor: config.canvas.background.color }}
     >
       <div style={{ width: config.canvas.width * scale, height: config.canvas.height * scale }}>
-        <LandingRenderer config={config} data={data} scale={scale} />
+        <LandingRenderer config={config} data={sequence.effectiveData} scale={scale} interactive sequence={sequence} />
       </div>
+      {sequence.error && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg border border-danger-500/40 bg-base-950/90 px-4 py-2 text-sm text-danger-500 shadow-2xl">
+          {sequence.error}
+        </div>
+      )}
     </div>
   );
 }

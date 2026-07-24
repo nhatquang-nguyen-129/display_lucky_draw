@@ -357,15 +357,23 @@ function setColumnValuesCommand(
   };
 }
 
+/** Số chữ số vừa đủ để đánh số 1..count không trùng — vd 478 dòng thì 3 chữ số (001-478) là đủ,
+ * 99 dòng thì 2 chữ số (01-99), không cố định 4 chữ số như trước gây thừa số 0 vô nghĩa. Dùng
+ * chung cho cả generateIdCommand và phần preview trên UI (xem DataEditorModal.tsx). */
+export function sequentialIdDigitWidth(rowCount: number): number {
+  return String(Math.max(1, rowCount)).length;
+}
+
 export function generateIdCommand(
   state: EditorState,
   col: string,
   mode: "sequential" | "random",
   prefix: string
 ): Command {
+  const digitWidth = sequentialIdDigitWidth(state.rows.length);
   return setColumnValuesCommand(state, `Generate ID → "${col}" (${state.rows.length} rows)`, col, (_row, i) =>
     mode === "sequential"
-      ? `${prefix}${String(i + 1).padStart(4, "0")}`
+      ? `${prefix}${String(i + 1).padStart(digitWidth, "0")}`
       : `${prefix}${Math.random().toString(36).slice(2, 8).toUpperCase()}`
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import Button from "@/components/Button";
 import ComponentPalette from "@/components/landing/ComponentPalette";
@@ -12,7 +12,7 @@ import {
   LandingConfig,
   parseLandingConfig,
 } from "@/lib/landing/types";
-import { Session } from "@/types";
+import { Participant, Prize, Session } from "@/types";
 
 const floatingBtn =
   "flex h-10 w-10 items-center justify-center rounded-full border shadow-lg transition-colors";
@@ -33,6 +33,8 @@ const ZOOM_STEP = 0.25;
 export default function LandingBuilderWindow() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [session, setSession] = useState<Session | null>(null);
+  const [prizes, setPrizes] = useState<Prize[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [config, setConfig] = useState<LandingConfig | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
@@ -53,6 +55,41 @@ export default function LandingBuilderWindow() {
       savedConfigRef.current = JSON.stringify(parsed);
     });
   }, [sessionId]);
+
+  // Danh sách Prize (kèm display_image) cho picker ảnh giải trong LiveImagePanel — poll nhẹ để
+  // ảnh mới thêm/xoá ở màn Prizes (cửa sổ chính) hiện ra mà không cần mở lại Builder.
+  useEffect(() => {
+    if (!sessionId) return;
+    const load = () => window.api.prizes.list(sessionId).then(setPrizes);
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
+
+  // Danh sách Participant — dùng để lọc field nào thực sự có dữ liệu trong LuckyWheelPanel (vd
+  // Email bỏ trống hết thì không cho chọn làm Draw/Display field, xem LuckyWheelPanel.tsx). Poll
+  // nhẹ giống Prize để dữ liệu sửa ở Data Editor (cửa sổ khác) phản ánh vào Builder không cần mở lại.
+  useEffect(() => {
+    if (!sessionId) return;
+    const load = () => window.api.participants.list(sessionId).then(setParticipants);
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
+
+  // Cột nào đã được gán Loại dữ liệu "url" ở Data Editor — nguồn cho picker của Button action
+  // "openLink" (xem ButtonPanel.tsx). Tính lại mỗi khi session đổi, không cần state riêng.
+  const urlFields = useMemo(() => {
+    if (!session?.participant_column_types) return [];
+    try {
+      const types = JSON.parse(session.participant_column_types) as Record<string, string>;
+      return Object.entries(types)
+        .filter(([, type]) => type === "url")
+        .map(([field]) => field);
+    } catch {
+      return [];
+    }
+  }, [session?.participant_column_types]);
 
   const dirty = !!config && JSON.stringify(config) !== savedConfigRef.current;
 
@@ -338,6 +375,9 @@ export default function LandingBuilderWindow() {
                 config={config}
                 selected={selected}
                 sessionName={session.name}
+                prizes={prizes}
+                participants={participants}
+                urlFields={urlFields}
                 onChangeBackground={handleChangeBackground}
                 onChangeComponent={(patch) => selectedId && handleUpdateComponent(selectedId, patch)}
                 onChangeProps={handleUpdateProps}
