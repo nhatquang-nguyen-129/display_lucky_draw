@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { DrawCandidate } from "./drawEngine";
 
 const api = {
   participants: {
@@ -74,6 +75,9 @@ const api = {
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),
+    pick: (data: { sessionId: string; excludeParticipantIds?: string[]; lockedPrizeId?: string }) =>
+      ipcRenderer.invoke("draw:pick", data),
+    commit: (data: { candidate: DrawCandidate; sessionId: string }) => ipcRenderer.invoke("draw:commit", data),
   },
   present: {
     open: (sessionId: string) => ipcRenderer.invoke("present:open", sessionId),
@@ -87,6 +91,9 @@ const api = {
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
     },
+  shell: {
+    openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
+  },
   editor: {
     // Data Editor báo trạng thái "còn thay đổi chưa lưu" cho main process,
     // để chặn đóng app đột ngột và hỏi xác nhận (xem main.ts, sự kiện "close").

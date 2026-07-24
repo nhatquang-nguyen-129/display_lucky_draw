@@ -1,4 +1,5 @@
 import { EFFECT_NAMES, EffectName, LandingComponent } from "@/lib/landing/types";
+import ReactionsEditor from "./ReactionsEditor";
 
 interface SharedFieldsProps {
   component: LandingComponent;
@@ -68,6 +69,12 @@ export default function SharedFields({ component, onChange, onDelete }: SharedFi
           ))}
         </select>
       </div>
+
+      <div className="h-px bg-base-800" />
+      <ReactionsEditor
+        reactions={component.reactions ?? []}
+        onChange={(reactions) => onChange({ reactions })}
+      />
 
       <button
         onClick={onDelete}

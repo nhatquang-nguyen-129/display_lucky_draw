@@ -56,6 +56,16 @@ export interface DrawResultRow {
   rng_seed: string;
 }
 
+// Ứng viên đã pickWinner() nhưng CHƯA commitDraw() — dùng cho luồng Button Draw/Confirm/Redo trên
+// Landing Page (xem electron/drawEngine.ts:DrawCandidate, cùng shape, khai báo riêng cho renderer).
+export interface DrawCandidate {
+  participantId: string;
+  participantName: string;
+  prizeId: string;
+  prizeName: string;
+  seed: string;
+}
+
 declare global {
   interface Window {
     api: {
@@ -132,13 +142,13 @@ declare global {
         results: (sessionId: string) => Promise<DrawResultRow[]>;
       };
       draw: {
-        one: (sessionId: string) => Promise<{
-          participantId: string;
-          participantName: string;
-          prizeId: string;
-          prizeName: string;
-          seed: string;
-        }>;
+        one: (sessionId: string) => Promise<DrawCandidate>;
+        pick: (data: {
+          sessionId: string;
+          excludeParticipantIds?: string[];
+          lockedPrizeId?: string;
+        }) => Promise<DrawCandidate>;
+        commit: (data: { candidate: DrawCandidate; sessionId: string }) => Promise<void>;
       };
       present: {
         open: (sessionId: string) => Promise<void>;
@@ -149,6 +159,9 @@ declare global {
       };
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string } | null>;
+      };
+      shell: {
+        openExternal: (url: string) => Promise<void>;
       };
       editor: {
         reportDirty: (dirty: boolean) => void;

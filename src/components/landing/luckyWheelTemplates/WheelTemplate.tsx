@@ -69,8 +69,13 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
       setWinner(segments[winnerIndex]);
     }, spinDurationMs);
     return () => clearTimeout(timer);
+    // Chỉ phụ thuộc `results[0]?.id` (chuỗi ổn định), KHÔNG phụ thuộc cả mảng `results` — useLandingData
+    // poll lại mỗi 2s và luôn tạo mảng MỚI dù nội dung không đổi. Nếu phụ thuộc cả mảng, mỗi lần poll
+    // (thường xảy ra giữa chừng lượt quay vì spinDurationMs > 2000ms) React huỷ timer đang đếm dở, guard
+    // phía trên lại chặn không cho đặt lịch lại (vì latestId không đổi) — kết quả: banner người trúng
+    // (`winner`) không bao giờ hiện ra và `spinning` kẹt mãi ở true dù đĩa quay CSS đã dừng đúng vị trí.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, segments.length]);
+  }, [results[0]?.id, segments.length]);
 
   const size = Math.max(40, Math.min(component.width, component.height));
   const radius = size / 2 - Math.max(24, size * 0.14);

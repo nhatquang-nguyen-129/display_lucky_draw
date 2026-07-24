@@ -1,4 +1,5 @@
 import { BackgroundConfig } from "@/lib/landing/types";
+import ReactionsEditor from "./ReactionsEditor";
 
 interface BackgroundPanelProps {
   background: BackgroundConfig;
@@ -69,6 +70,12 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
           </div>
         </>
       )}
+
+      <div className="h-px bg-base-800" />
+      <ReactionsEditor
+        reactions={background.reactions ?? []}
+        onChange={(reactions) => onChange({ reactions })}
+      />
     </div>
   );
 }

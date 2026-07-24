@@ -13,6 +13,29 @@ export type EffectName = "none" | "fadeIn" | "slideUp" | "pulse" | "bounce";
 
 export const EFFECT_NAMES: EffectName[] = ["none", "fadeIn", "slideUp", "pulse", "bounce"];
 
+// Trigger = đúng 3 hành động Button hỗ trợ (xem ButtonProps ở dưới) — không có trigger tự đặt tên
+// tuỳ ý ở v1. Reaction = 1 hiệu ứng nhỏ, khai báo (không phải CSS tuỳ ý) mà BẤT KỲ component nào
+// (và cả canvas background — xem BackgroundConfig) có thể đăng ký để "phản ứng" theo trigger đó,
+// sau 1 khoảng delay, giữ trong 1 khoảng duration rồi tự trả về bình thường (0 = giữ tới khi có
+// trigger tiếp theo). Đây là tính năng generic được yêu cầu — thêm reaction mới cho 1 component
+// chỉ là thêm 1 phần tử vào mảng `reactions`, không cần code riêng cho từng cặp component/trigger.
+export type LandingTriggerEvent = "draw" | "confirm" | "redo";
+
+export interface EffectReaction {
+  id: string;
+  trigger: LandingTriggerEvent;
+  delayMs: number; // chờ bao lâu sau khi trigger nổ ra mới áp hiệu ứng
+  durationMs: number; // giữ hiệu ứng bao lâu trước khi tự trả về bình thường; 0 = giữ tới trigger kế tiếp
+  dim?: number; // 0-1 — phủ đen mờ dần lên trên
+  scale?: number; // hệ số phóng to tại chỗ, vd 1.15
+  glow?: boolean; // thêm viền sáng
+  glowColor?: string;
+}
+
+export function newReactionId(): string {
+  return `reaction-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 interface BaseComponent {
   id: string;
   x: number;
@@ -21,6 +44,7 @@ interface BaseComponent {
   height: number;
   zIndex: number; // thứ tự append — v1 chưa có UI đổi z-index thủ công
   effect: EffectName;
+  reactions?: EffectReaction[]; // opt-in — rỗng/undefined nghĩa là component không phản ứng gì với trigger
 }
 
 export interface TextProps {
@@ -47,10 +71,12 @@ export interface ImageComponent extends BaseComponent {
   props: ImageProps;
 }
 
-/** Field của Participant dùng để nhận diện 1 người (không hiển thị id thô). */
-export type ParticipantKeyField = "participantId" | "code" | "phone" | "email";
-/** Field của Participant dùng để HIỂN THỊ (không bao giờ hiện participantId thô). */
-export type ParticipantDisplayField = "name" | "phone" | "email" | "code";
+// `(string & {})` giữ gợi ý autocomplete cho các giá trị cố định bên dưới nhưng vẫn cho phép bất kỳ
+// chuỗi nào khác — đó là tên 1 cột optional (extra_data) do người dùng tự thêm ở Data Editor (xem
+// getParticipantField). Field của Participant dùng để nhận diện 1 người (không hiển thị id thô).
+export type ParticipantKeyField = "participantId" | "code" | "phone" | "email" | (string & {});
+/** Field của Participant dùng để HIỂN THỊ (không bao giờ hiện participantId thô) — cố định hoặc cột optional. */
+export type ParticipantDisplayField = "name" | "phone" | "email" | "code" | (string & {});
 
 // "Template" của Lucky Wheel — cùng 1 cơ chế binding (session/field/mask/spin), chỉ khác cách VẼ.
 // Thêm template mới: thêm giá trị vào union này + 1 file trong components/landing/luckyWheelTemplates/
@@ -66,6 +92,31 @@ export interface LuckyWheelProps {
   winnerDisplayField: ParticipantDisplayField; // field nguồn cho kết quả công bố (wheel: tên hiện ra; digitRoller: rút số từ field này)
   maskSensitiveData: boolean; // áp dụng maskPhone() có sẵn khi field hiển thị là "phone" — chỉ dùng cho template "wheel"
   digitCount: number; // số ký tự số hiện ở cuối — chỉ dùng cho template "digitRoller", vd 3 → "0917xxx892" hiện "892"
+  // 3 trục cấu hình ĐỘC LẬP cho animation của template "digitRoller" (không gộp thành 1 "style" tổ
+  // hợp sẵn) — mỗi trục tự do kết hợp với 2 trục còn lại. Field không tồn tại ở config cũ (trước khi
+  // có các tính năng này) → code đọc luôn tự fallback về giá trị tái tạo ĐÚNG hành vi gốc ban đầu
+  // (flicker + together + none), không đổi hành vi của landing đã lưu trước đó.
+  //
+  // Trục 1 — cơ chế hiển thị lúc 1 ô CHƯA chốt xong:
+  // "flicker" = đổi ký tự ngẫu nhiên liên tục theo nhịp (nhịp tự chậm dần theo spinEasing khi tới
+  // lượt chốt), giống máy đánh số cũ. "reel" = cuộn dọc liên tục kiểu bánh xe ký tự/odometer thật,
+  // ký tự rơi từ trên xuống, tự dừng đúng vị trí ký tự thật bằng CSS transition.
+  rollStyle: "flicker" | "reel";
+  // Sub-setting của rollStyle "reel" (KHÔNG phải landingEffect) — có nảy nhẹ kiểu vật lý (overshoot)
+  // lúc dừng hay dừng êm không nảy. Chỉ có ý nghĩa khi rollStyle = "reel".
+  reelBounce: boolean;
+  // Trục 2 — thời điểm các ô CHUYỂN SANG PHA CHỐT (settling — bắt đầu giảm tốc dần rồi dừng ở ký tự
+  // thật): "together" = mọi ô vào pha chốt ngay t=0 (chốt cùng lúc, cùng giảm tốc). "sequential" =
+  // ô thứ i CHỈ bắt đầu giảm tốc SAU KHI ô (i-1) đã dừng hẳn + revealStaggerMs — trong lúc chờ tới
+  // lượt, ô đó vẫn nhấp nháy/cuộn NHANH BÌNH THƯỜNG (không giảm tốc theo ô đang chốt).
+  revealTiming: "together" | "sequential";
+  // Chỉ có tác dụng khi revealTiming = "sequential" — khoảng nghỉ (ms) SAU KHI ô này đã dừng hẳn,
+  // trước khi ô kế tiếp bắt đầu giảm tốc.
+  revealStaggerMs: number;
+  // Trục 3 — hiệu ứng 1 LẦN ngay khi 1 ô vừa chốt xong ký tự thật, CHỈ áp dụng cho rollStyle
+  // "flicker" (rollStyle "reel" dùng reelBounce riêng ở trên, không dùng field này): "none" = dừng
+  // luôn. "bounce" = rơi xuống + nảy nhẹ. "pop" = phóng to 1 chút rồi thu về kích thước ban đầu.
+  landingEffect: "none" | "bounce" | "pop";
   fontFamily: string;
   fontColor: string;
   fontSize: number;
@@ -163,6 +214,34 @@ export interface ParticipantCountComponent extends BaseComponent {
   props: ParticipantCountProps;
 }
 
+// Button tương tác — CHỈ hoạt động thật trong Present Mode (LandingRenderer interactive=true).
+// Trong Builder canvas nó vẫn hiện ra nhưng luôn disabled, tránh bấm nhầm chạy quay số thật lúc
+// đang chỉnh sửa. "draw" gọi draw:pick (chưa ghi DB) — "confirm" gọi draw:commit cho candidate
+// đang hiện — "redo" loại candidate đang hiện rồi pick lại ĐÚNG giải đó (xem useDrawSequence.ts).
+// "openLink" mở URL lấy từ 1 cột optional đã được gán Loại dữ liệu "url" (ở Data Editor) của
+// CHÍNH participant vừa trúng (candidate đang hiện) — không liên quan gì tới draw/confirm/redo,
+// chỉ cần đã có người trúng để tra dữ liệu.
+export type ButtonAction = "draw" | "confirm" | "redo" | "openLink";
+
+export interface ButtonProps {
+  action: ButtonAction;
+  label: string;
+  fontSize: number;
+  color: string;
+  backgroundColor: string;
+  borderRadius: number;
+  strokeColor: string;
+  strokeWidth: number; // 0 = không viền
+  // Chỉ dùng cho action "openLink" — tên cột optional (trong Participant.extra_data) đã được gán
+  // Loại dữ liệu "url" ở Data Editor. undefined/rỗng nghĩa là chưa chọn — nút sẽ disabled.
+  urlField?: string;
+}
+
+export interface ButtonComponent extends BaseComponent {
+  type: "button";
+  props: ButtonProps;
+}
+
 export type LandingComponent =
   | TextComponent
   | ImageComponent
@@ -173,7 +252,8 @@ export type LandingComponent =
   | PrizeListComponent
   | CountdownComponent
   | CurrentTimeComponent
-  | ParticipantCountComponent;
+  | ParticipantCountComponent
+  | ButtonComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 
@@ -182,6 +262,7 @@ export interface BackgroundConfig {
   color: string; // hex — luôn có, dùng làm màu viền letterbox khi type = "image" không phủ hết khung
   imageDataUrl?: string;
   imageFit?: "cover" | "contain" | "stretch";
+  reactions?: EffectReaction[]; // canvas background cũng là 1 "đối tượng" phản ứng được theo trigger
 }
 
 export interface LandingConfig {
@@ -225,7 +306,10 @@ export function newComponentId(): string {
   return `comp-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Đọc 1 field của Participant theo tên field logic dùng trong LuckyWheelProps (không bao giờ null). */
+/** Đọc 1 field của Participant theo tên field logic dùng trong LuckyWheelProps (không bao giờ null).
+ * Field không khớp 1 trong 5 tên cố định được coi là tên cột optional (extra_data) — tra qua
+ * getParticipantExtraField, rỗng nếu participant không có cột đó (xem LuckyWheelPanel.tsx, nơi
+ * liệt kê cả cột optional cho người dùng chọn, không chỉ 4 field cố định như trước). */
 export function getParticipantField(
   p: import("@/types").Participant,
   field: ParticipantKeyField | "name"
@@ -241,6 +325,22 @@ export function getParticipantField(
       return p.phone ?? "";
     case "email":
       return p.email ?? "";
+    default:
+      return getParticipantExtraField(p, field) ?? "";
+  }
+}
+
+/** Đọc 1 cột optional trong Participant.extra_data theo tên — dùng cho Button action "openLink"
+ * tra URL của người vừa trúng. Trả về null nếu chưa chọn cột, participant không có cột đó, hoặc
+ * giá trị rỗng — ButtonView dựa vào null để tự disable, không hiện link rỗng/hỏng. */
+export function getParticipantExtraField(p: import("@/types").Participant, field: string | undefined): string | null {
+  if (!field || !p.extra_data) return null;
+  try {
+    const extra = JSON.parse(p.extra_data) as Record<string, string>;
+    const value = extra[field];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
   }
 }
 
@@ -252,4 +352,24 @@ export interface LandingData {
   participants: import("@/types").Participant[];
   prizes: import("@/types").Prize[];
   results: import("@/types").DrawResultRow[];
+}
+
+// Trạng thái + hành động của luồng Draw/Confirm/Redo — xem useDrawSequence.ts (nơi triển khai
+// thật) và ButtonView.tsx (nơi tiêu thụ). Khai báo shape ở đây (lớp dữ liệu) thay vì để ButtonView
+// import thẳng kiểu trả về của hook, giữ đúng phân lớp "views/ chỉ biết shape dữ liệu, không biết
+// hook nào tạo ra nó".
+export interface LastTrigger {
+  event: LandingTriggerEvent;
+  firedAt: number; // Date.now() tại lúc trigger nổ ra — dùng để tính delay/duration của reactions
+}
+
+export interface DrawSequenceActions {
+  candidate: import("@/types").DrawCandidate | null;
+  isPending: boolean; // đã pick nhưng chưa confirm — Draw bị khoá, Confirm/Redo mở
+  busy: boolean; // đang có 1 lời gọi IPC dở dang — khoá cả 3 nút tránh bấm chồng
+  error: string | null;
+  lastTrigger: LastTrigger | null; // trigger gần nhất đã nổ ra thật (chỉ set khi IPC thành công)
+  pick: () => void;
+  confirm: () => void;
+  redo: () => void;
 }
