@@ -1,0 +1,33 @@
+/* Hiệu ứng 1 lần khi 1 ô ký tự của Digit Roller vừa chốt xong giá trị thật (landingEffect, xem
+   DigitRollerTemplate.tsx) — chạy đúng 1 lần qua đổi `key` để React remount, không tự lặp lại. */
+
+@keyframes digit-roller-bounce {
+  from {
+    transform: translateY(-14px) scale(0.85);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.digit-roller-bounce {
+  /* Bezier có control point y > 1 (1.56) tạo overshoot tự nhiên — ô "rơi" quá vị trí cuối 1 chút
+     rồi mới dội nhẹ về đúng chỗ, không cần keyframe nhiều bước. */
+  animation: digit-roller-bounce 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes digit-roller-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.digit-roller-pop {
+  animation: digit-roller-pop 320ms ease-out both;
+}

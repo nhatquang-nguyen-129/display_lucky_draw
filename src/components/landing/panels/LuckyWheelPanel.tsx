@@ -1,9 +1,43 @@
-import { LuckyWheelProps, LuckyWheelTemplate, ParticipantDisplayField, ParticipantKeyField } from "@/lib/landing/types";
+import { useMemo } from "react";
+import {
+  getParticipantExtraField,
+  getParticipantField,
+  LandingComponent,
+  LuckyWheelProps,
+  LuckyWheelTemplate,
+  ParticipantDisplayField,
+  ParticipantKeyField,
+} from "@/lib/landing/types";
+import { Participant } from "@/types";
 
 interface LuckyWheelPanelProps {
   props: LuckyWheelProps;
   sessionName: string;
+  // Dùng để chỉ hiện các field CÓ dữ liệu thật trong session này (vd Email bỏ trống hết thì không
+  // cho chọn) — tránh chọn nhầm 1 field rỗng khiến segment/kết quả biến mất hoàn toàn (xem hasData
+  // bên dưới và getFieldOptions). Cũng dùng để liệt kê MỌI cột optional (extra_data) đang thực sự
+  // tồn tại trong session, không chỉ 4 field cố định — xem extraColumns bên dưới.
+  participants: Participant[];
+  // Kích thước khung kéo-thả HIỆN TẠI của chính component này trên canvas — dùng để tính chiều cao
+  // "vừa khít" cho nút Fit height (xem computeFitHeight) — không lấy từ props (props không có x/y/
+  // width/height, đó là field cấp BaseComponent, xem lib/landing/types.ts).
+  componentWidth: number;
+  componentHeight: number;
   onChange: (patch: Partial<LuckyWheelProps>) => void;
+  // Tách riêng khỏi onChange (chỉ patch props) vì chỉnh height là patch cấp component (x/y/w/h),
+  // giống hệt cơ chế SharedFields đang dùng.
+  onChangeComponent: (patch: Partial<LandingComponent>) => void;
+}
+
+// Chiều cao "vừa khít" cho template digitRoller ở đúng width hiện tại — LẶP LẠI chính xác công thức
+// tính cellWidth/cellHeight trong DigitRollerTemplate.tsx (gap=8, tỉ lệ cellWidth:cellHeight=0.7:1)
+// để nút "Fit height to content" cho ra đúng chiều cao khiến ô số lấp đầy toàn bộ khung, không còn
+// khoảng trống thừa phía trên/dưới — xem yêu cầu người dùng: khung kéo-thả to hơn hẳn nội dung thật.
+function computeFitHeight(widthBound: number, digitCount: number): number {
+  const gap = 8;
+  const count = Math.max(1, Math.floor(digitCount || 3));
+  const cellWidth = Math.max(14, (widthBound - gap * (count - 1)) / count);
+  return Math.max(20, Math.round(cellWidth / 0.7));
 }
 
 const fieldClass =
@@ -35,9 +69,118 @@ const FONT_OPTIONS = [
   { value: "'Courier New', monospace", label: "Monospace" },
 ];
 
-export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyWheelPanelProps) {
+export default function LuckyWheelPanel({
+  props,
+  sessionName,
+  participants,
+  componentWidth,
+  componentHeight,
+  onChange,
+  onChangeComponent,
+}: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
+
+  // Mọi tên cột optional (extra_data) đang THỰC SỰ xuất hiện ở ít nhất 1 participant trong session
+  // này — hợp nhất với 4 field cố định để Source/Draw/Display field không còn giới hạn chỉ Name/
+  // Phone/Email/Code như trước, đúng yêu cầu "phải hiển thị đủ các trường có thể chọn".
+  const extraColumns = useMemo(() => {
+    const keys = new Set<string>();
+    participants.forEach((p) => {
+      if (!p.extra_data) return;
+      try {
+        const extra = JSON.parse(p.extra_data) as Record<string, string>;
+        Object.keys(extra).forEach((k) => keys.add(k));
+      } catch {
+        // extra_data hỏng ở dòng này — bỏ qua, không chặn cả danh sách field
+      }
+    });
+    return Array.from(keys).sort();
+  }, [participants]);
+  const allKeyFieldOptions = [...KEY_FIELD_OPTIONS, ...extraColumns.map((k) => ({ value: k, label: k }))];
+  const allDisplayFieldOptions = [...DISPLAY_FIELD_OPTIONS, ...extraColumns.map((k) => ({ value: k, label: k }))];
+
+  // "name" luôn có dữ liệu (bắt buộc nhập) — phone/email/code/cột optional thì tuỳ session, có thể
+  // bỏ trống toàn bộ (vd session này không thu thập email). Chọn field rỗng làm drawField sẽ làm
+  // segment biến mất hết (getParticipantField trả về "", bị coi là trùng/loại), displayField/
+  // winnerDisplayField rỗng thì hiện chữ trống — cả 2 đều trông như "quay không ra kết quả gì".
+  // Chỉ cho chọn field đang thực sự có ít nhất 1 giá trị trong session hiện tại.
+  const hasPhone = participants.some((p) => p.phone?.trim());
+  const hasEmail = participants.some((p) => p.email?.trim());
+  const hasCode = participants.some((p) => p.code?.trim());
+  function hasDataForField(field: string): boolean {
+    switch (field) {
+      case "participantId":
+      case "name":
+        return true;
+      case "phone":
+        return hasPhone;
+      case "email":
+        return hasEmail;
+      case "code":
+        return hasCode;
+      default:
+        return participants.some((p) => getParticipantExtraField(p, field));
+    }
+  }
+  // Vẫn giữ field ĐANG được chọn trong danh sách dù nó không còn dữ liệu (vd session vừa xoá hết
+  // số điện thoại sau khi đã chọn Phone) — chỉ ẩn các lựa chọn rỗng NGOÀI field đang chọn, tránh
+  // <select> hiện trắng/không khớp value nào.
+  function availableOptions<T extends { value: string; label: string }>(options: T[], current: string): T[] {
+    return options.filter((o) => o.value === current || hasDataForField(o.value));
+  }
+  const keyFieldOptions = availableOptions(allKeyFieldOptions, props.drawField);
+  const displayFieldOptions = availableOptions(allDisplayFieldOptions, props.displayField);
+  const winnerFieldOptions = availableOptions(allDisplayFieldOptions, props.winnerDisplayField);
+
+  // ĐỊNH NGHĨA: Digit Roll = quy ước về SỐ LƯỢNG Ô KÝ TỰ (character slots) hiển thị trên màn hình —
+  // KHÔNG phải kiểm tra nội dung có phải toàn số hay không. "ENFA0001" (8 ký tự) hợp lệ cho 1
+  // Digit Roll 8 ô y hệt "12345678" — Draw Engine chỉ coi mọi giá trị là 1 Identifier, Presentation
+  // Layer chỉ quan tâm Identifier đó có ĐÚNG số ký tự để render đủ ô, không phân tích/cắt/lọc nội
+  // dung (không bỏ prefix, không chỉ lấy phần số). Điều kiện DUY NHẤT: 100% participant phải có
+  // giá trị dài ĐÚNG BẰNG digitCount — ngắn/dài hơn đều không đạt, không có ngưỡng châm chước.
+  function rawValueOf(p: Participant, field: ParticipantDisplayField): string {
+    return getParticipantField(p, field).trim();
+  }
+  interface FieldEvaluation {
+    enabled: boolean;
+    reasons: string[]; // rỗng nếu enabled — có thể nhiều lý do cùng lúc (vd vừa thiếu dữ liệu vừa lệch độ dài)
+  }
+  function evaluateField(field: ParticipantDisplayField, count: number): FieldEvaluation {
+    const raws = participants.map((p) => rawValueOf(p, field));
+    const missingCount = raws.filter((v) => v.length === 0).length;
+    const lengths = raws.filter((v) => v.length > 0).map((v) => v.length);
+    const distinctLengths = Array.from(new Set(lengths)).sort((a, b) => a - b);
+    const reasons: string[] = [];
+    if (missingCount > 0) {
+      reasons.push(`${missingCount} participant${missingCount === 1 ? " has" : "s have"} no value in this field.`);
+    }
+    if (distinctLengths.length > 1) {
+      reasons.push(`Length is inconsistent across participants (${distinctLengths.join(", ")} characters found).`);
+    } else if (distinctLengths.length === 1 && distinctLengths[0] !== count) {
+      reasons.push(`Values have ${distinctLengths[0]} character${distinctLengths[0] === 1 ? "" : "s"} — need exactly ${count}.`);
+    }
+    return { enabled: reasons.length === 0 && missingCount === 0 && distinctLengths.length === 1, reasons };
+  }
+  const digitFieldOptions = allDisplayFieldOptions.map((o) => {
+    const evaluation = evaluateField(o.value, props.digitCount);
+    return { ...o, ...evaluation };
+  });
+
+  function handleTemplateChange(nextTemplate: LuckyWheelTemplate) {
+    const patch: Partial<LuckyWheelProps> = { template: nextTemplate };
+    // "Name" gần như không bao giờ có cùng độ dài giữa các participant — giữ nguyên khi chuyển
+    // sang Digit Roller sẽ hiện field không hợp lệ ngay từ đầu. Tự chuyển sang field đầu tiên (kể
+    // cả cột optional) thực sự khớp đúng digitCount đang cấu hình, fallback về "phone" nếu không
+    // field nào đạt (người dùng sẽ thấy nó bị xám kèm lý do, tự điều chỉnh Digit count hoặc field).
+    if (nextTemplate === "digitRoller" && props.winnerDisplayField === "name") {
+      const candidate = allDisplayFieldOptions.find(
+        (o) => o.value !== "name" && evaluateField(o.value, props.digitCount).enabled
+      );
+      patch.winnerDisplayField = candidate?.value ?? "phone";
+    }
+    onChange(patch);
+  }
 
   return (
     <div className="space-y-3">
@@ -53,7 +196,7 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
         <select
           className={fieldClass}
           value={props.template}
-          onChange={(e) => onChange({ template: e.target.value as LuckyWheelTemplate })}
+          onChange={(e) => handleTemplateChange(e.target.value as LuckyWheelTemplate)}
         >
           {TEMPLATE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -79,7 +222,7 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
               value={props.drawField}
               onChange={(e) => onChange({ drawField: e.target.value as ParticipantKeyField })}
             >
-              {KEY_FIELD_OPTIONS.map((o) => (
+              {keyFieldOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -93,7 +236,7 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
               value={props.displayField}
               onChange={(e) => onChange({ displayField: e.target.value as ParticipantDisplayField })}
             >
-              {DISPLAY_FIELD_OPTIONS.map((o) => (
+              {displayFieldOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -105,22 +248,40 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
 
       <div>
         <label className={labelClass}>
-          {isDigitRoller ? "Source field (digits are extracted from this)" : "Winner display field (shown after landing)"}
+          {isDigitRoller
+            ? `Source field (must have exactly ${props.digitCount} characters)`
+            : "Winner display field (shown after landing)"}
         </label>
         <select
           className={fieldClass}
           value={props.winnerDisplayField}
           onChange={(e) => onChange({ winnerDisplayField: e.target.value as ParticipantDisplayField })}
         >
-          {DISPLAY_FIELD_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
+          {isDigitRoller
+            ? digitFieldOptions.map((o) => (
+                <option
+                  key={o.value}
+                  value={o.value}
+                  disabled={!o.enabled}
+                  // Tooltip HTML title: 1 lý do thì hiện thẳng, nhiều lý do thì xuống dòng + gạch đầu
+                  // dòng (title hỗ trợ \n) — đúng yêu cầu định dạng.
+                  title={o.enabled ? undefined : o.reasons.length > 1 ? o.reasons.map((r) => `- ${r}`).join("\n") : o.reasons[0]}
+                >
+                  {o.label}
+                  {o.enabled ? "" : " — not eligible"}
+                </option>
+              ))
+            : winnerFieldOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
         </select>
         {isDigitRoller && (
           <p className="mt-1 text-[10px] leading-snug text-base-500">
-            Pick "Phone" for a masked-phone reveal (e.g. 0917xxx892 → rolls in "892").
+            Every participant's value for this field must have exactly {props.digitCount}{" "}
+            characters — letters and symbols are fine, only the length matters. Grayed-out fields
+            don't qualify; hover one to see why.
           </p>
         )}
       </div>
@@ -137,6 +298,111 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
             onChange={(e) => onChange({ digitCount: Math.max(1, Number(e.target.value)) })}
           />
         </div>
+      )}
+
+      {isDigitRoller &&
+        (() => {
+          const fitHeight = computeFitHeight(componentWidth, props.digitCount);
+          const alreadyFits = Math.abs(fitHeight - componentHeight) <= 1;
+          return (
+            <div>
+              <button
+                type="button"
+                disabled={alreadyFits}
+                onClick={() => onChangeComponent({ height: fitHeight })}
+                className="w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100 hover:border-gold-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {alreadyFits ? "Box already fits the numbers" : `Fit height to content (→ ${fitHeight}px)`}
+              </button>
+              <p className="mt-1 text-[10px] leading-snug text-base-500">
+                Shrinks the box's height to exactly match the cards at the current width — no
+                leftover empty space above/below. Doesn't touch width.
+              </p>
+            </div>
+          );
+        })()}
+
+      {isDigitRoller && (
+        <>
+          <div>
+            <label className={labelClass}>Rolling style</label>
+            <select
+              className={fieldClass}
+              value={props.rollStyle ?? "flicker"}
+              onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
+            >
+              <option value="flicker">Flicker (random characters)</option>
+              <option value="reel">Reel (spinning scroll)</option>
+            </select>
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              How each character looks while it's still spinning — flicker swaps random characters,
+              reel scrolls smoothly like a real odometer/slot reel.
+            </p>
+            {props.rollStyle === "reel" && (
+              <label className="mt-2 flex items-center gap-1.5 text-xs text-base-200">
+                <input
+                  type="checkbox"
+                  className="accent-gold-500"
+                  checked={props.reelBounce ?? true}
+                  onChange={(e) => onChange({ reelBounce: e.target.checked })}
+                />
+                Bounce on stop
+              </label>
+            )}
+          </div>
+
+          <div>
+            <label className={labelClass}>Reveal timing</label>
+            <select
+              className={fieldClass}
+              value={props.revealTiming ?? "together"}
+              onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
+            >
+              <option value="together">All characters stop at once</option>
+              <option value="sequential">One at a time, left to right</option>
+            </select>
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              {props.revealTiming === "sequential"
+                ? "Other characters keep spinning at full speed while one settles — the next one only starts slowing down after the previous one has fully stopped."
+                : "All characters spin and slow down together, stopping at the same moment."}
+            </p>
+          </div>
+
+          {props.revealTiming === "sequential" && (
+            <div>
+              <label className={labelClass}>Reveal stagger (ms)</label>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                className={fieldClass}
+                value={props.revealStaggerMs ?? 150}
+                onChange={(e) => onChange({ revealStaggerMs: Math.max(0, Number(e.target.value)) })}
+              />
+              <p className="mt-1 text-[10px] leading-snug text-base-500">
+                Extra pause after a character fully stops, before the next one starts slowing down.
+              </p>
+            </div>
+          )}
+
+          {props.rollStyle === "flicker" && (
+            <div>
+              <label className={labelClass}>Landing effect</label>
+              <select
+                className={fieldClass}
+                value={props.landingEffect ?? "none"}
+                onChange={(e) => onChange({ landingEffect: e.target.value as LuckyWheelProps["landingEffect"] })}
+              >
+                <option value="none">None (stop instantly)</option>
+                <option value="bounce">Bounce (drop + settle)</option>
+                <option value="pop">Pop (scale up then back)</option>
+              </select>
+              <p className="mt-1 text-[10px] leading-snug text-base-500">
+                A one-shot effect the moment a character locks onto its final value.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {isWheel && (
@@ -164,17 +430,17 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
           ))}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className={labelClass}>Font size</label>
-          <input
-            type="number"
-            className={fieldClass}
-            value={props.fontSize}
-            onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
-          />
-        </div>
-        {isWheel && (
+      {isWheel && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={labelClass}>Font size</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={props.fontSize}
+              onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
+            />
+          </div>
           <div>
             <label className={labelClass}>Color</label>
             <input
@@ -184,12 +450,13 @@ export default function LuckyWheelPanel({ props, sessionName, onChange }: LuckyW
               onChange={(e) => onChange({ fontColor: e.target.value })}
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
       {isDigitRoller && (
         <p className="text-[10px] leading-snug text-base-500">
-          Digit Roller always uses dark text on white cards for contrast, like a real number
-          board — color isn't configurable yet.
+          Digit Roller always uses dark text on white cards for contrast, like a real ID board.
+          Its size follows the component's box on the canvas — resize the box to make the
+          characters bigger or smaller, same as the Wheel.
         </p>
       )}
 

@@ -13,8 +13,24 @@ export interface DrawResult {
   seed: string;
 }
 
+// Ứng viên đã CHỌN nhưng CHƯA ghi DB — dùng cho luồng Button "Draw" trên Landing Page, cần xem
+// trước kết quả trước khi Xác nhận (Confirm) hoặc loại bỏ để quay lại (Redo). Cùng shape với
+// DrawResult vì bản chất là 1 — chỉ khác ở chỗ chưa persist.
+export type DrawCandidate = DrawResult;
+
+export interface PickWinnerOptions extends DrawOptions {
+  // Redo: participant vừa bị loại (và mọi participant bị loại trước đó trong cùng chuỗi Redo)
+  // không được chọn lại ở lần pick tiếp theo.
+  excludeParticipantIds?: string[];
+  // Redo: giữ nguyên đúng giải đã chọn ở lần pick trước ("tiếp tục quay giải đó"), bỏ qua hẳn
+  // bước random chọn giải theo trọng số — chỉ random lại người trong pool của giải này.
+  lockedPrizeId?: string;
+}
+
 /**
- * Chọn 1 người trúng thưởng dựa trên trọng số của các giải còn lại trong phiên.
+ * Chọn 1 người trúng thưởng dựa trên trọng số của các giải còn lại trong phiên — CHỈ chọn, KHÔNG
+ * ghi DB (xem commitDraw). Tách riêng để phục vụ luồng Button "Draw" trên Landing Page, nơi cần
+ * xem trước ứng viên rồi mới Confirm/Redo, thay vì ghi nhận ngay như nút "Draw now" cũ.
  *
  * Quy tắc cấp SESSION (đặt ở "Tuỳ chọn phiên"):
  * - exclude_previous_winners = 1: participant đã trúng bất kỳ giải nào trong session
@@ -29,14 +45,24 @@ export interface DrawResult {
  * Vì điều kiện phụ thuộc vào từng giải cụ thể, thuật toán chọn giải theo trọng số trước,
  * nếu giải đó không còn ai đủ điều kiện thì loại giải đó khỏi vòng quay lần này và roll lại
  * trong các giải còn lại — tránh việc "chọn trúng giải nhưng không ai nhận được" gây lỗi ngầm.
+ *
+ * excludeParticipantIds/lockedPrizeId phục vụ đúng 1 use-case: Button "Redo" trên Landing Page —
+ * loại participant vừa bị từ chối và BẮT BUỘC quay lại đúng giải cũ, không random giải lại.
  */
-export function drawOne({ sessionId }: DrawOptions): DrawResult {
+export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeId }: PickWinnerOptions): DrawCandidate {
   const session = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId) as any;
   if (!session) throw new Error("Draw session not found");
 
-  const activePrizes = db
+  let activePrizes = db
     .prepare(`SELECT * FROM prizes WHERE session_id = ? AND remaining > 0 AND status = 'active'`)
     .all(sessionId) as any[];
+
+  if (lockedPrizeId) {
+    activePrizes = activePrizes.filter((p) => p.id === lockedPrizeId);
+    if (activePrizes.length === 0) {
+      throw new Error("The locked prize is no longer available (out of stock or hidden)");
+    }
+  }
 
   if (activePrizes.length === 0) {
     throw new Error("No prizes available in this session (out of stock or hidden)");
@@ -48,7 +74,11 @@ export function drawOne({ sessionId }: DrawOptions): DrawResult {
     baseQuery += ` AND id NOT IN (SELECT participant_id FROM draw_results WHERE session_id = ?)`;
     baseParams.push(sessionId);
   }
-  const baseParticipants = db.prepare(baseQuery).all(...baseParams) as any[];
+  let baseParticipants = db.prepare(baseQuery).all(...baseParams) as any[];
+  if (excludeParticipantIds.length > 0) {
+    const excluded = new Set(excludeParticipantIds);
+    baseParticipants = baseParticipants.filter((p) => !excluded.has(p.id));
+  }
 
   if (baseParticipants.length === 0) {
     throw new Error("No participants available to draw");
@@ -82,7 +112,8 @@ export function drawOne({ sessionId }: DrawOptions): DrawResult {
   }
 
   // Weighted random chọn giải — nếu giải chọn trúng không còn ai đủ điều kiện,
-  // loại giải đó và roll lại trong phần còn lại.
+  // loại giải đó và roll lại trong phần còn lại. Khi lockedPrizeId có giá trị, activePrizes chỉ
+  // còn đúng 1 giải nên vòng lặp này thực chất chỉ kiểm tra eligibility của đúng giải đó.
   let candidatePrizes = activePrizes.slice();
   let chosenPrize: any = null;
   let eligibleParticipants: any[] = [];
@@ -108,27 +139,41 @@ export function drawOne({ sessionId }: DrawOptions): DrawResult {
   }
 
   if (!chosenPrize) {
-    throw new Error("No eligible participant found for any remaining prize (all duplicate rules exhausted)");
+    throw new Error(
+      lockedPrizeId
+        ? "No eligible participant left for this prize"
+        : "No eligible participant found for any remaining prize (all duplicate rules exhausted)"
+    );
   }
 
   const idx = randomInt(0, eligibleParticipants.length);
   const chosenParticipant = eligibleParticipants[idx];
-  const seed = randomUUID();
-  const resultId = randomUUID();
-
-  const tx = db.transaction(() => {
-    db.prepare(
-      `INSERT INTO draw_results (id, session_id, participant_id, prize_id, rng_seed) VALUES (?, ?, ?, ?, ?)`
-    ).run(resultId, sessionId, chosenParticipant.id, chosenPrize.id, seed);
-    db.prepare(`UPDATE prizes SET remaining = remaining - 1 WHERE id = ?`).run(chosenPrize.id);
-  });
-  tx();
 
   return {
     participantId: chosenParticipant.id,
     participantName: chosenParticipant.name,
     prizeId: chosenPrize.id,
     prizeName: chosenPrize.name,
-    seed,
+    seed: randomUUID(),
   };
+}
+
+/** Ghi nhận chính thức 1 candidate đã pickWinner() vào DB — đúng phần transaction mà drawOne() cũ
+ * vẫn làm. Tách riêng để Button "Confirm" trên Landing Page gọi sau khi đã xem trước ứng viên. */
+export function commitDraw(candidate: DrawCandidate, sessionId: string): void {
+  const tx = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO draw_results (id, session_id, participant_id, prize_id, rng_seed) VALUES (?, ?, ?, ?, ?)`
+    ).run(randomUUID(), sessionId, candidate.participantId, candidate.prizeId, candidate.seed);
+    db.prepare(`UPDATE prizes SET remaining = remaining - 1 WHERE id = ?`).run(candidate.prizeId);
+  });
+  tx();
+}
+
+/** Hành vi cũ (nút "Draw now" ở trang Draw) — chọn rồi ghi nhận ngay lập tức, không qua bước xem
+ * trước. Giữ nguyên chữ ký/hành vi để không ảnh hưởng gì tới màn hình Draw hiện có. */
+export function drawOne(opts: DrawOptions): DrawResult {
+  const candidate = pickWinner(opts);
+  commitDraw(candidate, opts.sessionId);
+  return candidate;
 }

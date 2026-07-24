@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { drawOne } from "./drawEngine";
+import { commitDraw, DrawCandidate, drawOne, pickWinner } from "./drawEngine";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 
 // Icon dùng lúc runtime (khác với build.icon trong package.json — đó là icon đóng gói
@@ -494,12 +494,35 @@ ipcMain.handle("draw:one", (_e, sessionId: string) => {
   return drawOne({ sessionId });
 });
 
+// Chọn ứng viên nhưng CHƯA ghi DB — dùng cho Button "Draw" trên Landing Page, cần xem trước
+// trước khi Confirm/Redo (xem drawEngine.ts:pickWinner).
+ipcMain.handle(
+  "draw:pick",
+  (_e, data: { sessionId: string; excludeParticipantIds?: string[]; lockedPrizeId?: string }) => {
+    return pickWinner(data);
+  }
+);
+
+// Ghi nhận chính thức 1 candidate đã pick — dùng cho Button "Confirm" trên Landing Page.
+ipcMain.handle("draw:commit", (_e, data: { candidate: DrawCandidate; sessionId: string }) => {
+  commitDraw(data.candidate, data.sessionId);
+});
+
 ipcMain.handle("present:open", (_e, sessionId: string) => {
   openPresentWindow(sessionId);
 });
 
 ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {
   openLandingBuilderWindow(sessionId);
+});
+
+// Button action "openLink" trên Landing Page — luôn mở bằng trình duyệt mặc định của hệ điều hành
+// (shell.openExternal), không phải cửa sổ trong app. Chỉ nhận http/https — URL trong extra_data
+// là dữ liệu do người tổ chức tự nhập vào danh sách participant, nhưng vẫn chặn scheme lạ
+// (file://, custom scheme...) để tránh mở nhầm thứ ngoài ý muốn.
+ipcMain.handle("shell:openExternal", (_e, url: string) => {
+  if (!/^https?:\/\//i.test(url)) return;
+  shell.openExternal(url);
 });
 
 import fs from "fs";
