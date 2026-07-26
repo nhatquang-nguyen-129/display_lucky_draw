@@ -57,10 +57,7 @@ export default function PropertiesPanel({
           props={selected.props}
           sessionName={sessionName}
           participants={participants}
-          componentWidth={selected.width}
-          componentHeight={selected.height}
           onChange={onChangeProps}
-          onChangeComponent={onChangeComponent}
         />
       )}
       {(selected.type === "winnerName" || selected.type === "prizeName") && (

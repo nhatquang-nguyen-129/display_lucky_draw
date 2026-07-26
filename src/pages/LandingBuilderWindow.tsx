@@ -7,6 +7,7 @@ import PropertiesPanel from "@/components/landing/PropertiesPanel";
 import { createComponentAt } from "@/components/landing/componentRegistry";
 import {
   BackgroundConfig,
+  computeDigitRollerFitHeight,
   LandingComponent,
   LandingComponentType,
   LandingConfig,
@@ -51,7 +52,12 @@ export default function LandingBuilderWindow() {
     window.api.sessions.get(sessionId).then((s) => {
       setSession(s);
       const parsed = parseLandingConfig(s?.landing_config ?? null);
-      setConfig(parsed);
+      // Landing đã lưu TRƯỚC khi có bất biến "Digit Roller auto-fit height" (vd kéo tay to quá từ
+      // trước) — tự sửa lại ngay khi mở Builder, không cần người dùng bấm/kéo gì để kích hoạt.
+      // savedConfigRef giữ bản GỐC (chưa sửa) nên nếu có thay đổi, badge tự hiện "Unsaved" để người
+      // dùng chủ động bấm Save, không âm thầm ghi đè DB.
+      const fitted = { ...parsed, components: parsed.components.map(fitDigitRollerHeight) };
+      setConfig(fitted);
       savedConfigRef.current = JSON.stringify(parsed);
     });
   }, [sessionId]);
@@ -183,7 +189,9 @@ export default function LandingBuilderWindow() {
   function handleUpdateComponent(id: string, patch: Partial<LandingComponent>) {
     updateConfig((prev) => ({
       ...prev,
-      components: prev.components.map((c) => (c.id === id ? ({ ...c, ...patch } as LandingComponent) : c)),
+      components: prev.components.map((c) =>
+        c.id === id ? fitDigitRollerHeight({ ...c, ...patch } as LandingComponent) : c
+      ),
     }));
   }
 
@@ -192,9 +200,23 @@ export default function LandingBuilderWindow() {
     updateConfig((prev) => ({
       ...prev,
       components: prev.components.map((c) =>
-        c.id === selectedId ? ({ ...c, props: { ...c.props, ...patch } } as LandingComponent) : c
+        c.id === selectedId
+          ? fitDigitRollerHeight({ ...c, props: { ...c.props, ...patch } } as LandingComponent)
+          : c
       ),
     }));
+  }
+
+  // Digit Roller không cho tự do chỉnh height — khung kéo-thả luôn PHẢI sát kích thước thật, không
+  // cần bấm nút riêng. height luôn là giá trị DẪN XUẤT từ width + digitCount (xem
+  // computeDigitRollerFitHeight), áp lại bất biến này sau MỌI thay đổi (kéo-resize, đổi Digit count,
+  // chuyển template sang digitRoller...). Giữ TÂM DỌC cố định khi height đổi (thay vì neo theo cạnh
+  // trên/dưới) để khung không bị "nhảy" bất ngờ dù người dùng kéo từ handle nào.
+  function fitDigitRollerHeight(c: LandingComponent): LandingComponent {
+    if (c.type !== "luckyWheel" || c.props.template !== "digitRoller") return c;
+    const height = computeDigitRollerFitHeight(c.width, c.props.digitCount);
+    if (height === c.height) return c;
+    return { ...c, height, y: c.y + (c.height - height) / 2 };
   }
 
   function handleDropNewComponent(type: LandingComponentType, x: number, y: number) {
