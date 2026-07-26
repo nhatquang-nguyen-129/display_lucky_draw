@@ -102,9 +102,15 @@ export interface LuckyWheelProps {
   // lượt chốt), giống máy đánh số cũ. "reel" = cuộn dọc liên tục kiểu bánh xe ký tự/odometer thật,
   // ký tự rơi từ trên xuống, tự dừng đúng vị trí ký tự thật bằng CSS transition.
   rollStyle: "flicker" | "reel";
-  // Sub-setting của rollStyle "reel" (KHÔNG phải landingEffect) — có nảy nhẹ kiểu vật lý (overshoot)
-  // lúc dừng hay dừng êm không nảy. Chỉ có ý nghĩa khi rollStyle = "reel".
-  reelBounce: boolean;
+  // Sub-setting của rollStyle "reel" (KHÔNG phải landingEffect, chỉ có ý nghĩa khi rollStyle =
+  // "reel") — 1 ô số hình dung gồm 2 PHẦN TÁCH BIỆT: khung trắng chứa ký tự, và CHÍNH ký tự bên
+  // trong. Mỗi phần có hiệu ứng RIÊNG lúc vừa chốt, không gộp chung:
+  // reelCardEffect — hiệu ứng cho KHUNG TRẮNG: "pop" = khung "bật ra" (scale+fade), tạo cảm giác
+  // xuất hiện chớp nhoáng. Không đụng gì tới bản thân ký tự bên trong.
+  reelCardEffect: "none" | "pop";
+  // reelNumberEffect — hiệu ứng cho CHÍNH KÝ TỰ (không đụng khung): "bounce" = ký tự nảy lên nhẹ rồi
+  // rơi xuống đúng vị trí giữa, kiểu quả bóng chạm đất, chỉ 1 nhịp nhỏ (không phải hiệu ứng của khung).
+  reelNumberEffect: "none" | "bounce";
   // Trục 2 — thời điểm các ô CHUYỂN SANG PHA CHỐT (settling — bắt đầu giảm tốc dần rồi dừng ở ký tự
   // thật): "together" = mọi ô vào pha chốt ngay t=0 (chốt cùng lúc, cùng giảm tốc). "sequential" =
   // ô thứ i CHỈ bắt đầu giảm tốc SAU KHI ô (i-1) đã dừng hẳn + revealStaggerMs — trong lúc chờ tới
@@ -114,8 +120,9 @@ export interface LuckyWheelProps {
   // trước khi ô kế tiếp bắt đầu giảm tốc.
   revealStaggerMs: number;
   // Trục 3 — hiệu ứng 1 LẦN ngay khi 1 ô vừa chốt xong ký tự thật, CHỈ áp dụng cho rollStyle
-  // "flicker" (rollStyle "reel" dùng reelBounce riêng ở trên, không dùng field này): "none" = dừng
-  // luôn. "bounce" = rơi xuống + nảy nhẹ. "pop" = phóng to 1 chút rồi thu về kích thước ban đầu.
+  // "flicker" (rollStyle "reel" dùng reelCardEffect/reelNumberEffect riêng ở trên, không dùng field
+  // này): "none" = dừng luôn. "bounce" = rơi xuống + nảy nhẹ. "pop" = phóng to 1 chút rồi thu về
+  // kích thước ban đầu.
   landingEffect: "none" | "bounce" | "pop";
   fontFamily: string;
   fontColor: string;
@@ -304,6 +311,18 @@ export function parseLandingConfig(raw: string | null): LandingConfig {
 
 export function newComponentId(): string {
   return `comp-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Chiều cao "vừa khít" cho template "digitRoller" ở 1 width cho trước — LẶP LẠI chính xác công
+ * thức cellWidth/cellHeight trong DigitRollerTemplate.tsx (gap=8px, tỉ lệ cellWidth:cellHeight =
+ * 0.7:1). Dùng ở LandingBuilderWindow (áp lại MẶC ĐỊNH sau mọi thay đổi width/digitCount/template,
+ * xem fitDigitRollerHeight) để khung kéo-thả LUÔN sát đúng kích thước thật — người dùng không tự
+ * chỉnh height rời rạc cho template này, height luôn là giá trị DẪN XUẤT từ width + digitCount. */
+export function computeDigitRollerFitHeight(widthBound: number, digitCount: number): number {
+  const gap = 8;
+  const count = Math.max(1, Math.floor(digitCount || 3));
+  const cellWidth = Math.max(14, (widthBound - gap * (count - 1)) / count);
+  return Math.max(20, Math.round(cellWidth / 0.7));
 }
 
 /** Đọc 1 field của Participant theo tên field logic dùng trong LuckyWheelProps (không bao giờ null).
