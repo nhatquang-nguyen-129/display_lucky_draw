@@ -111,16 +111,17 @@ function randomChar(): string {
 // không giảm tốc) và "settling" (đang chốt, giảm tốc dần theo spinEasing rồi dừng ở ký tự thật).
 //
 // rollStyle "reel": máy quay số cơ khí thật — xem khối comment lớn phía trên (planReelSlot/
-// reelRowsTraveled). landingEffect (none/bounce/pop) chỉ áp dụng cho "flicker"; reelBounce là hiệu
-// ứng nảy RIÊNG của "reel" (áp lên khung NGOÀI của ô lúc vừa chốt, không đụng transform cuộn bên
-// trong) — xem LuckyWheelProps.
+// reelRowsTraveled). landingEffect (none/bounce/pop) chỉ áp dụng cho "flicker"; "reel" hình dung
+// gồm 2 PHẦN TÁCH BIỆT — khung trắng (reelCardEffect) và CHÍNH ký tự bên trong (reelNumberEffect) —
+// mỗi phần hiệu ứng riêng, không gộp chung, xem LuckyWheelProps.
 export default function DigitRollerTemplate({ component, data }: { component: LuckyWheelComponent; data?: LandingData }) {
   const { winnerDisplayField, digitCount, fontFamily, spinDurationMs, spinEasing } = component.props;
   // Config cũ (lưu trước khi có các trục cấu hình animation này) không có các field dưới — fallback
   // tái tạo ĐÚNG hành vi gốc ban đầu (flicker + together + none), không đổi hành vi của landing đã
   // lưu từ trước.
   const rollStyle = component.props.rollStyle ?? "flicker";
-  const reelBounce = component.props.reelBounce ?? true;
+  const reelCardEffect = component.props.reelCardEffect ?? "pop";
+  const reelNumberEffect = component.props.reelNumberEffect ?? "bounce";
   const revealTiming = component.props.revealTiming ?? "together";
   const revealStaggerMs = component.props.revealStaggerMs ?? 150;
   const landingEffect = component.props.landingEffect ?? "none";
@@ -325,15 +326,38 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
         const strip = rollStyle === "reel" ? reelStrips[i] : undefined;
 
         if (strip && strip.length > 0) {
-          // Dải xếp ký tự thật ở index 0 (trên cùng), theo sau là các ký tự khác trong bảng chữ cái
-          // của nó. transform (translateY) được cập nhật trực tiếp qua ref mỗi khung hình — xem
-          // effect chính — nên KHÔNG đặt transform qua style ở đây (tránh 2 nơi cùng ghi đè nhau).
+          // Ô "reel" ĐÃ CHỐT — chuyển sang hiển thị TĨNH (không cần dải cuộn nữa), tách riêng 2 lớp
+          // hiệu ứng độc lập đúng yêu cầu: khung trắng NGOÀI (reelCardEffect, "bật ra" chớp nhoáng)
+          // và CHÍNH ký tự bên trong (reelNumberEffect, nảy nhẹ kiểu bóng chạm đất) — 2 class riêng
+          // trên 2 element khác nhau nên không đụng/chồng transform lên nhau. `key` đổi mỗi lần chốt
+          // (reelBounceVersion) để React remount, tự phát lại cả 2 animation đúng 1 lần.
+          if (isSettled) {
+            return (
+              <div
+                key={`${i}-${reelBounceVersion[i]}`}
+                className={`relative overflow-hidden rounded-lg bg-white shadow-lg ${
+                  reelCardEffect === "pop" ? "digit-roller-bounce" : ""
+                }`}
+                style={{ width: cellWidth, height: cellHeight }}
+              >
+                <div
+                  className={`flex h-full w-full items-center justify-center text-[#111827] ${
+                    reelNumberEffect === "bounce" ? "digit-roller-number-bounce" : ""
+                  }`}
+                  style={{ fontSize, fontWeight: 800 }}
+                >
+                  {strip[0]}
+                </div>
+              </div>
+            );
+          }
+          // Chưa chốt — vẫn đang cuộn: dải ký tự, transform (translateY) được cập nhật trực tiếp
+          // qua ref mỗi khung hình (xem effect chính) — KHÔNG đặt transform qua style ở đây (tránh
+          // 2 nơi cùng ghi đè nhau), và KHÔNG áp reelCardEffect/reelNumberEffect (chỉ áp lúc vừa chốt).
           return (
             <div
-              key={`${i}-${reelBounceVersion[i]}`}
-              className={`relative overflow-hidden rounded-lg bg-white shadow-lg ${
-                reelBounce && isSettled ? "digit-roller-bounce" : ""
-              }`}
+              key={i}
+              className="relative overflow-hidden rounded-lg bg-white shadow-lg"
               style={{ width: cellWidth, height: cellHeight }}
             >
               <div ref={(el) => (slotElsRef.current[i] = el)}>
@@ -354,7 +378,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
         // "flicker", hoặc "reel" trước khi có lượt quay đầu tiên (placeholder tĩnh) — ô chưa chốt
         // nhấp nháy nhẹ (scale) để báo hiệu đang quay; ô vừa chốt phát landingEffect đúng 1 lần qua
         // đổi `key` (React remount) để CSS animation tự phát lại. landingEffect chỉ áp dụng cho
-        // "flicker" — "reel" dùng reelBounce riêng (áp lên khung ngoài, xem nhánh trên).
+        // "flicker" — "reel" dùng reelCardEffect/reelNumberEffect riêng (xem nhánh trên).
         const applyLandingClass = isSettled && rollStyle === "flicker";
         return (
           <div

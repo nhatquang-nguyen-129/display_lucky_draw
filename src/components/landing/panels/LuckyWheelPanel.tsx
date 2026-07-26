@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import {
   getParticipantExtraField,
   getParticipantField,
-  LandingComponent,
   LuckyWheelProps,
   LuckyWheelTemplate,
   ParticipantDisplayField,
@@ -18,26 +17,7 @@ interface LuckyWheelPanelProps {
   // bên dưới và getFieldOptions). Cũng dùng để liệt kê MỌI cột optional (extra_data) đang thực sự
   // tồn tại trong session, không chỉ 4 field cố định — xem extraColumns bên dưới.
   participants: Participant[];
-  // Kích thước khung kéo-thả HIỆN TẠI của chính component này trên canvas — dùng để tính chiều cao
-  // "vừa khít" cho nút Fit height (xem computeFitHeight) — không lấy từ props (props không có x/y/
-  // width/height, đó là field cấp BaseComponent, xem lib/landing/types.ts).
-  componentWidth: number;
-  componentHeight: number;
   onChange: (patch: Partial<LuckyWheelProps>) => void;
-  // Tách riêng khỏi onChange (chỉ patch props) vì chỉnh height là patch cấp component (x/y/w/h),
-  // giống hệt cơ chế SharedFields đang dùng.
-  onChangeComponent: (patch: Partial<LandingComponent>) => void;
-}
-
-// Chiều cao "vừa khít" cho template digitRoller ở đúng width hiện tại — LẶP LẠI chính xác công thức
-// tính cellWidth/cellHeight trong DigitRollerTemplate.tsx (gap=8, tỉ lệ cellWidth:cellHeight=0.7:1)
-// để nút "Fit height to content" cho ra đúng chiều cao khiến ô số lấp đầy toàn bộ khung, không còn
-// khoảng trống thừa phía trên/dưới — xem yêu cầu người dùng: khung kéo-thả to hơn hẳn nội dung thật.
-function computeFitHeight(widthBound: number, digitCount: number): number {
-  const gap = 8;
-  const count = Math.max(1, Math.floor(digitCount || 3));
-  const cellWidth = Math.max(14, (widthBound - gap * (count - 1)) / count);
-  return Math.max(20, Math.round(cellWidth / 0.7));
 }
 
 const fieldClass =
@@ -73,10 +53,7 @@ export default function LuckyWheelPanel({
   props,
   sessionName,
   participants,
-  componentWidth,
-  componentHeight,
   onChange,
-  onChangeComponent,
 }: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
@@ -297,30 +274,12 @@ export default function LuckyWheelPanel({
             value={props.digitCount}
             onChange={(e) => onChange({ digitCount: Math.max(1, Number(e.target.value)) })}
           />
+          <p className="mt-1 text-[10px] leading-snug text-base-500">
+            The box's height always auto-fits the cards at the current width — dragging the box or
+            changing this never leaves empty space.
+          </p>
         </div>
       )}
-
-      {isDigitRoller &&
-        (() => {
-          const fitHeight = computeFitHeight(componentWidth, props.digitCount);
-          const alreadyFits = Math.abs(fitHeight - componentHeight) <= 1;
-          return (
-            <div>
-              <button
-                type="button"
-                disabled={alreadyFits}
-                onClick={() => onChangeComponent({ height: fitHeight })}
-                className="w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100 hover:border-gold-500/50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {alreadyFits ? "Box already fits the numbers" : `Fit height to content (→ ${fitHeight}px)`}
-              </button>
-              <p className="mt-1 text-[10px] leading-snug text-base-500">
-                Shrinks the box's height to exactly match the cards at the current width — no
-                leftover empty space above/below. Doesn't touch width.
-              </p>
-            </div>
-          );
-        })()}
 
       {isDigitRoller && (
         <>
@@ -338,18 +297,45 @@ export default function LuckyWheelPanel({
               How each character looks while it's still spinning — flicker swaps random characters,
               reel scrolls smoothly like a real odometer/slot reel.
             </p>
-            {props.rollStyle === "reel" && (
-              <label className="mt-2 flex items-center gap-1.5 text-xs text-base-200">
-                <input
-                  type="checkbox"
-                  className="accent-gold-500"
-                  checked={props.reelBounce ?? true}
-                  onChange={(e) => onChange({ reelBounce: e.target.checked })}
-                />
-                Bounce on stop
-              </label>
-            )}
           </div>
+
+          {props.rollStyle === "reel" && (
+            <>
+              {/* 1 ô "reel" gồm 2 phần tách biệt: khung trắng chứa ký tự, và CHÍNH ký tự bên trong —
+                  mỗi phần hiệu ứng riêng khi vừa chốt, không gộp chung (xem DigitRollerTemplate.tsx). */}
+              <div>
+                <label className={labelClass}>Card effect</label>
+                <select
+                  className={fieldClass}
+                  value={props.reelCardEffect ?? "pop"}
+                  onChange={(e) => onChange({ reelCardEffect: e.target.value as LuckyWheelProps["reelCardEffect"] })}
+                >
+                  <option value="none">None</option>
+                  <option value="pop">Pop (flash in)</option>
+                </select>
+                <p className="mt-1 text-[10px] leading-snug text-base-500">
+                  The white card's own effect the moment it locks — independent of the number
+                  inside it.
+                </p>
+              </div>
+              <div>
+                <label className={labelClass}>Number effect</label>
+                <select
+                  className={fieldClass}
+                  value={props.reelNumberEffect ?? "bounce"}
+                  onChange={(e) =>
+                    onChange({ reelNumberEffect: e.target.value as LuckyWheelProps["reelNumberEffect"] })
+                  }
+                >
+                  <option value="none">None</option>
+                  <option value="bounce">Bounce (drops in, settles like a ball)</option>
+                </select>
+                <p className="mt-1 text-[10px] leading-snug text-base-500">
+                  The character itself bounces into place when it locks — independent of the card.
+                </p>
+              </div>
+            </>
+          )}
 
           <div>
             <label className={labelClass}>Reveal timing</label>

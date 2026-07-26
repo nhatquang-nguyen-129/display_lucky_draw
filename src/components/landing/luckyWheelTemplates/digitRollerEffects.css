@@ -31,3 +31,21 @@
 .digit-roller-pop {
   animation: digit-roller-pop 320ms ease-out both;
 }
+
+/* reelNumberEffect "bounce" (DigitRollerTemplate.tsx, rollStyle "reel") — áp lên CHÍNH ký tự, KHÔNG
+   phải khung trắng (đó là reelCardEffect, dùng lại .digit-roller-bounce ở trên) — 2 phần của cùng 1
+   ô số cố ý tách hiệu ứng riêng theo yêu cầu. translateY tính theo % (không phải px) để tự co giãn
+   theo kích thước ô. Cùng đường cong back-ease-out (overshoot) như trên nhưng biên độ nhỏ hơn hẳn —
+   đúng cảm giác "quả bóng nảy khi chạm đất, nhưng một chút thôi": ký tự tự "rơi" từ trên xuống, hơi
+   vượt xuống dưới vị trí giữa 1 chút rồi mới ổn định hẳn, không cần nhiều bước keyframe. */
+@keyframes digit-roller-number-bounce {
+  from {
+    transform: translateY(-30%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.digit-roller-number-bounce {
+  animation: digit-roller-number-bounce 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
