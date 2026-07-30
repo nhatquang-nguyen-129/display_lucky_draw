@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import Button from "@/components/Button";
 import ComponentPalette from "@/components/landing/ComponentPalette";
 import LandingCanvas, { CanvasTool } from "@/components/landing/LandingCanvas";
+import LayersPanel from "@/components/landing/LayersPanel";
 import PropertiesPanel from "@/components/landing/PropertiesPanel";
+import TriggerGraphEditor from "@/components/landing/triggerGraph/TriggerGraphEditor";
 import { createComponentAt } from "@/components/landing/componentRegistry";
 import {
   BackgroundConfig,
+  ButtonComponent,
   computeDigitRollerFitHeight,
   LandingComponent,
   LandingComponentType,
   LandingConfig,
   parseLandingConfig,
+  TriggerGraphLayout,
 } from "@/lib/landing/types";
 import { Participant, Prize, Session } from "@/types";
 
@@ -39,13 +43,29 @@ export default function LandingBuilderWindow() {
   const [config, setConfig] = useState<LandingConfig | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
+  // Chế độ Trigger Graph — thay hẳn canvas kéo-thả bình thường bằng màn hình sơ đồ node riêng (xem
+  // TriggerGraphEditor.tsx), không hiển thị đè lên nhau vì cả 2 đều là bề mặt tương tác toàn màn
+  // hình, tránh tranh chấp con trỏ chuột.
+  const [graphMode, setGraphMode] = useState(false);
   const [showAddFlyout, setShowAddFlyout] = useState(false);
+  // Flyout Layers (xem LayersPanel.tsx) — danh sách + hide/unhide + kéo-thả đổi thứ tự trước/sau,
+  // neo vào nút toolbar riêng đúng kiểu flyout Add component đã có sẵn.
+  const [showLayers, setShowLayers] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [zoom, setZoom] = useState(MIN_ZOOM);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Thông báo LỚN, giữa màn hình — khác hẳn `toast` (chữ nhỏ ở header, dùng cho "Saved."). Dùng cho
+  // các trường hợp thao tác THẤT BẠI rõ ràng (vd thả Button khi đã hết action) mà toast nhỏ dễ bị
+  // bỏ lỡ vì không ai nhìn lên header ngay lúc đang kéo-thả.
+  const [centerNotice, setCenterNotice] = useState<string | null>(null);
   const savedConfigRef = useRef<string>("");
+
+  function showCenterNotice(message: string) {
+    setCenterNotice(message);
+    setTimeout(() => setCenterNotice(null), 3000);
+  }
 
   useEffect(() => {
     if (!sessionId) return;
@@ -83,20 +103,6 @@ export default function LandingBuilderWindow() {
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  // Cột nào đã được gán Loại dữ liệu "url" ở Data Editor — nguồn cho picker của Button action
-  // "openLink" (xem ButtonPanel.tsx). Tính lại mỗi khi session đổi, không cần state riêng.
-  const urlFields = useMemo(() => {
-    if (!session?.participant_column_types) return [];
-    try {
-      const types = JSON.parse(session.participant_column_types) as Record<string, string>;
-      return Object.entries(types)
-        .filter(([, type]) => type === "url")
-        .map(([field]) => field);
-    } catch {
-      return [];
-    }
-  }, [session?.participant_column_types]);
-
   const dirty = !!config && JSON.stringify(config) !== savedConfigRef.current;
 
   useEffect(() => {
@@ -112,15 +118,31 @@ export default function LandingBuilderWindow() {
     return () => window.removeEventListener("click", close);
   }, [showAddFlyout]);
 
-  // Hand tool vô nghĩa khi đang ở mức zoom out tối đa (cả landing đã vừa khít khung nhìn, không
-  // còn gì để kéo) — tự quay về Select nếu đang zoom out xuống mức đó mà Hand tool vẫn đang bật.
+  // Đóng flyout Layers khi click ra ngoài — cùng cơ chế với flyout Add ở trên.
   useEffect(() => {
-    if (zoom <= MIN_ZOOM && tool === "hand") setTool("select");
-  }, [zoom, tool]);
+    if (!showLayers) return;
+    const close = () => setShowLayers(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [showLayers]);
 
-  // Phím tắt đổi tool — H = Hand (giống Photoshop, chỉ khi đã zoom in), V hoặc Esc = quay lại
-  // Select. Ctrl/Cmd +/- = Zoom In/Out. Phải bỏ qua khi đang gõ trong input/textarea/select của
-  // Properties Panel, không thì gõ chữ "h" trong nội dung Text component sẽ bị nuốt mất thành phím tắt.
+  // Hand tool vô nghĩa khi đang ở mức zoom out tối đa CỦA CANVAS THƯỜNG (cả landing đã vừa khít
+  // khung nhìn, không còn gì để kéo) — tự quay về Select nếu đang zoom out xuống mức đó mà Hand tool
+  // vẫn đang bật. CHỈ áp dụng khi KHÔNG ở Trigger Graph — `zoom` ở đây là zoom riêng của Canvas
+  // (fit-scale), không liên quan gì tới zoom nội bộ của ReactFlow bên Trigger Graph, nên không được
+  // dùng để tự tắt Hand tool bên đó (đã từng khiến Hand tool ở Graph tự bật lại Select ngay lập tức).
+  useEffect(() => {
+    if (!graphMode && zoom <= MIN_ZOOM && tool === "hand") setTool("select");
+  }, [zoom, tool, graphMode]);
+
+  // Phím tắt đổi tool — H = Hand (giống Photoshop; ở Canvas thường chỉ khi đã zoom in, ở Trigger
+  // Graph luôn bật được vì màn hình đó không có khái niệm "đã vừa khung"), V hoặc Esc = quay lại
+  // Select. Ctrl/Cmd +/- = Zoom In/Out. Delete/Backspace = xoá component đang chọn (đúng hành vi
+  // nút "Delete component" trong SharedFields.tsx, chỉ thêm lối tắt bàn phím) — chỉ áp dụng ở canvas
+  // thường (bỏ qua khi graphMode, vì selection trong Trigger Graph là 1 khái niệm khác — 1 node/link
+  // cục bộ của chính màn hình đó, không phải component đang chọn ở đây). Phải bỏ qua khi đang gõ
+  // trong input/textarea/select của Properties Panel, không thì gõ chữ "h" trong nội dung Text
+  // component sẽ bị nuốt mất thành phím tắt, và Backspace khi sửa Name/số sẽ vô tình xoá cả component.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -142,16 +164,22 @@ export default function LandingBuilderWindow() {
       }
       if (mod || e.altKey) return;
 
+      if ((e.key === "Delete" || e.key === "Backspace") && !graphMode && selectedId) {
+        e.preventDefault();
+        handleDeleteSelected();
+        return;
+      }
+
       const key = e.key.toLowerCase();
       if (key === "h") {
-        if (zoom > MIN_ZOOM) setTool("hand");
+        if (graphMode || zoom > MIN_ZOOM) setTool("hand");
       } else if (key === "v" || e.key === "Escape") {
         setTool("select");
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [zoom]);
+  }, [zoom, graphMode, selectedId]);
 
   if (!config || !session) {
     return (
@@ -167,7 +195,11 @@ export default function LandingBuilderWindow() {
 
   function handleSelect(id: string | null) {
     setSelectedId(id);
-    setShowPanel(id !== null);
+    // Chọn/kéo vào 1 component KHÔNG tự mở panel nếu đang bị ẩn thủ công (nút toggle nổi/✕) — chỉ
+    // người dùng bấm đúng nút toggle mới mở lại được, tránh panel tự bật ra ngoài ý muốn mỗi lần
+    // click chọn khác. Panel ĐANG mở sẵn thì vẫn cập nhật theo lựa chọn mới như bình thường. Bỏ chọn
+    // (click nền trống) vẫn tự ẩn — không có gì để sửa thì không có lý do giữ panel mở.
+    if (id === null) setShowPanel(false);
   }
 
   function handleTogglePageSettings() {
@@ -186,12 +218,33 @@ export default function LandingBuilderWindow() {
     }));
   }
 
+  // Chỉ lưu vị trí node trên khung Trigger Graph.
+  function handleUpdateTriggerGraph(patch: Partial<TriggerGraphLayout>) {
+    updateConfig((prev) => ({
+      ...prev,
+      triggerGraph: { nodePositions: {}, ...prev.triggerGraph, ...patch },
+    }));
+  }
+
   function handleUpdateComponent(id: string, patch: Partial<LandingComponent>) {
     updateConfig((prev) => ({
       ...prev,
       components: prev.components.map((c) =>
         c.id === id ? fitDigitRollerHeight({ ...c, ...patch } as LandingComponent) : c
       ),
+    }));
+  }
+
+  // orderedIds: thứ tự TRƯỚC → SAU do LayersPanel.tsx tính ra sau khi kéo-thả (phần tử đầu = lớp
+  // trước cùng) — quy đổi thành zIndex thật (đầu mảng nhận zIndex CAO NHẤT, khớp đúng quy ước
+  // "zIndex cao hơn = vẽ sau = nằm trên" đã dùng sẵn ở LandingRenderer.tsx).
+  function handleReorderLayers(orderedIds: string[]) {
+    updateConfig((prev) => ({
+      ...prev,
+      components: prev.components.map((c) => {
+        const idx = orderedIds.indexOf(c.id);
+        return idx === -1 ? c : { ...c, zIndex: orderedIds.length - 1 - idx };
+      }),
     }));
   }
 
@@ -220,6 +273,37 @@ export default function LandingBuilderWindow() {
   }
 
   function handleDropNewComponent(type: LandingComponentType, x: number, y: number) {
+    // Scoreboard chỉ cho phép đúng 1 cái/trang — nó là "cửa sổ phụ" duy nhất hiện danh sách người
+    // trúng của CẢ trang (không có khái niệm "Scoreboard thứ 2 hiện khác gì"), thêm cái thứ 2 chỉ
+    // gây nhầm lẫn không có lý do nghiệp vụ nào cần.
+    if (type === "scoreboard" && (config?.components ?? []).some((c) => c.type === "scoreboard")) {
+      showCenterNotice("Can't create more Scoreboards — a page can only have 1.");
+      setShowAddFlyout(false);
+      return;
+    }
+
+    // Button không giới hạn số lượng nữa (Signal Emitter thuần, xem CLAUDE.md) — nhưng tên vẫn phải
+    // duy nhất để phân biệt trên Trigger Graph (xem ButtonPanel.tsx), nên tự đặt tên rảnh đầu tiên
+    // ("Button", "Button 2", "Button 3"...) khi vừa thả vào, tránh vừa tạo xong đã báo lỗi trùng tên.
+    if (type === "button") {
+      const usedNames = new Set(
+        (config?.components ?? [])
+          .filter((c): c is ButtonComponent => c.type === "button")
+          .map((c) => c.name?.trim())
+      );
+      let name = "Button";
+      for (let n = 2; usedNames.has(name); n++) name = `Button ${n}`;
+      updateConfig((prev) => {
+        const component = createComponentAt(type, x, y, prev.components.length) as ButtonComponent;
+        component.name = name;
+        setSelectedId(component.id);
+        setShowPanel(true);
+        return { ...prev, components: [...prev.components, component] };
+      });
+      setShowAddFlyout(false);
+      return;
+    }
+
     updateConfig((prev) => {
       const component = createComponentAt(type, x, y, prev.components.length);
       setSelectedId(component.id);
@@ -249,6 +333,18 @@ export default function LandingBuilderWindow() {
     }
   }
 
+  // Huỷ TOÀN BỘ thay đổi chưa lưu (Canvas lẫn Trigger Graph — dùng chung 1 config, không tách
+  // riêng) — quay lại đúng bản đã Save gần nhất. Không thể hoàn tác nên luôn hỏi xác nhận trước,
+  // đúng quy ước đã dùng cho các thao tác phá huỷ khác trong app (vd Reset Session). Áp lại
+  // fitDigitRollerHeight giống hệt lúc mới mở Builder, để khớp đúng bất biến "auto-fit height".
+  function handleDiscard() {
+    if (!window.confirm("Discard all unsaved changes? This cannot be undone.")) return;
+    const reverted = JSON.parse(savedConfigRef.current) as LandingConfig;
+    setConfig({ ...reverted, components: reverted.components.map(fitDigitRollerHeight) });
+    setSelectedId(null);
+    setShowPanel(false);
+  }
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-base-950">
       <div className="flex shrink-0 items-center justify-between border-b border-base-800 bg-base-900 px-4 py-2">
@@ -261,6 +357,9 @@ export default function LandingBuilderWindow() {
           <span className="text-xs text-base-500">
             {dirty ? <span className="text-highlight-500">Unsaved</span> : <span className="text-teal-400">Saved</span>}
           </span>
+          <Button onClick={handleDiscard} disabled={!dirty || saving} variant="danger" className="text-xs">
+            Discard
+          </Button>
           <Button onClick={handleSave} disabled={!dirty || saving} className="text-xs">
             {saving ? "Saving..." : "Save"}
           </Button>
@@ -268,19 +367,46 @@ export default function LandingBuilderWindow() {
       </div>
 
       <div className="relative min-h-0 flex-1">
-        <LandingCanvas
-          config={config}
-          selectedId={selectedId}
-          showGrid={showGrid}
-          tool={tool}
-          zoom={zoom}
-          onSelect={handleSelect}
-          onUpdateComponent={handleUpdateComponent}
-          onDropNewComponent={handleDropNewComponent}
-        />
+        {graphMode ? (
+          <TriggerGraphEditor
+            config={config}
+            onUpdateComponent={handleUpdateComponent}
+            onUpdateTriggerGraph={handleUpdateTriggerGraph}
+            tool={tool}
+          />
+        ) : (
+          <LandingCanvas
+            config={config}
+            selectedId={selectedId}
+            showGrid={showGrid}
+            tool={tool}
+            zoom={zoom}
+            onSelect={handleSelect}
+            onUpdateComponent={handleUpdateComponent}
+            onDropNewComponent={handleDropNewComponent}
+          />
+        )}
 
-        {/* Toolbar nổi bên trái — Select/Hand tool, Add component, Page settings, Gridline. */}
-        <div className="absolute left-4 top-4 flex flex-col gap-2">
+        {/* Thông báo lớn giữa màn hình khi 1 thao tác thất bại rõ ràng (vd hết action Button) —
+            tự biến mất sau 3s, không chặn thao tác khác (pointer-events-none). */}
+        {centerNotice && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            {/* base-950 = trắng, base-100 = gần đen trong theme này (tên biến giữ từ bản theme tối
+                cũ, xem CLAUDE.md) — chữ đen trên nền trắng cho tương phản rõ, khác hẳn kiểu toast
+                nhỏ chữ màu ở header. */}
+            <div className="flex max-w-sm items-center gap-3 rounded-xl border border-base-700 bg-base-950 px-5 py-4 shadow-2xl">
+              <NoEntryIcon />
+              <p className="text-left text-sm font-medium text-base-100">{centerNotice}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Toolbar nổi bên trái — Select/Hand tool (dùng chung cho cả Canvas thường lẫn Trigger
+            Graph), Add component, Page settings, Gridline, Trigger graph. Add/Layers/Page
+            settings/Grid ẩn hẳn khi đang ở Trigger Graph (không có ý nghĩa gì ở đó); Select/Hand thì
+            dùng được ở CẢ 2 màn hình. Dời hẳn sang phải khi graphMode để không đè lên TriggerSidebar
+            (luôn chiếm w-72 = 18rem cố định bên trái, xem TriggerGraphEditor.tsx). */}
+        <div className={`absolute top-4 flex flex-col gap-2 ${graphMode ? "left-[19rem]" : "left-4"}`}>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -295,16 +421,16 @@ export default function LandingBuilderWindow() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (zoom > MIN_ZOOM) setTool("hand");
+              if (graphMode || zoom > MIN_ZOOM) setTool("hand");
             }}
-            disabled={zoom <= MIN_ZOOM}
+            disabled={!graphMode && zoom <= MIN_ZOOM}
             title={
-              zoom <= MIN_ZOOM
+              !graphMode && zoom <= MIN_ZOOM
                 ? "Hand tool needs zooming in first — the page already fits the screen"
-                : "Hand tool (H) — hold to pan the canvas"
+                : "Hand tool (H) — hold to pan"
             }
             className={`${floatingBtn} ${
-              zoom <= MIN_ZOOM ? floatingBtnDisabled : tool === "hand" ? floatingBtnActive : floatingBtnIdle
+              !graphMode && zoom <= MIN_ZOOM ? floatingBtnDisabled : tool === "hand" ? floatingBtnActive : floatingBtnIdle
             }`}
           >
             <HandIcon />
@@ -312,74 +438,138 @@ export default function LandingBuilderWindow() {
 
           <div className="h-px bg-base-800" />
 
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setShowAddFlyout((v) => !v)}
-              title="Add component"
-              className={`${floatingBtn} ${showAddFlyout ? floatingBtnActive : floatingBtnIdle}`}
-            >
-              <span className="text-2xl leading-none">+</span>
-            </button>
-            {showAddFlyout && (
-              <div className="absolute left-full top-0 ml-2 w-56 rounded-xl border border-base-700 bg-base-900 shadow-2xl">
-                <ComponentPalette />
+          {!graphMode && (
+            <>
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setShowAddFlyout((v) => !v)}
+                  title="Add component"
+                  className={`${floatingBtn} ${showAddFlyout ? floatingBtnActive : floatingBtnIdle}`}
+                >
+                  <span className="text-2xl leading-none">+</span>
+                </button>
+                {showAddFlyout && (
+                  <div className="absolute left-full top-0 ml-2 w-56 rounded-xl border border-base-700 bg-base-900 shadow-2xl">
+                    <ComponentPalette />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleTogglePageSettings();
-            }}
-            title="Page settings (background)"
-            className={`${floatingBtn} ${showPanel && !selected ? floatingBtnActive : floatingBtnIdle}`}
-          >
-            <BackgroundIcon />
-          </button>
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setShowLayers((v) => !v)}
+                  title="Layers"
+                  className={`${floatingBtn} ${showLayers ? floatingBtnActive : floatingBtnIdle}`}
+                >
+                  <LayersIcon />
+                </button>
+                {showLayers && (
+                  <div className="absolute left-full top-0 ml-2 rounded-xl border border-base-700 bg-base-900 shadow-2xl">
+                    <LayersPanel
+                      components={config.components}
+                      selectedId={selectedId}
+                      onSelect={handleSelect}
+                      onToggleHidden={(id) => {
+                        const c = config.components.find((c) => c.id === id);
+                        if (c) handleUpdateComponent(id, { hiddenInBuilder: !c.hiddenInBuilder });
+                      }}
+                      onReorder={handleReorderLayers}
+                    />
+                  </div>
+                )}
+              </div>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowGrid((v) => !v);
-            }}
-            title="Toggle gridlines"
-            className={`${floatingBtn} ${showGrid ? floatingBtnActive : floatingBtnIdle}`}
-          >
-            <GridIcon />
-          </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTogglePageSettings();
+                }}
+                title="Page settings (background)"
+                className={`${floatingBtn} ${showPanel && !selected ? floatingBtnActive : floatingBtnIdle}`}
+              >
+                <BackgroundIcon />
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowGrid((v) => !v);
+                }}
+                title="Toggle gridlines"
+                className={`${floatingBtn} ${showGrid ? floatingBtnActive : floatingBtnIdle}`}
+              >
+                <GridIcon />
+              </button>
+
+              <div className="h-px bg-base-800" />
+            </>
+          )}
+
+          {/* Ở chế độ Trigger Graph, đổi hẳn nút tròn nhỏ thành 1 nút to, có chữ rõ ràng — tránh
+              người dùng không biết cách thoát Trigger Graph ngoài việc đóng hẳn cửa sổ Builder.
+              Trigger Graph dùng chung 1 Save/Discard với cả Builder (nút ở góc phải trên) — chuyển
+              qua lại giữa Canvas/Graph không mất gì, không cần hỏi xác nhận riêng ở đây. */}
+          {graphMode ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setGraphMode(false);
+              }}
+              title="Back to Builder canvas"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-base-700 bg-base-900 px-3 py-2.5 text-xs font-medium text-base-100 shadow-lg hover:border-gold-500/50"
+            >
+              <BackArrowIcon />
+              Back to Builder
+            </button>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setGraphMode(true);
+              }}
+              title="Trigger graph"
+              className={`${floatingBtn} ${floatingBtnIdle}`}
+            >
+              <GraphIcon />
+            </button>
+          )}
         </div>
 
         {/* Chỉ báo mức zoom + nút +/- nổi góc dưới trái — Ctrl/Cmd +/- vẫn là cách chính, đây chỉ để
-            biết đang ở mức nào và có lối bấm chuột thay thế cho phím tắt. */}
-        <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-full border border-base-700 bg-base-900 px-1.5 py-1 text-xs text-base-300 shadow-lg">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100));
-            }}
-            disabled={zoom <= MIN_ZOOM}
-            title="Zoom out (Ctrl/Cmd -)"
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-base-800 disabled:cursor-not-allowed disabled:text-base-700"
-          >
-            −
-          </button>
-          <span className="w-10 text-center font-mono">{Math.round(zoom * 100)}%</span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + ZOOM_STEP) * 100) / 100));
-            }}
-            disabled={zoom >= MAX_ZOOM}
-            title="Zoom in (Ctrl/Cmd +)"
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-base-800 disabled:cursor-not-allowed disabled:text-base-700"
-          >
-            +
-          </button>
-        </div>
+            biết đang ở mức nào và có lối bấm chuột thay thế cho phím tắt. Chỉ có ý nghĩa cho canvas
+            thường — Trigger Graph có zoom/pan riêng của chính nó (điều khiển trong ReactFlow). */}
+        {!graphMode && (
+          <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-full border border-base-700 bg-base-900 px-1.5 py-1 text-xs text-base-300 shadow-lg">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100));
+              }}
+              disabled={zoom <= MIN_ZOOM}
+              title="Zoom out (Ctrl/Cmd -)"
+              className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-base-800 disabled:cursor-not-allowed disabled:text-base-700"
+            >
+              −
+            </button>
+            <span className="w-10 text-center font-mono">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + ZOOM_STEP) * 100) / 100));
+              }}
+              disabled={zoom >= MAX_ZOOM}
+              title="Zoom in (Ctrl/Cmd +)"
+              className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-base-800 disabled:cursor-not-allowed disabled:text-base-700"
+            >
+              +
+            </button>
+          </div>
+        )}
 
-        {/* Properties Panel nổi bên phải — chỉ hiện khi cần (chọn component hoặc mở Page settings). */}
-        {showPanel && (
+        {/* Properties Panel nổi bên phải — chỉ hiện khi cần (chọn component hoặc mở Page settings).
+            Không có ý nghĩa gì ở Trigger Graph (không có "component đang chọn" theo nghĩa canvas
+            thường — chọn edge/node có inspector riêng của chính TriggerGraphEditor). */}
+        {!graphMode && showPanel && (
           <div
             className="absolute right-4 top-4 flex max-h-[calc(100%-2rem)] w-72 flex-col overflow-hidden rounded-xl border border-base-700 bg-base-900 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -399,7 +589,6 @@ export default function LandingBuilderWindow() {
                 sessionName={session.name}
                 prizes={prizes}
                 participants={participants}
-                urlFields={urlFields}
                 onChangeBackground={handleChangeBackground}
                 onChangeComponent={(patch) => selectedId && handleUpdateComponent(selectedId, patch)}
                 onChangeProps={handleUpdateProps}
@@ -407,6 +596,23 @@ export default function LandingBuilderWindow() {
               />
             </div>
           </div>
+        )}
+
+        {/* Tab nổi để mở lại Properties Panel sau khi đã tạm ẩn (nút ✕ ở trên chỉ ẩn, không xoá
+            lựa chọn) — không cần click lại đúng component trên canvas, tránh phải rà đúng vị trí
+            khi nó vừa bị khung panel che mất. Luôn hiện khi panel đang ẩn, kể cả chưa chọn gì (bấm
+            vào sẽ mở lại đúng Page settings, giống hành vi mặc định của PropertiesPanel). */}
+        {!graphMode && !showPanel && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowPanel(true);
+            }}
+            title="Show panel"
+            className={`absolute right-4 top-4 ${floatingBtn} ${floatingBtnIdle}`}
+          >
+            <PanelIcon />
+          </button>
         )}
       </div>
     </div>
@@ -417,6 +623,46 @@ function SelectIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
       <path d="M6 3l14 8.2-6 1.3-1.3 6L6 3Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LayersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" className="h-4 w-4">
+      <path d="M12 3.5 3 8l9 4.5 9-4.5-9-4.5Z" />
+      <path d="M3 12l9 4.5 9-4.5" />
+      <path d="M3 16l9 4.5 9-4.5" />
+    </svg>
+  );
+}
+
+function BackArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <path d="M19 12H5" />
+      <path d="M11 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function GraphIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
+      <circle cx="5" cy="6" r="2.5" />
+      <circle cx="5" cy="18" r="2.5" />
+      <circle cx="19" cy="12" r="2.5" />
+      <path d="M7.3 7.2 16.7 10.8" />
+      <path d="M7.3 16.8 16.7 13.2" />
+    </svg>
+  );
+}
+
+function PanelIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M14 4v16" />
     </svg>
   );
 }
@@ -447,6 +693,18 @@ function GridIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
       <rect x="3" y="3" width="18" height="18" rx="1" />
       <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+    </svg>
+  );
+}
+
+// Icon "biển báo cấm" (vòng tròn + gạch chéo) cho thông báo giữa màn hình khi 1 thao tác bị chặn
+// hẳn (xem centerNotice) — màu đỏ để đọc ngay là cảnh báo/không cho phép, tách biệt khỏi phần
+// chữ đen (tương phản tốt trên nền trắng của thẻ thông báo).
+function NoEntryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-7 w-7 shrink-0 text-danger-500">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M7 12h10" />
     </svg>
   );
 }

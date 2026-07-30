@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Participant } from "@/types";
-import { getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import { DrawSequenceActions, getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
 import { displayValue } from "./displayValue";
+import { useTriggerCommands } from "../useTriggerCommands";
 
 const FULL_TURNS = 5;
 
@@ -14,7 +15,15 @@ const EASING_CSS: Record<LuckyWheelComponent["props"]["spinEasing"], string> = {
 // Template "wheel" — vòng tròn chia segment theo từng participant, quay và dừng đúng ở người
 // trúng thật (đọc từ LandingData.results, không tự chọn người trúng). Đây là template gốc,
 // tách riêng khỏi LuckyWheelView để dễ thêm template mới mà không đụng vào code template cũ.
-export default function WheelTemplate({ component, data }: { component: LuckyWheelComponent; data?: LandingData }) {
+export default function WheelTemplate({
+  component,
+  data,
+  sequence,
+}: {
+  component: LuckyWheelComponent;
+  data?: LandingData;
+  sequence?: DrawSequenceActions;
+}) {
   const { drawField, displayField, winnerDisplayField, maskSensitiveData, fontFamily, fontColor, fontSize, spinDurationMs, spinEasing } =
     component.props;
   const participants = data?.participants ?? [];
@@ -34,25 +43,19 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [winner, setWinner] = useState<Participant | null>(null);
-  const initializedRef = useRef(false);
-  const lastResultIdRef = useRef<string | null>(null);
+  const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  // Bắt đầu quay tới ĐÚNG người trúng đang có ở results[0] — gọi khi nhận tín hiệu "Wheel.StartSpin"
+  // qua Trigger Graph (xem useTriggerCommands bên dưới), KHÔNG còn tự dò results[0]?.id đổi hay
+  // chưa như trước. Huỷ timer của lượt quay TRƯỚC (nếu còn đang đếm dở) trước khi bắt đầu lượt mới,
+  // tránh 2 lượt chồng lên nhau nếu tín hiệu bắn liên tiếp nhanh.
+  function startSpin() {
     const latest = results[0];
-    const latestId = latest?.id ?? null;
-
-    if (!initializedRef.current) {
-      // Đồng bộ lần đầu (mount / đổi session) — không quay, kể cả khi phiên đã có sẵn kết quả từ
-      // trước (mở lại Present Mode giữa chừng không nên tự động replay lượt quay cũ).
-      initializedRef.current = true;
-      lastResultIdRef.current = latestId;
-      return;
-    }
-    if (!latest || latestId === lastResultIdRef.current) return;
-    lastResultIdRef.current = latestId;
-
+    if (!latest) return;
     const winnerIndex = segments.findIndex((p) => p.id === latest.participant_id);
     if (winnerIndex === -1 || segments.length === 0) return; // người trúng không có trong pool đang hiển thị
+
+    if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
 
     const anglePerSegment = 360 / segments.length;
     const targetMod = (((360 - winnerIndex * anglePerSegment) % 360) + 360) % 360;
@@ -64,18 +67,19 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
     setSpinning(true);
     setRotation((r) => r + FULL_TURNS * 360 + delta);
 
-    const timer = setTimeout(() => {
+    spinTimerRef.current = setTimeout(() => {
       setSpinning(false);
       setWinner(segments[winnerIndex]);
     }, spinDurationMs);
-    return () => clearTimeout(timer);
-    // Chỉ phụ thuộc `results[0]?.id` (chuỗi ổn định), KHÔNG phụ thuộc cả mảng `results` — useLandingData
-    // poll lại mỗi 2s và luôn tạo mảng MỚI dù nội dung không đổi. Nếu phụ thuộc cả mảng, mỗi lần poll
-    // (thường xảy ra giữa chừng lượt quay vì spinDurationMs > 2000ms) React huỷ timer đang đếm dở, guard
-    // phía trên lại chặn không cho đặt lịch lại (vì latestId không đổi) — kết quả: banner người trúng
-    // (`winner`) không bao giờ hiện ra và `spinning` kẹt mãi ở true dù đĩa quay CSS đã dừng đúng vị trí.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results[0]?.id, segments.length]);
+  }
+
+  useEffect(() => () => {
+    if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
+  }, []);
+
+  useTriggerCommands(component.triggerActions, sequence, (command) => {
+    if (command === "Wheel.StartSpin") startSpin();
+  });
 
   const size = Math.max(40, Math.min(component.width, component.height));
   const radius = size / 2 - Math.max(24, size * 0.14);
