@@ -1,18 +1,18 @@
-# Trigger Graph — hướng dẫn chi tiết
+# GRAPH
 
 Tài liệu này giải thích cách màn hình **Trigger Graph** trong Landing Builder hoạt động: ý nghĩa
 các node/chấm màu trên sơ đồ, cách 1 "trigger" (link) thực sự chạy lúc Present Mode, và cách nối
 dây 1 ví dụ hoàn chỉnh. Đọc file này trước khi sửa bất kỳ gì trong
 `src/components/landing/triggerGraph/`.
 
-## 1. Nguyên tắc gốc: Signal Emitter vs Signal Receiver
+## 1. SIGNAL EMITTER/SIGNAL RECEIVER
 
-Mọi component trên Landing chỉ thuộc **đúng 1 trong 2 nhóm**, không bao giờ cả hai (xem thêm
+Mọi component trên Landing chỉ thuộc một trong hai nhóm và không bao giờ cả hai (xem thêm
 CLAUDE.md, mục "Kiến trúc quan trọng"):
 
 | | Signal Emitter | Signal Receiver |
 |---|---|---|
-| Người vận hành thao tác trực tiếp ở Present Mode? | Có (click, quét QR...) | Không |
+| Presenter trong Present Mode? | Có (click, quét QR...) | Không |
 | Việc nó làm | CHỈ phát ra 1 Event | CHỈ nhận Command rồi tự chạy animation/logic của chính nó |
 | Biết gì về phần còn lại của app? | Không biết gì cả — Button không biết Draw/Wheel/Fireworks là gì | Không biết Command đến từ đâu — Wheel không biết ai bấm nút nào |
 | Ví dụ hiện có | **Button** (phát `Button.Click`) | **Lucky Wheel**, **Fireworks**, **Stage Light** |
@@ -29,11 +29,11 @@ graph LR
 Graph **không biết** Lucky Wheel quay kiểu gì hay Fireworks bắn ra sao — nó chỉ định tuyến
 Event → Command. Toàn bộ logic "nhận lệnh thì làm gì" nằm trong chính component nhận lệnh.
 
-## 2. Đọc sơ đồ trên canvas
+## 2. CANVAS
 
 Mở Trigger Graph (nút biểu tượng đồ thị ở toolbar Builder), canvas hiển thị 2 loại node:
 
-### 2.1. Component Node (hình chữ nhật bo góc, icon + tên)
+### 2.1. Component Node
 
 Đại diện 1 component thật trên Landing. Có **chấm tròn nhỏ** (Handle) ở 2 cạnh:
 
@@ -52,14 +52,14 @@ Button chỉ có chấm phải (xanh nhạt), Lucky Wheel/Fireworks/Stage Light 
 Những loại component không phải Emitter lẫn Receiver (Text, Image, Countdown, Prize List...) **sẽ
 không xuất hiện trên Trigger Graph** — bị lọc bỏ hoàn toàn vì không có gì để nối dây.
 
-### 2.2. Action Node (hình viên thuốc/pill nhỏ, viền xanh nhạt)
+### 2.2. Action Node
 
 Nằm giữa đường nối từ 1 Component Node nguồn tới 1 Component Node đích, đại diện đúng **1 trigger
 link** (1 `TriggerAction`). Chữ hiển thị trên viên thuốc chính là tên tín hiệu Command sẽ được gửi
 (vd `Wheel.StartSpin`, `Fireworks.Play`) — cả 2 chấm ở 2 đầu viên thuốc đều màu xanh nhạt (`teal`,
 không mang ý nghĩa Emitter/Receiver riêng, chỉ để nối line).
 
-### 2.3. Đường nối (nét đứt màu xám)
+### 2.3. Connector
 
 Mỗi trigger link vẽ ra **2 đoạn nét đứt**: nguồn → viên thuốc, và viên thuốc → đích. Vị trí mặc
 định của viên thuốc là **trung điểm** giữa 2 Component Node — kéo được tự do, vị trí tự lưu vào
