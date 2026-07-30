@@ -1,5 +1,10 @@
-import { DrawSequenceActions, LandingComponent, LandingComponentType, LandingConfig, LandingData } from "@/lib/landing/types";
-import { ReactionTarget, useActiveReactions } from "./useActiveReactions";
+import {
+  DrawSequenceActions,
+  LandingComponent,
+  LandingComponentType,
+  LandingConfig,
+  LandingData,
+} from "@/lib/landing/types";
 import "./landingEffects.css";
 import TextView from "./views/TextView";
 import ImageView from "./views/ImageView";
@@ -12,6 +17,9 @@ import CountdownView from "./views/CountdownView";
 import CurrentTimeView from "./views/CurrentTimeView";
 import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
+import ScoreboardView from "./views/ScoreboardView";
+import FireworksView from "./views/FireworksView";
+import StageLightView from "./views/StageLightView";
 
 interface LandingRendererProps {
   config: LandingConfig;
@@ -32,25 +40,27 @@ const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["winnerName", "pr
 // Painter thuần, chỉ đọc — không có state, không có tương tác. Dùng chung nguyên vẹn bởi
 // LandingCanvas (lớp nền trong Builder) và PresentMode (toàn màn hình) để 2 nơi không bao giờ
 // lệch pixel nhau — chỉ có 1 hàm biết cách vẽ mỗi loại component (renderComponent bên dưới).
-const BACKGROUND_REACTION_ID = "__background__";
+// Hiệu ứng (fireworks/stageLight) tự quản lý idle/playing của CHÍNH NÓ qua useTriggerCommands.ts —
+// LandingRenderer không còn tính "active reaction" hay vẽ overlay dim/confetti nào ở tầng này nữa.
 
 export default function LandingRenderer({ config, data, scale, interactive, sequence }: LandingRendererProps) {
   const { width, height, background } = config.canvas;
-  const sorted = [...config.components].sort((a, b) => a.zIndex - b.zIndex);
-  const hasWheel = config.components.some((c) => c.type === "luckyWheel");
-
-  // Chỉ tính active reactions khi interactive (Present Mode thật) — Builder canvas không có
-  // lastTrigger nào từng nổ ra nên luôn rỗng, mọi component hiện đúng trạng thái tĩnh lúc chỉnh sửa.
-  const reactionTargets: ReactionTarget[] = interactive
-    ? [
-        { id: BACKGROUND_REACTION_ID, reactions: background.reactions ?? [] },
-        ...config.components.map((c) => ({ id: c.id, reactions: c.reactions ?? [] })),
-      ]
-    : [];
-  const activeReactions = useActiveReactions(reactionTargets, interactive ? sequence?.lastTrigger ?? null : null);
-  // "scale"/"glow" không có ý nghĩa rõ ràng ở cấp cả trang nền (zoom toàn bộ canvas là hành vi lạ) —
-  // background reaction chỉ áp dụng "dim" (lớp phủ tối), scale/glow chỉ dùng cho từng component.
-  const backgroundDim = activeReactions.get(BACKGROUND_REACTION_ID)?.dim;
+  // Ở Present Mode thật (interactive), Scoreboard KHÔNG vẽ trong vòng lặp per-component bình thường
+  // ở khung x/y/width/height của nó — nó là 1 popup canh giữa màn hình, chỉ hiện khi được 1 Button
+  // "showScoreboard" bật lên (xem khối riêng sau vòng lặp bên dưới). Ở Builder (không interactive)
+  // thì NGƯỢC LẠI vẫn để nó nằm trong vòng lặp bình thường, vẽ đúng tại x/y như mọi component khác —
+  // để khung chọn/kéo-thả/resize của LandingCanvas.tsx (tính hoàn toàn độc lập từ x/y/width/height,
+  // không biết gì về cách LandingRenderer vẽ) luôn khớp với vị trí hiển thị thật, tránh lặp lại đúng
+  // bug "khung kéo-thả lệch khỏi nội dung thật" đã từng gặp với Digit Roller. Riêng field
+  // `hiddenInBuilder` (bật/tắt qua LayersPanel.tsx, lưu thẳng trong config) ẩn hẳn 1 component khỏi
+  // Builder bất kể loại gì — CHỈ áp dụng khi KHÔNG interactive, Present Mode luôn bỏ qua field này.
+  const sorted = [...config.components]
+    .sort((a, b) => a.zIndex - b.zIndex)
+    .filter((c) => !(interactive && c.type === "scoreboard"))
+    .filter((c) => !(!interactive && c.hiddenInBuilder));
+  const scoreboards = config.components.filter(
+    (c): c is Extract<LandingComponent, { type: "scoreboard" }> => c.type === "scoreboard"
+  );
 
   return (
     <div
@@ -69,28 +79,18 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         backgroundRepeat: "no-repeat",
       }}
     >
-      {backgroundDim !== undefined && (
-        <div
-          className="pointer-events-none absolute inset-0 transition-opacity duration-500"
-          style={{ backgroundColor: `rgba(0,0,0,${backgroundDim})` }}
-        />
-      )}
-
       {sorted.map((component) => {
         const resultKey = data?.results[0]?.id ?? "empty";
         const key = REMOUNT_ON_RESULT_TYPES.has(component.type) ? `${component.id}-${resultKey}` : component.id;
-        const reaction = activeReactions.get(component.id);
         return (
           <div
             key={key}
-            className={`landing-effect-${component.effect} absolute transition-transform duration-500`}
+            className={`landing-effect-${component.effect} absolute`}
             style={{
               left: component.x,
               top: component.y,
               width: component.width,
               height: component.height,
-              transform: reaction?.scale ? `scale(${reaction.scale})` : undefined,
-              boxShadow: reaction?.glow ? `0 0 24px 8px ${reaction.glowColor ?? "#FFCA2D"}` : undefined,
               // Component nào cũng có khung kéo-thả (x/y/width/height) THƯỜNG to hơn hẳn nội dung
               // thật vẽ ra (vd Text/Wheel canh giữa trong khung, phần trống xung quanh) — mặc định
               // KHÔNG bắt click trên khung, chỉ nội dung thật mới bắt (tránh 1 component to đè lên,
@@ -100,16 +100,29 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
               pointerEvents: "none",
             }}
           >
-            {renderComponent(component, data, interactive, sequence, hasWheel)}
-            {reaction?.dim !== undefined && (
-              <div
-                className="pointer-events-none absolute inset-0 transition-opacity duration-500"
-                style={{ backgroundColor: `rgba(0,0,0,${reaction.dim})` }}
-              />
-            )}
+            {renderComponent(component, data, interactive, sequence)}
           </div>
         );
       })}
+
+      {/* CHỈ ở Present Mode thật (interactive) và khi sequence.scoreboardVisible đang bật (1 Button
+          "showScoreboard" đã được bấm) — vẽ đè lên trên cùng, canh giữa toàn bộ canvas, phủ 1 lớp
+          nền tối phía sau để rõ đây là 1 cửa sổ phụ. Kích cỡ khung bên trong CỐ ĐỊNH bằng đúng
+          width/height đã kéo-thả cho nó, không dùng x/y ở đây (x/y chỉ có ý nghĩa cho vị trí hiển
+          thị TĨNH lúc chỉnh sửa trong Builder, xem nhánh trong `sorted` ở trên). */}
+      {interactive &&
+        sequence?.scoreboardVisible &&
+        scoreboards.map((c) => (
+          <div
+            key={c.id}
+            className="absolute inset-0 flex items-center justify-center bg-black/60"
+            style={{ pointerEvents: "auto" }}
+          >
+            <div style={{ width: c.width, height: c.height }}>
+              <ScoreboardView component={c} data={data} onClose={sequence.hideScoreboard} />
+            </div>
+          </div>
+        ))}
     </div>
   );
 }
@@ -118,8 +131,7 @@ function renderComponent(
   component: LandingComponent,
   data?: LandingData,
   interactive?: boolean,
-  sequence?: DrawSequenceActions,
-  hasWheel?: boolean
+  sequence?: DrawSequenceActions
 ) {
   switch (component.type) {
     case "text":
@@ -127,7 +139,7 @@ function renderComponent(
     case "image":
       return <ImageView component={component} />;
     case "luckyWheel":
-      return <LuckyWheelView component={component} data={data} />;
+      return <LuckyWheelView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     case "winnerName":
       return <WinnerNameView component={component} data={data} />;
     case "prizeName":
@@ -143,9 +155,15 @@ function renderComponent(
     case "participantCount":
       return <ParticipantCountView component={component} data={data} />;
     case "button":
-      return (
-        <ButtonView component={component} data={data} sequence={interactive ? sequence : undefined} hasWheel={hasWheel} />
-      );
+      return <ButtonView component={component} sequence={interactive ? sequence : undefined} />;
+    case "scoreboard":
+      // Chỉ tới đây khi KHÔNG interactive (Builder) — ở Present Mode, scoreboard đã bị lọc khỏi
+      // `sorted` phía trên và vẽ riêng như overlay canh giữa, xem khối sau vòng lặp map() chính.
+      return <ScoreboardView component={component} data={data} />;
+    case "fireworks":
+      return <FireworksView component={component} sequence={interactive ? sequence : undefined} />;
+    case "stageLight":
+      return <StageLightView component={component} sequence={interactive ? sequence : undefined} />;
     default:
       return null;
   }

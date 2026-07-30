@@ -1,5 +1,5 @@
 import { EFFECT_NAMES, EffectName, LandingComponent } from "@/lib/landing/types";
-import ReactionsEditor from "./ReactionsEditor";
+import { COMPONENT_REGISTRY } from "../componentRegistry";
 
 interface SharedFieldsProps {
   component: LandingComponent;
@@ -20,6 +20,25 @@ export default function SharedFields({ component, onChange, onDelete }: SharedFi
   const heightLocked = component.type === "luckyWheel" && component.props.template === "digitRoller";
   return (
     <div className="space-y-3">
+      {/* Button có Name RIÊNG (bắt buộc + duy nhất) trong ButtonPanel.tsx vì nó là Signal Emitter —
+          không dùng field Name chung/optional này nữa, tránh 2 ô Name với 2 luật khác nhau trên
+          cùng 1 component. */}
+      {component.type !== "button" && (
+        <div>
+          <label className={labelClass}>Name</label>
+          <input
+            className={fieldClass}
+            placeholder={COMPONENT_REGISTRY[component.type].label}
+            value={component.name ?? ""}
+            onChange={(e) => onChange({ name: e.target.value })}
+          />
+          <p className="mt-1 text-[10px] leading-snug text-base-500">
+            Optional — shown on the Trigger Graph so this component is easy to tell apart from others
+            of the same type. Leave blank to just show "{COMPONENT_REGISTRY[component.type].label}".
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className={labelClass}>X</label>
@@ -75,12 +94,6 @@ export default function SharedFields({ component, onChange, onDelete }: SharedFi
           ))}
         </select>
       </div>
-
-      <div className="h-px bg-base-800" />
-      <ReactionsEditor
-        reactions={component.reactions ?? []}
-        onChange={(reactions) => onChange({ reactions })}
-      />
 
       <button
         onClick={onDelete}

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { commitDraw, DrawCandidate, drawOne, pickWinner } from "./drawEngine";
+import { commitDraw, DrawCandidate, drawOne, pickWinner, resetSession } from "./drawEngine";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 
 // Icon dùng lúc runtime (khác với build.icon trong package.json — đó là icon đóng gói
@@ -480,7 +480,9 @@ ipcMain.handle("sessions:delete", (_e, id: string) => {
 ipcMain.handle("sessions:results", (_e, sessionId: string) => {
   return db
     .prepare(
-      `SELECT dr.*, p.name as participant_name, pr.name as prize_name, pr.display_image as prize_display_image
+      `SELECT dr.*,
+              p.name as participant_name, p.code as participant_code, p.phone as participant_phone, p.email as participant_email,
+              pr.name as prize_name, pr.code as prize_code, pr.display_image as prize_display_image
        FROM draw_results dr
        JOIN participants p ON p.id = dr.participant_id
        JOIN prizes pr ON pr.id = dr.prize_id
@@ -506,6 +508,12 @@ ipcMain.handle(
 // Ghi nhận chính thức 1 candidate đã pick — dùng cho Button "Confirm" trên Landing Page.
 ipcMain.handle("draw:commit", (_e, data: { candidate: DrawCandidate; sessionId: string }) => {
   commitDraw(data.candidate, data.sessionId);
+});
+
+// Xoá hết draw_results + trả remaining mọi prize về quantity gốc — dùng cho Button "Reset Session"
+// trên Landing Page. Không đụng participants/prizes/session (khác sessions:delete).
+ipcMain.handle("draw:resetSession", (_e, sessionId: string) => {
+  resetSession(sessionId);
 });
 
 ipcMain.handle("present:open", (_e, sessionId: string) => {

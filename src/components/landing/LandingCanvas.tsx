@@ -274,41 +274,52 @@ export default function LandingCanvas({
 
           {/* Overlay tương tác — cùng toạ độ/scale với artboard bên dưới, chỉ vẽ viền/handle, không che nội dung.
               Tắt hẳn pointer-events khi đang dùng Hand tool để mousedown luôn rơi xuống wrapper (pan),
-              không bị component "chặn" ở giữa đường. */}
+              không bị component "chặn" ở giữa đường. Lọc bỏ component có hiddenInBuilder (bật/tắt qua
+              LayersPanel.tsx) khỏi khung chọn/kéo-thả — không thì dù LandingRenderer đã ẩn phần vẽ,
+              khung tương tác vô hình ở đây vẫn còn nguyên, vẫn chặn click của component khác nằm
+              dưới/cạnh nó. SẮP XẾP theo zIndex TĂNG DẦN giống hệt LandingRenderer.tsx (component
+              zIndex cao hơn = vẽ sau = nằm cuối DOM = bắt click trước) — thiếu bước sắp xếp này thì
+              thứ tự bắt click (theo thứ tự MẢNG gốc, tức thứ tự TẠO component) sẽ lệch khỏi thứ tự
+              hiển thị thật (theo zIndex, đổi được qua kéo-thả trong Layers panel): 1 component to
+              phủ cả canvas (vd Fireworks mặc định 1920x1080) nếu rơi vào tình huống này sẽ vô tình
+              chặn click của MỌI component khác dù đang nằm dưới nó về mặt hiển thị. */}
           <div className={tool === "hand" ? "pointer-events-none" : ""}>
-            {config.components.map((component) => {
-              const isSelected = component.id === selectedId;
-              return (
-                <div
-                  key={component.id}
-                  onMouseDown={(e) => handleComponentMouseDown(e, component)}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`absolute cursor-move ${isSelected ? "outline outline-2 outline-gold-500" : "hover:outline hover:outline-1 hover:outline-gold-500/50"}`}
-                  style={{
-                    left: component.x * scale,
-                    top: component.y * scale,
-                    width: component.width * scale,
-                    height: component.height * scale,
-                  }}
-                >
-                  {isSelected &&
-                    corners.map((corner) => (
-                      <div
-                        key={corner}
-                        onMouseDown={(e) => handleResizeMouseDown(e, component, corner)}
-                        className="absolute h-2.5 w-2.5 rounded-full border border-base-950 bg-gold-500"
-                        style={{
-                          cursor: cornerCursor[corner],
-                          top: corner.includes("top") ? -5 : undefined,
-                          bottom: corner.includes("bottom") ? -5 : undefined,
-                          left: corner.includes("left") ? -5 : undefined,
-                          right: corner.includes("right") ? -5 : undefined,
-                        }}
-                      />
-                    ))}
-                </div>
-              );
-            })}
+            {[...config.components]
+              .filter((c) => !c.hiddenInBuilder)
+              .sort((a, b) => a.zIndex - b.zIndex)
+              .map((component) => {
+                const isSelected = component.id === selectedId;
+                return (
+                  <div
+                    key={component.id}
+                    onMouseDown={(e) => handleComponentMouseDown(e, component)}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`absolute cursor-move ${isSelected ? "outline outline-2 outline-gold-500" : "hover:outline hover:outline-1 hover:outline-gold-500/50"}`}
+                    style={{
+                      left: component.x * scale,
+                      top: component.y * scale,
+                      width: component.width * scale,
+                      height: component.height * scale,
+                    }}
+                  >
+                    {isSelected &&
+                      corners.map((corner) => (
+                        <div
+                          key={corner}
+                          onMouseDown={(e) => handleResizeMouseDown(e, component, corner)}
+                          className="absolute h-2.5 w-2.5 rounded-full border border-base-950 bg-gold-500"
+                          style={{
+                            cursor: cornerCursor[corner],
+                            top: corner.includes("top") ? -5 : undefined,
+                            bottom: corner.includes("bottom") ? -5 : undefined,
+                            left: corner.includes("left") ? -5 : undefined,
+                            right: corner.includes("right") ? -5 : undefined,
+                          }}
+                        />
+                      ))}
+                  </div>
+                );
+              })}
           </div>
         </div>
       </div>

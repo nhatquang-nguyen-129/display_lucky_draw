@@ -50,7 +50,11 @@ export interface DrawResultRow {
   participant_id: string;
   prize_id: string;
   participant_name: string;
+  participant_code: string | null;
+  participant_phone: string | null;
+  participant_email: string | null;
   prize_name: string;
+  prize_code: string | null;
   prize_display_image: string | null;
   drawn_at: string;
   rng_seed: string;
@@ -149,6 +153,7 @@ declare global {
           lockedPrizeId?: string;
         }) => Promise<DrawCandidate>;
         commit: (data: { candidate: DrawCandidate; sessionId: string }) => Promise<void>;
+        resetSession: (sessionId: string) => Promise<void>;
       };
       present: {
         open: (sessionId: string) => Promise<void>;

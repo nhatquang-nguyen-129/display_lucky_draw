@@ -1,79 +1,46 @@
-import { ButtonAction, ButtonProps } from "@/lib/landing/types";
+import { ButtonComponent, ButtonProps, LandingComponent } from "@/lib/landing/types";
+import { COMPONENT_SIGNALS } from "../componentRegistry";
 
 interface ButtonPanelProps {
-  props: ButtonProps;
-  // Danh sách tên cột optional đã được gán Loại dữ liệu "url" ở Data Editor (session hiện tại) —
-  // nguồn cho picker của action "openLink" (xem LandingBuilderWindow.tsx, nơi tính giá trị này).
-  urlFields: string[];
+  component: ButtonComponent;
+  // Tên các Button KHÁC đã có trên trang (không tính chính nút này, đã trim) — Button không còn
+  // action nào để phân biệt nữa nên tên PHẢI duy nhất để nhận diện đúng trên Trigger Graph.
+  usedNames: string[];
+  onChangeComponent: (patch: Partial<LandingComponent>) => void;
   onChange: (patch: Partial<ButtonProps>) => void;
 }
 
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
+const fieldErrorClass = "border-danger-500 focus:border-danger-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
 
-const ACTION_OPTIONS: { value: ButtonAction; label: string; hint: string }[] = [
-  { value: "draw", label: "Draw", hint: "Picks a candidate winner — not recorded yet." },
-  { value: "confirm", label: "Confirm", hint: "Records the currently shown candidate for real." },
-  {
-    value: "redo",
-    label: "Redo",
-    hint: "Rejects the current candidate and re-picks for the same prize.",
-  },
-  {
-    value: "openLink",
-    label: "Open Link",
-    hint: "Opens the current winner's URL field in the default browser.",
-  },
-];
-
-// Chỉ hoạt động thật trong Present Mode — trong Builder canvas Button luôn hiện disabled để
-// tránh bấm nhầm chạy quay số thật lúc đang chỉnh sửa (xem ButtonView.tsx).
-export default function ButtonPanel({ props, urlFields, onChange }: ButtonPanelProps) {
-  const selected = ACTION_OPTIONS.find((o) => o.value === props.action) ?? ACTION_OPTIONS[0];
+// Button là Signal EMITTER thuần (xem CLAUDE.md) — không còn field "action" nào để cấu hình ở đây,
+// chỉ còn Name (bắt buộc + duy nhất, dùng để nhận diện trên Trigger Graph) + styling thị giác +
+// 1 khung thông tin CHỈ ĐỌC liệt kê Event mà Button phát ra. Wiring "khi click thì làm gì" hoàn
+// toàn nằm ở Trigger Graph (TriggerLinkPanel.tsx), không phải ở panel này.
+export default function ButtonPanel({ component, usedNames, onChangeComponent, onChange }: ButtonPanelProps) {
+  const name = component.name?.trim() ?? "";
+  const nameError = name === "" ? "Name is required." : usedNames.includes(name) ? "Name is already used by another Button on this page." : null;
+  const props = component.props;
 
   return (
     <div className="space-y-3">
       <div>
-        <label className={labelClass}>Action</label>
-        <select
-          className={fieldClass}
-          value={props.action}
-          onChange={(e) => onChange({ action: e.target.value as ButtonAction })}
-        >
-          {ACTION_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-[10px] leading-snug text-base-500">{selected.hint}</p>
+        <label className={labelClass}>Name</label>
+        <input
+          className={`${fieldClass} ${nameError ? fieldErrorClass : ""}`}
+          value={component.name ?? ""}
+          onChange={(e) => onChangeComponent({ name: e.target.value })}
+        />
+        {nameError ? (
+          <p className="mt-1 text-[10px] leading-snug text-danger-500">{nameError}</p>
+        ) : (
+          <p className="mt-1 text-[10px] leading-snug text-base-500">
+            Must be unique — this is how you'll tell this Button apart from others on the Trigger Graph.
+          </p>
+        )}
       </div>
-
-      {props.action === "openLink" && (
-        <div>
-          <label className={labelClass}>URL field</label>
-          {urlFields.length === 0 ? (
-            <p className="text-[10px] leading-snug text-base-500">
-              No column is set to the "URL" data type yet — assign it in the Data Editor's column
-              dropdown first.
-            </p>
-          ) : (
-            <select
-              className={fieldClass}
-              value={props.urlField ?? ""}
-              onChange={(e) => onChange({ urlField: e.target.value || undefined })}
-            >
-              <option value="">Select a column…</option>
-              {urlFields.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      )}
 
       <div>
         <label className={labelClass}>Label</label>
@@ -139,9 +106,17 @@ export default function ButtonPanel({ props, urlFields, onChange }: ButtonPanelP
         </div>
       </div>
 
+      <div className="rounded border border-base-800 bg-base-800/40 p-2">
+        <p className="text-[10px] uppercase tracking-wide text-base-500">Emits to Trigger Graph</p>
+        <p className="mt-1 text-xs text-base-200">{(COMPONENT_SIGNALS.button?.emits ?? []).join(", ")}</p>
+        <p className="mt-1 text-[10px] leading-snug text-base-500">
+          Wire this in the Trigger Graph to make other components react when this button is clicked.
+        </p>
+      </div>
+
       <p className="text-[10px] leading-snug text-base-500">
         Buttons only respond to clicks in the real Present Mode window — in this Builder they're
-        shown disabled so editing never triggers a real draw.
+        shown disabled so editing never triggers anything.
       </p>
     </div>
   );

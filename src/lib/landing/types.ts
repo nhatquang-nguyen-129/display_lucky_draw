@@ -2,49 +2,67 @@
 // LandingConfig duy nhất, lưu nguyên dạng JSON trong cột sessions.landing_config (đã có sẵn migration).
 // Builder chỉ sửa object này; PresentMode chỉ render object này — không có state nào khác ở giữa.
 //
-// Thêm 1 loại component mới cần đúng 4 bước (không cần sửa chỗ nào khác):
+// Thêm 1 loại component mới cần đúng 5 bước (không cần sửa chỗ nào khác):
+//   0. Xác định rõ nó là Signal EMITTER hay Signal RECEIVER trước khi code (xem CLAUDE.md) — 1
+//      component chỉ thuộc ĐÚNG 1 trong 2 nhóm, không bao giờ cả hai. Emitter (Button, sau này QR
+//      Scanner/NFC Reader...) người dùng thao tác trực tiếp ở Present Mode, CHỈ phát Event, không
+//      tự chạy business logic/animation. Receiver (Lucky Wheel, Fireworks, Stage Light, sau này
+//      Countdown/Scoreboard/Video...) người dùng KHÔNG thao tác trực tiếp được, CHỈ nhận Command từ
+//      Trigger Graph rồi tự thực thi animation/logic của chính nó. Tên tín hiệu theo quy ước
+//      `Component.Action` (vd "Wheel.StartSpin", "Fireworks.Play", "Button.Click").
 //   1. Thêm interface `XxxProps` + variant `XxxComponent` vào union `LandingComponent` bên dưới.
 //   2. Thêm `src/components/landing/views/XxxView.tsx` (chỉ render, nhận `props` + `LandingData`).
 //   3. Thêm `src/components/landing/panels/XxxPanel.tsx` (form cấu hình trong Properties Panel).
 //   4. Đăng ký trong `src/components/landing/componentRegistry.ts` — đây là chỗ DUY NHẤT "nối dây"
-//      loại mới vào palette (kéo-thả) và canvas (tạo instance mặc định khi thả).
+//      loại mới vào palette (kéo-thả) và canvas (tạo instance mặc định khi thả), CŨNG là nơi khai
+//      báo `COMPONENT_SIGNALS` (emits/listensFor) cho bước 0 ở trên.
 
 export type EffectName = "none" | "fadeIn" | "slideUp" | "pulse" | "bounce";
 
 export const EFFECT_NAMES: EffectName[] = ["none", "fadeIn", "slideUp", "pulse", "bounce"];
 
-// Trigger = đúng 3 hành động Button hỗ trợ (xem ButtonProps ở dưới) — không có trigger tự đặt tên
-// tuỳ ý ở v1. Reaction = 1 hiệu ứng nhỏ, khai báo (không phải CSS tuỳ ý) mà BẤT KỲ component nào
-// (và cả canvas background — xem BackgroundConfig) có thể đăng ký để "phản ứng" theo trigger đó,
-// sau 1 khoảng delay, giữ trong 1 khoảng duration rồi tự trả về bình thường (0 = giữ tới khi có
-// trigger tiếp theo). Đây là tính năng generic được yêu cầu — thêm reaction mới cho 1 component
-// chỉ là thêm 1 phần tử vào mảng `reactions`, không cần code riêng cho từng cặp component/trigger.
-export type LandingTriggerEvent = "draw" | "confirm" | "redo";
-
-export interface EffectReaction {
+// 1 liên kết trên Trigger Graph: khi component `sourceComponentId` phát tín hiệu (xem
+// COMPONENT_SIGNALS trong componentRegistry.ts — vd Button luôn phát "click"), sau `delayMs` thì
+// gửi tín hiệu `command` cho ĐÚNG 1 component (xem BaseComponent.triggerActions bên dưới — link
+// này nằm trên component NHẬN lệnh, không phải component phát). `command` là 1 chuỗi tên tín hiệu
+// tra hợp lệ qua COMPONENT_SIGNALS.listensFor của TYPE component đích (vd Lucky Wheel hiểu
+// "WheelSpinStart", Fireworks/Stage Light hiểu "play"/"stop") — mỗi loại component tự khai báo sẵn
+// tín hiệu nó hiểu, không phải tên tự đặt tuỳ ý. Graph không biết tín hiệu đó LÀM GÌ — logic đó nằm
+// hoàn toàn trong runtime của chính component nhận lệnh (xem useTriggerCommands.ts).
+export interface TriggerAction {
   id: string;
-  trigger: LandingTriggerEvent;
-  delayMs: number; // chờ bao lâu sau khi trigger nổ ra mới áp hiệu ứng
-  durationMs: number; // giữ hiệu ứng bao lâu trước khi tự trả về bình thường; 0 = giữ tới trigger kế tiếp
-  dim?: number; // 0-1 — phủ đen mờ dần lên trên
-  scale?: number; // hệ số phóng to tại chỗ, vd 1.15
-  glow?: boolean; // thêm viền sáng
-  glowColor?: string;
+  sourceComponentId: string;
+  delayMs: number;
+  command: string;
 }
 
-export function newReactionId(): string {
-  return `reaction-${Math.random().toString(36).slice(2, 10)}`;
+export function newTriggerActionId(): string {
+  return `trigger-action-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 interface BaseComponent {
   id: string;
+  // Tên hiển thị do người dùng tự đặt (optional) — dùng để nhận diện component trên Trigger Graph
+  // (TriggerGraphEditor.tsx) khi trang có nhiều component CÙNG loại (vd 2 Button đều tên "Button"
+  // nếu không đặt tên riêng thì không phân biệt được trên graph). Rỗng/undefined thì graph tự dùng
+  // nhãn loại component (vd "Button", "Text") làm fallback — xem SharedFields.tsx (nơi sửa) và
+  // targetLabelOf() trong TriggerGraphEditor.tsx (nơi đọc).
+  name?: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  zIndex: number; // thứ tự append — v1 chưa có UI đổi z-index thủ công
+  zIndex: number; // thứ tự trước/sau — sửa được qua kéo-thả trong LayersPanel.tsx (xem onReorder)
   effect: EffectName;
-  reactions?: EffectReaction[]; // opt-in — rỗng/undefined nghĩa là component không phản ứng gì với trigger
+  // Các liên kết Trigger Graph NHẬN lệnh về component này (xem TriggerAction ở trên) — opt-in,
+  // rỗng/undefined nghĩa là chưa có trigger nào điều khiển component này. Component tự đọc mảng
+  // này của CHÍNH NÓ qua useTriggerCommands.ts để biết khi nào Play/Stop.
+  triggerActions?: TriggerAction[];
+  // Tạm ẩn khỏi canvas Builder (cả phần vẽ lẫn khung chọn/kéo-thả) — bật/tắt qua LayersPanel.tsx.
+  // CHỈ ảnh hưởng Builder — Present Mode luôn bỏ qua field này hoàn toàn (không đọc ở bất kỳ đâu
+  // trong PresentMode.tsx/LandingRenderer.tsx khi interactive=true), nên lưu vào config vẫn an toàn
+  // tuyệt đối, không bao giờ làm đổi những gì khán giả nhìn thấy lúc trình chiếu thật.
+  hiddenInBuilder?: boolean;
 }
 
 export interface TextProps {
@@ -181,6 +199,75 @@ export interface PrizeListComponent extends BaseComponent {
   props: PrizeListProps;
 }
 
+// Thêm template mới: thêm giá trị vào union này + 1 file trong components/landing/scoreboardTemplates/
+// + 1 case trong ScoreboardView.tsx (đúng kiểu LuckyWheelView.tsx đang dispatch theo LuckyWheelTemplate).
+export type ScoreboardTemplate = "table";
+
+// Field nào cũng lấy được từ DrawResultRow (xem src/types.ts) — đây là danh sách CỐ ĐỊNH cho phép
+// bật/tắt làm cột hiển thị, đúng tinh thần "vài lựa chọn dựng sẵn" như EFFECT_NAMES, không phải hệ
+// thống cột tự do. Thứ tự trong mảng này CŨNG LÀ thứ tự cột mặc định khi bật.
+export type ScoreboardField =
+  | "participantName"
+  | "participantCode"
+  | "participantPhone"
+  | "participantEmail"
+  | "prizeName"
+  | "prizeCode";
+
+export const SCOREBOARD_FIELDS: ScoreboardField[] = [
+  "participantName",
+  "participantCode",
+  "participantPhone",
+  "participantEmail",
+  "prizeName",
+  "prizeCode",
+];
+
+export const SCOREBOARD_FIELD_LABELS: Record<ScoreboardField, string> = {
+  participantName: "Name",
+  participantCode: "Code",
+  participantPhone: "Phone",
+  participantEmail: "Email",
+  prizeName: "Prize",
+  prizeCode: "Prize code",
+};
+
+// Danh sách người đã trúng giải VÀ ĐÃ CONFIRM (draw_results thật — xem ScoreboardView.tsx, lọc bỏ
+// dòng "pending-*" do useDrawSequence độn vào khi có candidate chưa Confirm, không tính là đã trúng
+// thật). Danh sách có thể dài (nhiều lượt quay) nên bản thân component cuộn dọc bên trong khung cố
+// định. KHÔNG tự hiện trên trang như các component khác — ẩn theo mặc định ở Present Mode, chỉ hiện
+// ra giữa màn hình như 1 cửa sổ phụ khi 1 nút Button với action "showScoreboard" được bấm (xem
+// ButtonView.tsx/useDrawSequence.ts cho state hiện/ẩn, LandingRenderer.tsx cho cách vẽ đè giữa màn
+// hình). Trong Builder luôn hiện để còn chỉnh sửa được kích cỡ/màu sắc.
+//
+// Template "table" (đầu tiên): giao diện kiểu 1 cửa sổ Windows — Name Bar (title + titleBarColor +
+// headerColor cho chữ) ở trên, bên dưới là bảng người trúng với cột tự chọn (columns, xem
+// ScoreboardField) + nền riêng cho khung bảng (backgroundType/backgroundColor/backgroundImage...,
+// cùng hệ thống với ParticipantCountProps — xem ParticipantCountPanel.tsx làm mẫu).
+export interface ScoreboardProps {
+  template: ScoreboardTemplate;
+
+  title: string;
+  titleBarColor: string; // màu NỀN của Name Bar
+  headerColor: string; // màu CHỮ của Name Bar
+
+  columns: ScoreboardField[]; // cột nào hiện + đúng thứ tự trái → phải
+  fontSize: number;
+  color: string; // màu chữ trong bảng (cả tiêu đề cột lẫn giá trị)
+
+  // Nền riêng cho khung bảng (KHÔNG phải Name Bar) — "color" = 1 khối màu, "image" = ảnh tải lên,
+  // "none" = trong suốt.
+  backgroundType: "none" | "color" | "image";
+  backgroundColor: string;
+  backgroundImageDataUrl: string | null;
+  backgroundImageFit: "cover" | "contain" | "stretch";
+}
+
+export interface ScoreboardComponent extends BaseComponent {
+  type: "scoreboard";
+  props: ScoreboardProps;
+}
+
 export interface CountdownProps {
   targetIsoTime: string | null; // ISO datetime — null = chưa đặt, hiện placeholder
   fontSize: number;
@@ -196,14 +283,34 @@ export interface CurrentTimeProps {
   format: "24h" | "12h";
 }
 
+// Label và số đếm tách biệt hoàn toàn về style (font/size/màu riêng) — v1 gộp chung 1 fontSize/color
+// duy nhất, đã tách ra theo yêu cầu. Field cũ (fontSize/color) KHÔNG còn trong type này nữa — config
+// cũ đã lưu trước khi tách vẫn có 2 field đó trong JSON, đọc lại qua `(props as any).fontSize`/
+// `.color` làm fallback ở View/Panel (đúng pattern đã dùng khi tách reelBounce → reelCardEffect/
+// reelNumberEffect, xem DigitRollerTemplate.tsx) — không cần migration riêng, không đổi hiển thị của
+// landing đã lưu trước đó.
 export interface ParticipantCountProps {
-  fontSize: number;
-  color: string;
   align: "left" | "center" | "right";
   label: string; // vd "Participants:"
   // "remainingEligible" là gần đúng (participants CHƯA xuất hiện trong bất kỳ draw_results nào của
   // session) — không tái tạo đầy đủ luật loại trừ theo từng giải của drawEngine.ts, chỉ để hiển thị.
   mode: "total" | "remainingEligible";
+
+  labelFontFamily: string;
+  labelFontSize: number;
+  labelColor: string;
+
+  countFontFamily: string;
+  countFontSize: number;
+  countColor: string;
+
+  // Nền cho cả khung — "color" = 1 khối màu chữ nhật, "image" = ảnh tải lên, "none" = trong suốt
+  // (giữ đúng hành vi cũ trước khi có field này).
+  backgroundType: "none" | "color" | "image";
+  backgroundColor: string; // dùng khi backgroundType = "color"
+  backgroundImageDataUrl: string | null; // dùng khi backgroundType = "image"
+  backgroundImageFit: "cover" | "contain" | "stretch";
+  borderRadius: number; // bo góc nền — áp dụng cho cả "color" lẫn "image"
 }
 
 export interface CountdownComponent extends BaseComponent {
@@ -221,17 +328,15 @@ export interface ParticipantCountComponent extends BaseComponent {
   props: ParticipantCountProps;
 }
 
-// Button tương tác — CHỈ hoạt động thật trong Present Mode (LandingRenderer interactive=true).
-// Trong Builder canvas nó vẫn hiện ra nhưng luôn disabled, tránh bấm nhầm chạy quay số thật lúc
-// đang chỉnh sửa. "draw" gọi draw:pick (chưa ghi DB) — "confirm" gọi draw:commit cho candidate
-// đang hiện — "redo" loại candidate đang hiện rồi pick lại ĐÚNG giải đó (xem useDrawSequence.ts).
-// "openLink" mở URL lấy từ 1 cột optional đã được gán Loại dữ liệu "url" (ở Data Editor) của
-// CHÍNH participant vừa trúng (candidate đang hiện) — không liên quan gì tới draw/confirm/redo,
-// chỉ cần đã có người trúng để tra dữ liệu.
-export type ButtonAction = "draw" | "confirm" | "redo" | "openLink";
-
+// Button — Signal EMITTER thuần (xem CLAUDE.md/checklist đầu file này) — CHỈ phát "Button.Click"
+// khi được bấm ở Present Mode thật (LandingRenderer interactive=true; luôn disabled ở Builder canvas
+// để tránh bấm nhầm lúc đang chỉnh sửa), KHÔNG tự chạy bất kỳ business logic nào (không gọi IPC,
+// không biết Draw/Confirm/Redo/Reset/Open Link/Show Winner là gì — những action đó CHƯA có nơi nào
+// lắng nghe "Button.Click" để thực thi lại, xem plan "Emitter/Receiver" — đây là điều CHỦ Ý, không
+// phải thiếu sót). Không giới hạn số lượng Button/trang — tên (BaseComponent.name) là BẮT BUỘC và
+// PHẢI DUY NHẤT giữa các Button trên cùng trang để phân biệt trên Trigger Graph (validate trong
+// ButtonPanel.tsx, không phải ở đây).
 export interface ButtonProps {
-  action: ButtonAction;
   label: string;
   fontSize: number;
   color: string;
@@ -239,14 +344,56 @@ export interface ButtonProps {
   borderRadius: number;
   strokeColor: string;
   strokeWidth: number; // 0 = không viền
-  // Chỉ dùng cho action "openLink" — tên cột optional (trong Participant.extra_data) đã được gán
-  // Loại dữ liệu "url" ở Data Editor. undefined/rỗng nghĩa là chưa chọn — nút sẽ disabled.
-  urlField?: string;
 }
 
 export interface ButtonComponent extends BaseComponent {
   type: "button";
   props: ButtonProps;
+}
+
+// Component hiệu ứng đầu tiên (xem kiến trúc mới ở đầu file: hiệu ứng là Component thật, không phải
+// field gắn kèm component khác) — 1 hệ hạt canvas, vật lý giữ nguyên 3 kiểu đã có trước đây (từng là
+// ConfettiBurst.tsx, nay dời logic vào FireworksView.tsx). Idle (không vẽ gì) cho tới khi nhận lệnh
+// "play" qua useTriggerCommands.ts (đọc từ chính BaseComponent.triggerActions của component này).
+export interface FireworksProps {
+  preset: "burstCenter" | "rain" | "cannons";
+  particleCount: number;
+  colorPalette: "brand" | "gold" | "rainbow";
+  duration: number; // ms — độ dài 1 lượt Play (không loop) / 1 chu kỳ (loop)
+  launchDirection: number; // độ — hướng bắn chính, rõ nghĩa nhất với preset "cannons"
+  spreadAngle: number; // độ — toả quanh launchDirection
+  burstRadius: number; // biên độ ban đầu của hạt
+  gravity: number;
+  speed: number; // hệ số tốc độ ban đầu của hạt
+  loop: boolean; // hết 1 lượt tự bắn lại (Play liên tục) hay tự về idle, chờ lệnh Play tiếp theo
+}
+
+export interface FireworksComponent extends BaseComponent {
+  type: "fireworks";
+  props: FireworksProps;
+}
+
+// Component hiệu ứng thứ 2 — đèn sân khấu quét CSS (không phải canvas particle như Fireworks), dùng
+// đúng kỹ thuật "ghi transform trực tiếp vào ref mỗi khung hình" đã có ở DigitRollerTemplate.tsx thay
+// vì qua state React mỗi frame. Idle = không render/không quay, cùng mô hình play/stop/loop với
+// Fireworks (xem useTriggerCommands.ts).
+export interface StageLightProps {
+  beamColor: string;
+  beamOpacity: number; // 0-1
+  beamWidth: number; // độ rộng đáy chùm sáng (px, không gian thiết kế)
+  beamLength: number; // độ dài chùm sáng (px)
+  sweepAngle: number; // hướng trung tâm (độ, 0 = thẳng xuống)
+  swingRange: number; // biên độ dao động quanh sweepAngle (độ) mỗi bên
+  sweepSpeed: number; // giây/chu kỳ qua lại đầy đủ
+  blurAmount: number; // px — filter: blur() cho viền chùm sáng
+  intensity: number; // 0-1 — nhân thêm vào opacity, tổng độ sáng
+  duration: number; // ms — độ dài 1 lượt Play khi loop=false
+  loop: boolean; // quét liên tục (thường dùng) hay chỉ quét trong `duration` rồi tự về idle
+}
+
+export interface StageLightComponent extends BaseComponent {
+  type: "stageLight";
+  props: StageLightProps;
 }
 
 export type LandingComponent =
@@ -260,7 +407,10 @@ export type LandingComponent =
   | CountdownComponent
   | CurrentTimeComponent
   | ParticipantCountComponent
-  | ButtonComponent;
+  | ButtonComponent
+  | ScoreboardComponent
+  | FireworksComponent
+  | StageLightComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 
@@ -269,7 +419,16 @@ export interface BackgroundConfig {
   color: string; // hex — luôn có, dùng làm màu viền letterbox khi type = "image" không phủ hết khung
   imageDataUrl?: string;
   imageFit?: "cover" | "contain" | "stretch";
-  reactions?: EffectReaction[]; // canvas background cũng là 1 "đối tượng" phản ứng được theo trigger
+}
+
+// Vị trí các node trên khung Trigger Graph (xem TriggerGraphEditor.tsx) — CHỈ là toạ độ layout của
+// riêng màn hình graph, không liên quan gì tới x/y của component trên landing canvas thật. Key =
+// id của node: component.id thật (component vừa có thể là nguồn trigger — Button — vừa có thể là
+// đích nhận lệnh), hoặc "cmd-<triggerAction.id>" cho node lệnh Play/Stop nằm giữa 2 component.
+// Optional — trang cũ/lần đầu mở Trigger Graph chưa có field này thì TriggerGraphEditor tự tính 1
+// layout mặc định (không ghi vào config cho tới khi người dùng thật sự kéo 1 node).
+export interface TriggerGraphLayout {
+  nodePositions: Record<string, { x: number; y: number }>;
 }
 
 export interface LandingConfig {
@@ -280,6 +439,7 @@ export interface LandingConfig {
     background: BackgroundConfig;
   };
   components: LandingComponent[];
+  triggerGraph?: TriggerGraphLayout;
 }
 
 export const CANVAS_WIDTH = 1920;
@@ -378,17 +538,40 @@ export interface LandingData {
 // import thẳng kiểu trả về của hook, giữ đúng phân lớp "views/ chỉ biết shape dữ liệu, không biết
 // hook nào tạo ra nó".
 export interface LastTrigger {
-  event: LandingTriggerEvent;
-  firedAt: number; // Date.now() tại lúc trigger nổ ra — dùng để tính delay/duration của reactions
+  sourceComponentId: string;
+  firedAt: number; // Date.now() tại lúc component này phát tín hiệu — dùng để tính delay của TriggerAction
 }
+
+// Thời điểm phát tín hiệu GẦN NHẤT của TỪNG component nguồn (key = component.id), không phải chỉ 1
+// lần phát gần nhất toàn cục — 1 trang có thể có nhiều Button, mỗi cái phát tín hiệu độc lập, nên 1
+// Button khác được bấm không được làm lệch thời điểm mà 1 TriggerAction đang chờ ĐÚNG nguồn của nó
+// (xem useTriggerCommands.ts).
+export type TriggerLog = Partial<Record<string, LastTrigger>>;
 
 export interface DrawSequenceActions {
   candidate: import("@/types").DrawCandidate | null;
   isPending: boolean; // đã pick nhưng chưa confirm — Draw bị khoá, Confirm/Redo mở
   busy: boolean; // đang có 1 lời gọi IPC dở dang — khoá cả 3 nút tránh bấm chồng
   error: string | null;
-  lastTrigger: LastTrigger | null; // trigger gần nhất đã nổ ra thật (chỉ set khi IPC thành công)
+  triggerLog: TriggerLog; // thời điểm phát tín hiệu gần nhất của từng component nguồn (xem TriggerLog ở trên)
   pick: () => void;
   confirm: () => void;
   redo: () => void;
+  // Ghi nhận 1 component (thường là Button) VỪA phát tín hiệu "click" — thuần là 1 sổ ghi thời điểm
+  // cho Trigger Graph đọc qua useTriggerCommands.ts, KHÔNG tự làm gì khác (không gọi IPC, không đổi
+  // candidate/isPending/busy) — logic thật của từng action (pick/confirm/redo/...) vẫn ở pick()/
+  // confirm()/redo() như cũ, độc lập hoàn toàn với việc component này có được Trigger Graph nối dây
+  // hay không. Gọi bởi MỌI Button bất kể action gì (xem ButtonView.tsx) — không riêng gì Draw.
+  fireClick: (componentId: string) => void;
+  // Hiện/ẩn component Scoreboard (cửa sổ phụ giữa màn hình) — UI thuần cục bộ, không liên quan gì
+  // tới draw/confirm/redo/busy nên tách hẳn khỏi state đó. toggleScoreboard() dùng bởi Button action
+  // "showScoreboard"; hideScoreboard() dùng bởi nút đóng (X)/click ra ngoài trên chính Scoreboard —
+  // tách riêng khỏi toggle để luôn ĐÓNG chắc chắn thay vì có thể bật nhầm lại nếu gọi 2 lần.
+  scoreboardVisible: boolean;
+  toggleScoreboard: () => void;
+  hideScoreboard: () => void;
+  // Xoá draw_results + trả remaining prizes về quantity gốc cho CẢ session (xem resetSession trong
+  // drawEngine.ts), rồi tự xoá luôn candidate/pending đang giữ trong bộ nhớ — "quay về như ban đầu"
+  // đúng nghĩa. Chỉ khoá bởi busy, không phụ thuộc isPending (khác confirm/redo).
+  resetSession: () => void;
 }
