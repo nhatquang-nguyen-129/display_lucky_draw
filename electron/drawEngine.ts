@@ -177,3 +177,15 @@ export function drawOne(opts: DrawOptions): DrawResult {
   commitDraw(candidate, opts.sessionId);
   return candidate;
 }
+
+/** Reset toàn bộ kết quả quay của 1 session — xoá hết draw_results (không đụng participants/prizes/
+ * session như sessions:delete) và trả remaining của mọi prize về đúng quantity gốc, y hệt lúc chưa
+ * quay lần nào. Dùng cho Button action "reset" trên Landing Page — không khôi phục được, phía
+ * renderer phải tự hỏi xác nhận trước khi gọi (xem ButtonView.tsx). */
+export function resetSession(sessionId: string): void {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM draw_results WHERE session_id = ?`).run(sessionId);
+    db.prepare(`UPDATE prizes SET remaining = quantity WHERE session_id = ?`).run(sessionId);
+  });
+  tx();
+}

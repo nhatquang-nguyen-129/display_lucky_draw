@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import { DrawSequenceActions, getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
 import "./digitRollerEffects.css";
+import { useTriggerCommands } from "../useTriggerCommands";
 
 // Tốc độ nhấp nháy ký tự lúc "đang quay" (rollStyle "flicker") — chạy từ nhanh (MIN_DELAY) tới chậm
 // (MAX_DELAY) theo đúng đường cong spinEasing đã chọn khi đang ở PHA CHỐT (settling) của riêng ô đó;
@@ -114,7 +115,15 @@ function randomChar(): string {
 // reelRowsTraveled). landingEffect (none/bounce/pop) chỉ áp dụng cho "flicker"; "reel" hình dung
 // gồm 2 PHẦN TÁCH BIỆT — khung trắng (reelCardEffect) và CHÍNH ký tự bên trong (reelNumberEffect) —
 // mỗi phần hiệu ứng riêng, không gộp chung, xem LuckyWheelProps.
-export default function DigitRollerTemplate({ component, data }: { component: LuckyWheelComponent; data?: LandingData }) {
+export default function DigitRollerTemplate({
+  component,
+  data,
+  sequence,
+}: {
+  component: LuckyWheelComponent;
+  data?: LandingData;
+  sequence?: DrawSequenceActions;
+}) {
   const { winnerDisplayField, digitCount, fontFamily, spinDurationMs, spinEasing } = component.props;
   // Config cũ (lưu trước khi có các trục cấu hình animation này) không có các field dưới — fallback
   // tái tạo ĐÚNG hành vi gốc ban đầu (flicker + together + none), không đổi hành vi của landing đã
@@ -144,8 +153,10 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
   // state) — animation ở 60fps, đi qua setState mỗi frame sẽ tốn re-render không cần thiết.
   const slotElsRef = useRef<(HTMLDivElement | null)[]>([]);
   const cellHeightRef = useRef(0);
-  const initializedRef = useRef(false);
-  const lastResultIdRef = useRef<string | null>(null);
+  // Giữ trạng thái huỷ/rafId của LƯỢT QUAY ĐANG CHẠY (nếu có) trong 1 ref — để startSpin() có thể
+  // gọi lại nhiều lần (mỗi lần 1 tín hiệu "Wheel.StartSpin" mới) và tự huỷ đúng vòng lặp rAF của
+  // lượt TRƯỚC trước khi bắt đầu lượt mới, tránh 2 lượt chồng lên nhau.
+  const spinAbortRef = useRef<{ cancelled: boolean; rafId: number } | null>(null);
 
   useEffect(() => {
     setChars((prev) => (prev.length === count ? prev : Array.from({ length: count }, randomChar)));
@@ -154,21 +165,22 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
     setReelBounceVersion(Array(count).fill(0));
   }, [count]);
 
-  useEffect(() => {
+  // Bắt đầu quay tới ĐÚNG người trúng đang có ở results[0] — gọi khi nhận tín hiệu "Wheel.StartSpin"
+  // qua Trigger Graph (xem useTriggerCommands bên dưới), KHÔNG còn tự dò results[0]?.id đổi hay
+  // chưa như trước.
+  function startSpin() {
     const latest = results[0];
-    const latestId = latest?.id ?? null;
-
-    if (!initializedRef.current) {
-      // Đồng bộ lần đầu — không quay, kể cả khi phiên đã có sẵn kết quả từ trước.
-      initializedRef.current = true;
-      lastResultIdRef.current = latestId;
-      return;
-    }
-    if (!latest || latestId === lastResultIdRef.current) return;
-    lastResultIdRef.current = latestId;
+    if (!latest) return;
 
     const winner = participants.find((p) => p.id === latest.participant_id);
     if (!winner) return;
+
+    if (spinAbortRef.current) {
+      spinAbortRef.current.cancelled = true;
+      cancelAnimationFrame(spinAbortRef.current.rafId);
+    }
+    const abort = { cancelled: false, rafId: 0 };
+    spinAbortRef.current = abort;
 
     // Hiển thị NGUYÊN VẸN giá trị thật — không lọc ký tự, không cắt prefix. slice/padStart chỉ là
     // lưới an toàn cho trường hợp hiếm dữ liệu lệch độ dài so với lúc validate ở panel.
@@ -187,13 +199,9 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
         stopAt.push(stopAt[i - 1] + gap);
       }
     }
-    const maxStop = stopAt[stopAt.length - 1];
 
     setSpinning(true);
     setSettledCount(0);
-
-    let cancelled = false;
-    let rafId = 0;
 
     if (rollStyle === "reel") {
       const plans = targetChars.map((t, i) => planReelSlot(t, stopAt[i]));
@@ -234,13 +242,13 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
           reportedSettled = settled;
           setSettledCount(settled);
         }
-        if (settled < count && !cancelled) {
-          rafId = requestAnimationFrame(frame);
+        if (settled < count && !abort.cancelled) {
+          abort.rafId = requestAnimationFrame(frame);
         } else {
           setSpinning(false);
         }
       };
-      rafId = requestAnimationFrame(frame);
+      abort.rafId = requestAnimationFrame(frame);
     } else {
       const startTime = performance.now();
       const localChars = [...chars];
@@ -279,26 +287,26 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
         if (charsChanged) setChars([...localChars]);
         setSettledCount(settled);
 
-        if (settled < count && !cancelled) {
-          rafId = requestAnimationFrame(frame);
+        if (settled < count && !abort.cancelled) {
+          abort.rafId = requestAnimationFrame(frame);
         } else {
           setSpinning(false);
         }
       };
-      rafId = requestAnimationFrame(frame);
+      abort.rafId = requestAnimationFrame(frame);
     }
+  }
 
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-    };
-    // Chỉ phụ thuộc `results[0]?.id` (chuỗi ổn định), KHÔNG phụ thuộc cả mảng `results` — useLandingData
-    // poll lại participants/prizes/results mỗi 2s và luôn tạo ra 1 mảng MỚI (dù nội dung không đổi),
-    // trong khi spinDurationMs thường lớn hơn chu kỳ poll 2000ms. Nếu phụ thuộc cả mảng, effect bị
-    // React cleanup (huỷ animation đang chạy dở) rồi chạy lại giữa chừng lượt quay — vì latestId lúc
-    // đó vẫn giống hệt nên bị guard chặn không cho chạy lại, animation chết hẳn giữa chừng.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results[0]?.id, count, rollStyle, revealTiming, revealStaggerMs]);
+  useEffect(() => () => {
+    if (spinAbortRef.current) {
+      spinAbortRef.current.cancelled = true;
+      cancelAnimationFrame(spinAbortRef.current.rafId);
+    }
+  }, []);
+
+  useTriggerCommands(component.triggerActions, sequence, (command) => {
+    if (command === "Wheel.StartSpin") startSpin();
+  });
 
   // Kích thước ô số luôn tính từ khung kéo thả (component.width/height) trên canvas — giống cách
   // WheelTemplate lấy size = min(width, height) — để kéo-resize khung là cách trực tiếp, trực quan

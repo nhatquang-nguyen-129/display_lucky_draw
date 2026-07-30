@@ -78,6 +78,7 @@ const api = {
     pick: (data: { sessionId: string; excludeParticipantIds?: string[]; lockedPrizeId?: string }) =>
       ipcRenderer.invoke("draw:pick", data),
     commit: (data: { candidate: DrawCandidate; sessionId: string }) => ipcRenderer.invoke("draw:commit", data),
+    resetSession: (sessionId: string) => ipcRenderer.invoke("draw:resetSession", sessionId),
   },
   present: {
     open: (sessionId: string) => ipcRenderer.invoke("present:open", sessionId),

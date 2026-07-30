@@ -12,6 +12,9 @@ import CountdownPanel from "./panels/CountdownPanel";
 import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
+import ScoreboardPanel from "./panels/ScoreboardPanel";
+import FireworksPanel from "./panels/FireworksPanel";
+import StageLightPanel from "./panels/StageLightPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
@@ -19,7 +22,6 @@ interface PropertiesPanelProps {
   sessionName: string;
   prizes: Prize[];
   participants: Participant[];
-  urlFields: string[];
   onChangeBackground: (patch: Partial<BackgroundConfig>) => void;
   onChangeComponent: (patch: Partial<LandingComponent>) => void;
   onChangeProps: (patch: Record<string, any>) => void;
@@ -34,7 +36,6 @@ export default function PropertiesPanel({
   sessionName,
   prizes,
   participants,
-  urlFields,
   onChangeBackground,
   onChangeComponent,
   onChangeProps,
@@ -73,8 +74,21 @@ export default function PropertiesPanel({
         <ParticipantCountPanel props={selected.props} onChange={onChangeProps} />
       )}
       {selected.type === "button" && (
-        <ButtonPanel props={selected.props} urlFields={urlFields} onChange={onChangeProps} />
+        <ButtonPanel
+          component={selected}
+          // Tên các Button KHÁC trên trang (không tính chính nút này) — Button không có action nào
+          // phân biệt nữa nên tên phải duy nhất để nhận diện đúng trên Trigger Graph.
+          usedNames={config.components
+            .filter((c): c is Extract<LandingComponent, { type: "button" }> => c.type === "button" && c.id !== selected.id)
+            .map((c) => c.name?.trim() ?? "")
+            .filter(Boolean)}
+          onChangeComponent={onChangeComponent}
+          onChange={onChangeProps}
+        />
       )}
+      {selected.type === "scoreboard" && <ScoreboardPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "fireworks" && <FireworksPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "stageLight" && <StageLightPanel props={selected.props} onChange={onChangeProps} />}
       <div className="h-px bg-base-800" />
       <SharedFields component={selected} onChange={onChangeComponent} onDelete={onDelete} />
     </div>
