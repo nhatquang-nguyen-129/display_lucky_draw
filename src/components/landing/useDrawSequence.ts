@@ -77,6 +77,9 @@ export function useDrawSequence(
       lockedPrizeIdRef.current = next.prizeId;
     } catch (e: any) {
       setError(e?.message ?? "Draw failed");
+      // Bắn lại lỗi (khác confirm()/redo()) — DrawView.tsx cần biết CHẮC pick() đã thật sự thành
+      // công hay chưa để quyết định có bắn "Draw.Picked" hay không (xem componentRegistry.ts).
+      throw e;
     } finally {
       setBusy(false);
     }

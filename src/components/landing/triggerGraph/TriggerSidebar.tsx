@@ -1,20 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { LandingConfig, TriggerAction } from "@/lib/landing/types";
 import { COMPONENT_REGISTRY, COMPONENT_SIGNALS } from "../componentRegistry";
 
-interface Option {
-  id: string;
-  label: string;
-}
+// MIME riêng cho kéo-thả 1 TÍN HIỆU (khác MIME kéo-thả component mới từ ComponentPalette.tsx) —
+// mang theo { signal, role } dạng JSON, đọc lại ở TriggerGraphEditor.tsx lúc thả vào 1 Component Node.
+export const SIGNAL_DRAG_MIME = "application/x-trigger-signal";
 
 interface TriggerSidebarProps {
   config: LandingConfig;
-  targetOptions: Option[];
-  sourceOptions: Option[];
-  selectedActionId: string | null;
-  prefillTargetId?: string;
-  onSelectAction: (actionId: string | null) => void;
-  onCreate: (targetComponentId: string, patch: { sourceComponentId: string; command: string; delayMs: number }) => void;
   onChangeAction: (ownerId: string, actionId: string, patch: Partial<TriggerAction>) => void;
   onDeleteAction: (ownerId: string, actionId: string) => void;
 }
@@ -24,6 +17,11 @@ interface LinkRow {
   action: TriggerAction;
   sourceLabel: string;
   targetLabel: string;
+}
+
+interface SignalEntry {
+  signal: string;
+  role: "emit" | "listen";
 }
 
 const fieldClass =
@@ -51,74 +49,93 @@ function allLinks(config: LandingConfig): LinkRow[] {
   return rows;
 }
 
-// Sidebar trái, LUÔN hiện (không phụ thuộc đã chọn node nào trên canvas) — liệt kê MỌI trigger link
-// đang có trên trang + form "Add trigger" luôn sẵn sàng, thay hẳn panel dưới đáy trước đây chỉ hiện
-// khi đã chọn 1 node đích. Đây là lối "chèn trigger action" chính, không cần đụng tới canvas.
-export default function TriggerSidebar({
-  config,
-  targetOptions,
-  sourceOptions,
-  selectedActionId,
-  prefillTargetId,
-  onSelectAction,
-  onCreate,
-  onChangeAction,
-  onDeleteAction,
-}: TriggerSidebarProps) {
+// Tín hiệu LIÊN QUAN — chỉ những emits/listensFor của ĐÚNG các loại component đang thật sự có mặt
+// trên trang (không liệt kê tín hiệu của loại component chưa hề được kéo vào Landing), khử trùng
+// theo tên (2 component cùng loại chỉ hiện 1 lần). Đây là nguồn DUY NHẤT cho phần kéo-thả bên dưới.
+function relevantSignals(config: LandingConfig): SignalEntry[] {
+  const typesPresent = new Set(config.components.map((c) => c.type));
+  const seen = new Set<string>();
+  const result: SignalEntry[] = [];
+  typesPresent.forEach((type) => {
+    const signals = COMPONENT_SIGNALS[type];
+    (signals?.emits ?? []).forEach((s) => {
+      if (seen.has(s)) return;
+      seen.add(s);
+      result.push({ signal: s, role: "emit" });
+    });
+    (signals?.listensFor ?? []).forEach((s) => {
+      if (seen.has(s)) return;
+      seen.add(s);
+      result.push({ signal: s, role: "listen" });
+    });
+  });
+  return result;
+}
+
+// Sidebar trái, LUÔN hiện — 2 phần: (1) danh sách tín hiệu CÓ THỂ kéo-thả vào canvas (đặt ra 1
+// signal chip trên ĐÚNG component hỗ trợ nó, xem TriggerGraphEditor.tsx), (2) danh sách link đã
+// nối dây thật (kéo giữa 2 chip trên canvas) — click 1 dòng để sửa Delay/xoá. Tạo link KHÔNG còn
+// form dropdown nữa — 100% qua kéo-thả + nối dây trên canvas.
+export default function TriggerSidebar({ config, onChangeAction, onDeleteAction }: TriggerSidebarProps) {
   const links = allLinks(config);
-  const [targetComponentId, setTargetComponentId] = useState(prefillTargetId ?? targetOptions[0]?.id ?? "");
-  const [sourceComponentId, setSourceComponentId] = useState(sourceOptions[0]?.id ?? "");
-  const [delayMs, setDelayMs] = useState(0);
-  const targetType = config.components.find((c) => c.id === targetComponentId)?.type;
-  const signalOptions = (targetType && COMPONENT_SIGNALS[targetType]?.listensFor) || [];
-  const [command, setCommand] = useState(signalOptions[0] ?? "");
-
-  // Chọn 1 target ComponentNode trên canvas → điền sẵn Target trong form Add (tiện, không bắt buộc).
-  useEffect(() => {
-    if (prefillTargetId) setTargetComponentId(prefillTargetId);
-  }, [prefillTargetId]);
-
-  // Target/Source trỏ tới component đã bị xoá (hoặc rỗng lúc mới mở) → tự chọn lại lựa chọn đầu
-  // tiên còn hợp lệ, tránh form kẹt ở 1 giá trị không còn tồn tại.
-  useEffect(() => {
-    if (targetOptions.length > 0 && !targetOptions.some((o) => o.id === targetComponentId)) {
-      setTargetComponentId(targetOptions[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetOptions]);
-  useEffect(() => {
-    if (sourceOptions.length > 0 && !sourceOptions.some((o) => o.id === sourceComponentId)) {
-      setSourceComponentId(sourceOptions[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceOptions]);
-
-  // Đổi Target → đổi hẳn bộ Signal hợp lệ, reset về lựa chọn đầu tiên của target MỚI (tránh giữ lại
-  // 1 signal của target cũ không còn hợp lệ với target mới).
-  useEffect(() => {
-    setCommand(signalOptions[0] ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetComponentId]);
+  const signals = relevantSignals(config);
+  const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
 
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-r border-base-800 bg-base-900">
       <div className="shrink-0 border-b border-base-800 px-4 py-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-base-300">Trigger Links</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-base-300">Signals</span>
+        <p className="mt-1 text-[10px] leading-snug text-base-500">
+          Drag a signal onto the matching component on canvas to place a chip for it.
+        </p>
       </div>
 
+      <div className="shrink-0 space-y-1.5 border-b border-base-800 p-3">
+        {signals.length === 0 ? (
+          <p className="px-1 text-[11px] leading-snug text-base-500">
+            No Emitter/Receiver component on this page yet.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {signals.map(({ signal, role }) => (
+              <div
+                key={signal}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData(SIGNAL_DRAG_MIME, JSON.stringify({ signal, role }))}
+                title={
+                  role === "emit"
+                    ? "Emit signal — drag onto the component that sends it"
+                    : "Listen signal — drag onto the component that receives it"
+                }
+                className={`cursor-grab select-none rounded-full border bg-base-800 px-3 py-1 text-[11px] font-medium active:cursor-grabbing ${
+                  role === "emit" ? "border-teal-600 text-teal-600" : "border-gold-500 text-gold-500"
+                }`}
+              >
+                {signal}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-b border-base-800 px-4 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-base-300">Connections</span>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {links.length === 0 ? (
-          <p className="px-1 text-[11px] leading-snug text-base-500">No links yet — wire one below.</p>
+          <p className="px-1 text-[11px] leading-snug text-base-500">
+            No links yet — drag 2 signal chips onto canvas, then draw a line between them.
+          </p>
         ) : (
           <div className="space-y-1.5">
             {links.map(({ ownerId, action, sourceLabel, targetLabel }) => {
-              const isSelected = selectedActionId === action.id;
+              const isExpanded = expandedActionId === action.id;
               const ownerType = config.components.find((c) => c.id === ownerId)?.type;
               const rowSignalOptions = (ownerType && COMPONENT_SIGNALS[ownerType]?.listensFor) || [];
               return (
                 <div key={action.id} className="rounded border border-base-700 bg-base-800">
                   <button
-                    onClick={() => onSelectAction(isSelected ? null : action.id)}
+                    onClick={() => setExpandedActionId(isExpanded ? null : action.id)}
                     className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-base-100"
                   >
                     <span className="truncate">
@@ -126,7 +143,7 @@ export default function TriggerSidebar({
                     </span>
                     <span className="shrink-0 font-medium text-teal-500">{action.command}</span>
                   </button>
-                  {isSelected && (
+                  {isExpanded && (
                     <div className="space-y-2 border-t border-base-700 p-2.5">
                       <div>
                         <label className={labelClass}>Signal</label>
@@ -153,7 +170,10 @@ export default function TriggerSidebar({
                         />
                       </div>
                       <button
-                        onClick={() => onDeleteAction(ownerId, action.id)}
+                        onClick={() => {
+                          setExpandedActionId(null);
+                          onDeleteAction(ownerId, action.id);
+                        }}
                         className="w-full rounded border border-danger-500/30 bg-danger-500/10 px-2 py-1 text-[11px] text-danger-500 hover:bg-danger-500/20"
                       >
                         Delete link
@@ -164,65 +184,6 @@ export default function TriggerSidebar({
               );
             })}
           </div>
-        )}
-      </div>
-
-      <div className="shrink-0 space-y-2 border-t border-base-800 p-3">
-        <span className="text-[10px] uppercase tracking-wide text-base-500">Add trigger</span>
-        {targetOptions.length === 0 || sourceOptions.length === 0 ? (
-          <p className="text-[10px] leading-snug text-base-500">
-            Need at least 1 Button (source) and 1 Lucky Wheel/Fireworks/Stage Light (target) on this
-            page first.
-          </p>
-        ) : (
-          <>
-            <div>
-              <label className={labelClass}>Target</label>
-              <select className={fieldClass} value={targetComponentId} onChange={(e) => setTargetComponentId(e.target.value)}>
-                {targetOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Source</label>
-              <select className={fieldClass} value={sourceComponentId} onChange={(e) => setSourceComponentId(e.target.value)}>
-                {sourceOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Signal</label>
-              <select className={fieldClass} value={command} onChange={(e) => setCommand(e.target.value)}>
-                {signalOptions.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Delay (ms)</label>
-              <input
-                type="number"
-                min={0}
-                className={fieldClass}
-                value={delayMs}
-                onChange={(e) => setDelayMs(Math.max(0, Number(e.target.value)))}
-              />
-            </div>
-            <button
-              onClick={() => onCreate(targetComponentId, { sourceComponentId, command, delayMs })}
-              className="w-full rounded bg-gold-500 px-3 py-1.5 text-xs font-medium text-base-950 hover:bg-gold-400"
-            >
-              + Add trigger
-            </button>
-          </>
         )}
       </div>
     </div>

@@ -3,12 +3,16 @@
 // Builder chỉ sửa object này; PresentMode chỉ render object này — không có state nào khác ở giữa.
 //
 // Thêm 1 loại component mới cần đúng 5 bước (không cần sửa chỗ nào khác):
-//   0. Xác định rõ nó là Signal EMITTER hay Signal RECEIVER trước khi code (xem CLAUDE.md) — 1
-//      component chỉ thuộc ĐÚNG 1 trong 2 nhóm, không bao giờ cả hai. Emitter (Button, sau này QR
-//      Scanner/NFC Reader...) người dùng thao tác trực tiếp ở Present Mode, CHỈ phát Event, không
-//      tự chạy business logic/animation. Receiver (Lucky Wheel, Fireworks, Stage Light, sau này
-//      Countdown/Scoreboard/Video...) người dùng KHÔNG thao tác trực tiếp được, CHỈ nhận Command từ
-//      Trigger Graph rồi tự thực thi animation/logic của chính nó. Tên tín hiệu theo quy ước
+//   0. Xác định rõ nó là Signal EMITTER hay Signal RECEIVER trước khi code (xem CLAUDE.md) — đa số
+//      component chỉ thuộc ĐÚNG 1 trong 2 nhóm. Emitter (Button, sau này QR Scanner/NFC Reader...)
+//      người dùng thao tác trực tiếp ở Present Mode, CHỈ phát Event, không tự chạy business
+//      logic/animation. Receiver (Lucky Wheel, Fireworks, Stage Light, Link Opener, Draw, Confirm
+//      Winner, sau này Countdown/Scoreboard/Video...) người dùng KHÔNG thao tác trực tiếp được, CHỈ
+//      nhận Command từ Trigger Graph rồi tự thực thi animation/logic của chính nó. NGOẠI LỆ HẸP: 1
+//      Receiver có thời lượng hoàn thành KHÔNG cố định được phép thêm ĐÚNG 1 emit báo "xong việc"
+//      (vd Lucky Wheel vừa listensFor "Wheel.StartSpin" vừa emits "Wheel.SpinCompleted"; Draw cùng
+//      lý do — pick() là IPC bất đồng bộ — vừa listensFor "Draw.Pick" vừa emits "Draw.Picked") để
+//      nối chuỗi hành động chính xác, không phải danh sách emit tự do. Tên tín hiệu theo quy ước
 //      `Component.Action` (vd "Wheel.StartSpin", "Fireworks.Play", "Button.Click").
 //   1. Thêm interface `XxxProps` + variant `XxxComponent` vào union `LandingComponent` bên dưới.
 //   2. Thêm `src/components/landing/views/XxxView.tsx` (chỉ render, nhận `props` + `LandingData`).
@@ -21,17 +25,21 @@ export type EffectName = "none" | "fadeIn" | "slideUp" | "pulse" | "bounce";
 
 export const EFFECT_NAMES: EffectName[] = ["none", "fadeIn", "slideUp", "pulse", "bounce"];
 
-// 1 liên kết trên Trigger Graph: khi component `sourceComponentId` phát tín hiệu (xem
-// COMPONENT_SIGNALS trong componentRegistry.ts — vd Button luôn phát "click"), sau `delayMs` thì
-// gửi tín hiệu `command` cho ĐÚNG 1 component (xem BaseComponent.triggerActions bên dưới — link
-// này nằm trên component NHẬN lệnh, không phải component phát). `command` là 1 chuỗi tên tín hiệu
-// tra hợp lệ qua COMPONENT_SIGNALS.listensFor của TYPE component đích (vd Lucky Wheel hiểu
-// "WheelSpinStart", Fireworks/Stage Light hiểu "play"/"stop") — mỗi loại component tự khai báo sẵn
-// tín hiệu nó hiểu, không phải tên tự đặt tuỳ ý. Graph không biết tín hiệu đó LÀM GÌ — logic đó nằm
-// hoàn toàn trong runtime của chính component nhận lệnh (xem useTriggerCommands.ts).
+// 1 liên kết trên Trigger Graph: khi component `sourceComponentId` phát tín hiệu `sourceSignal`
+// (xem COMPONENT_SIGNALS trong componentRegistry.ts — vd Button luôn phát "Button.Click"), sau
+// `delayMs` thì gửi tín hiệu `command` cho ĐÚNG 1 component (xem BaseComponent.triggerActions bên
+// dưới — link này nằm trên component NHẬN lệnh, không phải component phát). Cả `sourceSignal` lẫn
+// `command` đều tra hợp lệ qua COMPONENT_SIGNALS (emits của nguồn, listensFor của đích — vd Lucky
+// Wheel hiểu "Wheel.StartSpin", Fireworks/Stage Light hiểu "Fireworks.Play"/"StageLight.Play") —
+// mỗi loại component tự khai báo sẵn tín hiệu nó phát/hiểu, không phải tên tự đặt tuỳ ý. Graph
+// không biết tín hiệu đó LÀM GÌ — logic đó nằm hoàn toàn trong runtime của chính component nhận
+// lệnh (xem useTriggerCommands.ts). `sourceSignal` hiện luôn suy ra được 1-1 từ type của nguồn
+// (Button chỉ có đúng 1 emit) nhưng vẫn lưu tường minh để khớp đúng 1 signal chip cụ thể trên
+// Trigger Graph (xem SignalChipNode.tsx) — không phải dò lại qua type mỗi lần.
 export interface TriggerAction {
   id: string;
   sourceComponentId: string;
+  sourceSignal: string;
   delayMs: number;
   command: string;
 }
@@ -396,6 +404,49 @@ export interface StageLightComponent extends BaseComponent {
   props: StageLightProps;
 }
 
+// Receiver thuần, tái tạo lại Button action "openLink" cũ (đã xoá khỏi Button lúc Button trở thành
+// Emitter thuần) dưới dạng 1 Receiver riêng — nhận lệnh "LinkOpener.Open" thì mở URL lấy từ 1 field
+// (cố định hay cột extra_data) của winner GẦN NHẤT (data.results[0], xem LinkOpenerView.tsx) bằng
+// window.api.shell.openExternal. Không có emits (mở URL diễn ra tức thời, không cần ngoại lệ hẹp
+// kiểu Wheel.SpinCompleted). Không có state "disabled" nào ở đây hay ở Button — nếu chưa có winner
+// hoặc field rỗng thì LinkOpenerView tự no-op im lặng, giữ Button hoàn toàn không biết gì về Draw.
+export interface LinkOpenerProps {
+  urlField: string; // "code" | "phone" | "email" | "name" hoặc tên 1 cột extra_data, xem LinkOpenerPanel.tsx
+}
+
+export interface LinkOpenerComponent extends BaseComponent {
+  type: "linkOpener";
+  props: LinkOpenerProps;
+}
+
+// Receiver thuần, tái tạo lại Button action "draw" cũ — nhận lệnh "Draw.Pick" thì gọi
+// sequence.pick() (chọn 1 candidate MỚI, CHƯA ghi DB — xem useDrawSequence.ts). KHÔNG có config gì
+// (pick() chỉ cần sessionId, Draw Engine tự quyết định giải/người tiếp theo). NGOẠI LỆ HẸP (giống
+// Lucky Wheel — xem CLAUDE.md): pick() là 1 lời gọi IPC bất đồng bộ, trong khi Wheel.StartSpin đọc
+// results[0] NGAY LÚC nhận lệnh (xem WheelTemplate.tsx) — nếu Draw chỉ listensFor mà không emits,
+// không có cách nào nối "Draw xong" → "Wheel bắt đầu quay" chính xác mà không đoán 1 delay cố định.
+// Nên Draw vừa listensFor "Draw.Pick" vừa emits "Draw.Picked", bắn qua sequence.fireClick() CHỈ khi
+// pick() thật sự thành công (xem DrawView.tsx) — không bắn nếu pick() lỗi (hết participant/prize).
+export interface DrawProps {}
+
+export interface DrawComponent extends BaseComponent {
+  type: "draw";
+  props: DrawProps;
+}
+
+// Receiver thuần, tái tạo lại Button action "confirm" cũ — nhận lệnh "ConfirmWinner.Confirm" thì
+// gọi sequence.confirm() (ghi thật candidate đang chờ vào draw_results, xem useDrawSequence.ts).
+// KHÔNG có config gì. KHÔNG có emits — confirm() ghi DB xong là kết thúc, không có gì để nối chuỗi
+// tiếp theo dựa vào (khác Draw, không cần ngoại lệ hẹp). confirm() đã tự no-op nếu chưa có candidate
+// đang chờ (isPending=false) hoặc đang busy — ConfirmWinnerView.tsx không cần thêm điều kiện nào,
+// giữ đúng triết lý "Receiver tự no-op im lặng" đã áp dụng cho LinkOpenerView.tsx.
+export interface ConfirmWinnerProps {}
+
+export interface ConfirmWinnerComponent extends BaseComponent {
+  type: "confirmWinner";
+  props: ConfirmWinnerProps;
+}
+
 export type LandingComponent =
   | TextComponent
   | ImageComponent
@@ -410,7 +461,10 @@ export type LandingComponent =
   | ButtonComponent
   | ScoreboardComponent
   | FireworksComponent
-  | StageLightComponent;
+  | StageLightComponent
+  | LinkOpenerComponent
+  | DrawComponent
+  | ConfirmWinnerComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 
@@ -421,14 +475,28 @@ export interface BackgroundConfig {
   imageFit?: "cover" | "contain" | "stretch";
 }
 
+// 1 "chip tín hiệu" đã được kéo từ sidebar (TriggerSidebar.tsx) thả vào khung Trigger Graph — CHỈ
+// là 1 điểm nối đã ĐẶT RA, chưa chắc đã nối dây với chip nào khác (nối dây thật mới tạo ra
+// TriggerAction, xem types.ts). `id` cố tình lấy dạng suy ra được thẳng từ ownerComponentId+signal
+// (không phải random) — 1 component không thể có 2 chip trùng tín hiệu, tra trùng dễ dàng.
+export interface SignalChipPlacement {
+  id: string; // `${ownerComponentId}::${signal}`
+  ownerComponentId: string;
+  signal: string; // vd "Button.Click", "Wheel.StartSpin"
+  role: "emit" | "listen"; // suy ra từ COMPONENT_SIGNALS lúc kéo vào — emit thì có handle "source", listen thì có handle "target"
+}
+
 // Vị trí các node trên khung Trigger Graph (xem TriggerGraphEditor.tsx) — CHỈ là toạ độ layout của
 // riêng màn hình graph, không liên quan gì tới x/y của component trên landing canvas thật. Key =
-// id của node: component.id thật (component vừa có thể là nguồn trigger — Button — vừa có thể là
-// đích nhận lệnh), hoặc "cmd-<triggerAction.id>" cho node lệnh Play/Stop nằm giữa 2 component.
-// Optional — trang cũ/lần đầu mở Trigger Graph chưa có field này thì TriggerGraphEditor tự tính 1
-// layout mặc định (không ghi vào config cho tới khi người dùng thật sự kéo 1 node).
+// id của node: component.id thật cho Component Node, hoặc SignalChipPlacement.id cho 1 chip tín
+// hiệu. 1 node CHƯA từng bị kéo tay sẽ không có mặt ở đây — TriggerGraphEditor tự tính cho nó 1 vị
+// trí mặc định hợp lý (rank theo thứ tự chuỗi Emitter→Receiver, lane theo nhánh rẽ — xem
+// computeComponentRanks/computeComponentLanes) cho tới khi người dùng thật sự kéo nó đi.
 export interface TriggerGraphLayout {
-  nodePositions: Record<string, { x: number; y: number }>;
+  nodePositions?: Record<string, { x: number; y: number }>;
+  // Chip nào đã được kéo vào canvas — độc lập với đã nối dây hay chưa (xem SignalChipPlacement).
+  // Optional/rỗng nghĩa là chưa kéo chip nào vào cả.
+  signalChips?: SignalChipPlacement[];
 }
 
 export interface LandingConfig {
@@ -554,7 +622,10 @@ export interface DrawSequenceActions {
   busy: boolean; // đang có 1 lời gọi IPC dở dang — khoá cả 3 nút tránh bấm chồng
   error: string | null;
   triggerLog: TriggerLog; // thời điểm phát tín hiệu gần nhất của từng component nguồn (xem TriggerLog ở trên)
-  pick: () => void;
+  // Trả Promise thật (không phải void) — DrawView.tsx cần await để biết CHẮC pick() đã thành công
+  // trước khi bắn "Draw.Picked" (ngoại lệ hẹp, xem componentRegistry.ts), tránh Wheel đọc phải
+  // candidate cũ nếu bắn tín hiệu ngay khi vừa gọi thay vì đợi IPC thật sự xong.
+  pick: () => Promise<void>;
   confirm: () => void;
   redo: () => void;
   // Ghi nhận 1 component (thường là Button) VỪA phát tín hiệu "click" — thuần là 1 sổ ghi thời điểm

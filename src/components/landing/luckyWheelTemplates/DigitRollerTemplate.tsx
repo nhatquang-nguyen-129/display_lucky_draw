@@ -246,6 +246,10 @@ export default function DigitRollerTemplate({
           abort.rafId = requestAnimationFrame(frame);
         } else {
           setSpinning(false);
+          // Chỉ báo "quay xong" khi THẬT SỰ chốt hết mọi ô — không báo nếu lượt này bị huỷ ngang vì
+          // 1 tín hiệu "Wheel.StartSpin" mới đè lên (abort.cancelled=true), tránh báo xong 1 lượt
+          // chưa bao giờ thật sự xong. Xem "Wheel.SpinCompleted" trong componentRegistry.ts.
+          if (settled >= count) sequence?.fireClick(component.id);
         }
       };
       abort.rafId = requestAnimationFrame(frame);
@@ -291,6 +295,8 @@ export default function DigitRollerTemplate({
           abort.rafId = requestAnimationFrame(frame);
         } else {
           setSpinning(false);
+          // Chỉ báo "quay xong" khi THẬT SỰ chốt hết mọi ô — xem giải thích ở nhánh "reel" phía trên.
+          if (settled >= count) sequence?.fireClick(component.id);
         }
       };
       abort.rafId = requestAnimationFrame(frame);
