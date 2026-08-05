@@ -20,6 +20,9 @@ import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
 import FireworksView from "./views/FireworksView";
 import StageLightView from "./views/StageLightView";
+import LinkOpenerView from "./views/LinkOpenerView";
+import DrawView from "./views/DrawView";
+import ConfirmWinnerView from "./views/ConfirmWinnerView";
 
 interface LandingRendererProps {
   config: LandingConfig;
@@ -164,6 +167,12 @@ function renderComponent(
       return <FireworksView component={component} sequence={interactive ? sequence : undefined} />;
     case "stageLight":
       return <StageLightView component={component} sequence={interactive ? sequence : undefined} />;
+    case "linkOpener":
+      return <LinkOpenerView component={component} data={data} sequence={interactive ? sequence : undefined} />;
+    case "draw":
+      return <DrawView component={component} sequence={interactive ? sequence : undefined} />;
+    case "confirmWinner":
+      return <ConfirmWinnerView component={component} sequence={interactive ? sequence : undefined} />;
     default:
       return null;
   }

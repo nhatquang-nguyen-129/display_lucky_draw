@@ -70,6 +70,10 @@ export default function WheelTemplate({
     spinTimerRef.current = setTimeout(() => {
       setSpinning(false);
       setWinner(segments[winnerIndex]);
+      // Báo "quay xong" ĐÚNG lúc animation thật kết thúc (không phải 1 delay đoán trước ở nơi khác)
+      // — xem "Wheel.SpinCompleted" trong COMPONENT_SIGNALS (componentRegistry.ts), cho phép nối
+      // chuỗi hành động (vd bắn Fireworks ngay khi quay xong) chính xác tuyệt đối.
+      sequence?.fireClick(component.id);
     }, spinDurationMs);
   }
 
