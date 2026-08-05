@@ -218,11 +218,11 @@ export default function LandingBuilderWindow() {
     }));
   }
 
-  // Chỉ lưu vị trí node trên khung Trigger Graph.
+  // Chỉ lưu danh sách signal chip đã kéo ra Trigger Graph — vị trí node tự tính lại, không lưu.
   function handleUpdateTriggerGraph(patch: Partial<TriggerGraphLayout>) {
     updateConfig((prev) => ({
       ...prev,
-      triggerGraph: { nodePositions: {}, ...prev.triggerGraph, ...patch },
+      triggerGraph: { ...prev.triggerGraph, ...patch },
     }));
   }
 
@@ -373,6 +373,7 @@ export default function LandingBuilderWindow() {
             onUpdateComponent={handleUpdateComponent}
             onUpdateTriggerGraph={handleUpdateTriggerGraph}
             tool={tool}
+            showGrid={showGrid}
           />
         ) : (
           <LandingCanvas
@@ -401,11 +402,11 @@ export default function LandingBuilderWindow() {
           </div>
         )}
 
-        {/* Toolbar nổi bên trái — Select/Hand tool (dùng chung cho cả Canvas thường lẫn Trigger
-            Graph), Add component, Page settings, Gridline, Trigger graph. Add/Layers/Page
-            settings/Grid ẩn hẳn khi đang ở Trigger Graph (không có ý nghĩa gì ở đó); Select/Hand thì
-            dùng được ở CẢ 2 màn hình. Dời hẳn sang phải khi graphMode để không đè lên TriggerSidebar
-            (luôn chiếm w-72 = 18rem cố định bên trái, xem TriggerGraphEditor.tsx). */}
+        {/* Toolbar nổi bên trái — Select/Hand tool + Gridline (dùng chung cho cả Canvas thường lẫn
+            Trigger Graph, mỗi màn hình tự vẽ lưới bằng cơ chế riêng), Add component, Page settings,
+            Trigger graph. Add/Layers/Page settings ẩn hẳn khi đang ở Trigger Graph (không có ý nghĩa
+            gì ở đó). Dời hẳn sang phải khi graphMode để không đè lên TriggerSidebar (luôn chiếm
+            w-72 = 18rem cố định bên trái, xem TriggerGraphEditor.tsx). */}
         <div className={`absolute top-4 flex flex-col gap-2 ${graphMode ? "left-[19rem]" : "left-4"}`}>
           <button
             onClick={(e) => {
@@ -437,6 +438,17 @@ export default function LandingBuilderWindow() {
           </button>
 
           <div className="h-px bg-base-800" />
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowGrid((v) => !v);
+            }}
+            title="Toggle gridlines"
+            className={`${floatingBtn} ${showGrid ? floatingBtnActive : floatingBtnIdle}`}
+          >
+            <GridIcon />
+          </button>
 
           {!graphMode && (
             <>
@@ -488,17 +500,6 @@ export default function LandingBuilderWindow() {
                 className={`${floatingBtn} ${showPanel && !selected ? floatingBtnActive : floatingBtnIdle}`}
               >
                 <BackgroundIcon />
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowGrid((v) => !v);
-                }}
-                title="Toggle gridlines"
-                className={`${floatingBtn} ${showGrid ? floatingBtnActive : floatingBtnIdle}`}
-              >
-                <GridIcon />
               </button>
 
               <div className="h-px bg-base-800" />

@@ -4,9 +4,17 @@
 
 import { LandingComponent, LandingComponentType, newComponentId } from "@/lib/landing/types";
 
+// Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
+// nhóm khi kéo-thả, không liên quan gì tới Emitter/Receiver (1 nhóm có thể trộn cả 2, vd "Effects"
+// gồm toàn Receiver còn "Interactive" chỉ có Emitter — nhóm theo công dụng người dùng nhìn thấy,
+// không theo kiến trúc tín hiệu bên trong). Thứ tự mảng này = thứ tự nhóm hiện trên Palette.
+export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive", "Effects", "Actions"] as const;
+export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
+
 export interface ComponentRegistryEntry {
   label: string;
   description: string;
+  category: ComponentCategory;
   defaultWidth: number;
   defaultHeight: number;
   createDefaultProps: () => LandingComponent["props"];
@@ -16,6 +24,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   text: {
     label: "Text",
     description: "Static label or heading",
+    category: "Basic",
     defaultWidth: 400,
     defaultHeight: 80,
     createDefaultProps: () => ({
@@ -29,6 +38,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   image: {
     label: "Image",
     description: "Logo, banner, or decorative image",
+    category: "Basic",
     defaultWidth: 300,
     defaultHeight: 300,
     createDefaultProps: () => ({
@@ -40,6 +50,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   luckyWheel: {
     label: "Lucky Wheel",
     description: "Spinning wheel bound to the Draw Engine",
+    category: "Draw & Results",
     defaultWidth: 500,
     defaultHeight: 500,
     createDefaultProps: () => ({
@@ -66,6 +77,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   winnerName: {
     label: "Winner Name",
     description: "Latest winner's name",
+    category: "Draw & Results",
     defaultWidth: 500,
     defaultHeight: 80,
     createDefaultProps: () => ({
@@ -79,6 +91,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   prizeName: {
     label: "Prize Name",
     description: "Latest won prize's name",
+    category: "Draw & Results",
     defaultWidth: 500,
     defaultHeight: 60,
     createDefaultProps: () => ({
@@ -92,6 +105,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   prizeImage: {
     label: "Prize Image",
     description: "Latest won prize's image",
+    category: "Draw & Results",
     defaultWidth: 300,
     defaultHeight: 300,
     createDefaultProps: () => ({
@@ -103,6 +117,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   prizeList: {
     label: "Prize List",
     description: "List of all prizes in this session",
+    category: "Draw & Results",
     defaultWidth: 360,
     defaultHeight: 300,
     createDefaultProps: () => ({
@@ -114,6 +129,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   countdown: {
     label: "Countdown",
     description: "Counts down to a target date/time",
+    category: "Live Info",
     defaultWidth: 300,
     defaultHeight: 60,
     createDefaultProps: () => ({
@@ -127,6 +143,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   currentTime: {
     label: "Current Time",
     description: "Live clock",
+    category: "Live Info",
     defaultWidth: 200,
     defaultHeight: 50,
     createDefaultProps: () => ({
@@ -139,6 +156,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   participantCount: {
     label: "Participant Count",
     description: "Number of participants in this session",
+    category: "Live Info",
     defaultWidth: 260,
     defaultHeight: 50,
     createDefaultProps: () => ({
@@ -161,6 +179,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   button: {
     label: "Button",
     description: "Signal Emitter — emits Button.Click, active in Present Mode only",
+    category: "Interactive",
     defaultWidth: 220,
     defaultHeight: 64,
     createDefaultProps: () => ({
@@ -176,6 +195,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   scoreboard: {
     label: "Scoreboard",
     description: "Table of confirmed winners — shown as a popup via a \"Show Winner\" button",
+    category: "Draw & Results",
     defaultWidth: 420,
     defaultHeight: 520,
     createDefaultProps: () => ({
@@ -195,6 +215,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   fireworks: {
     label: "Fireworks",
     description: "Particle burst effect — wire a Trigger Graph link to Play/Stop it",
+    category: "Effects",
     defaultWidth: 1920,
     defaultHeight: 1080,
     createDefaultProps: () => ({
@@ -213,6 +234,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   stageLight: {
     label: "Stage Light",
     description: "Sweeping spotlight beam — wire a Trigger Graph link to Play/Stop it",
+    category: "Effects",
     defaultWidth: 300,
     defaultHeight: 500,
     createDefaultProps: () => ({
@@ -228,6 +250,32 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       duration: 4000,
       loop: true,
     }),
+  },
+  linkOpener: {
+    label: "Link Opener",
+    description: "Opens the latest winner's URL in a browser — wire a Trigger Graph link to it",
+    category: "Actions",
+    defaultWidth: 160,
+    defaultHeight: 64,
+    createDefaultProps: () => ({
+      urlField: "",
+    }),
+  },
+  draw: {
+    label: "Draw",
+    description: "Picks a pending winner for the current draw — wire a Trigger Graph link to it",
+    category: "Actions",
+    defaultWidth: 160,
+    defaultHeight: 64,
+    createDefaultProps: () => ({}),
+  },
+  confirmWinner: {
+    label: "Confirm Winner",
+    description: "Commits the pending draw result to the database — wire a Trigger Graph link to it",
+    category: "Actions",
+    defaultWidth: 160,
+    defaultHeight: 64,
+    createDefaultProps: () => ({}),
   },
 };
 
@@ -252,8 +300,15 @@ export function createComponentAt(type: LandingComponentType, x: number, y: numb
 
 // Từ vựng tín hiệu Trigger Graph của TỪNG loại component — "emits" là Event loại này CÓ THỂ phát ra
 // (làm nguồn/source trên Graph, chỉ Signal EMITTER mới có), "listensFor" là Command loại này HIỂU
-// và phản ứng (làm đích/target trên Graph, chỉ Signal RECEIVER mới có) — 1 loại component chỉ nên
-// có ĐÚNG 1 trong 2 field này, không bao giờ cả hai (xem nguyên tắc Emitter/Receiver ở CLAUDE.md).
+// và phản ứng (làm đích/target trên Graph, chỉ Signal RECEIVER mới có).
+// Đa số component chỉ có ĐÚNG 1 trong 2 field này (xem nguyên tắc Emitter/Receiver ở CLAUDE.md).
+// NGOẠI LỆ HẸP: 1 Receiver có animation hoàn thành sau 1 khoảng thời gian KHÔNG CỐ ĐỊNH (vd Lucky
+// Wheel — tuỳ template/reveal timing mà lúc quay xong khác nhau mỗi lần) được phép có thêm ĐÚNG 1
+// emit cho tín hiệu "báo xong việc nó vừa được giao" (vd "Wheel.SpinCompleted") — để nối chuỗi hành
+// động (Wheel quay xong → Fireworks bắn) mà không phải đoán 1 khoảng delay cố định rồi hy vọng khớp
+// (không chính xác, dễ lệch mỗi khi đổi cấu hình animation). Đây KHÔNG phải "component tự do vừa
+// Emitter vừa Receiver" — chỉ áp dụng cho đúng 1 tín hiệu hoàn-thành-việc-của-chính-nó, không phải
+// danh sách emit tuỳ ý không liên quan gì tới Command nó vừa nhận.
 // Loại nào KHÔNG có mặt ở đây (Text/Image/Countdown/PrizeList/...) không bao giờ tham gia Trigger
 // Graph — bị lọc bỏ hoàn toàn khỏi màn hình đó (xem TriggerGraphEditor.tsx), tránh rối mắt với
 // những component không liên quan gì tới việc điều khiển bằng tín hiệu.
@@ -268,7 +323,18 @@ export interface ComponentSignals {
 
 export const COMPONENT_SIGNALS: Partial<Record<LandingComponentType, ComponentSignals>> = {
   button: { emits: ["Button.Click"] },
-  luckyWheel: { listensFor: ["Wheel.StartSpin"] },
+  // Lucky Wheel vừa listensFor (nhận lệnh quay) vừa emits (tự báo khi quay xong) — xem ngoại lệ hẹp
+  // ở comment trên. "Wheel.SpinCompleted" bắn qua sequence.fireClick() ngay tại điểm animation quay
+  // THẬT SỰ kết thúc (xem WheelTemplate.tsx/DigitRollerTemplate.tsx), không phải 1 delay đoán trước.
+  luckyWheel: { listensFor: ["Wheel.StartSpin"], emits: ["Wheel.SpinCompleted"] },
   fireworks: { listensFor: ["Fireworks.Play", "Fireworks.Stop"] },
   stageLight: { listensFor: ["StageLight.Play", "StageLight.Stop"] },
+  // Mở URL là 1 side effect tức thời (không phải animation có trạng thái đang chạy) — chỉ cần 1
+  // Command duy nhất, không có ".Stop" như Fireworks/Stage Light.
+  linkOpener: { listensFor: ["LinkOpener.Open"] },
+  // Ngoại lệ hẹp — giống Lucky Wheel (xem comment ở DrawComponent trong types.ts): pick() là IPC bất
+  // đồng bộ, "Draw.Picked" chỉ bắn SAU KHI pick() thật sự thành công (xem DrawView.tsx), để nối
+  // chuỗi chính xác sang Wheel.StartSpin thay vì đoán 1 delay cố định.
+  draw: { listensFor: ["Draw.Pick"], emits: ["Draw.Picked"] },
+  confirmWinner: { listensFor: ["ConfirmWinner.Confirm"] },
 };
