@@ -11,9 +11,9 @@ const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500
 const sectionClass = "text-[10px] uppercase tracking-wide text-base-500";
 
 const PRESET_LABELS: Record<FireworksProps["preset"], string> = {
-  burstCenter: "Burst (center)",
-  rain: "Rain",
-  cannons: "Cannons (2 corners)",
+  burstCenter: "Single burst (center)",
+  rain: "Continuous show",
+  cannons: "Twin cannons (2 corners)",
 };
 const PALETTE_LABELS: Record<FireworksProps["colorPalette"], string> = {
   brand: "Brand colors",
@@ -82,6 +82,17 @@ export default function FireworksPanel({ props, onChange }: FireworksPanelProps)
           />
         </div>
         <div>
+          <label className={labelClass}>Launch height (%)</label>
+          <input
+            type="number"
+            min={5}
+            max={100}
+            className={fieldClass}
+            value={Math.round(props.launchHeight * 100)}
+            onChange={(e) => onChange({ launchHeight: Math.min(1, Math.max(0.05, Number(e.target.value) / 100)) })}
+          />
+        </div>
+        <div>
           <label className={labelClass}>Spread angle (deg)</label>
           <input
             type="number"
@@ -142,11 +153,6 @@ export default function FireworksPanel({ props, onChange }: FireworksPanelProps)
         />
         Loop (fire again automatically after each burst)
       </label>
-
-      <p className="text-[10px] leading-snug text-base-500">
-        Idle by default — wire a link in the Trigger Graph (Button → Play → this component) to make
-        it fire during Present Mode. The Builder shows a static preview only.
-      </p>
     </div>
   );
 }

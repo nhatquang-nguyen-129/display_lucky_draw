@@ -5,6 +5,7 @@ import Participants from "./pages/Participants";
 import Prizes from "./pages/Prizes";
 import DrawSessionDetail from "./pages/DrawSessionDetail";
 import Settings from "./pages/Settings";
+import Help from "./pages/Help";
 import PresentMode from "./pages/PresentMode";
 import LandingPage from "./pages/LandingPage";
 import LandingBuilderWindow from "./pages/LandingBuilderWindow";
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/draw" element={<DrawSessionDetail />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/help" element={<Help />} />
       </Route>
     </Routes>
   );

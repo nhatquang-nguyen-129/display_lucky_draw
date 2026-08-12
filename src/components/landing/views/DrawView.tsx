@@ -34,7 +34,7 @@ export default function DrawView({
 
   if (!sequence) {
     return (
-      <div className="flex h-full w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-base-700 text-[11px] text-base-500">
+      <div className="flex h-full w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gold-300/60 bg-gold-500 text-[11px] font-medium text-white shadow-md">
         <DrawIcon />
         Draw
       </div>

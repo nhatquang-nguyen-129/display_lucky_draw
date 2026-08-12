@@ -15,6 +15,7 @@ import ButtonPanel from "./panels/ButtonPanel";
 import ScoreboardPanel from "./panels/ScoreboardPanel";
 import FireworksPanel from "./panels/FireworksPanel";
 import StageLightPanel from "./panels/StageLightPanel";
+import DimBackgroundPanel from "./panels/DimBackgroundPanel";
 import LinkOpenerPanel from "./panels/LinkOpenerPanel";
 import DrawPanel from "./panels/DrawPanel";
 import ConfirmWinnerPanel from "./panels/ConfirmWinnerPanel";
@@ -92,6 +93,7 @@ export default function PropertiesPanel({
       {selected.type === "scoreboard" && <ScoreboardPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "fireworks" && <FireworksPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "stageLight" && <StageLightPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "dimBackground" && <DimBackgroundPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "linkOpener" && (
         <LinkOpenerPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
