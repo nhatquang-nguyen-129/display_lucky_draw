@@ -106,18 +106,27 @@ export default function ButtonPanel({ component, usedNames, onChangeComponent, o
         </div>
       </div>
 
+      <div className="h-px bg-base-800" />
+
+      <label className="flex items-center gap-1.5 text-xs text-base-200">
+        <input
+          type="checkbox"
+          checked={props.startEnabled}
+          onChange={(e) => onChange({ startEnabled: e.target.checked })}
+          className="accent-gold-500"
+        />
+        Enabled at the start of Present Mode
+      </label>
+      <p className="text-[10px] leading-snug text-base-500">
+        Unchecked = greyed out until a "Button.Enable" signal arrives (see Help for an example).
+      </p>
+
       <div className="rounded border border-base-800 bg-base-800/40 p-2">
         <p className="text-[10px] uppercase tracking-wide text-base-500">Emits to Trigger Graph</p>
         <p className="mt-1 text-xs text-base-200">{(COMPONENT_SIGNALS.button?.emits ?? []).join(", ")}</p>
-        <p className="mt-1 text-[10px] leading-snug text-base-500">
-          Wire this in the Trigger Graph to make other components react when this button is clicked.
-        </p>
+        <p className="mt-2 text-[10px] uppercase tracking-wide text-base-500">Listens for (optional gate)</p>
+        <p className="mt-1 text-xs text-base-200">{(COMPONENT_SIGNALS.button?.listensFor ?? []).join(", ")}</p>
       </div>
-
-      <p className="text-[10px] leading-snug text-base-500">
-        Buttons only respond to clicks in the real Present Mode window — in this Builder they're
-        shown disabled so editing never triggers anything.
-      </p>
     </div>
   );
 }

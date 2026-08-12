@@ -190,6 +190,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       borderRadius: 12,
       strokeColor: "#0B0B10",
       strokeWidth: 0,
+      startEnabled: true,
     }),
   },
   scoreboard: {
@@ -224,6 +225,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       colorPalette: "brand",
       duration: 3000,
       launchDirection: 0,
+      launchHeight: 0.55,
       spreadAngle: 360,
       burstRadius: 40,
       gravity: 650,
@@ -249,6 +251,18 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       intensity: 0.8,
       duration: 4000,
       loop: true,
+    }),
+  },
+  dimBackground: {
+    label: "Dim Background",
+    description: "Fades a color overlay in/out — wire a Trigger Graph link to Play/Stop it",
+    category: "Effects",
+    defaultWidth: 1920,
+    defaultHeight: 1080,
+    createDefaultProps: () => ({
+      color: "#000000",
+      targetOpacity: 0.6,
+      fadeDurationMs: 500,
     }),
   },
   linkOpener: {
@@ -322,13 +336,17 @@ export interface ComponentSignals {
 }
 
 export const COMPONENT_SIGNALS: Partial<Record<LandingComponentType, ComponentSignals>> = {
-  button: { emits: ["Button.Click"] },
+  // "Gateable Emitter" — ngoại lệ hẹp thứ 2 (xem checklist đầu types.ts): Button vẫn CHỈ emit
+  // Button.Click, nhưng listensFor thêm đúng 2 Command chung để 1 Signal bất kỳ trên Graph khoá/mở
+  // được nó (vd "Wheel.SpinCompleted → Confirm.Enable") — xem ButtonView.tsx.
+  button: { emits: ["Button.Click"], listensFor: ["Button.Enable", "Button.Disable"] },
   // Lucky Wheel vừa listensFor (nhận lệnh quay) vừa emits (tự báo khi quay xong) — xem ngoại lệ hẹp
   // ở comment trên. "Wheel.SpinCompleted" bắn qua sequence.fireClick() ngay tại điểm animation quay
   // THẬT SỰ kết thúc (xem WheelTemplate.tsx/DigitRollerTemplate.tsx), không phải 1 delay đoán trước.
   luckyWheel: { listensFor: ["Wheel.StartSpin"], emits: ["Wheel.SpinCompleted"] },
   fireworks: { listensFor: ["Fireworks.Play", "Fireworks.Stop"] },
   stageLight: { listensFor: ["StageLight.Play", "StageLight.Stop"] },
+  dimBackground: { listensFor: ["DimBackground.Play", "DimBackground.Stop"] },
   // Mở URL là 1 side effect tức thời (không phải animation có trạng thái đang chạy) — chỉ cần 1
   // Command duy nhất, không có ".Stop" như Fireworks/Stage Light.
   linkOpener: { listensFor: ["LinkOpener.Open"] },

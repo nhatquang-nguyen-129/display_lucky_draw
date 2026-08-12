@@ -32,6 +32,27 @@ là ví dụ thứ 2: vừa `listensFor "Draw.Pick"` vừa `emits "Draw.Picked"`
 "component tự do vừa Emitter vừa Receiver" — chỉ áp dụng cho đúng 1 tín hiệu
 hoàn-thành-việc-của-chính-nó.
 
+**Ngoại lệ hẹp thứ 2 — "Gateable Emitter"**: dùng khi muốn 1 Emitter (hôm nay chỉ có **Button**) bị
+khoá/mở theo 1 Signal bất kỳ trên Graph, kiểu "nút Confirm chỉ bấm được SAU KHI Wheel quay xong".
+Emitter đó được phép `listensFor` thêm ĐÚNG 2 Command dùng chung theo khuôn `<Type>.Enable`/
+`<Type>.Disable` (Button có `"Button.Enable"`/`"Button.Disable"`) — nhận Command nào thì set đúng 1
+boolean nội bộ (`gateOpen` trong `ButtonView.tsx`) quyết định nút có bấm được không, kèm 1 field
+`startEnabled` trên chính component đó (trong Properties Panel) quy định trạng thái TRƯỚC KHI Command
+đầu tiên tới. Khác hẳn ngoại lệ ở trên — Emitter vẫn CHỈ emit đúng 1 Event như cũ (Button vẫn chỉ phát
+`Button.Click`), nó không hề "biết" thêm business logic nào, chỉ thêm khả năng bị khoá/mở TỪ BÊN
+NGOÀI qua Graph. Ví dụ nối dây (xem mục 8 để biết cách nối):
+
+```mermaid
+graph LR
+  W["Lucky Wheel"] -->|"Wheel.SpinCompleted"| G[Trigger Graph]
+  G -->|"Button.Enable"| CF["Button 'Confirm'<br/>(startEnabled = false)"]
+```
+
+Với `startEnabled = false`, nút Confirm bắt đầu Present Mode ở trạng thái xám/không bấm được, chỉ mở
+khoá đúng lúc Wheel báo quay xong — không cần đoán delay, không cần Confirm biết Wheel là gì. Muốn
+khoá lại sau đó (vd bấm Draw lần nữa thì Confirm phải khoá lại chờ vòng quay mới) thì nối thêm 1 dây
+`Button.Disable` từ tín hiệu tương ứng (vd Button "Draw" → `Button.Click` → Confirm's `Button.Disable`).
+
 **Trigger Graph là tầng trung gian DUY NHẤT nối Emitter và Receiver:**
 
 ```mermaid
@@ -119,11 +140,16 @@ gàng (lưới + smart guide).
 Toàn bộ việc tạo link giờ là **kéo-thả 2 bước liên tiếp**, không còn form dropdown nào:
 
 **Bước 1 — kéo tín hiệu từ sidebar trái ra 1 Component Node.** Sidebar (`TriggerSidebar.tsx`) mục
-"Signals" liệt kê MỌI tín hiệu (`emits`/`listensFor`) của các loại component **đang thật sự có mặt**
-trên trang (vd trang có Button + Lucky Wheel thì sidebar hiện đúng 2 chip kéo được: `Button.Click`
-và `Wheel.StartSpin`). Kéo 1 tín hiệu thả **đúng vào** Component Node hỗ trợ nó → tạo ra 1 Signal
-Chip Node neo cạnh component đó (xem 2.2). 1 tín hiệu kéo được nhiều lần (thả vào nhiều instance
-khác nhau nếu trang có nhiều Button/nhiều Lucky Wheel).
+"Components" liệt kê từng COMPONENT INSTANCE đang thật sự có mặt trên trang (vd trang có 2 Button
+tên "Draw"/"Confirm" + 1 Lucky Wheel thì hiện đúng 3 dòng riêng biệt, không gộp chung theo type) —
+click 1 dòng mở flyout bên phải liệt kê tín hiệu (`emits`/`listensFor`) CỦA RIÊNG loại component đó.
+Trước đây đây là 1 danh sách tín hiệu PHẲNG khử trùng theo tên (vd chỉ 1 chip `Button.Click` dùng
+chung cho mọi Button) — rối khi trang có nhiều Emitter/Receiver cùng loại vì không rõ tín hiệu đó
+"thuộc về" instance nào; gom theo component instance như hiện tại giải quyết đúng vấn đề đó, dù bản
+chất tên tín hiệu vẫn chỉ phụ thuộc TYPE (không có tín hiệu định danh riêng theo instance). Kéo 1
+chip trong flyout thả **đúng vào** Component Node hỗ trợ nó → tạo ra 1 Signal Chip Node neo cạnh
+component đó (xem 2.2) — vẫn thả được vào BẤT KỲ instance nào cùng type hỗ trợ tín hiệu đó trên
+canvas, không bắt buộc phải là đúng component vừa mở flyout.
 
 **Bước 2 — nối dây giữa 2 chip.** Kéo từ chấm của 1 chip **Emit** sang chấm của 1 chip **Listen**
 (khác component) → tạo ra 1 `TriggerAction` thật, hiện ngay dưới dạng đường nét đứt nối 2 chip.
@@ -289,7 +315,8 @@ Receiver hiện khung tĩnh (preview), không tự chạy gì.
    chọn "action" nào cả, chỉ có tên + màu sắc).
 2. Kéo 1 **Lucky Wheel** vào Landing, cấu hình field hiển thị/field trúng như bình thường.
 3. Mở **Trigger Graph** — canvas tự hiện 2 Component Node: "Draw" và "Lucky Wheel". Sidebar trái
-   mục "Signals" hiện 2 chip kéo được: `Button.Click` và `Wheel.StartSpin`.
+   mục "Components" hiện 2 dòng — click "Draw" mở flyout thấy chip `Button.Click`, click "Lucky
+   Wheel" mở flyout thấy chip `Wheel.StartSpin`.
 4. Kéo `Button.Click` thả vào Component Node "Draw" → xuất hiện 1 Signal Chip Node (xanh nhạt) neo
    cạnh "Draw".
 5. Kéo `Wheel.StartSpin` thả vào Component Node "Lucky Wheel" → xuất hiện 1 Signal Chip Node (xanh
@@ -321,6 +348,56 @@ thuần) mà không cần Button biết gì về Draw/winner:
    ra** (Link Opener tự no-op im lặng vì `data.results` rỗng, xem `LinkOpenerView.tsx`). Sau khi
    quay + Confirm ra 1 winner, bấm lại nút → trình duyệt mặc định của hệ điều hành mở đúng URL lấy
    từ field đã chọn, của ĐÚNG participant vừa trúng gần nhất (`data.results[0]`).
+
+### 8.2. Biến thể: khoá Draw/Confirm/Open Link trong lúc Wheel đang quay (Gateable Emitter)
+
+Ghép tiếp lên ví dụ ở mục 8 — mục tiêu: **trong lúc Wheel đang quay, KHÔNG nút nào bấm được cả, kể
+cả Draw** (tránh bấm Draw lần nữa trong lúc Wheel còn đang quay kết quả cũ, hoặc bấm Confirm/Open
+Link trước khi có winner thật). Chỉ dùng đúng 2 Command chung `Button.Enable`/`Button.Disable` (xem
+mục 1 — "Gateable Emitter") trên cả 3 Button, không cần thêm Component/Command nào mới:
+
+```mermaid
+graph LR
+  D["Button 'Draw'<br/>(startEnabled = true)"]
+  C["Button 'Confirm'<br/>(startEnabled = false)"]
+  L["Button 'Open Link'<br/>(startEnabled = false)"]
+  P["Draw"]
+  W["Lucky Wheel"]
+  CW["Confirm Winner"]
+  LO["Link Opener"]
+
+  D -->|"Draw.Pick"| P
+  P -->|"Wheel.StartSpin"| W
+  P -->|"Button.Disable"| D
+  P -->|"Button.Disable"| C
+  P -->|"Button.Disable"| L
+  W -->|"Button.Enable"| D
+  W -->|"Button.Enable"| C
+  W -->|"Button.Enable"| L
+  C -->|"ConfirmWinner.Confirm"| CW
+  L -->|"LinkOpener.Open"| LO
+```
+
+Cách nối trên canvas thật (Properties Panel của mỗi Button trước):
+
+1. Button "Draw": **Enabled at the start of Present Mode** = bật (đây là nút duy nhất bấm được lúc
+   mới vào trang). Button "Confirm" và "Open Link": tắt field này — cả 2 bắt đầu Present Mode ở
+   trạng thái xám, chưa bấm được.
+2. Nối `Button.Click` (Draw) → `Draw.Pick` (Draw) — y hệt bước 4-6 ở mục 8.
+3. Nối `Draw.Picked` (chip **emit** của Draw) sang **3 chip Listen khác nhau**, mỗi chip 1 dây riêng
+   (1 signal chip Emit nối được nhiều dây cùng lúc — không giới hạn 1-1): `Wheel.StartSpin` (Lucky
+   Wheel, y hệt mục 8), `Button.Disable` của chính Button "Draw", `Button.Disable` của Button
+   "Confirm", `Button.Disable` của Button "Open Link". Ngay khi vừa rút xong candidate (trước cả lúc
+   Wheel bắt đầu quay), cả 3 nút đồng loạt khoá lại.
+4. Nối `Wheel.SpinCompleted` (chip emit của Lucky Wheel, xem mục 1) sang 3 chip `Button.Enable`
+   tương ứng của Draw/Confirm/Open Link — mở khoá lại đồng loạt đúng lúc Wheel dừng.
+5. Nối `Button.Click` (Confirm) → `ConfirmWinner.Confirm`, và `Button.Click` (Open Link) →
+   `LinkOpener.Open` — y hệt mục 8.1.
+
+Kết quả: vòng đời 1 lượt quay là Draw bấm được → bấm xong, cả 3 nút khoá ngay lập tức → Wheel quay
+→ Wheel dừng, cả 3 nút mở lại → Confirm/Open Link giờ mới bấm được, Draw cũng mở lại sẵn sàng cho
+lượt kế tiếp. Không Button nào "biết" nó đang khoá vì lý do gì — chỉ đơn thuần nhớ tín hiệu
+Enable/Disable nào tới sau cùng (xem `ButtonView.tsx`).
 
 Không có bất kỳ "trạng thái disabled" nào lộ ra trên Button — nút luôn bấm được và luôn phát
 `Button.Click`, việc "chưa có gì để mở thì không làm gì" là trách nhiệm của Receiver, không phải

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import Button from "@/components/Button";
 import ComponentPalette from "@/components/landing/ComponentPalette";
@@ -6,7 +6,7 @@ import LandingCanvas, { CanvasTool } from "@/components/landing/LandingCanvas";
 import LayersPanel from "@/components/landing/LayersPanel";
 import PropertiesPanel from "@/components/landing/PropertiesPanel";
 import TriggerGraphEditor from "@/components/landing/triggerGraph/TriggerGraphEditor";
-import { createComponentAt } from "@/components/landing/componentRegistry";
+import { COMPONENT_REGISTRY, createComponentAt } from "@/components/landing/componentRegistry";
 import {
   BackgroundConfig,
   ButtonComponent,
@@ -24,6 +24,21 @@ const floatingBtn =
 const floatingBtnIdle = "border-base-700 bg-base-900 text-base-100 hover:border-gold-500/50";
 const floatingBtnActive = "border-gold-500 bg-gold-500 text-base-950";
 const floatingBtnDisabled = "border-base-800 bg-base-900 text-base-700 cursor-not-allowed";
+
+// Popup nhỏ hiện khi di chuột vào nút toolbar — tên nút + phím tắt, thay cho tooltip mặc định của
+// trình duyệt (title, có độ trễ ~1s và không style được). `delay-300` để không nhấp nháy khi rê
+// chuột lướt qua nhiều nút liên tiếp; đặt bên PHẢI nút (left-full) vì cả cụm nút nằm dọc theo mép trái.
+function ToolbarTooltip({ label, shortcut, children }: { label: string; shortcut: string; children: ReactNode }) {
+  return (
+    <div className="group relative">
+      {children}
+      <div className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-base-100 px-2 py-1 text-xs font-medium text-base-950 opacity-0 shadow-lg transition-opacity delay-300 group-hover:opacity-100">
+        {label}
+        <span className="ml-1.5 rounded border border-base-950/20 bg-base-950/10 px-1 text-[10px]">{shortcut}</span>
+      </div>
+    </div>
+  );
+}
 
 // 1 = tỉ lệ "vừa khung" (zoom out tối đa — cả landing đã full khung nhìn, Hand tool vô nghĩa
 // và bị disable ở mức này). 4 = phóng to 400% so với tỉ lệ vừa khung.
@@ -137,7 +152,8 @@ export default function LandingBuilderWindow() {
 
   // Phím tắt đổi tool — H = Hand (giống Photoshop; ở Canvas thường chỉ khi đã zoom in, ở Trigger
   // Graph luôn bật được vì màn hình đó không có khái niệm "đã vừa khung"), V hoặc Esc = quay lại
-  // Select. Ctrl/Cmd +/- = Zoom In/Out. Delete/Backspace = xoá component đang chọn (đúng hành vi
+  // Select, G = bật/tắt Gridline (áp dụng cả 2 màn hình, giống hệt nút Gridline ở toolbar).
+  // Ctrl/Cmd +/- = Zoom In/Out. Delete/Backspace = xoá component đang chọn (đúng hành vi
   // nút "Delete component" trong SharedFields.tsx, chỉ thêm lối tắt bàn phím) — chỉ áp dụng ở canvas
   // thường (bỏ qua khi graphMode, vì selection trong Trigger Graph là 1 khái niệm khác — 1 node/link
   // cục bộ của chính màn hình đó, không phải component đang chọn ở đây). Phải bỏ qua khi đang gõ
@@ -175,6 +191,8 @@ export default function LandingBuilderWindow() {
         if (graphMode || zoom > MIN_ZOOM) setTool("hand");
       } else if (key === "v" || e.key === "Escape") {
         setTool("select");
+      } else if (key === "g") {
+        setShowGrid((v) => !v);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -306,6 +324,11 @@ export default function LandingBuilderWindow() {
 
     updateConfig((prev) => {
       const component = createComponentAt(type, x, y, prev.components.length);
+      // Component nhóm "Actions" (Draw/Confirm Winner/Link Opener...) vô hình ở Present Mode, kéo
+      // thả như bình thường (không giới hạn số lượng — vd 2 Link Opener mở 2 URL khác nhau vẫn hợp
+      // lý) nhưng tự ẩn khỏi Canvas ngay khi tạo để không chiếm chỗ/gây rối giao diện — vẫn chọn/
+      // cấu hình được qua LayersPanel hoặc Properties Panel tự mở ngay bên dưới như component khác.
+      if (COMPONENT_REGISTRY[type].category === "Actions") component.hiddenInBuilder = true;
       setSelectedId(component.id);
       setShowPanel(true);
       return { ...prev, components: [...prev.components, component] };
@@ -313,9 +336,21 @@ export default function LandingBuilderWindow() {
     setShowAddFlyout(false);
   }
 
+  // Xoá 1 component kéo theo MỌI signal chip nó sở hữu (config.triggerGraph.signalChips) và MỌI
+  // TriggerAction ở component KHÁC đang lấy nó làm nguồn (sourceComponentId) — cùng cơ chế với
+  // handleDeleteChip trong TriggerGraphEditor.tsx, chỉ khác là xoá cả 1 component thay vì 1 chip.
+  // Không cascade thì chip/link cũ sẽ mồ côi trên Trigger Graph, không còn ý nghĩa gì.
+  function cascadeDeleteComponent(prev: LandingConfig, id: string): LandingConfig {
+    const signalChips = (prev.triggerGraph?.signalChips ?? []).filter((c) => c.ownerComponentId !== id);
+    const components = prev.components
+      .filter((c) => c.id !== id)
+      .map((c) => ({ ...c, triggerActions: (c.triggerActions ?? []).filter((a) => a.sourceComponentId !== id) }));
+    return { ...prev, components, triggerGraph: { ...prev.triggerGraph, signalChips } };
+  }
+
   function handleDeleteSelected() {
     if (!selectedId) return;
-    updateConfig((prev) => ({ ...prev, components: prev.components.filter((c) => c.id !== selectedId) }));
+    updateConfig((prev) => cascadeDeleteComponent(prev, selectedId));
     setSelectedId(null);
     setShowPanel(false);
   }
@@ -382,6 +417,7 @@ export default function LandingBuilderWindow() {
             showGrid={showGrid}
             tool={tool}
             zoom={zoom}
+            onZoomChange={(updater) => setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, updater(z))))}
             onSelect={handleSelect}
             onUpdateComponent={handleUpdateComponent}
             onDropNewComponent={handleDropNewComponent}
@@ -408,47 +444,56 @@ export default function LandingBuilderWindow() {
             gì ở đó). Dời hẳn sang phải khi graphMode để không đè lên TriggerSidebar (luôn chiếm
             w-72 = 18rem cố định bên trái, xem TriggerGraphEditor.tsx). */}
         <div className={`absolute top-4 flex flex-col gap-2 ${graphMode ? "left-[19rem]" : "left-4"}`}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setTool("select");
-            }}
-            title="Select tool (V)"
-            className={`${floatingBtn} ${tool === "select" ? floatingBtnActive : floatingBtnIdle}`}
-          >
-            <SelectIcon />
-          </button>
+          <ToolbarTooltip label="Select tool" shortcut="V">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setTool("select");
+              }}
+              aria-label="Select tool (V)"
+              className={`${floatingBtn} ${tool === "select" ? floatingBtnActive : floatingBtnIdle}`}
+            >
+              <SelectIcon />
+            </button>
+          </ToolbarTooltip>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (graphMode || zoom > MIN_ZOOM) setTool("hand");
-            }}
-            disabled={!graphMode && zoom <= MIN_ZOOM}
-            title={
-              !graphMode && zoom <= MIN_ZOOM
-                ? "Hand tool needs zooming in first — the page already fits the screen"
-                : "Hand tool (H) — hold to pan"
-            }
-            className={`${floatingBtn} ${
-              !graphMode && zoom <= MIN_ZOOM ? floatingBtnDisabled : tool === "hand" ? floatingBtnActive : floatingBtnIdle
-            }`}
+          <ToolbarTooltip
+            label={!graphMode && zoom <= MIN_ZOOM ? "Hand tool needs zooming in first" : "Hand tool"}
+            shortcut="H"
           >
-            <HandIcon />
-          </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (graphMode || zoom > MIN_ZOOM) setTool("hand");
+              }}
+              disabled={!graphMode && zoom <= MIN_ZOOM}
+              aria-label={
+                !graphMode && zoom <= MIN_ZOOM
+                  ? "Hand tool needs zooming in first — the page already fits the screen"
+                  : "Hand tool (H) — hold to pan"
+              }
+              className={`${floatingBtn} ${
+                !graphMode && zoom <= MIN_ZOOM ? floatingBtnDisabled : tool === "hand" ? floatingBtnActive : floatingBtnIdle
+              }`}
+            >
+              <HandIcon />
+            </button>
+          </ToolbarTooltip>
 
           <div className="h-px bg-base-800" />
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowGrid((v) => !v);
-            }}
-            title="Toggle gridlines"
-            className={`${floatingBtn} ${showGrid ? floatingBtnActive : floatingBtnIdle}`}
-          >
-            <GridIcon />
-          </button>
+          <ToolbarTooltip label="Toggle gridlines" shortcut="G">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowGrid((v) => !v);
+              }}
+              aria-label="Toggle gridlines (G)"
+              className={`${floatingBtn} ${showGrid ? floatingBtnActive : floatingBtnIdle}`}
+            >
+              <GridIcon />
+            </button>
+          </ToolbarTooltip>
 
           {!graphMode && (
             <>
@@ -536,9 +581,11 @@ export default function LandingBuilderWindow() {
           )}
         </div>
 
-        {/* Chỉ báo mức zoom + nút +/- nổi góc dưới trái — Ctrl/Cmd +/- vẫn là cách chính, đây chỉ để
-            biết đang ở mức nào và có lối bấm chuột thay thế cho phím tắt. Chỉ có ý nghĩa cho canvas
-            thường — Trigger Graph có zoom/pan riêng của chính nó (điều khiển trong ReactFlow). */}
+        {/* Chỉ báo mức zoom + nút +/- nổi góc dưới trái — cách chính vẫn là cuộn chuột/pinch trackpad
+            ngay trên canvas (xem onZoomChange trong LandingCanvas.tsx) hoặc Ctrl/Cmd +/-, cụm này chỉ
+            để biết đang ở mức nào và có lối bấm chuột thay thế. Chỉ có ý nghĩa cho canvas thường —
+            Trigger Graph có zoom/pan riêng của chính nó (điều khiển trong ReactFlow, đã hỗ trợ sẵn
+            cuộn chuột/pinch mặc định). */}
         {!graphMode && (
           <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-full border border-base-700 bg-base-900 px-1.5 py-1 text-xs text-base-300 shadow-lg">
             <button

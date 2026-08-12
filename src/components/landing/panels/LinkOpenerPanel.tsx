@@ -77,12 +77,6 @@ export default function LinkOpenerPanel({ props, participants, onChange }: LinkO
           ))}
         </select>
       </div>
-
-      <p className="text-[10px] leading-snug text-base-500">
-        Opens this field's value, read from the most recent winner, as a URL in the OS's default
-        browser. Does nothing if there's no winner yet or the field is empty — wire a link in the
-        Trigger Graph (e.g. Button → "LinkOpener.Open" → this component) to trigger it.
-      </p>
     </div>
   );
 }

@@ -12,8 +12,12 @@
 //      Receiver có thời lượng hoàn thành KHÔNG cố định được phép thêm ĐÚNG 1 emit báo "xong việc"
 //      (vd Lucky Wheel vừa listensFor "Wheel.StartSpin" vừa emits "Wheel.SpinCompleted"; Draw cùng
 //      lý do — pick() là IPC bất đồng bộ — vừa listensFor "Draw.Pick" vừa emits "Draw.Picked") để
-//      nối chuỗi hành động chính xác, không phải danh sách emit tự do. Tên tín hiệu theo quy ước
-//      `Component.Action` (vd "Wheel.StartSpin", "Fireworks.Play", "Button.Click").
+//      nối chuỗi hành động chính xác, không phải danh sách emit tự do. NGOẠI LỆ HẸP THỨ 2 — "gateable
+//      Emitter": 1 Emitter được phép thêm listensFor ĐÚNG 2 Command "<Type>.Enable"/"<Type>.Disable"
+//      (vd Button — xem ButtonProps/ButtonView.tsx) để Graph có thể khoá/mở nó theo 1 Signal bất kỳ,
+//      KHÔNG đọc thêm bất kỳ state nghiệp vụ nào khác — vẫn là "vỏ rỗng", chỉ nhớ đúng 1 boolean do
+//      2 Command này set. Tên tín hiệu theo quy ước `Component.Action` (vd "Wheel.StartSpin",
+//      "Fireworks.Play", "Button.Click", "Button.Enable").
 //   1. Thêm interface `XxxProps` + variant `XxxComponent` vào union `LandingComponent` bên dưới.
 //   2. Thêm `src/components/landing/views/XxxView.tsx` (chỉ render, nhận `props` + `LandingData`).
 //   3. Thêm `src/components/landing/panels/XxxPanel.tsx` (form cấu hình trong Properties Panel).
@@ -344,6 +348,18 @@ export interface ParticipantCountComponent extends BaseComponent {
 // phải thiếu sót). Không giới hạn số lượng Button/trang — tên (BaseComponent.name) là BẮT BUỘC và
 // PHẢI DUY NHẤT giữa các Button trên cùng trang để phân biệt trên Trigger Graph (validate trong
 // ButtonPanel.tsx, không phải ở đây).
+//
+// "GATEABLE EMITTER" — ngoại lệ hẹp THỨ 2 (khác hẳn ngoại lệ "báo xong việc" của Lucky Wheel/Draw ở
+// checklist đầu file): Button vẫn là Emitter thuần (không đọc bất kỳ state nghiệp vụ nào, không biết
+// Draw/Wheel/Confirm là gì) nhưng listensFor thêm ĐÚNG 2 Command chung "Button.Enable"/"Button.Disable"
+// để 1 Signal bất kỳ trên Graph có thể tự do khoá/mở nó — vd "Wheel.SpinCompleted → Confirm.Enable"
+// khiến nút Confirm chỉ bấm được SAU KHI quay xong (xem ButtonView.tsx). Button không hề biết TẠI SAO
+// nó bị khoá/mở, chỉ nhớ đúng 1 boolean bật/tắt bởi 2 Command này — vẫn giữ nguyên tinh thần "vỏ rỗng,
+// chỉ phản ứng theo dây đã nối" của toàn bộ Landing Builder, không phải Button "biết" business logic.
+// `startEnabled` là trạng thái xuất phát TRƯỚC khi Command đầu tiên (nếu có) tới — false thì Button
+// bắt đầu Present Mode ở trạng thái khoá sẵn, giống ví dụ Confirm ở trên. Đây là QUY ƯỚC CHUNG (không
+// riêng Button) — Emitter tương lai nào cần gate cũng nên theo đúng khuôn `<Type>.Enable`/
+// `<Type>.Disable`, xem CLAUDE.md.
 export interface ButtonProps {
   label: string;
   fontSize: number;
@@ -352,6 +368,7 @@ export interface ButtonProps {
   borderRadius: number;
   strokeColor: string;
   strokeWidth: number; // 0 = không viền
+  startEnabled: boolean; // trạng thái trước khi nhận Command "Button.Enable"/"Button.Disable" đầu tiên (nếu có wire)
 }
 
 export interface ButtonComponent extends BaseComponent {
@@ -360,19 +377,21 @@ export interface ButtonComponent extends BaseComponent {
 }
 
 // Component hiệu ứng đầu tiên (xem kiến trúc mới ở đầu file: hiệu ứng là Component thật, không phải
-// field gắn kèm component khác) — 1 hệ hạt canvas, vật lý giữ nguyên 3 kiểu đã có trước đây (từng là
-// ConfettiBurst.tsx, nay dời logic vào FireworksView.tsx). Idle (không vẽ gì) cho tới khi nhận lệnh
-// "play" qua useTriggerCommands.ts (đọc từ chính BaseComponent.triggerActions của component này).
+// field gắn kèm component khác) — hệ hạt canvas 2 pha kiểu pháo hoa thật (rocket bay lên để lại vệt
+// sáng → nổ thành chùm tia toả tròn rồi tắt dần, xem FireworksView.tsx), không phải confetti rơi
+// thẳng như bản đầu (từng là ConfettiBurst.tsx). Idle (không vẽ gì) cho tới khi nhận lệnh "play" qua
+// useTriggerCommands.ts (đọc từ chính BaseComponent.triggerActions của component này).
 export interface FireworksProps {
-  preset: "burstCenter" | "rain" | "cannons";
-  particleCount: number;
+  preset: "burstCenter" | "rain" | "cannons"; // 1 quả giữa / bắn liên tục nhiều quả nhỏ / 2 quả 2 góc
+  particleCount: number; // tổng số tia trong 1 lần nổ (rain chia nhỏ ra nhiều lần nổ)
   colorPalette: "brand" | "gold" | "rainbow";
   duration: number; // ms — độ dài 1 lượt Play (không loop) / 1 chu kỳ (loop)
-  launchDirection: number; // độ — hướng bắn chính, rõ nghĩa nhất với preset "cannons"
-  spreadAngle: number; // độ — toả quanh launchDirection
-  burstRadius: number; // biên độ ban đầu của hạt
-  gravity: number;
-  speed: number; // hệ số tốc độ ban đầu của hạt
+  launchDirection: number; // độ — hướng bắn quả pháo (mặc định 0 = thẳng đứng) VÀ hướng chính của chùm tia lúc nổ
+  launchHeight: number; // 0-1 — quả pháo bay lên cao bao nhiêu % chiều cao khung trước khi nổ, tách riêng khỏi speed/gravity để chỉnh trực tiếp
+  spreadAngle: number; // độ — chùm tia toả rộng bao nhiêu quanh launchDirection (360 = toả tròn đều)
+  burstRadius: number; // hệ số kích thước chùm nổ (40 = mặc định/chuẩn) — xem explode() trong FireworksView.tsx
+  gravity: number; // trọng lực kéo tia rơi sau khi nổ — quả pháo lúc bay lên dùng riêng, luôn đủ để tới đỉnh rồi nổ
+  speed: number; // tốc độ văng ra ban đầu của tia lúc nổ — KHÔNG còn ảnh hưởng độ cao bay lên (xem launchHeight)
   loop: boolean; // hết 1 lượt tự bắn lại (Play liên tục) hay tự về idle, chờ lệnh Play tiếp theo
 }
 
@@ -402,6 +421,24 @@ export interface StageLightProps {
 export interface StageLightComponent extends BaseComponent {
   type: "stageLight";
   props: StageLightProps;
+}
+
+// Component hiệu ứng thứ 3 — 1 lớp phủ màu đơn giản, fade opacity qua CSS transition (không cần rAF
+// gì cả, đơn giản hơn cả StageLight). Toggle nhị phân play/stop (tối dần lúc Play, sáng lại lúc
+// Stop), không có duration/loop vì không có khái niệm "1 chu kỳ" — cứ giữ tối cho tới khi bị Stop.
+// QUAN TRỌNG: đây KHÔNG phải 1 lớp đặc biệt "chỉ dim riêng nền" — nó dim TẤT CẢ những gì đang nằm
+// DƯỚI nó theo đúng zIndex/Layers panel, giống hệt mọi component khác trong app (không có ngoại lệ
+// z-order nào cho loại component này) — muốn giữ Wheel/Winner Name/Fireworks sáng trong lúc nền tối
+// đi thì đặt chúng ở zIndex cao hơn Dim Background trong Layers panel.
+export interface DimBackgroundProps {
+  color: string; // hex — màu lớp phủ, mặc định đen
+  targetOpacity: number; // 0-1 — độ tối tối đa lúc đang Play
+  fadeDurationMs: number; // ms — tốc độ chuyển sáng/tối
+}
+
+export interface DimBackgroundComponent extends BaseComponent {
+  type: "dimBackground";
+  props: DimBackgroundProps;
 }
 
 // Receiver thuần, tái tạo lại Button action "openLink" cũ (đã xoá khỏi Button lúc Button trở thành
@@ -462,6 +499,7 @@ export type LandingComponent =
   | ScoreboardComponent
   | FireworksComponent
   | StageLightComponent
+  | DimBackgroundComponent
   | LinkOpenerComponent
   | DrawComponent
   | ConfirmWinnerComponent;

@@ -6,6 +6,11 @@ interface LandingRulersProps {
   avail: { w: number; h: number }; // kích thước vùng canvas thực tế (đã trừ RULER_SIZE)
   canvasWidth: number;
   canvasHeight: number;
+  // Phần "bàn nháp" mở rộng thêm 2 bên trục X/Y quanh khung thật (xem PASTEBOARD_MARGIN_RATIO trong
+  // LandingCanvas.tsx) — chỉ dùng để KÉO DÀI phạm vi vạch chia ra âm/vượt canvasWidth-Height, không
+  // ảnh hưởng gì tới originX/originY (v=0 vẫn luôn là cạnh khung THẬT, không phải cạnh bàn nháp).
+  marginX: number;
+  marginY: number;
   selection?: { x: number; y: number; width: number; height: number } | null;
 }
 
@@ -22,18 +27,35 @@ function niceStep(scale: number, targetPx = 80): number {
 // Thanh thước ngang (trên) + dọc (trái), giống Photoshop — chỉ hiển thị, không tương tác
 // (pointer-events-none), luôn nằm cố định ở rìa khung nhìn trong khi vạch số bên trong dịch theo
 // scale/pan của artboard. Ô vuông góc trên-trái + phần tô sáng theo component đang chọn.
-export default function LandingRulers({ scale, pan, avail, canvasWidth, canvasHeight, selection }: LandingRulersProps) {
+export default function LandingRulers({
+  scale,
+  pan,
+  avail,
+  canvasWidth,
+  canvasHeight,
+  marginX,
+  marginY,
+  selection,
+}: LandingRulersProps) {
   const originX = (avail.w - canvasWidth * scale) / 2 + pan.x;
   const originY = (avail.h - canvasHeight * scale) / 2 + pan.y;
   const step = niceStep(scale);
   const minorStep = step / 5;
 
+  // Vạch chia trải dài hết phần "bàn nháp" (âm ở đầu, vượt canvasWidth/Height ở cuối) — không chỉ
+  // riêng khung thật — để thấy được toạ độ của cả những component đang đặt ngoài khung hiển thị.
   const hTicks: number[] = [];
-  for (let v = 0; v <= canvasWidth + minorStep; v += minorStep) hTicks.push(Math.round(v * 100) / 100);
+  for (let v = -marginX; v <= canvasWidth + marginX + minorStep; v += minorStep) hTicks.push(Math.round(v * 100) / 100);
   const vTicks: number[] = [];
-  for (let v = 0; v <= canvasHeight + minorStep; v += minorStep) vTicks.push(Math.round(v * 100) / 100);
+  for (let v = -marginY; v <= canvasHeight + marginY + minorStep; v += minorStep) vTicks.push(Math.round(v * 100) / 100);
 
-  const isMajor = (v: number) => Math.abs(v % step) < 0.01 || Math.abs((v % step) - step) < 0.01;
+  // Dùng "true mod" (luôn dương) thay vì % thuần của JS — % giữ dấu của số bị chia nên với v ÂM
+  // (giờ có thật, xem hTicks/vTicks phía trên trải cả vào phần bàn nháp) phép kiểm tra cũ sẽ luôn
+  // sai (vd -480 % 100 = -80 trong JS, không phải 20), khiến vạch chính không được nhận diện đúng.
+  const isMajor = (v: number) => {
+    const mod = ((v % step) + step) % step;
+    return mod < 0.01 || step - mod < 0.01;
+  };
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 select-none">

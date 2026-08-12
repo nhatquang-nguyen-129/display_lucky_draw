@@ -175,14 +175,6 @@ export default function ScoreboardPanel({ props, onChange }: ScoreboardPanelProp
           </div>
         </>
       )}
-
-      <p className="text-[10px] leading-snug text-base-500">
-        Only shows winners that have been Confirmed — a pending (not yet confirmed) draw never
-        appears here. Hidden by default in Present Mode — add a Button with the "Show Winner"
-        action to reveal it as a popup in the center of the screen, sized to this component's
-        width/height (drag to resize). This component is often large in the Builder canvas — use
-        the Layers panel (toolbar) to temporarily hide it while editing other components.
-      </p>
     </div>
   );
 }
