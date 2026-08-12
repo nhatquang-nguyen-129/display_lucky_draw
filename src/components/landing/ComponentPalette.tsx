@@ -7,6 +7,12 @@ import { LandingComponentType } from "@/lib/landing/types";
 // gốc (draggable + dataTransfer) đã có sẵn ở DataEditorModal cho việc kéo-thả sắp xếp cột.
 // Gom nhóm theo CATEGORY_ORDER (componentRegistry.ts) — chỉ hiện icon + tên, bỏ hẳn dòng mô tả
 // (đã có label rõ nghĩa + icon là đủ, mô tả dài chỉ khiến danh sách phải cuộn nhiều hơn cần thiết).
+//
+// Nhóm "Actions" (Draw/Confirm Winner/Link Opener...) kéo-thả GIỐNG HỆT mọi nhóm khác — không giới
+// hạn số lượng (vd hoàn toàn hợp lý nếu có 2 Link Opener mở 2 URL khác nhau), vị trí thả không quan
+// trọng vì chúng vô hình ở Present Mode. Tự động ẩn khỏi Canvas ngay sau khi tạo (hiddenInBuilder,
+// xem handleDropNewComponent trong LandingBuilderWindow.tsx) để không chiếm chỗ/gây rối giao diện —
+// vẫn chọn/cấu hình được qua LayersPanel hoặc Properties Panel tự mở ngay sau khi thả.
 export default function ComponentPalette() {
   const byCategory = new Map<string, LandingComponentType[]>();
   COMPONENT_TYPES.forEach((type) => {

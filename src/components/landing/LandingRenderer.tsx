@@ -20,6 +20,7 @@ import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
 import FireworksView from "./views/FireworksView";
 import StageLightView from "./views/StageLightView";
+import DimBackgroundView from "./views/DimBackgroundView";
 import LinkOpenerView from "./views/LinkOpenerView";
 import DrawView from "./views/DrawView";
 import ConfirmWinnerView from "./views/ConfirmWinnerView";
@@ -32,6 +33,13 @@ interface LandingRendererProps {
   // disabled ở đó, tránh bấm nhầm chạy quay số thật lúc đang chỉnh sửa (xem ButtonView.tsx).
   interactive?: boolean;
   sequence?: DrawSequenceActions;
+  // Mặc định LUÔN true (kể cả không truyền) — clip nội dung đúng khung width/height thật, tuyệt đối
+  // bắt buộc ở Present Mode VÀ ở LandingPage.tsx (preview read-only trong cửa sổ chính, phải giống
+  // hệt buổi trình chiếu thật). CHỈ LandingCanvas.tsx (preview bên trong chính màn hình Builder, nơi
+  // người dùng đang kéo-thả) truyền `clip={false}` — để 1 component đang đặt ở "bàn nháp" ngoài
+  // khung thật (xem PASTEBOARD_MARGIN_RATIO) vẫn thấy được nội dung/màu sắc thật của nó thay vì bị
+  // cắt mất, trong khi Present Mode/LandingPage.tsx vẫn clip bình thường, không ảnh hưởng gì.
+  clip?: boolean;
 }
 
 // Các loại component "động" đơn giản (không tự quản lý animation state như luckyWheel) được remount
@@ -46,7 +54,7 @@ const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["winnerName", "pr
 // Hiệu ứng (fireworks/stageLight) tự quản lý idle/playing của CHÍNH NÓ qua useTriggerCommands.ts —
 // LandingRenderer không còn tính "active reaction" hay vẽ overlay dim/confetti nào ở tầng này nữa.
 
-export default function LandingRenderer({ config, data, scale, interactive, sequence }: LandingRendererProps) {
+export default function LandingRenderer({ config, data, scale, interactive, sequence, clip = true }: LandingRendererProps) {
   const { width, height, background } = config.canvas;
   // Ở Present Mode thật (interactive), Scoreboard KHÔNG vẽ trong vòng lặp per-component bình thường
   // ở khung x/y/width/height của nó — nó là 1 popup canh giữa màn hình, chỉ hiện khi được 1 Button
@@ -67,7 +75,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
 
   return (
     <div
-      className="relative overflow-hidden"
+      className={`relative ${clip ? "overflow-hidden" : ""}`}
       style={{
         width,
         height,
@@ -167,6 +175,8 @@ function renderComponent(
       return <FireworksView component={component} sequence={interactive ? sequence : undefined} />;
     case "stageLight":
       return <StageLightView component={component} sequence={interactive ? sequence : undefined} />;
+    case "dimBackground":
+      return <DimBackgroundView component={component} sequence={interactive ? sequence : undefined} />;
     case "linkOpener":
       return <LinkOpenerView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     case "draw":

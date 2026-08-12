@@ -138,12 +138,6 @@ export default function StageLightPanel({ props, onChange }: StageLightPanelProp
         />
         Loop (keep sweeping until Stop)
       </label>
-
-      <p className="text-[10px] leading-snug text-base-500">
-        Idle by default — wire a link in the Trigger Graph (Button/Winner Name → Play → this
-        component) to make it sweep during Present Mode. The Builder shows a static beam frozen at
-        the center angle.
-      </p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LandingConfig, TriggerAction } from "@/lib/landing/types";
 import { COMPONENT_REGISTRY, COMPONENT_SIGNALS } from "../componentRegistry";
 
@@ -22,6 +22,13 @@ interface LinkRow {
 interface SignalEntry {
   signal: string;
   role: "emit" | "listen";
+}
+
+interface ComponentSignalGroup {
+  componentId: string;
+  label: string;
+  typeLabel: string;
+  signals: SignalEntry[];
 }
 
 const fieldClass =
@@ -49,72 +56,108 @@ function allLinks(config: LandingConfig): LinkRow[] {
   return rows;
 }
 
-// Tín hiệu LIÊN QUAN — chỉ những emits/listensFor của ĐÚNG các loại component đang thật sự có mặt
-// trên trang (không liệt kê tín hiệu của loại component chưa hề được kéo vào Landing), khử trùng
-// theo tên (2 component cùng loại chỉ hiện 1 lần). Đây là nguồn DUY NHẤT cho phần kéo-thả bên dưới.
-function relevantSignals(config: LandingConfig): SignalEntry[] {
-  const typesPresent = new Set(config.components.map((c) => c.type));
-  const seen = new Set<string>();
-  const result: SignalEntry[] = [];
-  typesPresent.forEach((type) => {
-    const signals = COMPONENT_SIGNALS[type];
-    (signals?.emits ?? []).forEach((s) => {
-      if (seen.has(s)) return;
-      seen.add(s);
-      result.push({ signal: s, role: "emit" });
+// Danh sách component THẬT SỰ đang có mặt trên trang (chỉ những loại có emits/listensFor) kèm tín
+// hiệu CỦA RIÊNG NÓ — theo TỪNG INSTANCE, không khử trùng theo tên nữa (trước đây gộp chung 1 danh
+// sách tín hiệu phẳng theo TÊN, khiến 2 Button khác nhau trên trang chỉ hiện chung 1 chip
+// "Button.Click" — không rõ kéo cho Button nào, đặc biệt rối khi trang có nhiều Button/Receiver cùng
+// loại). Tên tín hiệu vẫn dùng chung theo TYPE (không có tín hiệu ring riêng theo instance — bản chất
+// hệ thống này không phân biệt), nhưng gom theo component giúp người dùng tìm đúng "cửa" cần kéo
+// nhanh hơn hẳn so với dò cả cục danh sách phẳng.
+function componentSignalGroups(config: LandingConfig): ComponentSignalGroup[] {
+  return config.components
+    .filter((c) => !!COMPONENT_SIGNALS[c.type])
+    .map((c) => {
+      const signals = COMPONENT_SIGNALS[c.type];
+      const entries: SignalEntry[] = [
+        ...(signals?.emits ?? []).map((s) => ({ signal: s, role: "emit" as const })),
+        ...(signals?.listensFor ?? []).map((s) => ({ signal: s, role: "listen" as const })),
+      ];
+      return {
+        componentId: c.id,
+        label: c.name?.trim() || COMPONENT_REGISTRY[c.type].label,
+        typeLabel: COMPONENT_REGISTRY[c.type].label,
+        signals: entries,
+      };
     });
-    (signals?.listensFor ?? []).forEach((s) => {
-      if (seen.has(s)) return;
-      seen.add(s);
-      result.push({ signal: s, role: "listen" });
-    });
-  });
-  return result;
 }
 
-// Sidebar trái, LUÔN hiện — 2 phần: (1) danh sách tín hiệu CÓ THỂ kéo-thả vào canvas (đặt ra 1
-// signal chip trên ĐÚNG component hỗ trợ nó, xem TriggerGraphEditor.tsx), (2) danh sách link đã
-// nối dây thật (kéo giữa 2 chip trên canvas) — click 1 dòng để sửa Delay/xoá. Tạo link KHÔNG còn
-// form dropdown nữa — 100% qua kéo-thả + nối dây trên canvas.
+// Sidebar trái, LUÔN hiện — 2 phần: (1) danh sách COMPONENT đang có trên trang, click 1 dòng mở
+// flyout liệt kê tín hiệu CỦA RIÊNG NÓ để kéo-thả vào canvas (đặt ra 1 signal chip trên ĐÚNG
+// component hỗ trợ nó, xem TriggerGraphEditor.tsx) — trước đây là 1 danh sách tín hiệu phẳng khử
+// trùng theo TÊN, không rõ tín hiệu đó "thuộc về" component cụ thể nào khi trang có nhiều
+// Emitter/Receiver cùng loại (vd 2 Button); gom theo component giải quyết đúng vấn đề đó. (2) danh
+// sách link đã nối dây thật (kéo giữa 2 chip trên canvas) — click 1 dòng để sửa Delay/xoá. Tạo link
+// KHÔNG còn form dropdown nữa — 100% qua kéo-thả + nối dây trên canvas.
 export default function TriggerSidebar({ config, onChangeAction, onDeleteAction }: TriggerSidebarProps) {
   const links = allLinks(config);
-  const signals = relevantSignals(config);
+  const groups = componentSignalGroups(config);
   const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
+  const [openComponentId, setOpenComponentId] = useState<string | null>(null);
+
+  // Đóng flyout khi click ra ngoài — cùng kiểu với flyout Add/Layers trong LandingBuilderWindow.tsx.
+  useEffect(() => {
+    if (!openComponentId) return;
+    const close = () => setOpenComponentId(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [openComponentId]);
 
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-r border-base-800 bg-base-900">
       <div className="shrink-0 border-b border-base-800 px-4 py-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-base-300">Signals</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-base-300">Components</span>
         <p className="mt-1 text-[10px] leading-snug text-base-500">
-          Drag a signal onto the matching component on canvas to place a chip for it.
+          Click a component to see its signals, then drag one onto the matching node on canvas.
         </p>
       </div>
 
-      <div className="shrink-0 space-y-1.5 border-b border-base-800 p-3">
-        {signals.length === 0 ? (
+      <div className="shrink-0 space-y-1 border-b border-base-800 p-3">
+        {groups.length === 0 ? (
           <p className="px-1 text-[11px] leading-snug text-base-500">
             No Emitter/Receiver component on this page yet.
           </p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {signals.map(({ signal, role }) => (
-              <div
-                key={signal}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData(SIGNAL_DRAG_MIME, JSON.stringify({ signal, role }))}
-                title={
-                  role === "emit"
-                    ? "Emit signal — drag onto the component that sends it"
-                    : "Listen signal — drag onto the component that receives it"
-                }
-                className={`cursor-grab select-none rounded-full border bg-base-800 px-3 py-1 text-[11px] font-medium active:cursor-grabbing ${
-                  role === "emit" ? "border-teal-600 text-teal-600" : "border-gold-500 text-gold-500"
-                }`}
-              >
-                {signal}
+          groups.map((group) => {
+            const isOpen = openComponentId === group.componentId;
+            return (
+              <div key={group.componentId} className="relative" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setOpenComponentId(isOpen ? null : group.componentId)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                    isOpen
+                      ? "border-gold-500 bg-base-800 text-base-100"
+                      : "border-base-700 bg-base-800/60 text-base-200 hover:border-gold-500/50"
+                  }`}
+                >
+                  <span className="truncate">{group.label}</span>
+                  <span className="shrink-0 text-[10px] text-base-500">{group.typeLabel}</span>
+                </button>
+                {isOpen && (
+                  <div className="absolute left-full top-0 z-30 ml-2 w-52 rounded-xl border border-base-700 bg-base-900 p-2.5 shadow-2xl">
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.signals.map(({ signal, role }) => (
+                        <div
+                          key={signal}
+                          draggable
+                          onDragStart={(e) => e.dataTransfer.setData(SIGNAL_DRAG_MIME, JSON.stringify({ signal, role }))}
+                          title={
+                            role === "emit"
+                              ? "Emit signal — drag onto the component that sends it"
+                              : "Listen signal — drag onto the component that receives it"
+                          }
+                          className={`cursor-grab select-none rounded-full border bg-base-800 px-3 py-1 text-[11px] font-medium active:cursor-grabbing ${
+                            role === "emit" ? "border-teal-600 text-teal-600" : "border-gold-500 text-gold-500"
+                          }`}
+                        >
+                          {signal}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
       </div>
 
