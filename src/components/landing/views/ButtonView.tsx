@@ -1,41 +1,77 @@
-import { useState } from "react";
-import { ButtonComponent, DrawSequenceActions } from "@/lib/landing/types";
-import { useTriggerCommands } from "../useTriggerCommands";
+import { ButtonAction, ButtonComponent, DrawSequenceActions, getParticipantField, LandingData } from "@/lib/landing/types";
 
-// Signal EMITTER thuần (xem CLAUDE.md) — CHỈ phát "Button.Click" khi được bấm, không tự chạy bất kỳ
-// business logic nào (không gọi IPC, không biết Draw/Confirm/Reset/... là gì). sequence = undefined
-// ở Builder canvas (không tương tác) — luôn disabled ở đó để tránh bấm nhầm lúc đang chỉnh sửa.
-//
-// "Gateable Emitter" (ngoại lệ hẹp thứ 2, xem checklist đầu types.ts) — listensFor thêm đúng 2
-// Command chung "Button.Enable"/"Button.Disable" để 1 Signal bất kỳ trên Graph khoá/mở được nút này
-// (vd Wheel.SpinCompleted → Confirm.Enable, để nút Confirm chỉ bấm được SAU KHI quay xong). `gateOpen`
-// KHÔNG phải business state — chỉ là 1 boolean được set bởi đúng 2 Command này, Button hoàn toàn
-// không biết TẠI SAO nó bị khoá/mở.
+// 2 action ghi dữ liệu THẬT, VĨNH VIỄN (xem docs/landing-builder.md mục 6) — bắt buộc xác nhận qua
+// popup (sequence.requestConfirm(), vẽ ở LandingRenderer.tsx) trước khi thật sự chạy, tránh bấm
+// nhầm giữa lúc trình chiếu trực tiếp. Action còn lại không cần — hoặc vô hại (draw/
+// toggleScoreboard/openLink không ghi gì bất thuận nghịch), hoặc đã tự no-op an toàn sẵn.
+const CONFIRM_MESSAGES: Partial<Record<ButtonAction, string>> = {
+  confirm: "Are you sure you want to confirm this winner? This will be saved permanently.",
+  reset: "Are you sure you want to reset the session? All draw results will be permanently deleted.",
+};
+
+// Bấm là chạy đúng 1 action cố định đã chọn trong Properties Panel — gọi thẳng hàm tương ứng của
+// DrawSequenceActions, không qua tín hiệu/trung gian nào (trừ "confirm"/"reset" phải qua popup xác
+// nhận trước, xem CONFIRM_MESSAGES + handleClick bên dưới). "openLink" đọc URL từ field đã chọn
+// của winner GẦN NHẤT (data.results[0]) — no-op im lặng nếu chưa có winner hoặc field rỗng, giữ
+// đúng triết lý "bấm nhầm lúc chưa có gì thì không xảy ra chuyện gì", không báo lỗi phiền người vận hành.
+function runAction(component: ButtonComponent, sequence: DrawSequenceActions, data: LandingData | undefined) {
+  const { action, urlField } = component.props;
+  switch (action) {
+    case "draw":
+      // Draw và Redraw/Discard đã GỘP LÀM 1 nút — đang có candidate CHỜ CONFIRM (isPending) thì bấm
+      // "Draw" nghĩa là "quay lại", tự chạy redo() (rút lại candidate đang chờ, chọn lại đúng giải
+      // đó cho người khác); chưa có gì chờ thì mới thật sự pick() 1 candidate mới.
+      if (sequence.isPending) {
+        sequence.redo();
+      } else {
+        sequence.pick().catch(() => {
+          // Lỗi (hết participant/prize, lỗi IPC...) đã có sequence.error hiện riêng — không cần làm gì thêm ở đây.
+        });
+      }
+      return;
+    case "confirm":
+      sequence.confirm();
+      return;
+    case "reset":
+      sequence.resetSession();
+      return;
+    case "toggleScoreboard":
+      sequence.toggleScoreboard();
+      return;
+    case "openLink": {
+      const winnerRow = data?.results?.[0];
+      const participant = winnerRow ? data?.participants.find((p) => p.id === winnerRow.participant_id) : undefined;
+      const url = participant ? getParticipantField(participant, urlField ?? "") : "";
+      if (!url) return;
+      window.api.shell.openExternal(url);
+      return;
+    }
+    case "none":
+    default:
+      return;
+  }
+}
+
 export default function ButtonView({
   component,
+  data,
   sequence,
 }: {
   component: ButtonComponent;
+  data?: LandingData;
   sequence?: DrawSequenceActions;
 }) {
-  const { label, fontSize, color, backgroundColor, borderRadius, strokeColor, strokeWidth, startEnabled } =
-    component.props;
-  const [gateOpen, setGateOpen] = useState(startEnabled);
-
-  useTriggerCommands(component.triggerActions, sequence, (command) => {
-    if (command === "Button.Enable") setGateOpen(true);
-    else if (command === "Button.Disable") setGateOpen(false);
-  });
-
-  const disabled = !sequence || !gateOpen;
-  // Chỉ làm mờ khi bị khoá THẬT ở Present Mode (gate đóng) — KHÔNG áp dụng cho lý do "đang ở
-  // Builder" (sequence undefined), vì lúc đó vẫn cần thấy đúng màu sắc thật để canh chỉnh, không
-  // phải trạng thái "disabled" theo nghĩa gate.
-  const gatedOff = !!sequence && !gateOpen;
+  const { label, fontSize, color, backgroundColor, borderRadius, strokeColor, strokeWidth } = component.props;
+  const disabled = !sequence;
 
   function handleClick() {
-    if (disabled) return;
-    sequence!.fireClick(component.id);
+    if (!sequence) return;
+    const confirmMessage = CONFIRM_MESSAGES[component.props.action];
+    if (confirmMessage) {
+      sequence.requestConfirm(confirmMessage, () => runAction(component, sequence, data));
+      return;
+    }
+    runAction(component, sequence, data);
   }
 
   return (
@@ -47,13 +83,7 @@ export default function ButtonView({
         type="button"
         onClick={handleClick}
         disabled={disabled}
-        title={
-          !sequence
-            ? "Buttons are only active in Present Mode"
-            : !gateOpen
-              ? "Disabled — waiting for a Button.Enable signal from the Trigger Graph"
-              : undefined
-        }
+        title={disabled ? "Buttons are only active in Present Mode" : undefined}
         className="flex h-full w-full items-center justify-center font-medium shadow-lg transition-opacity disabled:cursor-not-allowed"
         style={{
           fontSize,
@@ -63,7 +93,6 @@ export default function ButtonView({
           borderStyle: "solid",
           borderWidth: strokeWidth,
           borderColor: strokeColor,
-          opacity: gatedOff ? 0.5 : 1,
         }}
       >
         {label}

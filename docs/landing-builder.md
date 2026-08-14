@@ -1,12 +1,9 @@
 # LANDING BUILDER
 
 Tài liệu này giải thích **toàn bộ** màn hình Landing Page Builder: 2 cửa sổ liên quan
-(Builder/Present Mode), Canvas mode, Properties Panel, các nhóm component, và cách dữ liệu được
-lưu. Cơ chế **Trigger Graph** (màn hình nối dây tín hiệu) đã có tài liệu riêng, đầy đủ chi tiết ở
-[`docs/graph.md`](./graph.md) — file này KHÔNG lặp lại nội dung đó, chỉ tham chiếu tới khi cần.
-Đọc file này trước khi sửa bất kỳ gì trong `src/pages/LandingBuilderWindow.tsx`,
-`src/components/landing/` (ngoại trừ `triggerGraph/`, xem `docs/graph.md`), hoặc
-`src/lib/landing/types.ts`.
+(Builder/Present Mode), Canvas mode, Properties Panel, các nhóm component, cách Button chạy action,
+và cách dữ liệu được lưu. Đọc file này trước khi sửa bất kỳ gì trong
+`src/pages/LandingBuilderWindow.tsx`, `src/components/landing/`, hoặc `src/lib/landing/types.ts`.
 
 ## 1. Tổng quan — 2 cửa sổ, 1 nguồn dữ liệu
 
@@ -14,19 +11,20 @@ Landing Builder và Present Mode là **2 cửa sổ Electron riêng biệt**, kh
 (mỗi cửa sổ tự fetch/poll dữ liệu qua IPC):
 
 - **Builder** (`#/landing-builder/:sessionId`, `LandingBuilderWindow.tsx`) — nơi dựng trang: kéo-thả
-  component, chỉnh Properties Panel, nối dây Trigger Graph. Mở từ nút "Landing Builder" trên tab
-  "Landing Page" của cửa sổ chính (`src/pages/LandingPage.tsx`). Singleton theo `sessionId` — mở lại
-  khi đã có cửa sổ cùng session chỉ focus lại, không mở cửa sổ mới (`electron/main.ts`,
-  `openLandingBuilderWindow`).
+  component, chỉnh Properties Panel. Mở từ nút "Landing Builder" trên tab "Landing Page" của cửa sổ
+  chính (`src/pages/LandingPage.tsx`). Singleton theo `sessionId` — mở lại khi đã có cửa sổ cùng
+  session chỉ focus lại, không mở cửa sổ mới (`electron/main.ts`, `openLandingBuilderWindow`).
 - **Present Mode** (`#/present/:sessionId`, `src/pages/PresentMode.tsx`) — màn hình thật chiếu cho
   khán giả xem, chỉ render (không sửa được gì). Mở từ `LandingPage.tsx` hoặc
   `DrawSessionDetail.tsx`. Tự poll `sessions:get` mỗi 2s để nhận Save mới nhất từ Builder mà không
   cần đóng/mở lại.
 
-Cả 2 cửa sổ đọc/ghi **1 nguồn duy nhất**: cột `sessions.landing_config` (JSON, xem mục 9). Cùng
+Cả 2 cửa sổ đọc/ghi **1 nguồn duy nhất**: cột `sessions.landing_config` (JSON, xem mục 8). Cùng
 1 hàm `LandingRenderer.tsx` được cả `LandingCanvas` (Builder) lẫn `PresentMode` dùng để vẽ component
 — đảm bảo Builder và Present Mode LUÔN khớp pixel-cho-pixel, không có 2 bộ code vẽ khác nhau dễ lệch
-nhau theo thời gian.
+nhau theo thời gian. Cả 3 nơi đọc `landing_config` (Builder/Present Mode/`LandingPage.tsx` ở cửa sổ
+chính) đều tự lọc bỏ component có `type` không còn tồn tại trong `COMPONENT_REGISTRY` ngay khi
+parse — an toàn cho landing đã lưu từ trước khi 1 loại component bị xoá khỏi app.
 
 ## 2. Canvas mode
 
@@ -81,34 +79,28 @@ tool, còn PAN nếu đang bật Hand tool — không cần giữ chuột kéo m
 
 ## 3. Toolbar & phím tắt
 
-Toolbar nổi góc trái trên, dịch sang phải khi ở Trigger Graph mode (tránh đè `TriggerSidebar`):
-
-- **Select** (phím `V`/`Esc`) / **Hand** (phím `H`, tắt khi đã fit-to-screen ở Canvas mode vì không
-  còn gì để pan) — dùng chung cho cả Canvas lẫn Trigger Graph.
-- **Gridline** (phím `G`) — dùng chung cho cả 2 màn hình (mỗi màn hình tự vẽ lưới bằng cơ chế riêng).
-- Chỉ hiện ở Canvas mode: **Add component** (mở `ComponentPalette`, xem mục 5), **Layers** (mở/ẩn +
-  sắp xếp component), **Page settings** (chỉnh background — mở Properties Panel khi chưa chọn gì).
-  Những nút này ẩn hẳn ở Trigger Graph mode vì không có ý nghĩa gì ở đó.
-- **Trigger Graph** — nút tròn nhỏ đổi thành nút to "Back to Builder" khi đang ở trong Graph, tránh
-  người dùng không biết cách thoát ngoài việc đóng hẳn cửa sổ.
+Toolbar nổi góc trái trên: **Select** (phím `V`/`Esc`) / **Hand** (phím `H`, tắt khi đã fit-to-screen
+vì không còn gì để pan) / **Gridline** (phím `G`) / **Add component** (mở `ComponentPalette`, xem
+mục 5) / **Layers** (mở/ẩn + sắp xếp component) / **Page settings** (chỉnh background — mở
+Properties Panel khi chưa chọn gì).
 
 Di chuột vào nút Select/Hand/Gridline hiện 1 popup nhỏ (tên nút + phím tắt, `ToolbarTooltip` trong
 `LandingBuilderWindow.tsx`) thay cho tooltip mặc định của trình duyệt — có độ trễ nhỏ để không nhấp
 nháy khi rê chuột lướt qua nhiều nút liên tiếp; nút Hand còn tự đổi nội dung popup báo lý do bị tắt
 khi đang fit-to-screen.
 
-Phím tắt khác: `Delete`/`Backspace` xoá component đang chọn (chỉ ở Canvas mode). Mọi phím tắt tự tắt
-khi đang gõ trong input/textarea/select/contentEditable.
+Phím tắt khác: `Delete`/`Backspace` xoá component đang chọn. Mọi phím tắt tự tắt khi đang gõ trong
+input/textarea/select/contentEditable.
 
 ## 4. Properties Panel
 
 `PropertiesPanel.tsx` là 1 switch thuần: chưa chọn gì → `BackgroundPanel` (nền trang); có chọn → 1
 Panel riêng theo đúng `type` của component + `SharedFields.tsx` luôn hiện ở cuối.
 
-`SharedFields.tsx` — dùng chung cho MỌI loại: **Name** (optional, trừ Button có ô Name riêng bắt
-buộc+duy nhất vì Button cần định danh rõ ràng trên Trigger Graph), **X/Y/Width/Height** (Height khoá
-"auto" nếu là Lucky Wheel dùng template Digit Roller — chiều cao tự tính theo `digitCount`),
-**Effect** (fade/slide/pulse/bounce khi component xuất hiện), nút **Delete component**.
+`SharedFields.tsx` — dùng chung cho MỌI loại: **Name** (optional, chỉ để dễ nhận diện trong
+LayersPanel khi trang có nhiều component cùng loại — không có yêu cầu duy nhất nào), **X/Y/Width/
+Height** (Height khoá "auto" nếu là Lucky Wheel dùng template Digit Roller — chiều cao tự tính theo
+`digitCount`), **Effect** (fade/slide/pulse/bounce khi component xuất hiện), nút **Delete component**.
 
 | Panel file | Dùng cho |
 |---|---|
@@ -122,21 +114,13 @@ buộc+duy nhất vì Button cần định danh rõ ràng trên Trigger Graph), 
 | `CountdownPanel.tsx` | Countdown |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
-| `ButtonPanel.tsx` | Button |
+| `ButtonPanel.tsx` | Button (chọn action + styling, xem mục 6) |
 | `ScoreboardPanel.tsx` | Scoreboard |
-| `FireworksPanel.tsx` | Fireworks |
-| `StageLightPanel.tsx` | Stage Light |
-| `DimBackgroundPanel.tsx` | Dim Background |
-| `LinkOpenerPanel.tsx` | Link Opener |
-| `DrawPanel.tsx` | Draw |
-| `ConfirmWinnerPanel.tsx` | Confirm Winner |
 
 ## 5. Nhóm component (`ComponentPalette.tsx`)
 
 Menu "Add component" gom nhóm theo `CATEGORY_ORDER` (`componentRegistry.ts`) — chỉ hiện icon + tên
 mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay vì cuộn qua 1 danh sách phẳng dài.
-Nhóm theo **công dụng người dùng nhìn thấy**, không theo kiến trúc Emitter/Receiver bên trong (1
-nhóm có thể trộn cả 2 — vd Draw & Results gồm cả Lucky Wheel lẫn các text hiển thị thuần):
 
 | Nhóm | Component | Mô tả |
 |---|---|---|
@@ -151,119 +135,108 @@ nhóm có thể trộn cả 2 — vd Draw & Results gồm cả Lucky Wheel lẫn
 | **Live Info** | Countdown | Đếm ngược tới 1 mốc thời gian |
 | | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
-| **Interactive** | Button | Signal Emitter — chỉ phát `Button.Click` |
-| **Effects** | Fireworks | Hiệu ứng pháo hoa hạt |
-| | Stage Light | Đèn sân khấu quét |
-| | Dim Background | Lớp phủ màu tối/sáng dần — dim mọi thứ nằm DƯỚI nó theo zIndex, không riêng gì nền |
-| **Actions** | Link Opener | Mở URL của winner trong trình duyệt |
-| | Draw | Chọn 1 candidate mới cho lượt quay |
-| | Confirm Winner | Ghi thật candidate đang chờ vào database |
+| **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem mục 6 |
 
-## 6. Actions — chi tiết
+## 6. Button — action cố định
 
-**Action** là 1 nhóm con của Signal Receiver: KHÔNG có bất kỳ nội dung hiển thị nào cho khán giả,
-dù đang "hoạt động" hay không (khác hẳn Effects — Fireworks/Stage Light tồn tại CHÍNH để khán giả
-nhìn thấy). Action chỉ là 1 hành động 1 lần khi nhận đúng Command, rồi hoàn toàn vô hình trở lại.
+Button KHÔNG có tín hiệu/wiring nào — chọn thẳng 1 **action** cố định trong dropdown của
+`ButtonPanel.tsx`, bấm là chạy NGAY action đó (`ButtonView.tsx` gọi thẳng 1 hàm của
+`DrawSequenceActions`, xem `useDrawSequence.ts`). **Mỗi action (trừ "None") chỉ cho phép ĐÚNG 1
+Button/trang** — action nào đã bị 1 Button khác chiếm sẽ bị khoá trong dropdown (hiện popup nhỏ báo
+tên Button đang giữ nó khi hover), tránh 2 nút cùng "Draw" gây nhầm lẫn vận hành. Dropdown Action tự
+dựng bằng div/button (không dùng `<select>` gốc) vì `<select>` không cho chèn tooltip riêng vào từng
+option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `config.components`) trong
+`ButtonPanel.tsx`. "None" không giới hạn — nhiều Button chưa cấu hình gì vẫn hợp lệ:
 
-> **⚠️ Quan trọng — Action là nhóm component DUY NHẤT có thể ghi dữ liệu THẬT, VĨNH VIỄN, ngoài
-> phạm vi `landing_config`.**
+> ⚠️ **Nút toolbar "Discard" (huỷ thay đổi chưa Save) là khái niệm HOÀN TOÀN KHÁC** — không liên quan
+> gì tới Button action ở đây. Bảng dưới không còn action nào tên "Discard" (xem ghi chú action
+> **Draw**) nên không còn nguy cơ nhầm 2 thứ này với nhau nữa.
+
+| Action | Gọi hàm | Ghi gì | Ghi chú |
+|---|---|---|---|
+| **None** | — | — | Mặc định, chưa cấu hình |
+| **Draw** | Đang có candidate CHỜ CONFIRM (`sequence.isPending`) → `sequence.redo()`, ngược lại → `sequence.pick()` | Không ghi DB (chỉ SELECT) | 1 nút DUY NHẤT vừa Draw vừa "Redraw/Discard" — bấm lần đầu chọn candidate mới; bấm tiếp trong lúc candidate đó CHƯA Confirm thì rút lại, chọn lại đúng giải đó cho người khác |
+| **Confirm** | `sequence.confirm()` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua nút Discard |
+| **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm |
+| **Scoreboard** | `sequence.toggleScoreboard()` | Không ghi gì | Bật/tắt popup Scoreboard giữa màn hình |
+| **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **URL field** — mở URL của winner GẦN NHẤT, no-op im lặng nếu chưa có winner/field rỗng |
+
+> **⚠️ Quan trọng — Confirm và Reset là 2 action DUY NHẤT ghi dữ liệu THẬT, VĨNH VIỄN, ngoài phạm vi
+> `landing_config`.**
 >
-> Mọi component khác (Text, Lucky Wheel, Fireworks, kể cả Button) — toàn bộ "trạng thái" của nó chỉ
-> nằm trong khối JSON `landing_config` (xem mục 9). Sửa gì, kéo gì, xoá gì ở Builder cũng chỉ đổi
-> khối JSON đó — bấm **Discard** là quay lại y nguyên bản đã Save gần nhất, không có gì mất thật.
+> Mọi thứ khác trên trang (Text, Lucky Wheel, styling của Button...) — toàn bộ "trạng thái" chỉ nằm
+> trong khối JSON `landing_config` (xem mục 8). Sửa gì, kéo gì, xoá gì ở Builder cũng chỉ đổi khối
+> JSON đó — bấm **nút Discard** ở toolbar là quay lại y nguyên bản đã Save gần nhất, không có gì mất
+> thật.
 >
-> **Confirm Winner thì khác**: khi được trigger, nó gọi thẳng `sequence.confirm()` →
-> `window.api.draw.commit()` → ghi **1 dòng thật vào bảng `draw_results`** và **trừ
-> `prizes.remaining`** trong SQLite — trong 1 transaction, ở `commitDraw()`
-> (`electron/drawEngine.ts`). Đây là ghi DB thật, **Discard của Landing Builder không hề đụng tới
-> và không thể hoàn tác** (cách duy nhất huỷ là `resetSession()` — xoá TOÀN BỘ kết quả của cả
-> session, không phải riêng 1 lượt). `draw_results`/`prizes.remaining` chính là dữ liệu mà Data
-> Editor và màn hình quản lý Prize đọc/hiển thị — nghĩa là Action không chỉ đổi "trang landing" mà
-> đổi luôn dữ liệu THẬT của cả sự kiện, ngoài phạm vi những gì Builder tự quản lý.
+> **Confirm thì khác**: gọi thẳng `window.api.draw.commit()` → ghi **1 dòng thật vào bảng
+> `draw_results`** và **trừ `prizes.remaining`** trong SQLite — trong 1 transaction, ở
+> `commitDraw()` (`electron/drawEngine.ts`). Đây là ghi DB thật, **nút Discard ở toolbar không hề
+> đụng tới và không thể hoàn tác** (cách duy nhất huỷ là action **Reset** — xoá TOÀN BỘ kết quả của
+> cả session, không phải riêng 1 lượt). `draw_results`/`prizes.remaining` chính là dữ liệu mà Data
+> Editor và màn hình quản lý Prize đọc/hiển thị.
 >
-> `Draw` "nhẹ" hơn 1 chút: `sequence.pick()` KHÔNG ghi DB (chỉ SELECT chọn ứng viên), nhưng ứng viên
-> đang chờ đó (`candidate`) đã được "độn" ngay vào `results[0]` (một dòng giả, xem
-> `useDrawSequence.ts`'s `effectiveData`) — nghĩa là MỌI component đọc dữ liệu (Winner Name, Lucky
-> Wheel...) đã thấy "có kết quả" NGAY khi Draw chạy, **trước khi** Confirm Winner ghi DB thật. Nếu
-> Draw chạy nhưng Confirm Winner không bao giờ chạy theo sau, ứng viên đó vẫn hiện trên màn hình
-> nhưng KHÔNG BAO GIỜ thật sự tồn tại trong `draw_results`.
+> `Draw` "nhẹ" hơn: cả `sequence.pick()` lẫn `sequence.redo()` (2 hàm cùng đứng sau action **Draw**,
+> xem bảng trên) đều KHÔNG ghi DB (chỉ SELECT chọn ứng viên), nhưng ứng viên đang chờ đó (`candidate`)
+> đã được "độn" ngay vào `results[0]` (1 dòng giả, xem `useDrawSequence.ts`'s `effectiveData`) —
+> nghĩa là MỌI component đọc dữ liệu (Winner Name, Lucky Wheel...) đã thấy "có kết quả" NGAY khi Draw
+> chạy, **trước khi** Confirm ghi DB thật. Nếu Draw chạy nhưng Confirm không bao giờ chạy theo sau,
+> ứng viên đó vẫn hiện trên màn hình nhưng KHÔNG BAO GIỜ thật sự tồn tại trong `draw_results`.
 >
-> `Link Opener` không ghi gì vào DB, nhưng vẫn có hệ quả ngoài `landing_config`: mở 1 trình duyệt
+> `Open Link` không ghi gì vào DB, nhưng vẫn có hệ quả ngoài `landing_config`: mở 1 trình duyệt
 > ngoài thật sự trên máy đang chạy Present Mode.
 
-Danh sách Action hiện có:
+Lucky Wheel KHÔNG cần Button nào ra lệnh — nó tự phát hiện `results[0].id` vừa đổi (candidate mới,
+dù là lượt Draw đầu hay 1 lượt "quay lại" từ chính action Draw đó — xem trên) và tự bắt đầu quay (xem
+`WheelTemplate.tsx`/`DigitRollerTemplate.tsx`), dừng đúng lúc animation THẬT SỰ kết thúc, không phải
+đoán 1 delay cố định.
 
-| Action | Command nhận | Ghi gì | Ghi chú |
-|---|---|---|---|
-| **Draw** | `Draw.Pick` | Không ghi DB (chỉ SELECT) | Ngoại lệ hẹp — emits `Draw.Picked` sau khi `pick()` thật sự resolve (xem `docs/graph.md`) |
-| **Confirm Winner** | `ConfirmWinner.Confirm` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua Discard |
-| **Link Opener** | `LinkOpener.Open` | Không ghi DB | Mở trình duyệt ngoài qua `shell.openExternal` |
-
-Ví dụ chuỗi hoàn chỉnh (đúng thứ tự mỗi bước chờ bước trước THẬT SỰ xong, không đoán delay):
-
-```
-Button.Click → Draw.Pick → Draw.Picked → Wheel.StartSpin → Wheel.SpinCompleted → ConfirmWinner.Confirm
-```
-
-1 cú click của người vận hành → Draw chọn 1 ứng viên (bất đồng bộ) → xong thì Lucky Wheel bắt đầu
-quay reveal đúng ứng viên đó → quay xong thật sự thì Confirm Winner ghi kết quả vào DB. Xem
-`docs/graph.md` để biết cách kéo-thả nối dây các bước này trên Trigger Graph.
-
-## 7. Signal Emitter/Receiver — tóm tắt
-
-Landing component chủ yếu thuộc 1 trong 2 nhóm: **Emitter** (Button — chỉ phát Event, không biết gì
-về phần còn lại của app) và **Receiver** (mọi Action/Effect/Lucky Wheel — chỉ nhận Command rồi tự
-thực thi). Trigger Graph là tầng trung gian DUY NHẤT nối 2 nhóm này. Toàn bộ cơ chế kéo-thả tín
-hiệu, node/chip, validate, và cách 1 Command thật sự chạy lúc Present Mode — xem
-**[`docs/graph.md`](./graph.md)**, không lặp lại ở đây.
-
-## 8. Present Mode render khác Builder canvas thế nào
+## 7. Present Mode render khác Builder canvas thế nào
 
 Cả 2 dùng chung `LandingRenderer.tsx`, khác nhau ở prop `interactive`:
 
-- **`interactive=true`** (chỉ Present Mode): mỗi Receiver nhận `sequence` thật (không phải
-  `undefined`) nên mới thực thi Command thật; `hiddenInBuilder` bị phớt lờ (khán giả luôn thấy đúng
-  những gì config khai báo); Scoreboard vẽ như 1 modal riêng canh giữa màn hình, chỉ hiện khi
-  `sequence.scoreboardVisible`.
-- **`interactive=false`** (Builder canvas): mọi Receiver nhận `sequence=undefined` → tự vẽ 1 khung
-  tĩnh/preview (vd Stage Light đứng yên ở góc quét mặc định, Draw/Confirm Winner/Link Opener hiện
-  khung chấm chấm) thay vì chạy animation/Command thật — tránh bấm nhầm khi đang chỉnh sửa; Scoreboard
-  vẽ tại chỗ theo x/y như mọi component khác (để còn kéo/resize được).
+- **`interactive=true`** (chỉ Present Mode): `sequence` thật (không phải `undefined`) được truyền
+  xuống — Button mới bấm được, action mới chạy thật; `hiddenInBuilder` bị phớt lờ (khán giả luôn
+  thấy đúng những gì config khai báo); Scoreboard vẽ như 1 modal riêng canh giữa màn hình, chỉ hiện
+  khi `sequence.scoreboardVisible`.
+- **`interactive=false`** (Builder canvas): `sequence` là `undefined` → Button tự disable (không
+  bấm được, tránh chạy quay số thật lúc đang chỉnh sửa) — Scoreboard vẽ tại chỗ theo x/y như mọi
+  component khác (để còn kéo/resize được). Lucky Wheel vẫn tự dò `results[0].id` như ở Present Mode,
+  nhưng Builder không truyền `data` thật xuống Canvas nên trong thực tế nó luôn đứng yên ở đó.
 
-## 9. Save / Discard / lưu trữ
+## 8. Save / Discard / lưu trữ
 
-`config` (Canvas lẫn Trigger Graph dùng chung, không tách biệt) coi là "dirty" khi khác bản JSON đã
-Save gần nhất. Nút **Save** ghi xuống `sessions.landing_config` qua
-`window.api.sessions.updateLandingConfig`; **Discard** hỏi xác nhận rồi khôi phục nguyên bản JSON đã
-Save. Đóng cửa sổ khi còn dirty bị chặn bằng hộp thoại cảnh báo native (Electron `BrowserWindow`
-`close` event).
+`config` coi là "dirty" khi khác bản JSON đã Save gần nhất. Nút **Save** ghi xuống
+`sessions.landing_config` qua `window.api.sessions.updateLandingConfig`; **Discard** hỏi xác nhận
+rồi khôi phục nguyên bản JSON đã Save. Đóng cửa sổ khi còn dirty bị chặn bằng hộp thoại cảnh báo
+native (Electron `BrowserWindow` `close` event).
 
 Không có hệ thống migration hình thức cho `landing_config` — `parseLandingConfig()` chỉ kiểm tra
 `version === 1` + `components` là mảng + có `canvas`, sai bất kỳ điều nào thì fallback thẳng về
-`DEFAULT_LANDING_CONFIG` (rỗng) thay vì cố gắng chuyển đổi shape cũ. Field mới thêm vào 1 loại
-component theo thời gian được xử lý ad hoc ở cấp type/view/panel (optional field + fallback), không
-qua 1 cơ chế version-bump chung nào.
+`DEFAULT_LANDING_CONFIG` (rỗng) thay vì cố gắng chuyển đổi shape cũ. Component có `type` không còn
+tồn tại trong `COMPONENT_REGISTRY` (vd landing lưu từ trước khi 1 loại component bị xoá khỏi app) bị
+lọc bỏ ngay khi load ở cả 3 nơi đọc config (Builder/Present Mode/`LandingPage.tsx`) — xem mục 1.
+Field mới thêm vào 1 loại component theo thời gian được xử lý ad hoc ở cấp type/view/panel (optional
+field + fallback), không qua 1 cơ chế version-bump chung nào.
 
-## 10. Thêm 1 loại component mới
+## 9. Thêm 1 loại component mới
 
-Xem checklist đầy đủ (5 bước, bước 0 là phân loại Emitter/Receiver) ở đầu `src/lib/landing/
-types.ts`. Tóm tắt: 1) thêm type + interface vào union `LandingComponent`; 2) thêm
-`views/XxxView.tsx`; 3) thêm `panels/XxxPanel.tsx`; 4) đăng ký trong `componentRegistry.ts` (label,
-category cho Palette, `COMPONENT_SIGNALS` nếu là Emitter/Receiver). Nếu là Receiver, xem thêm
-`docs/graph.md` để hiểu cách nó xuất hiện trên Trigger Graph.
+Xem checklist đầy đủ (4 bước) ở đầu `src/lib/landing/types.ts`. Tóm tắt: 1) thêm type + interface
+vào union `LandingComponent`; 2) thêm `views/XxxView.tsx`; 3) thêm `panels/XxxPanel.tsx`; 4) đăng ký
+trong `componentRegistry.ts` (label, category cho Palette).
 
-## 11. File liên quan
+## 10. File liên quan
 
 | File | Vai trò |
 |---|---|
-| `src/pages/LandingBuilderWindow.tsx` | Cửa sổ Builder — toolbar, Save/Discard, chuyển Canvas/Graph mode |
+| `src/pages/LandingBuilderWindow.tsx` | Cửa sổ Builder — toolbar, Save/Discard |
 | `src/pages/PresentMode.tsx` | Cửa sổ chiếu cho khán giả — chỉ render, poll config mỗi 2s |
 | `src/components/landing/LandingCanvas.tsx` | Artboard 1920×1080 — chọn/kéo/resize/pan/zoom |
 | `src/components/landing/LandingRenderer.tsx` | Painter thuần — dùng chung bởi Canvas lẫn Present Mode, switch theo `component.type` |
 | `src/components/landing/PropertiesPanel.tsx` | Container Properties Panel — switch theo type + `SharedFields` |
-| `src/components/landing/componentRegistry.ts` | `COMPONENT_REGISTRY` (Palette/canvas) + `COMPONENT_SIGNALS` (Trigger Graph) — nguồn DUY NHẤT |
+| `src/components/landing/componentRegistry.ts` | `COMPONENT_REGISTRY` — nguồn DUY NHẤT cho Palette/canvas |
 | `src/components/landing/ComponentPalette.tsx` | Menu "Add component" — kéo-thả tạo instance mới, gom nhóm theo `CATEGORY_ORDER` |
-| `src/components/landing/componentIcons.tsx` | Icon dùng chung cho Palette lẫn Trigger Graph node |
-| `src/components/landing/useDrawSequence.ts` | `pick()`/`confirm()`/`redo()`/`fireClick()` — cầu nối duy nhất từ Landing sang Draw Engine |
+| `src/components/landing/componentIcons.tsx` | Icon dùng cho Palette |
+| `src/components/landing/useDrawSequence.ts` | `pick()`/`confirm()`/`redo()`/`resetSession()`/... — cầu nối duy nhất từ Landing sang Draw Engine |
+| `src/components/landing/views/ButtonView.tsx` | Chạy action của Button, xem mục 6 |
 | `src/lib/landing/types.ts` | Toàn bộ type hệ thống + checklist thêm component mới |
-| `docs/graph.md` | Cơ chế Trigger Graph đầy đủ (kéo-thả tín hiệu, node/chip, chạy Command lúc Present Mode) |

@@ -13,7 +13,7 @@ export type CanvasTool = "select" | "hand";
 interface LandingCanvasProps {
   config: LandingConfig;
   data?: LandingData;
-  selectedId: string | null;
+  selectedIds: string[];
   showGrid?: boolean;
   tool?: CanvasTool;
   zoom?: number; // hệ số phóng to trên nền tỉ lệ "vừa khung" — 1 = vừa khung (mức zoom out tối đa)
@@ -22,12 +22,17 @@ interface LandingCanvasProps {
   // LandingBuilderWindow.tsx.
   onZoomChange?: (updater: (z: number) => number) => void;
   onSelect: (id: string | null) => void;
+  // Ctrl (Windows)/Cmd (macOS) + click 1 component — cộng vào vùng chọn nếu chưa có, trừ ra nếu đã có.
+  onToggleSelect: (id: string) => void;
+  // Kéo-thả xong khung marquee trên nền trống — `additive` = có giữ Ctrl/Cmd lúc BẮT ĐẦU kéo hay
+  // không (true = hợp vào selection cũ, false = thay thế hẳn).
+  onMarqueeSelect: (ids: string[], additive: boolean) => void;
   onUpdateComponent: (id: string, patch: Partial<LandingComponent>) => void;
   onDropNewComponent: (type: LandingComponentType, x: number, y: number) => void;
 }
 
 const GRID_SIZE = 40; // px, đo trong không gian artboard (chưa scale) — chỉ để căn chỉnh mắt, không snap
-const CENTER_SNAP_PX = 8; // ngưỡng bắt dính vào đường tâm canvas, tính theo px màn hình (không phải artboard)
+const CENTER_SNAP_PX = 8; // ngưỡng bắt dính căn thẳng hàng/khoảng cách đều (xem computeSnap()), tính theo px màn hình (không phải artboard)
 const MINIMAP_WIDTH = 160; // px hiển thị — chiều cao tự suy ra theo đúng tỉ lệ khung thật (xem minimapScale)
 // Tỉ lệ phần "bàn nháp" (pasteboard) mở rộng thêm quanh khung 1920x1080 thật — mỗi bên (trái/phải/
 // trên/dưới) thêm 50% kích thước tương ứng của khung thật (marginX/marginY bên dưới), tức tổng
@@ -44,6 +49,145 @@ function clamp(v: number, min: number, max: number) {
   return Math.min(Math.max(v, min), Math.max(min, max));
 }
 
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Đường dóng (đỏ) — khi kéo, 1 trong 3 điểm mốc (mép trái/tâm/mép phải cho trục X, mép trên/tâm/mép
+// dưới cho trục Y) của component đang kéo trùng 1 điểm mốc tương ứng của component KHÁC hoặc tâm
+// canvas. `pos` là toạ độ ARTBOARD-LOCAL (chưa nhân scale — nhân lúc render, xem JSX bên dưới).
+interface GuideLine {
+  axis: "x" | "y";
+  pos: number;
+}
+
+// Vạch báo khoảng cách 2 bên BẰNG NHAU (giống Figma/Google Slides) — vẽ 1 vạch ngắn có 2 gạch chốt
+// ở đầu, span đúng phần khoảng trống giữa 2 component, tại `cross` = toạ độ trục vuông góc (artboard-
+// local). Luôn xuất hiện thành CẶP 2 (khoảng trống bên trái + bên phải, hoặc bên trên + bên dưới).
+interface GuideSpacing {
+  axis: "x" | "y";
+  from: number;
+  to: number;
+  cross: number;
+}
+
+// Tính điểm dừng cuối cùng (có thể đã bắt dính) của 1 component đang kéo, dựa trên vị trí các
+// component KHÁC đang có trên trang — 2 cơ chế, ưu tiên (1) trước, chỉ xét (2) khi (1) không khớp
+// trên đúng trục đó (tránh 2 cơ chế tranh nhau kéo về 2 hướng khác nhau trên cùng 1 trục):
+//   1. Căn thẳng hàng — 1 trong 3 mốc (trái/tâm/phải hoặc trên/giữa/dưới) của component đang kéo
+//      trùng mốc tương ứng của canvas (tâm) hoặc 1 component khác, trong ngưỡng `threshold`.
+//   2. Khoảng cách đều — component đang kéo nằm GIỮA đúng 1 component bên trái/phải (hoặc trên/dưới,
+//      xác định qua overlap ở trục vuông góc) và 2 khoảng trống 2 bên chênh nhau dưới `threshold` —
+//      bắt dính để 2 khoảng trống bằng NHAU HẲN (trung bình cộng), giống "Distribute spacing" của
+//      Figma/Google Slides.
+function computeSnap(
+  dragged: Rect,
+  others: Rect[],
+  canvasWidth: number,
+  canvasHeight: number,
+  threshold: number
+): { x: number; y: number; lines: GuideLine[]; spacings: GuideSpacing[] } {
+  let x = dragged.x;
+  let y = dragged.y;
+  const lines: GuideLine[] = [];
+  const spacings: GuideSpacing[] = [];
+
+  // Trả về toạ độ ĐÍCH (candidate) nếu có 1 cặp (điểm mốc đang kéo, điểm mốc ứng viên) nào đó lọt
+  // trong `threshold` — đây CHÍNH LÀ vị trí vẽ đường dóng, không phải khoảng dịch chuyển.
+  function bestAlign(dragPoints: number[], candidates: number[]): number | null {
+    let best: { delta: number; cand: number } | null = null;
+    for (const dp of dragPoints) {
+      for (const c of candidates) {
+        const delta = Math.abs(dp - c);
+        if (delta < threshold && (!best || delta < best.delta)) best = { delta, cand: c };
+      }
+    }
+    return best ? best.cand : null;
+  }
+
+  const alignX = bestAlign(
+    [dragged.x, dragged.x + dragged.width / 2, dragged.x + dragged.width],
+    [canvasWidth / 2, ...others.flatMap((o) => [o.x, o.x + o.width / 2, o.x + o.width])]
+  );
+  if (alignX !== null) {
+    // Không biết cặp match trúng đúng điểm mốc NÀO (trái/tâm/phải) của component đang kéo — dịch cả
+    // object sao cho ĐIỂM MỐC GẦN `alignX` NHẤT trùng khít, đơn giản và luôn đúng vì bestAlign() đã
+    // đảm bảo đây là cặp gần nhau nhất trong ngưỡng threshold.
+    const dragPoints = [dragged.x, dragged.x + dragged.width / 2, dragged.x + dragged.width];
+    const closest = dragPoints.reduce((a, b) => (Math.abs(b - alignX) < Math.abs(a - alignX) ? b : a));
+    x = dragged.x + (alignX - closest);
+    lines.push({ axis: "x", pos: alignX });
+  }
+
+  const alignY = bestAlign(
+    [dragged.y, dragged.y + dragged.height / 2, dragged.y + dragged.height],
+    [canvasHeight / 2, ...others.flatMap((o) => [o.y, o.y + o.height / 2, o.y + o.height])]
+  );
+  if (alignY !== null) {
+    const dragPoints = [dragged.y, dragged.y + dragged.height / 2, dragged.y + dragged.height];
+    const closest = dragPoints.reduce((a, b) => (Math.abs(b - alignY) < Math.abs(a - alignY) ? b : a));
+    y = dragged.y + (alignY - closest);
+    lines.push({ axis: "y", pos: alignY });
+  }
+
+  // Khoảng cách đều trục X — chỉ xét khi trục X CHƯA bắt dính thẳng hàng ở trên (2 cơ chế không
+  // tranh nhau). "Hàng ngang" xác định qua overlap khoảng Y (dùng `y` đã bắt dính nếu có).
+  if (alignX === null) {
+    const rowMates = others.filter((o) => o.y < y + dragged.height && o.y + o.height > y);
+    let leftN: Rect | null = null;
+    let rightN: Rect | null = null;
+    for (const o of rowMates) {
+      if (o.x + o.width <= x) {
+        if (!leftN || o.x + o.width > leftN.x + leftN.width) leftN = o;
+      } else if (o.x >= x + dragged.width) {
+        if (!rightN || o.x < rightN.x) rightN = o;
+      }
+    }
+    if (leftN && rightN) {
+      const gapLeft = x - (leftN.x + leftN.width);
+      const gapRight = rightN.x - (x + dragged.width);
+      if (gapLeft >= 0 && gapRight >= 0 && Math.abs(gapLeft - gapRight) < threshold) {
+        const avgGap = (gapLeft + gapRight) / 2;
+        x = leftN.x + leftN.width + avgGap;
+        const cross = y + dragged.height / 2;
+        spacings.push({ axis: "x", from: leftN.x + leftN.width, to: x, cross });
+        spacings.push({ axis: "x", from: x + dragged.width, to: rightN.x, cross });
+      }
+    }
+  }
+
+  // Khoảng cách đều trục Y — mirror hệt trên, "cột dọc" xác định qua overlap khoảng X (dùng `x` đã
+  // bắt dính/chỉnh ở phần trên nếu có).
+  if (alignY === null) {
+    const colMates = others.filter((o) => o.x < x + dragged.width && o.x + o.width > x);
+    let topN: Rect | null = null;
+    let bottomN: Rect | null = null;
+    for (const o of colMates) {
+      if (o.y + o.height <= y) {
+        if (!topN || o.y + o.height > topN.y + topN.height) topN = o;
+      } else if (o.y >= y + dragged.height) {
+        if (!bottomN || o.y < bottomN.y) bottomN = o;
+      }
+    }
+    if (topN && bottomN) {
+      const gapTop = y - (topN.y + topN.height);
+      const gapBottom = bottomN.y - (y + dragged.height);
+      if (gapTop >= 0 && gapBottom >= 0 && Math.abs(gapTop - gapBottom) < threshold) {
+        const avgGap = (gapTop + gapBottom) / 2;
+        y = topN.y + topN.height + avgGap;
+        const cross = x + dragged.width / 2;
+        spacings.push({ axis: "y", from: topN.y + topN.height, to: y, cross });
+        spacings.push({ axis: "y", from: y + dragged.height, to: bottomN.y, cross });
+      }
+    }
+  }
+
+  return { x, y, lines, spacings };
+}
+
 // Bề mặt tương tác của Builder — vẽ nền bằng chính LandingRenderer (đảm bảo không bao giờ lệch
 // với Present Mode), rồi phủ lên 1 lớp overlay cùng tỉ lệ scale để xử lý chọn/kéo-di-chuyển/
 // kéo-thay-đổi-kích-thước + nhận thả từ Palette. Toàn bộ math kéo-thả dùng chung 1 kiểu với
@@ -52,12 +196,14 @@ function clamp(v: number, min: number, max: number) {
 export default function LandingCanvas({
   config,
   data,
-  selectedId,
+  selectedIds,
   showGrid,
   tool = "select",
   zoom = 1,
   onZoomChange,
   onSelect,
+  onToggleSelect,
+  onMarqueeSelect,
   onUpdateComponent,
   onDropNewComponent,
 }: LandingCanvasProps) {
@@ -71,7 +217,18 @@ export default function LandingCanvas({
   const [isPanning, setIsPanning] = useState(false);
   const [avail, setAvail] = useState({ w: 0, h: 0 }); // kích thước vùng canvas (đã trừ thước) — dùng để vẽ ruler
   const availRef = useRef({ w: 0, h: 0 }); // bản sao đọc nhanh của avail, dùng trong closure kéo-thả
-  const [centerGuides, setCenterGuides] = useState({ x: false, y: false }); // đang bắt dính đường tâm ngang/dọc
+  // Đường dóng đỏ + vạch báo khoảng cách đều đang hiện trong lúc kéo (xem computeSnap()) — chỉ có
+  // giá trị khi đang kéo di chuyển ĐÚNG 1 component, rỗng mọi lúc khác.
+  const [guides, setGuides] = useState<{ lines: GuideLine[]; spacings: GuideSpacing[] }>({ lines: [], spacings: [] });
+  // Khung marquee (rubber-band) đang kéo trên nền trống — toạ độ MÀN HÌNH (client), không cần quy đổi
+  // pan/scale vì chỉ dùng để vẽ overlay `position: fixed` và so giao trực tiếp với
+  // getBoundingClientRect() của từng component (xem handleWrapperMouseDown).
+  const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(
+    null
+  );
+  // Bật lên ngay khi 1 lượt kéo marquee THẬT SỰ đã xảy ra (vượt ngưỡng), để chặn `onClick` (bắn SAU
+  // `mouseup` trong thứ tự sự kiện DOM chuẩn) khỏi deselect-all đè lên kết quả marquee vừa chọn.
+  const suppressClickRef = useRef(false);
   const { width: canvasWidth, height: canvasHeight } = config.canvas;
   const marginX = canvasWidth * PASTEBOARD_MARGIN_RATIO;
   const marginY = canvasHeight * PASTEBOARD_MARGIN_RATIO;
@@ -152,38 +309,76 @@ export default function LandingCanvas({
 
   function handleComponentMouseDown(e: React.MouseEvent, component: LandingComponent) {
     e.stopPropagation();
-    onSelect(component.id);
+
+    // Ctrl (Windows)/Cmd (macOS) + click — cộng/trừ component này khỏi vùng chọn, KHÔNG kéo-di-chuyển
+    // trong cùng thao tác (giữ đúng kỳ vọng "giữ Ctrl để chọn" thuần tuý, không lẫn với kéo).
+    if (e.metaKey || e.ctrlKey) {
+      onToggleSelect(component.id);
+      return;
+    }
+
+    // Component đang click đã nằm sẵn trong 1 vùng chọn NHIỀU component — giữ nguyên cả vùng chọn và
+    // kéo cả nhóm di chuyển cùng lúc. Ngược lại (click 1 component ngoài vùng chọn nhiều, hoặc đang
+    // chỉ chọn đơn) — quay về hành vi cũ: thay thế vùng chọn bằng đúng 1 component này.
+    const movingIds =
+      selectedIds.includes(component.id) && selectedIds.length > 1 ? selectedIds : [component.id];
+    if (movingIds.length === 1) onSelect(component.id);
+
     const startClientX = e.clientX;
     const startClientY = e.clientY;
-    const startX = component.x;
-    const startY = component.y;
+    const startPositions = new Map(
+      movingIds.map((id) => {
+        const c = config.components.find((cc) => cc.id === id);
+        return [id, { x: c?.x ?? 0, y: c?.y ?? 0, width: c?.width ?? 0, height: c?.height ?? 0 }];
+      })
+    );
 
     function onMove(ev: MouseEvent) {
       const dx = (ev.clientX - startClientX) / scale;
       const dy = (ev.clientY - startClientY) / scale;
+
+      // Kéo nhóm nhiều component — mỗi component clamp riêng vào biên bàn nháp, không áp bắt-dính-tâm
+      // (chỉ có ý nghĩa rõ ràng khi kéo đúng 1 component, xem nhánh else bên dưới).
+      if (movingIds.length > 1) {
+        for (const id of movingIds) {
+          const start = startPositions.get(id);
+          if (!start) continue;
+          const nextX = clamp(start.x + dx, -marginX, canvasWidth + marginX - start.width);
+          const nextY = clamp(start.y + dy, -marginY, canvasHeight + marginY - start.height);
+          onUpdateComponent(id, { x: nextX, y: nextY });
+        }
+        return;
+      }
+
+      const start = startPositions.get(component.id)!;
       // Kẹp trong CẢ BÀN NHÁP (khung thật + margin mỗi bên), không còn chỉ riêng khung thật — đây là
       // chỗ THẬT SỰ cho phép đặt component ra ngoài khung hiển thị (xem PASTEBOARD_MARGIN_RATIO).
-      let nextX = clamp(startX + dx, -marginX, canvasWidth + marginX - component.width);
-      let nextY = clamp(startY + dy, -marginY, canvasHeight + marginY - component.height);
+      let nextX = clamp(start.x + dx, -marginX, canvasWidth + marginX - component.width);
+      let nextY = clamp(start.y + dy, -marginY, canvasHeight + marginY - component.height);
 
-      // Bắt dính vào đường tâm ngang/dọc của canvas — ngưỡng tính theo px MÀN HÌNH (chia cho
-      // scale để ra ngưỡng tương ứng trong không gian artboard) để cảm giác bắt dính không đổi
-      // theo mức zoom. Chỉ áp dụng cho di chuyển, không áp dụng khi resize.
+      // Đường dóng đỏ (căn thẳng hàng mép/tâm với canvas hoặc component khác) + vạch báo khoảng cách
+      // đều — xem computeSnap(). Ngưỡng tính theo px MÀN HÌNH (chia cho scale để ra ngưỡng tương ứng
+      // trong không gian artboard) để cảm giác bắt dính không đổi theo mức zoom. Chỉ áp dụng cho di
+      // chuyển 1 component, không áp dụng khi kéo nhóm hay resize.
       const threshold = CENTER_SNAP_PX / scale;
-      const centerX = canvasWidth / 2;
-      const centerY = canvasHeight / 2;
-      const objCenterX = nextX + component.width / 2;
-      const objCenterY = nextY + component.height / 2;
-      const snapX = Math.abs(objCenterX - centerX) < threshold;
-      const snapY = Math.abs(objCenterY - centerY) < threshold;
-      if (snapX) nextX = centerX - component.width / 2;
-      if (snapY) nextY = centerY - component.height / 2;
-      setCenterGuides({ x: snapX, y: snapY });
+      const others = config.components
+        .filter((c) => c.id !== component.id && !c.hiddenInBuilder)
+        .map((c) => ({ x: c.x, y: c.y, width: c.width, height: c.height }));
+      const snap = computeSnap(
+        { x: nextX, y: nextY, width: component.width, height: component.height },
+        others,
+        canvasWidth,
+        canvasHeight,
+        threshold
+      );
+      nextX = snap.x;
+      nextY = snap.y;
+      setGuides({ lines: snap.lines, spacings: snap.spacings });
 
       onUpdateComponent(component.id, { x: nextX, y: nextY });
     }
     function onUp() {
-      setCenterGuides({ x: false, y: false });
+      setGuides({ lines: [], spacings: [] });
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     }
@@ -230,25 +425,73 @@ export default function LandingCanvas({
   // rìa hay trôi mất landing. getBoundingClientRect() dùng ở handleDrop/handleComponentMouseDown tự
   // phản ánh đúng vị trí trên màn hình dù artboard đã bị pan, nên không cần sửa gì thêm ở các hàm đó.
   function handleWrapperMouseDown(e: React.MouseEvent) {
-    if (tool !== "hand") return;
-    e.preventDefault();
+    if (tool === "hand") {
+      e.preventDefault();
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+      const startPan = pan;
+      setIsPanning(true);
+
+      function onMove(ev: MouseEvent) {
+        setPan(
+          clampPan(
+            { x: startPan.x + (ev.clientX - startClientX), y: startPan.y + (ev.clientY - startClientY) },
+            scale
+          )
+        );
+      }
+      function onUp() {
+        setIsPanning(false);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      }
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      return;
+    }
+
+    if (tool !== "select") return;
+    // Kéo-marquee trên nền trống (tới đây nghĩa là KHÔNG trúng component nào — mousedown trên
+    // component đã `stopPropagation()` ở handleComponentMouseDown) — chọn mọi component GIAO với
+    // khung kéo khi thả chuột. `additive` = có giữ Ctrl/Cmd lúc bắt đầu kéo hay không.
+    const additive = e.metaKey || e.ctrlKey;
     const startClientX = e.clientX;
     const startClientY = e.clientY;
-    const startPan = pan;
-    setIsPanning(true);
+    let dragged = false;
 
     function onMove(ev: MouseEvent) {
-      setPan(
-        clampPan(
-          { x: startPan.x + (ev.clientX - startClientX), y: startPan.y + (ev.clientY - startClientY) },
-          scale
-        )
-      );
+      const left = Math.min(startClientX, ev.clientX);
+      const top = Math.min(startClientY, ev.clientY);
+      const width = Math.abs(ev.clientX - startClientX);
+      const height = Math.abs(ev.clientY - startClientY);
+      if (!dragged && (width > 4 || height > 4)) dragged = true;
+      if (dragged) setMarqueeRect({ left, top, width, height });
     }
-    function onUp() {
-      setIsPanning(false);
+    function onUp(ev: MouseEvent) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      setMarqueeRect(null);
+      // Không kéo thật (đứng yên hoặc gần như đứng yên) — để `onClick` xử lý như 1 cú click thường
+      // (deselect-all), không làm gì thêm ở đây.
+      if (!dragged || !artboardRef.current) return;
+      suppressClickRef.current = true;
+
+      const left = Math.min(startClientX, ev.clientX);
+      const top = Math.min(startClientY, ev.clientY);
+      const right = Math.max(startClientX, ev.clientX);
+      const bottom = Math.max(startClientY, ev.clientY);
+      const artRect = artboardRef.current.getBoundingClientRect();
+      const hits = config.components
+        .filter((c) => !c.hiddenInBuilder)
+        .filter((c) => {
+          const compLeft = artRect.left + c.x * scale;
+          const compTop = artRect.top + c.y * scale;
+          const compRight = compLeft + c.width * scale;
+          const compBottom = compTop + c.height * scale;
+          return compLeft < right && compRight > left && compTop < bottom && compBottom > top;
+        })
+        .map((c) => c.id);
+      onMarqueeSelect(hits, additive);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -271,7 +514,26 @@ export default function LandingCanvas({
     "top-right": "nesw-resize",
     "bottom-left": "nesw-resize",
   };
-  const selectedComponent = config.components.find((c) => c.id === selectedId) ?? null;
+  // Ruler chỉ dóng đường theo đúng 1 component — khi đang chọn nhiều, không có "1 khung" rõ ràng nào
+  // để dóng, nên coi như không chọn gì ở góc nhìn của ruler.
+  const selectedComponent = selectedIds.length === 1 ? config.components.find((c) => c.id === selectedIds[0]) ?? null : null;
+
+  // Khung bao XANH quanh TOÀN BỘ vùng chọn nhiều component (union bounding box) — chỉ tính khi đang
+  // chọn từ 2 component trở lên, thêm VÀO chứ không thay khung viền vàng riêng từng component (xem
+  // overlay bên dưới) — giúp thấy rõ biên ngoài của cả nhóm đang chọn, tách biệt hẳn khỏi màu vàng
+  // dùng cho highlight từng component đơn lẻ.
+  const selectionBounds =
+    selectedIds.length > 1
+      ? (() => {
+          const comps = config.components.filter((c) => selectedIds.includes(c.id));
+          if (comps.length === 0) return null;
+          const left = Math.min(...comps.map((c) => c.x));
+          const top = Math.min(...comps.map((c) => c.y));
+          const right = Math.max(...comps.map((c) => c.x + c.width));
+          const bottom = Math.max(...comps.map((c) => c.y + c.height));
+          return { left, top, width: right - left, height: bottom - top };
+        })()
+      : null;
 
   // Minimap góc dưới-phải — thu nhỏ TOÀN BỘ bàn nháp (không chỉ khung thật) vào 1 ô cố định
   // MINIMAP_WIDTH px, vẽ khung thật (viền mảnh) + khung nhìn hiện tại (viền vàng, chính là phần
@@ -317,7 +579,16 @@ export default function LandingCanvas({
           tool === "hand" ? (isPanning ? "cursor-grabbing" : "cursor-grab") : ""
         }`}
         style={{ left: RULER_SIZE, top: RULER_SIZE, right: 0, bottom: 0 }}
-        onClick={() => onSelect(null)}
+        onClick={() => {
+          // `click` bắn SAU `mouseup` trong thứ tự sự kiện DOM — nếu vừa kéo-marquee thật sự xong
+          // (đã xử lý chọn ở handleWrapperMouseDown's onUp), bỏ qua đúng 1 lần click này, không để nó
+          // deselect-all đè lên kết quả marquee vừa chọn.
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
+          onSelect(null);
+        }}
         onMouseDown={handleWrapperMouseDown}
         onDoubleClick={() => tool === "hand" && setPan({ x: 0, y: 0 })}
         onDragOver={(e) => e.preventDefault()}
@@ -358,13 +629,48 @@ export default function LandingCanvas({
           >
             <LandingRenderer config={config} data={data} scale={scale} clip={false} />
 
-            {/* Đường dóng đỏ báo đang bắt dính vào tâm canvas — giống Photoshop/Figma smart guide,
-                chỉ hiện trong lúc kéo di chuyển, biến mất ngay khi thả chuột hoặc lệch khỏi ngưỡng. */}
-            {centerGuides.x && (
-              <div className="pointer-events-none absolute top-0 h-full w-px bg-danger-500" style={{ left: (canvasWidth / 2) * scale }} />
+            {/* Đường dóng đỏ báo đang căn thẳng hàng (mép/tâm trùng canvas hoặc 1 component khác) —
+                giống Photoshop/Figma/Google Slides smart guide, chỉ hiện trong lúc kéo di chuyển,
+                biến mất ngay khi thả chuột hoặc lệch khỏi ngưỡng (xem computeSnap()). */}
+            {guides.lines.map((g, i) =>
+              g.axis === "x" ? (
+                <div
+                  key={`gl-${i}`}
+                  className="pointer-events-none absolute top-0 h-full w-px bg-danger-500"
+                  style={{ left: g.pos * scale }}
+                />
+              ) : (
+                <div
+                  key={`gl-${i}`}
+                  className="pointer-events-none absolute left-0 w-full h-px bg-danger-500"
+                  style={{ top: g.pos * scale }}
+                />
+              )
             )}
-            {centerGuides.y && (
-              <div className="pointer-events-none absolute left-0 w-full h-px bg-danger-500" style={{ top: (canvasHeight / 2) * scale }} />
+
+            {/* Vạch báo khoảng cách 2 bên BẰNG NHAU — 1 vạch mảnh + 2 gạch chốt ở đầu, đúng span
+                khoảng trống giữa component đang kéo và component liền kề (xem computeSnap()). Luôn
+                hiện thành cặp (trái+phải hoặc trên+dưới). */}
+            {guides.spacings.map((s, i) =>
+              s.axis === "x" ? (
+                <div
+                  key={`gs-${i}`}
+                  className="pointer-events-none absolute h-px bg-danger-500"
+                  style={{ left: s.from * scale, width: (s.to - s.from) * scale, top: s.cross * scale }}
+                >
+                  <div className="absolute -top-1 left-0 h-2 w-px bg-danger-500" />
+                  <div className="absolute -top-1 right-0 h-2 w-px bg-danger-500" />
+                </div>
+              ) : (
+                <div
+                  key={`gs-${i}`}
+                  className="pointer-events-none absolute w-px bg-danger-500"
+                  style={{ top: s.from * scale, height: (s.to - s.from) * scale, left: s.cross * scale }}
+                >
+                  <div className="absolute -left-1 top-0 h-px w-2 bg-danger-500" />
+                  <div className="absolute -left-1 bottom-0 h-px w-2 bg-danger-500" />
+                </div>
+              )
             )}
 
             {/* Overlay tương tác — cùng toạ độ/scale với artboard bên dưới, chỉ vẽ viền/handle, không che nội dung.
@@ -390,7 +696,7 @@ export default function LandingCanvas({
                 .filter((c) => !c.hiddenInBuilder)
                 .sort((a, b) => a.zIndex - b.zIndex)
                 .map((component) => {
-                  const isSelected = component.id === selectedId;
+                  const isSelected = selectedIds.includes(component.id);
                   return (
                     <div
                       key={component.id}
@@ -404,7 +710,10 @@ export default function LandingCanvas({
                         height: component.height * scale,
                       }}
                     >
+                      {/* Handle resize 4 góc — CHỈ hiện khi đang chọn ĐÚNG 1 component (resize nhiều
+                          component cùng lúc không có ngữ nghĩa rõ ràng, không nằm trong yêu cầu). */}
                       {isSelected &&
+                        selectedIds.length === 1 &&
                         corners.map((corner) => (
                           <div
                             key={corner}
@@ -423,6 +732,20 @@ export default function LandingCanvas({
                   );
                 })}
             </div>
+
+            {/* Khung bao XANH quanh cả vùng chọn nhiều component — xem selectionBounds. Đặt SAU overlay
+                tương tác ở trên trong DOM để luôn nổi TRÊN các khung viền vàng riêng từng component. */}
+            {selectionBounds && (
+              <div
+                className="pointer-events-none absolute outline outline-2 outline-teal-500"
+                style={{
+                  left: selectionBounds.left * scale,
+                  top: selectionBounds.top * scale,
+                  width: selectionBounds.width * scale,
+                  height: selectionBounds.height * scale,
+                }}
+              />
+            )}
           </div>
 
         </div>
@@ -455,6 +778,15 @@ export default function LandingCanvas({
                 (avail.h - surfaceH) / 2 + pan.y + marginY * scale
               }px`,
             }}
+          />
+        )}
+
+        {/* Khung marquee đang kéo — `position: fixed` vì marqueeRect đã ở toạ độ MÀN HÌNH (client),
+            không phụ thuộc pan/scale/vị trí lồng nhau của phần tử cha. */}
+        {marqueeRect && (
+          <div
+            className="pointer-events-none fixed z-30 outline outline-1 outline-gold-500 bg-gold-500/10"
+            style={{ left: marqueeRect.left, top: marqueeRect.top, width: marqueeRect.width, height: marqueeRect.height }}
           />
         )}
       </div>

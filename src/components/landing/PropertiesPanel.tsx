@@ -1,4 +1,4 @@
-import { BackgroundConfig, LandingComponent, LandingConfig } from "@/lib/landing/types";
+import { BackgroundConfig, ButtonAction, LandingComponent, LandingConfig } from "@/lib/landing/types";
 import { Participant, Prize } from "@/types";
 import BackgroundPanel from "./panels/BackgroundPanel";
 import SharedFields from "./panels/SharedFields";
@@ -8,21 +8,21 @@ import LuckyWheelPanel from "./panels/LuckyWheelPanel";
 import LiveTextPanel from "./panels/LiveTextPanel";
 import LiveImagePanel from "./panels/LiveImagePanel";
 import PrizeListPanel from "./panels/PrizeListPanel";
+import PrizeGalleryPanel from "./panels/PrizeGalleryPanel";
 import CountdownPanel from "./panels/CountdownPanel";
 import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
 import ScoreboardPanel from "./panels/ScoreboardPanel";
-import FireworksPanel from "./panels/FireworksPanel";
-import StageLightPanel from "./panels/StageLightPanel";
-import DimBackgroundPanel from "./panels/DimBackgroundPanel";
-import LinkOpenerPanel from "./panels/LinkOpenerPanel";
-import DrawPanel from "./panels/DrawPanel";
-import ConfirmWinnerPanel from "./panels/ConfirmWinnerPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
   selected: LandingComponent | null;
+  // Số component đang được chọn (0/1/nhiều — Ctrl/Cmd+click hoặc kéo-marquee trên LandingCanvas.tsx).
+  // `selected` chỉ khác rỗng khi đúng bằng 1 — cần truyền riêng số này để phân biệt "0 chọn" (hiện
+  // Background) với "nhiều hơn 1 chọn" (hiện bulk panel), 2 trạng thái mà `selected` một mình không
+  // phân biệt được (cả 2 đều null).
+  selectedCount: number;
   sessionName: string;
   prizes: Prize[];
   participants: Participant[];
@@ -32,11 +32,15 @@ interface PropertiesPanelProps {
   onDelete: () => void;
 }
 
-// Container của Properties Panel — không có gì được chọn thì hiện form Background; có chọn thì
-// hiện SharedFields (x/y/w/h/effect + xoá) + form riêng của đúng loại component đó (switch theo type).
+// Container của Properties Panel — không có gì được chọn thì hiện form Background; chọn đúng 1 thì
+// hiện SharedFields (x/y/w/h/effect + xoá) + form riêng của đúng loại component đó (switch theo
+// type); chọn NHIỀU thì chỉ hiện tổng số + xoá hàng loạt, không có form nào giả định 1 component duy
+// nhất (SharedFields và mọi panel riêng-theo-type bên dưới đều nhận thẳng `selected.props`, không
+// hoạt động được với 1 mảng nhiều component khác type nhau).
 export default function PropertiesPanel({
   config,
   selected,
+  selectedCount,
   sessionName,
   prizes,
   participants,
@@ -45,6 +49,20 @@ export default function PropertiesPanel({
   onChangeProps,
   onDelete,
 }: PropertiesPanelProps) {
+  if (selectedCount > 1) {
+    return (
+      <div className="space-y-3 p-3">
+        <p className="text-xs text-base-400">{selectedCount} components selected.</p>
+        <button
+          onClick={onDelete}
+          className="w-full rounded border border-danger-500/30 bg-danger-500/10 px-2 py-1.5 text-xs text-danger-500 hover:bg-danger-500/20"
+        >
+          Delete {selectedCount} components
+        </button>
+      </div>
+    );
+  }
+
   if (!selected) {
     return (
       <div className="p-3">
@@ -66,12 +84,17 @@ export default function PropertiesPanel({
         />
       )}
       {(selected.type === "winnerName" || selected.type === "prizeName") && (
-        <LiveTextPanel props={selected.props} onChange={onChangeProps} />
+        <LiveTextPanel
+          props={selected.props}
+          onChange={onChangeProps}
+          showWinnerFields={selected.type === "winnerName"}
+        />
       )}
       {selected.type === "prizeImage" && (
         <LiveImagePanel props={selected.props} prizes={prizes} onChange={onChangeProps} />
       )}
       {selected.type === "prizeList" && <PrizeListPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "prizeGallery" && <PrizeGalleryPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "countdown" && <CountdownPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "currentTime" && <CurrentTimePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "participantCount" && (
@@ -79,26 +102,22 @@ export default function PropertiesPanel({
       )}
       {selected.type === "button" && (
         <ButtonPanel
-          component={selected}
-          // Tên các Button KHÁC trên trang (không tính chính nút này) — Button không có action nào
-          // phân biệt nữa nên tên phải duy nhất để nhận diện đúng trên Trigger Graph.
-          usedNames={config.components
-            .filter((c): c is Extract<LandingComponent, { type: "button" }> => c.type === "button" && c.id !== selected.id)
-            .map((c) => c.name?.trim() ?? "")
-            .filter(Boolean)}
-          onChangeComponent={onChangeComponent}
+          props={selected.props}
+          participants={participants}
+          // Action nào (trừ "none") đã bị 1 Button KHÁC trên trang chiếm — tối đa 1 Button/action,
+          // tránh 2 nút cùng "Draw" gây nhầm lẫn vận hành. Key = action, value = tên Button đang giữ.
+          usedActionOwners={Object.fromEntries(
+            config.components
+              .filter(
+                (c): c is Extract<LandingComponent, { type: "button" }> =>
+                  c.type === "button" && c.id !== selected.id && c.props.action !== "none"
+              )
+              .map((c) => [c.props.action, c.name?.trim() || "Button"])
+          ) as Partial<Record<ButtonAction, string>>}
           onChange={onChangeProps}
         />
       )}
       {selected.type === "scoreboard" && <ScoreboardPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "fireworks" && <FireworksPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "stageLight" && <StageLightPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "dimBackground" && <DimBackgroundPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "linkOpener" && (
-        <LinkOpenerPanel props={selected.props} participants={participants} onChange={onChangeProps} />
-      )}
-      {selected.type === "draw" && <DrawPanel />}
-      {selected.type === "confirmWinner" && <ConfirmWinnerPanel />}
       <div className="h-px bg-base-800" />
       <SharedFields component={selected} onChange={onChangeComponent} onDelete={onDelete} />
     </div>

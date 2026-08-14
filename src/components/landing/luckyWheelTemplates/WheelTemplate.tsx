@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Participant } from "@/types";
-import { DrawSequenceActions, getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import { getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
 import { displayValue } from "./displayValue";
-import { useTriggerCommands } from "../useTriggerCommands";
 
 const FULL_TURNS = 5;
 
@@ -15,15 +14,7 @@ const EASING_CSS: Record<LuckyWheelComponent["props"]["spinEasing"], string> = {
 // Template "wheel" — vòng tròn chia segment theo từng participant, quay và dừng đúng ở người
 // trúng thật (đọc từ LandingData.results, không tự chọn người trúng). Đây là template gốc,
 // tách riêng khỏi LuckyWheelView để dễ thêm template mới mà không đụng vào code template cũ.
-export default function WheelTemplate({
-  component,
-  data,
-  sequence,
-}: {
-  component: LuckyWheelComponent;
-  data?: LandingData;
-  sequence?: DrawSequenceActions;
-}) {
+export default function WheelTemplate({ component, data }: { component: LuckyWheelComponent; data?: LandingData }) {
   const { drawField, displayField, winnerDisplayField, maskSensitiveData, fontFamily, fontColor, fontSize, spinDurationMs, spinEasing } =
     component.props;
   const participants = data?.participants ?? [];
@@ -45,10 +36,10 @@ export default function WheelTemplate({
   const [winner, setWinner] = useState<Participant | null>(null);
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Bắt đầu quay tới ĐÚNG người trúng đang có ở results[0] — gọi khi nhận tín hiệu "Wheel.StartSpin"
-  // qua Trigger Graph (xem useTriggerCommands bên dưới), KHÔNG còn tự dò results[0]?.id đổi hay
-  // chưa như trước. Huỷ timer của lượt quay TRƯỚC (nếu còn đang đếm dở) trước khi bắt đầu lượt mới,
-  // tránh 2 lượt chồng lên nhau nếu tín hiệu bắn liên tiếp nhanh.
+  // Bắt đầu quay tới ĐÚNG người trúng đang có ở results[0] — gọi khi phát hiện results[0].id vừa
+  // đổi (xem useEffect bên dưới), tự dò thẳng từ data, không qua tín hiệu/component nào khác. Huỷ
+  // timer của lượt quay TRƯỚC (nếu còn đang đếm dở) trước khi bắt đầu lượt mới, tránh 2 lượt chồng
+  // lên nhau nếu candidate đổi liên tiếp nhanh.
   function startSpin() {
     const latest = results[0];
     if (!latest) return;
@@ -70,10 +61,6 @@ export default function WheelTemplate({
     spinTimerRef.current = setTimeout(() => {
       setSpinning(false);
       setWinner(segments[winnerIndex]);
-      // Báo "quay xong" ĐÚNG lúc animation thật kết thúc (không phải 1 delay đoán trước ở nơi khác)
-      // — xem "Wheel.SpinCompleted" trong COMPONENT_SIGNALS (componentRegistry.ts), cho phép nối
-      // chuỗi hành động (vd bắn Fireworks ngay khi quay xong) chính xác tuyệt đối.
-      sequence?.fireClick(component.id);
     }, spinDurationMs);
   }
 
@@ -81,9 +68,18 @@ export default function WheelTemplate({
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
   }, []);
 
-  useTriggerCommands(component.triggerActions, sequence, (command) => {
-    if (command === "Wheel.StartSpin") startSpin();
-  });
+  // Tự phát hiện có candidate MỚI (results[0].id đổi) rồi tự bắt đầu quay — cơ chế gốc trước khi có
+  // Trigger Graph (đã bỏ). lastSpunIdRef bắt đầu undefined nên nếu trang vừa mở đã có sẵn 1 candidate
+  // đang chờ (vd Builder reload giữa chừng), Wheel sẽ quay ngay 1 lần lúc mount — chấp nhận được,
+  // đúng tinh thần "quay đúng candidate mới nhất" thay vì im lặng đứng yên với dữ liệu cũ.
+  const lastSpunIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const latestId = results[0]?.id;
+    if (latestId === undefined || latestId === lastSpunIdRef.current) return;
+    lastSpunIdRef.current = latestId;
+    startSpin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results[0]?.id]);
 
   const size = Math.max(40, Math.min(component.width, component.height));
   const radius = size / 2 - Math.max(24, size * 0.14);

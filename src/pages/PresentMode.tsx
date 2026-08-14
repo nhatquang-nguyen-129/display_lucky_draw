@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useLandingData } from "@/components/landing/useLandingData";
 import { useDrawSequence } from "@/components/landing/useDrawSequence";
 import LandingRenderer from "@/components/landing/LandingRenderer";
+import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
 import { CANVAS_HEIGHT, CANVAS_WIDTH, LandingConfig, parseLandingConfig } from "@/lib/landing/types";
 
 const CONFIG_POLL_MS = 2000;
@@ -20,7 +21,13 @@ export default function PresentMode() {
   useEffect(() => {
     if (!sessionId) return;
     const load = () =>
-      window.api.sessions.get(sessionId).then((s) => setConfig(parseLandingConfig(s?.landing_config ?? null)));
+      window.api.sessions.get(sessionId).then((s) => {
+        const parsed = parseLandingConfig(s?.landing_config ?? null);
+        // Loại bỏ component có type không còn tồn tại trong COMPONENT_REGISTRY (vd landing đã lưu từ
+        // trước khi bỏ Trigger Graph) — tránh crash ở LandingRenderer.tsx, cùng cơ chế với
+        // LandingBuilderWindow.tsx lúc mở Builder.
+        setConfig({ ...parsed, components: parsed.components.filter((c) => !!COMPONENT_REGISTRY[c.type]) });
+      });
     load();
     const interval = setInterval(load, CONFIG_POLL_MS);
     return () => clearInterval(interval);

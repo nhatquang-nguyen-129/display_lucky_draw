@@ -1,9 +1,8 @@
 import { LandingComponentType } from "@/lib/landing/types";
 
-// Icon riêng cho từng loại component — dùng chung bởi ComponentPalette.tsx (menu "Add component")
-// VÀ triggerGraph/ComponentNode.tsx (chỉ những loại có mặt trong COMPONENT_SIGNALS mới bao giờ hiện
-// ra làm node ở Trigger Graph, nhưng Palette cần icon cho TẤT CẢ loại). Cùng quy ước "viewBox 0 0 24
-// 24, stroke currentColor" đã dùng cho icon toolbar trong LandingBuilderWindow.tsx.
+// Icon riêng cho từng loại component — dùng bởi ComponentPalette.tsx (menu "Add component"). Cùng
+// quy ước "viewBox 0 0 24 24, stroke currentColor" đã dùng cho icon toolbar trong
+// LandingBuilderWindow.tsx.
 
 function TextIcon() {
   return (
@@ -73,6 +72,17 @@ function PrizeListIcon() {
   );
 }
 
+function PrizeGalleryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
 function CountdownIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -120,59 +130,6 @@ function ScoreboardIcon() {
   );
 }
 
-function FireworksIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
-      <circle cx="12" cy="12" r="2.2" />
-    </svg>
-  );
-}
-
-function StageLightIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M9 3h6l1.5 6h-9L9 3Z" />
-      <path d="M7.5 9 4 20h16L16.5 9" />
-    </svg>
-  );
-}
-
-function DimBackgroundIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
-    </svg>
-  );
-}
-
-function LinkOpenerIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M10 14 20 4M20 4h-5M20 4v5" />
-      <path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" />
-    </svg>
-  );
-}
-
-function DrawIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <rect x="4" y="4" width="16" height="16" rx="3" />
-      <path d="M8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01" />
-    </svg>
-  );
-}
-
-function ConfirmWinnerIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <circle cx="12" cy="12" r="9" />
-      <path d="m8 12.5 2.5 2.5L16 9.5" />
-    </svg>
-  );
-}
-
 function GenericComponentIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" className="h-5 w-5">
@@ -189,17 +146,12 @@ const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   prizeName: PrizeNameIcon,
   prizeImage: PrizeImageIcon,
   prizeList: PrizeListIcon,
+  prizeGallery: PrizeGalleryIcon,
   countdown: CountdownIcon,
   currentTime: CurrentTimeIcon,
   participantCount: ParticipantCountIcon,
   button: ButtonIcon,
   scoreboard: ScoreboardIcon,
-  fireworks: FireworksIcon,
-  stageLight: StageLightIcon,
-  dimBackground: DimBackgroundIcon,
-  linkOpener: LinkOpenerIcon,
-  draw: DrawIcon,
-  confirmWinner: ConfirmWinnerIcon,
 };
 
 export default function ComponentTypeIcon({ type }: { type: LandingComponentType }) {

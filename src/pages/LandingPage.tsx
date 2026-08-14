@@ -3,6 +3,7 @@ import Button from "@/components/Button";
 import { useSession } from "@/context/SessionContext";
 import LandingRenderer from "@/components/landing/LandingRenderer";
 import { useLandingData } from "@/components/landing/useLandingData";
+import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
 import { CANVAS_HEIGHT, CANVAS_WIDTH, parseLandingConfig } from "@/lib/landing/types";
 
 const CONFIG_POLL_MS = 2000;
@@ -63,7 +64,14 @@ export default function LandingPage() {
     );
   }
 
-  const config = parseLandingConfig(landingConfigRaw);
+  const parsedConfig = parseLandingConfig(landingConfigRaw);
+  // Loại bỏ component có type không còn tồn tại trong COMPONENT_REGISTRY (vd landing đã lưu từ
+  // trước khi bỏ Trigger Graph) — tránh crash ở LandingRenderer.tsx, cùng cơ chế với
+  // LandingBuilderWindow.tsx/PresentMode.tsx.
+  const config = {
+    ...parsedConfig,
+    components: parsedConfig.components.filter((c) => !!COMPONENT_REGISTRY[c.type]),
+  };
 
   return (
     <div className="flex h-full flex-col">

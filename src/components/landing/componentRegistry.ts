@@ -5,10 +5,8 @@
 import { LandingComponent, LandingComponentType, newComponentId } from "@/lib/landing/types";
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
-// nhóm khi kéo-thả, không liên quan gì tới Emitter/Receiver (1 nhóm có thể trộn cả 2, vd "Effects"
-// gồm toàn Receiver còn "Interactive" chỉ có Emitter — nhóm theo công dụng người dùng nhìn thấy,
-// không theo kiến trúc tín hiệu bên trong). Thứ tự mảng này = thứ tự nhóm hiện trên Palette.
-export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive", "Effects", "Actions"] as const;
+// nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette.
+export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive"] as const;
 export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
 
 export interface ComponentRegistryEntry {
@@ -86,6 +84,8 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       fontWeight: "bold",
       align: "center",
       fallbackText: "—",
+      revealEffect: "none",
+      transitionEffect: "none",
     }),
   },
   prizeName: {
@@ -104,7 +104,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   },
   prizeImage: {
     label: "Prize Image",
-    description: "Latest won prize's image",
+    description: "A prize's image — latest winner's, or one specific prize pinned to custom artwork",
     category: "Draw & Results",
     defaultWidth: 300,
     defaultHeight: 300,
@@ -112,6 +112,10 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       fit: "cover",
       borderRadius: 12,
       fallbackImageDataUrl: null,
+      source: "latestWinner",
+      prizeId: "",
+      selectable: false,
+      glowColor: "#FFCA2D",
     }),
   },
   prizeList: {
@@ -124,6 +128,23 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       fontSize: 18,
       color: "#FFFFFF",
       showRemaining: true,
+    }),
+  },
+  prizeGallery: {
+    label: "Prize Gallery",
+    description: "Grid of every prize's image — hover to preview, click to lock in which prize Draw targets",
+    category: "Draw & Results",
+    defaultWidth: 600,
+    defaultHeight: 400,
+    createDefaultProps: () => ({
+      columns: 3,
+      gap: 12,
+      imageFit: "cover",
+      borderRadius: 8,
+      showName: true,
+      nameFontSize: 14,
+      nameColor: "#FFFFFF",
+      glowColor: "#FFCA2D",
     }),
   },
   countdown: {
@@ -178,11 +199,13 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   },
   button: {
     label: "Button",
-    description: "Signal Emitter — emits Button.Click, active in Present Mode only",
+    description: "Runs one fixed action (Draw, Confirm, Reset, Show Winner, Open Link) when clicked in Present Mode",
     category: "Interactive",
     defaultWidth: 220,
     defaultHeight: 64,
     createDefaultProps: () => ({
+      action: "none",
+      urlField: "",
       label: "Button",
       fontSize: 22,
       color: "#0B0B10",
@@ -190,7 +213,6 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       borderRadius: 12,
       strokeColor: "#0B0B10",
       strokeWidth: 0,
-      startEnabled: true,
     }),
   },
   scoreboard: {
@@ -213,84 +235,6 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       backgroundImageFit: "cover",
     }),
   },
-  fireworks: {
-    label: "Fireworks",
-    description: "Particle burst effect — wire a Trigger Graph link to Play/Stop it",
-    category: "Effects",
-    defaultWidth: 1920,
-    defaultHeight: 1080,
-    createDefaultProps: () => ({
-      preset: "burstCenter",
-      particleCount: 130,
-      colorPalette: "brand",
-      duration: 3000,
-      launchDirection: 0,
-      launchHeight: 0.55,
-      spreadAngle: 360,
-      burstRadius: 40,
-      gravity: 650,
-      speed: 380,
-      loop: false,
-    }),
-  },
-  stageLight: {
-    label: "Stage Light",
-    description: "Sweeping spotlight beam — wire a Trigger Graph link to Play/Stop it",
-    category: "Effects",
-    defaultWidth: 300,
-    defaultHeight: 500,
-    createDefaultProps: () => ({
-      beamColor: "#FFCA2D",
-      beamOpacity: 0.5,
-      beamWidth: 220,
-      beamLength: 480,
-      sweepAngle: 0,
-      swingRange: 35,
-      sweepSpeed: 2.5,
-      blurAmount: 12,
-      intensity: 0.8,
-      duration: 4000,
-      loop: true,
-    }),
-  },
-  dimBackground: {
-    label: "Dim Background",
-    description: "Fades a color overlay in/out — wire a Trigger Graph link to Play/Stop it",
-    category: "Effects",
-    defaultWidth: 1920,
-    defaultHeight: 1080,
-    createDefaultProps: () => ({
-      color: "#000000",
-      targetOpacity: 0.6,
-      fadeDurationMs: 500,
-    }),
-  },
-  linkOpener: {
-    label: "Link Opener",
-    description: "Opens the latest winner's URL in a browser — wire a Trigger Graph link to it",
-    category: "Actions",
-    defaultWidth: 160,
-    defaultHeight: 64,
-    createDefaultProps: () => ({
-      urlField: "",
-    }),
-  },
-  draw: {
-    label: "Draw",
-    description: "Picks a pending winner for the current draw — wire a Trigger Graph link to it",
-    category: "Actions",
-    defaultWidth: 160,
-    defaultHeight: 64,
-    createDefaultProps: () => ({}),
-  },
-  confirmWinner: {
-    label: "Confirm Winner",
-    description: "Commits the pending draw result to the database — wire a Trigger Graph link to it",
-    category: "Actions",
-    defaultWidth: 160,
-    defaultHeight: 64,
-    createDefaultProps: () => ({}),
-  },
 };
 
 export const COMPONENT_TYPES = Object.keys(COMPONENT_REGISTRY) as LandingComponentType[];
@@ -311,48 +255,3 @@ export function createComponentAt(type: LandingComponentType, x: number, y: numb
   };
   return { ...base, type, props: entry.createDefaultProps() } as LandingComponent;
 }
-
-// Từ vựng tín hiệu Trigger Graph của TỪNG loại component — "emits" là Event loại này CÓ THỂ phát ra
-// (làm nguồn/source trên Graph, chỉ Signal EMITTER mới có), "listensFor" là Command loại này HIỂU
-// và phản ứng (làm đích/target trên Graph, chỉ Signal RECEIVER mới có).
-// Đa số component chỉ có ĐÚNG 1 trong 2 field này (xem nguyên tắc Emitter/Receiver ở CLAUDE.md).
-// NGOẠI LỆ HẸP: 1 Receiver có animation hoàn thành sau 1 khoảng thời gian KHÔNG CỐ ĐỊNH (vd Lucky
-// Wheel — tuỳ template/reveal timing mà lúc quay xong khác nhau mỗi lần) được phép có thêm ĐÚNG 1
-// emit cho tín hiệu "báo xong việc nó vừa được giao" (vd "Wheel.SpinCompleted") — để nối chuỗi hành
-// động (Wheel quay xong → Fireworks bắn) mà không phải đoán 1 khoảng delay cố định rồi hy vọng khớp
-// (không chính xác, dễ lệch mỗi khi đổi cấu hình animation). Đây KHÔNG phải "component tự do vừa
-// Emitter vừa Receiver" — chỉ áp dụng cho đúng 1 tín hiệu hoàn-thành-việc-của-chính-nó, không phải
-// danh sách emit tuỳ ý không liên quan gì tới Command nó vừa nhận.
-// Loại nào KHÔNG có mặt ở đây (Text/Image/Countdown/PrizeList/...) không bao giờ tham gia Trigger
-// Graph — bị lọc bỏ hoàn toàn khỏi màn hình đó (xem TriggerGraphEditor.tsx), tránh rối mắt với
-// những component không liên quan gì tới việc điều khiển bằng tín hiệu.
-// Đây là nguồn dữ liệu DUY NHẤT cho các dropdown Source/Signal trên Trigger Graph — không có tên tín
-// hiệu tự gõ tuỳ ý, tránh gõ lệch tên giữa nguồn phát và đích nhận khiến liên kết không bao giờ khớp.
-// Tên tín hiệu luôn theo quy ước "Component.Action" (vd "Wheel.StartSpin") — tự thân đã đủ rõ nghĩa
-// nên không cần thêm 1 field label riêng (khác bản đầu tiên của hệ thống này).
-export interface ComponentSignals {
-  emits?: string[];
-  listensFor?: string[];
-}
-
-export const COMPONENT_SIGNALS: Partial<Record<LandingComponentType, ComponentSignals>> = {
-  // "Gateable Emitter" — ngoại lệ hẹp thứ 2 (xem checklist đầu types.ts): Button vẫn CHỈ emit
-  // Button.Click, nhưng listensFor thêm đúng 2 Command chung để 1 Signal bất kỳ trên Graph khoá/mở
-  // được nó (vd "Wheel.SpinCompleted → Confirm.Enable") — xem ButtonView.tsx.
-  button: { emits: ["Button.Click"], listensFor: ["Button.Enable", "Button.Disable"] },
-  // Lucky Wheel vừa listensFor (nhận lệnh quay) vừa emits (tự báo khi quay xong) — xem ngoại lệ hẹp
-  // ở comment trên. "Wheel.SpinCompleted" bắn qua sequence.fireClick() ngay tại điểm animation quay
-  // THẬT SỰ kết thúc (xem WheelTemplate.tsx/DigitRollerTemplate.tsx), không phải 1 delay đoán trước.
-  luckyWheel: { listensFor: ["Wheel.StartSpin"], emits: ["Wheel.SpinCompleted"] },
-  fireworks: { listensFor: ["Fireworks.Play", "Fireworks.Stop"] },
-  stageLight: { listensFor: ["StageLight.Play", "StageLight.Stop"] },
-  dimBackground: { listensFor: ["DimBackground.Play", "DimBackground.Stop"] },
-  // Mở URL là 1 side effect tức thời (không phải animation có trạng thái đang chạy) — chỉ cần 1
-  // Command duy nhất, không có ".Stop" như Fireworks/Stage Light.
-  linkOpener: { listensFor: ["LinkOpener.Open"] },
-  // Ngoại lệ hẹp — giống Lucky Wheel (xem comment ở DrawComponent trong types.ts): pick() là IPC bất
-  // đồng bộ, "Draw.Picked" chỉ bắn SAU KHI pick() thật sự thành công (xem DrawView.tsx), để nối
-  // chuỗi chính xác sang Wheel.StartSpin thay vì đoán 1 delay cố định.
-  draw: { listensFor: ["Draw.Pick"], emits: ["Draw.Picked"] },
-  confirmWinner: { listensFor: ["ConfirmWinner.Confirm"] },
-};
