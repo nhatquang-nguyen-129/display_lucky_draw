@@ -1,8 +1,12 @@
-import { LiveTextProps } from "@/lib/landing/types";
+import { EFFECT_NAMES, EffectName, LiveTextProps, WINNER_TRANSITION_EFFECTS, WinnerTransitionEffect } from "@/lib/landing/types";
 
 interface LiveTextPanelProps {
-  props: LiveTextProps;
-  onChange: (patch: Partial<LiveTextProps>) => void;
+  props: LiveTextProps & { revealEffect?: EffectName; transitionEffect?: WinnerTransitionEffect };
+  onChange: (patch: Record<string, any>) => void;
+  // CHỈ true cho Winner Name — Prize Name dùng chung panel này nhưng KHÔNG có 2 field revealEffect/
+  // transitionEffect (xem WinnerNameProps trong types.ts để biết lý do), nên ẩn hẳn phần này khi
+  // false thay vì hiện control không có tác dụng gì.
+  showWinnerFields?: boolean;
 }
 
 const fieldClass =
@@ -10,8 +14,9 @@ const fieldClass =
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
 
 // Dùng chung cho winnerName + prizeName — 2 loại này chỉ khác nguồn dữ liệu (đọc trong view),
-// còn cấu hình hiển thị hoàn toàn giống nhau.
-export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
+// còn cấu hình hiển thị hoàn toàn giống nhau (trừ revealEffect/transitionEffect, chỉ Winner Name có
+// — xem trên).
+export default function LiveTextPanel({ props, onChange, showWinnerFields }: LiveTextPanelProps) {
   return (
     <div className="space-y-3">
       <div>
@@ -65,6 +70,48 @@ export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
           </select>
         </div>
       </div>
+
+      {showWinnerFields && (
+        <>
+          <div>
+            <label className={labelClass}>Reveal effect</label>
+            <select
+              className={fieldClass}
+              value={props.revealEffect ?? "none"}
+              onChange={(e) => onChange({ revealEffect: e.target.value as EffectName })}
+            >
+              {EFFECT_NAMES.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              Applies to whichever text is showing right now — including the fallback text while
+              still waiting. Pick "pulse" or "bounce" to keep it moving the whole time.
+            </p>
+          </div>
+
+          <div>
+            <label className={labelClass}>Transition effect (fallback → winner name)</label>
+            <select
+              className={fieldClass}
+              value={props.transitionEffect ?? "none"}
+              onChange={(e) => onChange({ transitionEffect: e.target.value as WinnerTransitionEffect })}
+            >
+              {WINNER_TRANSITION_EFFECTS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              The swap itself — plays once, right at the moment the fallback text above is replaced
+              by the real winner's name. "None" swaps instantly. Separate from Reveal effect above.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DrawCandidate, DrawResultRow } from "@/types";
-import { DrawSequenceActions, LandingData, TriggerLog } from "@/lib/landing/types";
+import { DrawSequenceActions, LandingData } from "@/lib/landing/types";
 
 // Hook trung tâm cho luồng Button Draw/Confirm/Redo trên Landing Page (Present Mode only).
 // pick() gọi draw:pick — CHỌN nhưng CHƯA ghi DB — giữ candidate trong state để hiện lên màn hình
@@ -10,12 +10,11 @@ import { DrawSequenceActions, LandingData, TriggerLog } from "@/lib/landing/type
 // "landing chỉ render, không tự quyết định gì" đã áp dụng xuyên suốt tính năng này.
 //
 // effectiveData "độn" candidate đang chờ vào ĐẦU mảng results dưới dạng 1 DrawResultRow giả
-// (id: "pending-<seed>") — nhờ vậy WinnerNameView/PrizeImageView (remount theo results[0]?.id, xem
-// REMOUNT_ON_RESULT_TYPES trong LandingRenderer.tsx) tự nhận ra "có kết quả mới" mà không cần sửa
-// gì ở các file đó. Lucky Wheel KHÔNG dùng cơ chế này nữa — nó chỉ bắt đầu quay khi nhận đúng tín
-// hiệu "WheelSpinStart" qua Trigger Graph (xem useTriggerCommands.ts, WheelTemplate.tsx), dù vẫn
-// đọc winner từ CHÍNH results[0] này khi tín hiệu đó nổ ra. Sau khi Confirm, vẫn tiếp tục hiện
-// candidate này (không đổi sang row thật từ DB) để không bị đổi id gây tự động quay lại lần nữa.
+// (id: "pending-<seed>") — nhờ vậy MỌI component đọc data (WinnerNameView/PrizeImageView remount
+// theo results[0]?.id, xem REMOUNT_ON_RESULT_TYPES trong LandingRenderer.tsx; Lucky Wheel tự dò
+// results[0].id đổi để bắt đầu quay, xem WheelTemplate.tsx) tự nhận ra "có kết quả mới" mà không
+// cần biết gì về pick()/confirm(). Sau khi Confirm, vẫn tiếp tục hiện candidate này (không đổi sang
+// row thật từ DB) để không bị đổi id gây tự động quay lại lần nữa.
 // Nếu 1 lời gọi IPC không bao giờ resolve/reject (vd preload cũ do quên khởi động lại electron:dev
 // sau khi sửa electron/, hoặc round-trip IPC bị rớt) thì `busy` sẽ giữ `true` MÃI MÃI — khoá CẢ 3
 // nút Draw/Confirm/Redo vĩnh viễn, không có lỗi nào hiện ra để biết vì sao (đã gặp thật). Đặt trần
@@ -51,34 +50,35 @@ export function useDrawSequence(
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [triggerLog, setTriggerLog] = useState<TriggerLog>({});
   const [scoreboardVisible, setScoreboardVisible] = useState(false);
+  const [confirmPrompt, setConfirmPrompt] = useState<{ message: string } | null>(null);
+  const pendingConfirmActionRef = useRef<(() => void) | null>(null);
   const excludeIdsRef = useRef<string[]>([]);
   const lockedPrizeIdRef = useRef<string | null>(null);
+  // Giải đang được CHỌN qua PrizeGalleryView.tsx — xem doc-comment DrawSequenceActions.selectedPrizeId
+  // trong types.ts. Độc lập hoàn toàn với candidate/busy — thuần UI, không có IPC nào cho riêng nó.
+  const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(null);
+  const [outOfStockPrizeName, setOutOfStockPrizeName] = useState<string | null>(null);
 
   const isPending = candidate !== null && !confirmed;
-
-  // Sổ ghi "component này VỪA phát tín hiệu click" thuần tuý — gọi bởi ButtonView.tsx cho MỌI
-  // Button bất kể action gì, KHÔNG gắn với việc pick()/confirm()/redo() có thành công hay không.
-  // Trigger Graph (useTriggerCommands.ts) đọc log này để biết khi nào 1 TriggerAction nên bắn.
-  function fireClick(componentId: string) {
-    setTriggerLog((prev) => ({ ...prev, [componentId]: { sourceComponentId: componentId, firedAt: Date.now() } }));
-  }
 
   async function pick() {
     if (!sessionId || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await withTimeout(window.api.draw.pick({ sessionId }), "Draw");
+      const next = await withTimeout(
+        window.api.draw.pick({ sessionId, lockedPrizeId: selectedPrizeId ?? undefined }),
+        "Draw"
+      );
       setCandidate(next);
       setConfirmed(false);
       excludeIdsRef.current = [];
       lockedPrizeIdRef.current = next.prizeId;
     } catch (e: any) {
       setError(e?.message ?? "Draw failed");
-      // Bắn lại lỗi (khác confirm()/redo()) — DrawView.tsx cần biết CHẮC pick() đã thật sự thành
-      // công hay chưa để quyết định có bắn "Draw.Picked" hay không (xem componentRegistry.ts).
+      // Bắn lại lỗi (khác confirm()/redo()) — ButtonView.tsx bắt lỗi này để không làm gì thêm,
+      // sequence.error đã đủ để hiện ra cho người vận hành thấy.
       throw e;
     } finally {
       setBusy(false);
@@ -132,9 +132,6 @@ export function useDrawSequence(
       setConfirmed(false);
       excludeIdsRef.current = [];
       lockedPrizeIdRef.current = null;
-      // Trả luôn triggerLog về rỗng — "quay về ban đầu" nên các hiệu ứng đang giữ (vd dim/confetti
-      // từ lần quay trước) cũng phải tắt theo, không chỉ riêng dữ liệu draw_results.
-      setTriggerLog({});
     } catch (e: any) {
       setError(e?.message ?? "Reset failed");
     } finally {
@@ -148,6 +145,46 @@ export function useDrawSequence(
 
   function hideScoreboard() {
     setScoreboardVisible(false);
+  }
+
+  // Click 1 ảnh giải trong PrizeGalleryView.tsx — click lại ĐÚNG giải đang chọn thì bỏ chọn, click
+  // giải KHÁC thì chuyển sang giải đó luôn (không cần bỏ chọn giải cũ trước).
+  function togglePrizeSelection(prizeId: string) {
+    setSelectedPrizeId((cur) => (cur === prizeId ? null : prizeId));
+  }
+
+  function notifyOutOfStock(prizeName: string) {
+    setOutOfStockPrizeName(prizeName);
+  }
+
+  function dismissOutOfStock() {
+    setOutOfStockPrizeName(null);
+  }
+
+  // Tự phát hiện giải ĐANG CHỌN vừa hết hàng (remaining về 0, thường ngay sau Confirm) — chủ động
+  // bỏ chọn + báo popup ngay lúc đó, không đợi người vận hành bấm Draw rồi mới thấy lỗi chung chung.
+  useEffect(() => {
+    if (!selectedPrizeId) return;
+    const prize = data.prizes.find((p) => p.id === selectedPrizeId);
+    if (prize && prize.remaining <= 0) {
+      setSelectedPrizeId(null);
+      setOutOfStockPrizeName(prize.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.prizes, selectedPrizeId]);
+
+  // Popup xác nhận chung — xem comment ở DrawSequenceActions trong types.ts. `action` giữ trong ref
+  // (không phải state) vì bản thân nó là 1 closure/hàm, không cần re-render khi gán.
+  function requestConfirm(message: string, action: () => void) {
+    pendingConfirmActionRef.current = action;
+    setConfirmPrompt({ message });
+  }
+
+  function resolveConfirmPrompt(confirmed: boolean) {
+    const action = pendingConfirmActionRef.current;
+    pendingConfirmActionRef.current = null;
+    setConfirmPrompt(null);
+    if (confirmed && action) action();
   }
 
   const effectiveData = useMemo<LandingData>(() => {
@@ -177,8 +214,6 @@ export function useDrawSequence(
     isPending,
     busy,
     error,
-    triggerLog,
-    fireClick,
     pick,
     confirm,
     redo,
@@ -186,6 +221,14 @@ export function useDrawSequence(
     toggleScoreboard,
     hideScoreboard,
     resetSession,
+    confirmPrompt,
+    requestConfirm,
+    resolveConfirmPrompt,
+    selectedPrizeId,
+    togglePrizeSelection,
+    outOfStockPrizeName,
+    notifyOutOfStock,
+    dismissOutOfStock,
     effectiveData,
   };
 }
