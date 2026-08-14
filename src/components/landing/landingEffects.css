@@ -56,3 +56,114 @@
 .landing-effect-bounce {
   animation: landing-bounce 1.2s ease-in-out infinite;
 }
+
+/* Hiệu ứng CHUYỂN CẢNH riêng cho Winner Name (WinnerNameProps.transitionEffect, xem
+   WinnerNameView.tsx) — KHÁC hẳn 4 hiệu ứng "đứng yên/xuất hiện" ở trên: chạy đúng 1 LẦN, đúng
+   khoảnh khắc fallbackText bị thay bằng tên người trúng thật, trên 2 LỚP TEXT CHỒNG NHAU cùng lúc
+   (lớp cũ đang MẤT ĐI dùng class "-out", lớp mới đang HIỆN RA dùng class "-in") — không phải hiệu
+   ứng lặp lại như pulse/bounce. Thời lượng CỐ ĐỊNH 0.5s, khớp TRANSITION_MS trong WinnerNameView.tsx —
+   đổi 1 trong 2 chỗ thì phải đổi luôn chỗ còn lại. */
+
+@keyframes winner-transition-crossfade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes winner-transition-crossfade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.winner-transition-crossfade-out {
+  animation: winner-transition-crossfade-out 0.5s both;
+}
+.winner-transition-crossfade-in {
+  animation: winner-transition-crossfade-in 0.5s both;
+}
+
+@keyframes winner-transition-slideUp-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+@keyframes winner-transition-slideUp-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.winner-transition-slideUp-out {
+  animation: winner-transition-slideUp-out 0.5s both;
+}
+.winner-transition-slideUp-in {
+  animation: winner-transition-slideUp-in 0.5s both;
+}
+
+@keyframes winner-transition-slideDown-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+@keyframes winner-transition-slideDown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.winner-transition-slideDown-out {
+  animation: winner-transition-slideDown-out 0.5s both;
+}
+.winner-transition-slideDown-in {
+  animation: winner-transition-slideDown-in 0.5s both;
+}
+
+@keyframes winner-transition-zoom-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+@keyframes winner-transition-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.winner-transition-zoom-out {
+  animation: winner-transition-zoom-out 0.5s both;
+}
+.winner-transition-zoom-in {
+  animation: winner-transition-zoom-in 0.5s both;
+}

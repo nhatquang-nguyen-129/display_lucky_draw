@@ -69,6 +69,102 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
           </div>
         </>
       )}
+
+      <div className="h-px bg-base-800" />
+
+      <label className="flex items-center gap-1.5 text-xs text-base-200">
+        <input
+          type="checkbox"
+          checked={!!background.dimOnSpinEnd}
+          onChange={(e) => onChange({ dimOnSpinEnd: e.target.checked })}
+          className="accent-gold-500"
+        />
+        Dim background after Wheel finishes
+      </label>
+
+      {background.dimOnSpinEnd && (
+        <>
+          <div>
+            <label className={labelClass}>Dim amount ({background.dimAmount ?? 50}%)</label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              className="w-full accent-gold-500"
+              value={background.dimAmount ?? 50}
+              onChange={(e) => onChange({ dimAmount: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              How dark it gets at full dim — shared by both directions below.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-base-800 p-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
+              Start — dim down
+            </span>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelClass}>Delay (ms)</label>
+                <input
+                  type="number"
+                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                  value={background.dimStartDelayMs ?? 0}
+                  onChange={(e) => onChange({ dimStartDelayMs: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Duration (ms)</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                  value={background.dimStartDurationMs ?? 1000}
+                  onChange={(e) => onChange({ dimStartDurationMs: Math.max(0, Number(e.target.value)) })}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              Delay counted from the moment the Wheel fully stops. 0 = start dimming right when it
+              stops. Negative = start that many ms BEFORE it stops (while still slowing down).
+              Positive = wait that many ms after it has already stopped. Duration = how long the
+              fade-to-dark itself takes, from start to fully dimmed.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-base-800 p-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
+              Finish — brighten back up
+            </span>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelClass}>Delay (ms)</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                  value={background.dimEndDelayMs ?? 0}
+                  onChange={(e) => onChange({ dimEndDelayMs: Math.max(0, Number(e.target.value)) })}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Duration (ms)</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                  value={background.dimEndDurationMs ?? 1000}
+                  onChange={(e) => onChange({ dimEndDurationMs: Math.max(0, Number(e.target.value)) })}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              Delay counted from the moment the next Draw/Discard picks a new candidate. Duration =
+              how long the fade-back-to-normal itself takes, from start to fully bright again.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }

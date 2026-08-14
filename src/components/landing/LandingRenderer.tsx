@@ -1,11 +1,15 @@
 import {
+  computeWheelRevealDelayMs,
   DrawSequenceActions,
   LandingComponent,
   LandingComponentType,
   LandingConfig,
   LandingData,
 } from "@/lib/landing/types";
+import Button from "@/components/Button";
 import "./landingEffects.css";
+import BackgroundDimOverlay from "./views/BackgroundDimOverlay";
+import EscapeKeyHandler from "./views/EscapeKeyHandler";
 import TextView from "./views/TextView";
 import ImageView from "./views/ImageView";
 import LuckyWheelView from "./views/LuckyWheelView";
@@ -13,17 +17,12 @@ import WinnerNameView from "./views/WinnerNameView";
 import PrizeNameView from "./views/PrizeNameView";
 import PrizeImageView from "./views/PrizeImageView";
 import PrizeListView from "./views/PrizeListView";
+import PrizeGalleryView from "./views/PrizeGalleryView";
 import CountdownView from "./views/CountdownView";
 import CurrentTimeView from "./views/CurrentTimeView";
 import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
-import FireworksView from "./views/FireworksView";
-import StageLightView from "./views/StageLightView";
-import DimBackgroundView from "./views/DimBackgroundView";
-import LinkOpenerView from "./views/LinkOpenerView";
-import DrawView from "./views/DrawView";
-import ConfirmWinnerView from "./views/ConfirmWinnerView";
 
 interface LandingRendererProps {
   config: LandingConfig;
@@ -51,8 +50,6 @@ const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["winnerName", "pr
 // Painter thuần, chỉ đọc — không có state, không có tương tác. Dùng chung nguyên vẹn bởi
 // LandingCanvas (lớp nền trong Builder) và PresentMode (toàn màn hình) để 2 nơi không bao giờ
 // lệch pixel nhau — chỉ có 1 hàm biết cách vẽ mỗi loại component (renderComponent bên dưới).
-// Hiệu ứng (fireworks/stageLight) tự quản lý idle/playing của CHÍNH NÓ qua useTriggerCommands.ts —
-// LandingRenderer không còn tính "active reaction" hay vẽ overlay dim/confetti nào ở tầng này nữa.
 
 export default function LandingRenderer({ config, data, scale, interactive, sequence, clip = true }: LandingRendererProps) {
   const { width, height, background } = config.canvas;
@@ -72,6 +69,16 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   const scoreboards = config.components.filter(
     (c): c is Extract<LandingComponent, { type: "scoreboard" }> => c.type === "scoreboard"
   );
+  // Khoảng WinnerNameView (xem file đó) phải CHỜ trước khi hiện tên thật — bằng đúng thời lượng Lucky
+  // Wheel trên trang quay xong hẳn, 0 nếu trang không có Wheel nào. Tính 1 lần cho cả trang (không
+  // theo riêng từng WinnerName) vì chỉ phụ thuộc cấu hình Wheel, không phụ thuộc bản thân WinnerName.
+  const winnerRevealDelayMs = computeWheelRevealDelayMs(config.components);
+  // `clip={false}` là tín hiệu RIÊNG LandingCanvas.tsx đã dùng sẵn để tự nhận diện "đây là canvas kéo
+  // thả của Builder" (xem doc-comment `clip` trong LandingRendererProps) — dùng LẠI đúng tín hiệu này
+  // cho WinnerNameView thay vì suy luận qua `interactive`, vì LandingPage.tsx (preview read-only ở
+  // cửa sổ chính) CŨNG không interactive nhưng phải hiện đúng fallbackText/tên thật như Present Mode
+  // thật, không được lẫn với chữ giữ chỗ chỉ dành riêng cho Builder.
+  const builderPreview = clip === false;
 
   return (
     <div
@@ -90,6 +97,14 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         backgroundRepeat: "no-repeat",
       }}
     >
+      {/* CHỈ ở Present Mode thật (interactive) — Builder không cần thấy nền tối dần đi trong lúc đang
+          chỉnh sửa, dù bản thân overlay tự bất hoạt (return null) khi tính năng tắt hoặc chưa có kết
+          quả nào. Render TRƯỚC {sorted.map(...)} để luôn nằm DƯỚI mọi component (chỉ dim background,
+          không dim nội dung nổi trên nó) — xem BackgroundDimOverlay.tsx. */}
+      {interactive && (
+        <BackgroundDimOverlay background={background} data={data} winnerRevealDelayMs={winnerRevealDelayMs} />
+      )}
+
       {sorted.map((component) => {
         const resultKey = data?.results[0]?.id ?? "empty";
         const key = REMOUNT_ON_RESULT_TYPES.has(component.type) ? `${component.id}-${resultKey}` : component.id;
@@ -111,7 +126,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
               pointerEvents: "none",
             }}
           >
-            {renderComponent(component, data, interactive, sequence)}
+            {renderComponent(component, data, interactive, sequence, winnerRevealDelayMs, builderPreview)}
           </div>
         );
       })}
@@ -129,11 +144,70 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
             className="absolute inset-0 flex items-center justify-center bg-black/60"
             style={{ pointerEvents: "auto" }}
           >
+            {/* Popup Confirm/Reset (bên dưới) đè LÊN TRÊN Scoreboard (z-50 so với không z-index ở
+                đây) nếu vô tình mở cùng lúc — Esc lúc đó chỉ nên đóng đúng popup ĐANG NỔI TRÊN CÙNG,
+                không đóng cả 2 cùng lúc, nên bỏ qua handler này khi confirmPrompt cũng đang mở. */}
+            {!sequence.confirmPrompt && <EscapeKeyHandler onEscape={sequence.hideScoreboard} />}
             <div style={{ width: c.width, height: c.height }}>
               <ScoreboardView component={c} data={data} onClose={sequence.hideScoreboard} />
             </div>
           </div>
         ))}
+
+      {/* Popup xác nhận cho action "confirm"/"reset" của Button (ghi dữ liệu THẬT, VĨNH VIỄN — xem
+          docs/landing-builder.md mục 6) — CHỈ ở Present Mode thật, khi sequence.confirmPrompt đang
+          có giá trị (ButtonView.tsx gọi sequence.requestConfirm() thay vì chạy action ngay). Click
+          nền tối (ngoài thẻ) hoặc bấm Esc = Cancel, giống hành vi đóng modal thông thường. z-50 để
+          LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. */}
+      {interactive && sequence?.confirmPrompt && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+          style={{ pointerEvents: "auto" }}
+          onClick={() => sequence.resolveConfirmPrompt(false)}
+        >
+          <EscapeKeyHandler onEscape={() => sequence.resolveConfirmPrompt(false)} />
+          <div
+            className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-medium text-base-100">{sequence.confirmPrompt.message}</p>
+            <div className="mt-5 flex justify-center gap-3">
+              <Button variant="secondary" onClick={() => sequence.resolveConfirmPrompt(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => sequence.resolveConfirmPrompt(true)}>
+                Confirm
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup "hết hàng" — CHỈ ở Present Mode thật, khi sequence.outOfStockPrizeName đang có giá trị
+          (PrizeGalleryView.tsx gọi notifyOutOfStock() khi click 1 ảnh giải đã xám, hoặc
+          useDrawSequence.ts tự set khi giải ĐANG CHỌN vừa hết hàng — xem đó). Dismiss-only (chỉ có
+          nút OK, không có lựa chọn Confirm/Cancel nào khác) — click nền tối hoặc Esc cũng đóng, cùng
+          kiểu với popup confirmPrompt ở trên. */}
+      {interactive && sequence?.outOfStockPrizeName && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+          style={{ pointerEvents: "auto" }}
+          onClick={sequence.dismissOutOfStock}
+        >
+          <EscapeKeyHandler onEscape={sequence.dismissOutOfStock} />
+          <div
+            className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-medium text-base-100">
+              "{sequence.outOfStockPrizeName}" is out of stock.
+            </p>
+            <div className="mt-5 flex justify-center">
+              <Button onClick={sequence.dismissOutOfStock}>OK</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -142,7 +216,9 @@ function renderComponent(
   component: LandingComponent,
   data?: LandingData,
   interactive?: boolean,
-  sequence?: DrawSequenceActions
+  sequence?: DrawSequenceActions,
+  winnerRevealDelayMs?: number,
+  builderPreview?: boolean
 ) {
   switch (component.type) {
     case "text":
@@ -150,15 +226,24 @@ function renderComponent(
     case "image":
       return <ImageView component={component} />;
     case "luckyWheel":
-      return <LuckyWheelView component={component} data={data} sequence={interactive ? sequence : undefined} />;
+      return <LuckyWheelView component={component} data={data} />;
     case "winnerName":
-      return <WinnerNameView component={component} data={data} />;
+      return (
+        <WinnerNameView
+          component={component}
+          data={data}
+          builderPreview={builderPreview}
+          revealDelayMs={winnerRevealDelayMs}
+        />
+      );
     case "prizeName":
       return <PrizeNameView component={component} data={data} />;
     case "prizeImage":
-      return <PrizeImageView component={component} data={data} />;
+      return <PrizeImageView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     case "prizeList":
       return <PrizeListView component={component} data={data} />;
+    case "prizeGallery":
+      return <PrizeGalleryView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     case "countdown":
       return <CountdownView component={component} />;
     case "currentTime":
@@ -166,23 +251,11 @@ function renderComponent(
     case "participantCount":
       return <ParticipantCountView component={component} data={data} />;
     case "button":
-      return <ButtonView component={component} sequence={interactive ? sequence : undefined} />;
+      return <ButtonView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     case "scoreboard":
       // Chỉ tới đây khi KHÔNG interactive (Builder) — ở Present Mode, scoreboard đã bị lọc khỏi
       // `sorted` phía trên và vẽ riêng như overlay canh giữa, xem khối sau vòng lặp map() chính.
       return <ScoreboardView component={component} data={data} />;
-    case "fireworks":
-      return <FireworksView component={component} sequence={interactive ? sequence : undefined} />;
-    case "stageLight":
-      return <StageLightView component={component} sequence={interactive ? sequence : undefined} />;
-    case "dimBackground":
-      return <DimBackgroundView component={component} sequence={interactive ? sequence : undefined} />;
-    case "linkOpener":
-      return <LinkOpenerView component={component} data={data} sequence={interactive ? sequence : undefined} />;
-    case "draw":
-      return <DrawView component={component} sequence={interactive ? sequence : undefined} />;
-    case "confirmWinner":
-      return <ConfirmWinnerView component={component} sequence={interactive ? sequence : undefined} />;
     default:
       return null;
   }

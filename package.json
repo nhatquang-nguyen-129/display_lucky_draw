@@ -12,7 +12,6 @@
     "package": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@xyflow/react": "^12.11.2",
     "better-sqlite3": "^11.3.0",
     "papaparse": "^5.4.1",
     "react": "^18.3.1",
@@ -54,6 +53,21 @@
     ],
     "directories": {
       "output": "release"
+    },
+    "win": {
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-${version}-Setup.exe"
     }
   }
 }
