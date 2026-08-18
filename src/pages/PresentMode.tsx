@@ -4,7 +4,14 @@ import { useLandingData } from "@/components/landing/useLandingData";
 import { useDrawSequence } from "@/components/landing/useDrawSequence";
 import LandingRenderer from "@/components/landing/LandingRenderer";
 import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
-import { CANVAS_HEIGHT, CANVAS_WIDTH, LandingConfig, parseLandingConfig } from "@/lib/landing/types";
+import {
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  computeWheelRevealDelayMs,
+  hasSelectablePrizeUI,
+  LandingConfig,
+  parseLandingConfig,
+} from "@/lib/landing/types";
 
 const CONFIG_POLL_MS = 2000;
 
@@ -16,7 +23,11 @@ export default function PresentMode() {
   const [config, setConfig] = useState<LandingConfig | null>(null);
   const [scale, setScale] = useState(1);
   const data = useLandingData(sessionId ?? null);
-  const sequence = useDrawSequence(sessionId ?? null, data);
+  // `config` có thể chưa tải xong (null) ở lần render đầu — 0/false lúc đó là an toàn (chưa biết
+  // Wheel/component nào cả), tự tính lại đúng ngay khi `config` có giá trị thật.
+  const winnerRevealDelayMs = config ? computeWheelRevealDelayMs(config.components) : 0;
+  const requiresPrizeSelection = config ? hasSelectablePrizeUI(config.components) : false;
+  const sequence = useDrawSequence(sessionId ?? null, data, data.refresh, winnerRevealDelayMs, requiresPrizeSelection);
 
   useEffect(() => {
     if (!sessionId) return;

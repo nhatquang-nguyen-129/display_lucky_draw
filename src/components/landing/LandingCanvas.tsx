@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { LandingComponent, LandingComponentType, LandingConfig, LandingData } from "@/lib/landing/types";
+import {
+  AnchorEditTarget,
+  DEFAULT_PRIZE_GROUP_EFFECT,
+  DEFAULT_PRIZE_STAGE_EFFECT,
+  LandingComponent,
+  LandingComponentType,
+  LandingConfig,
+  LandingData,
+  PrizeGroupEffect,
+} from "@/lib/landing/types";
 import LandingRenderer from "./LandingRenderer";
 import LandingRulers, { RULER_SIZE } from "./LandingRulers";
+import ScaleAnchorOverlay from "./views/ScaleAnchorOverlay";
+import { resolveScaleHandle } from "./views/prizeEffectTransform";
 
 export const DRAG_MIME = "application/x-landing-component";
 const MIN_SIZE = 20;
@@ -29,6 +40,17 @@ interface LandingCanvasProps {
   onMarqueeSelect: (ids: string[], additive: boolean) => void;
   onUpdateComponent: (id: string, patch: Partial<LandingComponent>) => void;
   onDropNewComponent: (type: LandingComponentType, x: number, y: number) => void;
+  // Đang sửa điểm neo Scale Up trực tiếp trên canvas hay không (bấm nút ở ScaleAnchorTrigger.tsx bên
+  // Properties Panel, xem doc-comment AnchorEditTarget trong types.ts) — `null` = không có gì đang sửa.
+  anchorEdit?: AnchorEditTarget | null;
+  // Patch LỒNG SÂU 1 cấp trong nhóm "focus" của ĐÚNG stage — dùng chung cho cả điểm neo
+  // (directionX/Y) lẫn điểm Direction (handleX/Y, xem ScaleAnchorOverlay.tsx), tránh 2 hàm callback
+  // gần như giống hệt nhau.
+  onUpdateAnchor?: (stageKey: AnchorEditTarget["stageKey"], patch: Partial<PrizeGroupEffect>) => void;
+  onDoneAnchorEdit?: () => void;
+  // Vừa "thả" xong Anchor (click lúc `anchorEdit.placing === true`, xem ScaleAnchorOverlay.tsx) — báo
+  // lên LandingBuilderWindow.tsx để chuyển `placing` về false, mở khoá kéo-thả tự do cho cả 2 pin.
+  onAnchorPlaced?: () => void;
 }
 
 const GRID_SIZE = 40; // px, đo trong không gian artboard (chưa scale) — chỉ để căn chỉnh mắt, không snap
@@ -206,6 +228,10 @@ export default function LandingCanvas({
   onMarqueeSelect,
   onUpdateComponent,
   onDropNewComponent,
+  anchorEdit,
+  onUpdateAnchor,
+  onDoneAnchorEdit,
+  onAnchorPlaced,
 }: LandingCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -507,6 +533,81 @@ export default function LandingCanvas({
     onDropNewComponent(type, dropX, dropY);
   }
 
+  // Vẽ pin+mũi tên kéo-thả ĐÈ lên đúng component đang chọn (xem ScaleAnchorOverlay.tsx) — dùng CHUNG
+  // cho scaleUp (Anchor do người dùng thả) VÀ lift (điểm cố định LUÔN ở giữa khung, không thả) — chỉ
+  // khi `anchorEdit` đang trỏ ĐÚNG component này VÀ nhóm "focus" của ĐÚNG stage đó đang thật sự là 1
+  // trong 2 effect này (người dùng có thể đổi dropdown effect trong lúc panel còn mở mà chưa bấm
+  // "Done", overlay phải tự ẩn ngay, không đợi LandingBuilderWindow.tsx dọn state).
+  function renderAnchorOverlay(component: LandingComponent) {
+    if (!anchorEdit || anchorEdit.componentId !== component.id || !onUpdateAnchor) return null;
+    if (component.type !== "prizeImage" && component.type !== "prizeGallery") return null;
+    const stage = component.props[anchorEdit.stageKey] ?? DEFAULT_PRIZE_STAGE_EFFECT;
+    const focus = stage.focus ?? DEFAULT_PRIZE_GROUP_EFFECT;
+    if (focus.effect !== "scaleUp" && focus.effect !== "lift") return null;
+    const isLift = focus.effect === "lift";
+    // lift: điểm cố định LUÔN đúng giữa khung (50,50 box-fraction), KHÔNG đọc directionX/Y, không bám
+    // pixel — xem doc-comment PrizeGroupEffect trong types.ts. scaleUp: đọc directionX/Y (Anchor người
+    // dùng đã thả) + fallback handleX/Y cho landing lưu TRƯỚC khi có điểm "Direction" (xem doc-comment
+    // resolveScaleHandle trong prizeEffectTransform.ts) thay vì để pin nhảy về `undefined`.
+    const anchorX = isLift ? 50 : focus.directionX;
+    const anchorY = isLift ? 50 : focus.directionY;
+    const handle = isLift ? { x: focus.handleX, y: focus.handleY } : resolveScaleHandle(focus);
+    const updateGroup = (patch: Partial<PrizeGroupEffect>) => onUpdateAnchor(anchorEdit.stageKey, patch);
+    // Thả Anchor lượt đầu (CHỈ scaleUp — lift không bao giờ vào mode "placing", xem doc-comment
+    // AnchorEditTarget trong types.ts nên hàm này chỉ thật sự được gọi bởi scaleUp) — Direction tự đặt
+    // CHỒNG lên Anchor vừa thả (khoảng cách 0 = chưa có zoom), Anchor từ đây CỐ ĐỊNH VĨNH VIỄN (không
+    // kéo lại được nữa — chỉ đổi được bằng cách bấm "Drop anchor point" thả lại từ đầu, xem
+    // ScaleAnchorTrigger.tsx), buộc người dùng kéo Direction ra để chọn hướng + mức độ, đúng luồng
+    // mong muốn: chấm Anchor → Anchor khoá cứng → chuyển ngay sang kéo mũi tên Direction.
+    const placeAnchor = (x: number, y: number) => {
+      updateGroup({ directionX: x, directionY: y, handleX: x, handleY: y, anchorPlaced: true });
+      onAnchorPlaced?.();
+    };
+    const onChangeHandle = (x: number, y: number) => updateGroup({ handleX: x, handleY: y });
+
+    if (component.type === "prizeImage") {
+      const imageSrc = data?.prizes.find((p) => p.id === component.props.prizeId)?.display_image ?? null;
+      return (
+        <ScaleAnchorOverlay
+          rect={{ left: 0, top: 0, width: component.width * scale, height: component.height * scale }}
+          mode={anchorEdit.mode}
+          anchorX={anchorX}
+          anchorY={anchorY}
+          handleX={handle.x}
+          handleY={handle.y}
+          onPlaceAnchor={placeAnchor}
+          onChangeHandle={onChangeHandle}
+          onDone={() => onDoneAnchorEdit?.()}
+          imageSrc={imageSrc}
+          fit={component.props.fit}
+        />
+      );
+    }
+
+    // prizeGallery — directionX/Y (scaleUp) áp dụng THEO TỪNG Ô (mọi ô luôn vuông), không phải cả
+    // lưới, xem doc-comment PrizeGalleryProps trong types.ts — overlay chỉ phủ đúng Ô ĐẦU TIÊN, kéo-thả
+    // trong đó áp dụng chung cho MỌI ô (mỗi ô tự bám pixel thật riêng của ẢNH RIÊNG lúc trình chiếu,
+    // xem prizeEffectTransform.ts). Ảnh nền chỉ để MINH HOẠ (giải ĐẦU TIÊN trong session) — panel này
+    // không gắn với 1 giải cố định nào.
+    const { columns, gap, imageFit } = component.props;
+    const cellSize = Math.max(0, (component.width - (columns - 1) * gap) / Math.max(1, columns));
+    return (
+      <ScaleAnchorOverlay
+        rect={{ left: 0, top: 0, width: cellSize * scale, height: cellSize * scale }}
+        mode={anchorEdit.mode}
+        anchorX={anchorX}
+        anchorY={anchorY}
+        handleX={handle.x}
+        handleY={handle.y}
+        onPlaceAnchor={placeAnchor}
+        onChangeHandle={onChangeHandle}
+        onDone={() => onDoneAnchorEdit?.()}
+        imageSrc={data?.prizes[0]?.display_image ?? null}
+        fit={imageFit}
+      />
+    );
+  }
+
   const corners: ResizeCorner[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
   const cornerCursor: Record<ResizeCorner, string> = {
     "top-left": "nwse-resize",
@@ -690,8 +791,23 @@ export default function LandingCanvas({
                 tức thứ tự TẠO component) sẽ lệch khỏi thứ tự hiển thị thật (theo zIndex, đổi được qua
                 kéo-thả trong Layers panel): 1 component to phủ cả canvas (vd Fireworks mặc định
                 1920x1080) nếu rơi vào tình huống này sẽ vô tình chặn click của MỌI component khác dù
-                đang nằm dưới nó về mặt hiển thị. */}
-            <div className={tool === "hand" ? "pointer-events-none" : ""}>
+                đang nằm dưới nó về mặt hiển thị.
+
+                Tắt CẢ LỚP NÀY khi `anchorEdit.mode` là "placing" HOẶC "editing" (đang thật sự thả/kéo,
+                xem AnchorEditTarget trong types.ts) — 2 prize đặt gần/chồng bounding box nhau (use-case
+                CHÍNH của Prize Image, xem doc-comment LiveImageProps trong types.ts) khiến chỉ cần rê
+                chuột GẦN prize đang sửa là vô tình hover/click TRÚNG khung vô hình của prize KHÁC bên
+                cạnh, tự đổi vùng chọn giữa chừng lúc đang thả/kéo điểm neo (bug đã gặp thật). Mode
+                "locked" (pin chỉ HIỂN THỊ, không kéo được) KHÔNG tắt lớp này — không có gì cần bảo vệ
+                khỏi thao tác nhầm khi chính overlay cũng không bắt sự kiện gì. `pointer-events-auto` đặt
+                lại NGAY trên chính overlay pin (xem renderAnchorOverlay bên dưới) để nó vẫn tương tác
+                được dù lớp cha này đã tắt hẳn — CSS pointer-events không "kế thừa" theo nghĩa chặn cứng,
+                con tự đặt lại `auto` là bật lại được bình thường. */}
+            <div
+              className={
+                tool === "hand" || (anchorEdit && anchorEdit.mode !== "locked") ? "pointer-events-none" : ""
+              }
+            >
               {[...config.components]
                 .filter((c) => !c.hiddenInBuilder)
                 .sort((a, b) => a.zIndex - b.zIndex)
@@ -728,6 +844,8 @@ export default function LandingCanvas({
                             }}
                           />
                         ))}
+
+                      {renderAnchorOverlay(component)}
                     </div>
                   );
                 })}

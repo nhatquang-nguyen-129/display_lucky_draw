@@ -23,6 +23,7 @@ import CurrentTimeView from "./views/CurrentTimeView";
 import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
+import DrawModeCountPopup from "./views/DrawModeCountPopup";
 
 interface LandingRendererProps {
   config: LandingConfig;
@@ -183,28 +184,59 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         </div>
       )}
 
-      {/* Popup "hết hàng" — CHỈ ở Present Mode thật, khi sequence.outOfStockPrizeName đang có giá trị
-          (PrizeGalleryView.tsx gọi notifyOutOfStock() khi click 1 ảnh giải đã xám, hoặc
-          useDrawSequence.ts tự set khi giải ĐANG CHỌN vừa hết hàng — xem đó). Dismiss-only (chỉ có
-          nút OK, không có lựa chọn Confirm/Cancel nào khác) — click nền tối hoặc Esc cũng đóng, cùng
-          kiểu với popup confirmPrompt ở trên. */}
-      {interactive && sequence?.outOfStockPrizeName && (
+      {/* Popup nhập số lượng khi chọn "Multiple Draw"/"Quick Draw" trong dropdown cạnh nút Draw (xem
+          DrawMenu trong ButtonView.tsx) — CHỈ ở Present Mode thật, khi sequence.drawModePrompt đang
+          có giá trị (ButtonView.tsx gọi sequence.selectDrawMode() thay vì tự vẽ popup cục bộ, xem
+          doc-comment DrawModeCountPopup.tsx). Xác nhận popup này chỉ ARM chế độ + số lượng — nút Draw
+          chính mới thật sự chạy khi được bấm. */}
+      {interactive && sequence?.drawModePrompt && (
+        <DrawModeCountPopup
+          mode={sequence.drawModePrompt.mode}
+          prizeName={sequence.drawModePrompt.prizeName}
+          max={sequence.drawModePrompt.max}
+          initialValue={Math.min(sequence.drawCount ?? sequence.drawModePrompt.max, sequence.drawModePrompt.max)}
+          onCancel={sequence.closeDrawModePrompt}
+          onConfirm={sequence.confirmDrawModePrompt}
+        />
+      )}
+
+      {/* Popup thông báo dùng CHUNG — CHỈ ở Present Mode thật, khi sequence.infoPrompt đang có giá trị.
+          Nguồn: notifyOutOfStock() (PrizeGalleryView.tsx/PrizeImageView.tsx, click 1 ảnh giải đã xám),
+          hoặc trực tiếp trong useDrawSequence.ts's pick()/confirm() (bấm Draw mà chưa chọn giải trên
+          trang có UI chọn giải, hoặc bấm Confirm mà chưa có ai được quay). Dismiss-only (chỉ có nút
+          OK, không có lựa chọn Confirm/Cancel nào khác) — click nền tối hoặc Esc cũng đóng, cùng kiểu
+          với popup confirmPrompt ở trên. */}
+      {interactive && sequence?.infoPrompt && (
         <div
           className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
           style={{ pointerEvents: "auto" }}
-          onClick={sequence.dismissOutOfStock}
+          onClick={sequence.dismissInfoPrompt}
         >
-          <EscapeKeyHandler onEscape={sequence.dismissOutOfStock} />
+          <EscapeKeyHandler onEscape={sequence.dismissInfoPrompt} />
           <div
             className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-base font-medium text-base-100">
-              "{sequence.outOfStockPrizeName}" is out of stock.
-            </p>
+            <p className="text-base font-medium text-base-100">{sequence.infoPrompt}</p>
             <div className="mt-5 flex justify-center">
-              <Button onClick={sequence.dismissOutOfStock}>OK</Button>
+              <Button onClick={sequence.dismissInfoPrompt}>OK</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup loading nhỏ — CHỈ ở Present Mode thật, khi sequence.busy đang true (1 hành động ghi DB
+          thật đang chạy — Confirm/Reset, GỒM CẢ bước nạp lại data NGAY sau đó, xem
+          useDrawSequence.ts). KHÔNG dismiss được (không onClick, không Esc) — che hẳn pointer-events
+          của mọi thứ bên dưới trong lúc chờ, đúng ý "đợi xong mới mở lại giao diện". Sửa đúng bug đã
+          gặp: bấm Reset xong bấm chọn giải NGAY trong lúc data trong bộ nhớ chưa kịp cập nhật
+          remaining mới, bị báo "hết hàng" sai — giờ không bấm được gì cho tới khi data đã mới thật.
+          z-[60] để luôn nổi trên mọi popup khác (hiếm khi trùng thời điểm, chỉ để chắc chắn). */}
+      {interactive && sequence?.busy && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40" style={{ pointerEvents: "auto" }}>
+          <div className="flex items-center gap-3 rounded-xl bg-base-950 px-5 py-4 shadow-2xl">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-base-700 border-t-gold-500" />
+            <p className="text-sm font-medium text-base-100">Please wait…</p>
           </div>
         </div>
       )}
@@ -234,6 +266,7 @@ function renderComponent(
           data={data}
           builderPreview={builderPreview}
           revealDelayMs={winnerRevealDelayMs}
+          quickDrawActive={interactive && !!sequence?.quickDrawResult}
         />
       );
     case "prizeName":

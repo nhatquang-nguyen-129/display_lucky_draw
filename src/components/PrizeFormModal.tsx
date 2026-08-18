@@ -8,17 +8,16 @@ interface PrizeFormModalProps {
   onClose: () => void;
   onSaved: (message: string) => void;
   sessionId: string;
-  existingCodes: string[]; // mã giải đã có trong phiên hiện tại (để chặn trùng), không tính chính giải đang sửa
   editing: Prize | null; // null = thêm mới, có giá trị = đang sửa giải này
 }
 
-const CATEGORY_SUGGESTIONS = ["Special", "First Prize", "Second Prize", "Third Prize", "Consolation"];
+// Cố định danh sách — trước đây cho gõ tự do (datalist gợi ý), giờ CHỈ CHỌN trong 5 mức này để tên
+// category nhất quán giữa các giải (tránh gõ lệch chữ ra nhiều "category" khác nhau cho cùng 1 ý).
+const CATEGORY_OPTIONS = ["Grand Prize", "First Prize", "Second Prize", "Third Prize", "Consolation Prize"];
 
 const DEFAULT_FORM = {
-  code: "",
   name: "",
   category: "",
-  status: "active",
   quantity: 1,
   weight: 1,
   allowDuplicateWithOtherPrizes: true,
@@ -31,7 +30,6 @@ export default function PrizeFormModal({
   onClose,
   onSaved,
   sessionId,
-  existingCodes,
   editing,
 }: PrizeFormModalProps) {
   const [form, setForm] = useState(DEFAULT_FORM);
@@ -44,10 +42,8 @@ export default function PrizeFormModal({
     if (!open) return;
     if (editing) {
       setForm({
-        code: editing.code ?? "",
         name: editing.name,
         category: editing.category ?? "",
-        status: editing.status,
         quantity: editing.quantity,
         weight: editing.weight,
         allowDuplicateWithOtherPrizes: !!editing.allow_duplicate_with_other_prizes,
@@ -84,18 +80,17 @@ export default function PrizeFormModal({
   async function handleSubmit() {
     setError(null);
     const trimmedName = form.name.trim();
-    const trimmedCode = form.code.trim();
 
+    if (!displayImage) {
+      setError("Prize image is required.");
+      return;
+    }
     if (!trimmedName) {
       setError("Prize name is required.");
       return;
     }
-    if (trimmedCode && existingCodes.includes(trimmedCode)) {
-      setError(`Code "${trimmedCode}" is already used by another prize in this session — choose a different code.`);
-      return;
-    }
-    if (form.quantity < 1) {
-      setError("Quantity must be at least 1.");
+    if (form.quantity < 0) {
+      setError("Quantity can't be negative.");
       return;
     }
     if (form.weight <= 0) {
@@ -111,10 +106,14 @@ export default function PrizeFormModal({
     try {
       const payload = {
         sessionId,
-        code: trimmedCode || undefined,
         name: trimmedName,
         category: form.category.trim() || undefined,
-        status: form.status,
+        // Không còn field "Status" riêng để tự tay ẩn/hiện nữa — quantity = 0 (nay cho phép nhập, xem
+        // field Quantity bên dưới) đã đủ để loại giải khỏi lượt quay (drawEngine lọc theo
+        // remaining > 0, remaining luôn khởi tạo = quantity), không cần thêm 1 cờ status độc lập nữa.
+        // Luôn gửi "active" — giải nào lỡ có status "inactive" từ trước bản này (khi field còn tồn
+        // tại) sẽ tự trở lại "active" ngay lần lưu tiếp theo qua form này.
+        status: "active",
         quantity: form.quantity,
         weight: form.weight,
         allowDuplicateWithOtherPrizes: form.allowDuplicateWithOtherPrizes,
@@ -152,7 +151,7 @@ export default function PrizeFormModal({
 
         {/* Ảnh trình chiếu */}
         <div>
-          <label className={labelClass}>Presentation image (PNG)</label>
+          <label className={labelClass}>Presentation image (PNG) *</label>
           <div className="flex items-center gap-3">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-base-700 bg-base-800">
               {displayImage ? (
@@ -173,29 +172,6 @@ export default function PrizeFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Prize code</label>
-            <input
-              className={inputClass}
-              placeholder="e.g. G01"
-              value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Status</label>
-            <select
-              className={inputClass}
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Hidden (excluded from the draw)</option>
-            </select>
-          </div>
-        </div>
-
         <div>
           <label className={labelClass}>Prize name *</label>
           <input
@@ -207,18 +183,18 @@ export default function PrizeFormModal({
 
         <div>
           <label className={labelClass}>Category</label>
-          <input
-            list="prize-category-suggestions"
+          <select
             className={inputClass}
-            placeholder="e.g. First Prize"
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
-          />
-          <datalist id="prize-category-suggestions">
-            {CATEGORY_SUGGESTIONS.map((c) => (
-              <option key={c} value={c} />
+          >
+            <option value="">— none —</option>
+            {CATEGORY_OPTIONS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </datalist>
+          </select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -226,7 +202,7 @@ export default function PrizeFormModal({
             <label className={labelClass}>Quantity</label>
             <input
               type="number"
-              min={1}
+              min={0}
               className={inputClass}
               value={form.quantity}
               onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}

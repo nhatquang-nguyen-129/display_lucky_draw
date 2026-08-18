@@ -3,7 +3,6 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Participants from "./pages/Participants";
 import Prizes from "./pages/Prizes";
-import DrawSessionDetail from "./pages/DrawSessionDetail";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import PresentMode from "./pages/PresentMode";
@@ -24,7 +23,6 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/participants" element={<Participants />} />
         <Route path="/prizes" element={<Prizes />} />
-        <Route path="/draw" element={<DrawSessionDetail />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />

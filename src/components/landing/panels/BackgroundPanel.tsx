@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BackgroundConfig } from "@/lib/landing/types";
 
 interface BackgroundPanelProps {
@@ -6,8 +7,30 @@ interface BackgroundPanelProps {
 }
 
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
+// 3 bước 1 lượt quay THẬT SỰ đi qua — dò từ DrawSequenceActions (useDrawSequence.ts), KHÔNG bịa
+// thêm mốc nào khác: Idle (chưa có candidate) → Spinning (candidate mới, sequence.spinning === true,
+// Wheel đang animate) → Revealed (spinning vừa về false, tên/số đã hiện — Confirm có chạy hay chưa
+// không tạo thêm mốc thị giác riêng nào). Dùng để chú thích khung tham chiếu trước khi chỉnh 2 khối
+// timing bên dưới, và để đặt tên 2 khối đó CHÍNH XÁC theo đúng bước đang nói tới.
+const WHEEL_STEPS: { name: string; detail: string }[] = [
+  { name: "Idle", detail: "Standing by, nothing drawn yet (or just Reset)." },
+  { name: "Spinning", detail: "Draw/Redo just picked someone — the Wheel is turning." },
+  { name: "Revealed", detail: "The Wheel has stopped — name/number is showing." },
+];
+
+// Dim nền lúc Wheel Revealed — GIỮ NGUYÊN 100% field/logic đã có (dimOnSpinEnd, dimAmount,
+// dimStart/EndDelay/DurationMs, xem BackgroundConfig trong types.ts + BackgroundDimOverlay.tsx) —
+// panel này CHỈ tổ chức lại JSX/label cho khớp đúng 3 bước ở trên, không đổi hành vi/dữ liệu, tránh
+// mất cấu hình landing cũ đã lưu.
 export default function BackgroundPanel({ background, onChange }: BackgroundPanelProps) {
+  // Mở sẵn nếu tính năng đang bật (không giấu mất cấu hình user đã set), nhưng SAU ĐÓ hoàn toàn do
+  // người dùng tự đóng/mở — không đọc lại `background.dimOnSpinEnd` mỗi render (nếu không, sửa 1 số
+  // bất kỳ trong khối sẽ làm React ép lại đúng trạng thái mở lúc mount, "cãi" lại thao tác đóng tay
+  // của người dùng).
+  const [wheelSectionOpen, setWheelSectionOpen] = useState(() => !!background.dimOnSpinEnd);
+
   function handleImageFile(file: File) {
     if (file.type !== "image/png" && file.type !== "image/jpeg") return;
     const reader = new FileReader();
@@ -16,155 +39,186 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
   }
 
   return (
-    <div className="space-y-3">
-      <span className="text-[10px] uppercase tracking-wide text-base-500">Background</span>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <span className={groupLabelClass}>Basic options</span>
 
-      <div>
-        <label className={labelClass}>Type</label>
-        <select
-          className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-          value={background.type}
-          onChange={(e) => onChange({ type: e.target.value as "color" | "image" })}
-        >
-          <option value="color">Solid color</option>
-          <option value="image">Image</option>
-        </select>
+        <div>
+          <label className={labelClass}>Type</label>
+          <select
+            className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
+            value={background.type}
+            onChange={(e) => onChange({ type: e.target.value as "color" | "image" })}
+          >
+            <option value="color">Solid color</option>
+            <option value="image">Image</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={labelClass}>{background.type === "image" ? "Letterbox color" : "Color"}</label>
+          <input
+            type="color"
+            className="h-8 w-full rounded border border-base-700 bg-base-800"
+            value={background.color}
+            onChange={(e) => onChange({ color: e.target.value })}
+          />
+        </div>
+
+        {background.type === "image" && (
+          <>
+            <div>
+              <label className={labelClass}>Image (PNG, JPG)</label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                className="text-xs text-base-300"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageFile(file);
+                }}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Fit</label>
+              <select
+                className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
+                value={background.imageFit ?? "cover"}
+                onChange={(e) => onChange({ imageFit: e.target.value as "cover" | "contain" | "stretch" })}
+              >
+                <option value="cover">Cover</option>
+                <option value="contain">Contain</option>
+                <option value="stretch">Stretch</option>
+              </select>
+            </div>
+          </>
+        )}
       </div>
-
-      <div>
-        <label className={labelClass}>{background.type === "image" ? "Letterbox color" : "Color"}</label>
-        <input
-          type="color"
-          className="h-8 w-full rounded border border-base-700 bg-base-800"
-          value={background.color}
-          onChange={(e) => onChange({ color: e.target.value })}
-        />
-      </div>
-
-      {background.type === "image" && (
-        <>
-          <div>
-            <label className={labelClass}>Image (PNG, JPG)</label>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              className="text-xs text-base-300"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleImageFile(file);
-              }}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Fit</label>
-            <select
-              className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-              value={background.imageFit ?? "cover"}
-              onChange={(e) => onChange({ imageFit: e.target.value as "cover" | "contain" | "stretch" })}
-            >
-              <option value="cover">Cover</option>
-              <option value="contain">Contain</option>
-              <option value="stretch">Stretch</option>
-            </select>
-          </div>
-        </>
-      )}
 
       <div className="h-px bg-base-800" />
 
-      <label className="flex items-center gap-1.5 text-xs text-base-200">
-        <input
-          type="checkbox"
-          checked={!!background.dimOnSpinEnd}
-          onChange={(e) => onChange({ dimOnSpinEnd: e.target.checked })}
-          className="accent-gold-500"
-        />
-        Dim background after Wheel finishes
-      </label>
+      <div className="space-y-2">
+        <span className={groupLabelClass}>Interactions</span>
+        <p className="text-[10px] leading-snug text-base-500">How the background reacts to other components on the page.</p>
 
-      {background.dimOnSpinEnd && (
-        <>
-          <div>
-            <label className={labelClass}>Dim amount ({background.dimAmount ?? 50}%)</label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              className="w-full accent-gold-500"
-              value={background.dimAmount ?? 50}
-              onChange={(e) => onChange({ dimAmount: Number(e.target.value) })}
-            />
-            <p className="mt-1 text-[10px] leading-snug text-base-500">
-              How dark it gets at full dim — shared by both directions below.
-            </p>
-          </div>
+        <details
+          open={wheelSectionOpen}
+          onToggle={(e) => setWheelSectionOpen(e.currentTarget.open)}
+          className="rounded-lg border border-base-800"
+        >
+          <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
+            Interact with Wheel
+          </summary>
 
-          <div className="rounded-lg border border-base-800 p-2">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
-              Start — dim down
-            </span>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <div>
-                <label className={labelClass}>Delay (ms)</label>
-                <input
-                  type="number"
-                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                  value={background.dimStartDelayMs ?? 0}
-                  onChange={(e) => onChange({ dimStartDelayMs: Number(e.target.value) })}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Duration (ms)</label>
-                <input
-                  type="number"
-                  min={0}
-                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                  value={background.dimStartDurationMs ?? 1000}
-                  onChange={(e) => onChange({ dimStartDurationMs: Math.max(0, Number(e.target.value)) })}
-                />
-              </div>
-            </div>
-            <p className="mt-1 text-[10px] leading-snug text-base-500">
-              Delay counted from the moment the Wheel fully stops. 0 = start dimming right when it
-              stops. Negative = start that many ms BEFORE it stops (while still slowing down).
-              Positive = wait that many ms after it has already stopped. Duration = how long the
-              fade-to-dark itself takes, from start to fully dimmed.
-            </p>
-          </div>
+          <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
+            <ol className="space-y-0.5">
+              {WHEEL_STEPS.map((step, i) => (
+                <li key={step.name} className="text-[10px] leading-snug text-base-500">
+                  <span className="font-medium text-base-400">
+                    {i + 1}. {step.name}
+                  </span>{" "}
+                  — {step.detail}
+                </li>
+              ))}
+            </ol>
 
-          <div className="rounded-lg border border-base-800 p-2">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
-              Finish — brighten back up
-            </span>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <div>
-                <label className={labelClass}>Delay (ms)</label>
-                <input
-                  type="number"
-                  min={0}
-                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                  value={background.dimEndDelayMs ?? 0}
-                  onChange={(e) => onChange({ dimEndDelayMs: Math.max(0, Number(e.target.value)) })}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Duration (ms)</label>
-                <input
-                  type="number"
-                  min={0}
-                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                  value={background.dimEndDurationMs ?? 1000}
-                  onChange={(e) => onChange({ dimEndDurationMs: Math.max(0, Number(e.target.value)) })}
-                />
-              </div>
-            </div>
-            <p className="mt-1 text-[10px] leading-snug text-base-500">
-              Delay counted from the moment the next Draw/Discard picks a new candidate. Duration =
-              how long the fade-back-to-normal itself takes, from start to fully bright again.
-            </p>
+            <label className="flex items-center gap-1.5 text-xs text-base-200">
+              <input
+                type="checkbox"
+                checked={!!background.dimOnSpinEnd}
+                onChange={(e) => onChange({ dimOnSpinEnd: e.target.checked })}
+                className="accent-gold-500"
+              />
+              Dim background while Revealed
+            </label>
+
+            {background.dimOnSpinEnd && (
+              <>
+                <div>
+                  <label className={labelClass}>Dim amount ({background.dimAmount ?? 50}%)</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    className="w-full accent-gold-500"
+                    value={background.dimAmount ?? 50}
+                    onChange={(e) => onChange({ dimAmount: Number(e.target.value) })}
+                  />
+                  <p className="mt-1 text-[10px] leading-snug text-base-500">
+                    How dark it gets at full dim — shared by both directions below.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-base-800 p-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">Spinning → Revealed</span>
+                  <p className="mt-0.5 text-[10px] leading-snug text-base-500">Right when the Wheel stops turning.</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelClass}>Delay (ms)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                        value={background.dimStartDelayMs ?? 0}
+                        onChange={(e) => onChange({ dimStartDelayMs: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Duration (ms)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                        value={background.dimStartDurationMs ?? 1000}
+                        onChange={(e) => onChange({ dimStartDurationMs: Math.max(0, Number(e.target.value)) })}
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-[10px] leading-snug text-base-500">
+                    Delay counted from the moment the Wheel fully stops (0 = right when it stops;
+                    negative = start that many ms before it stops, while still slowing down; positive
+                    = wait that long after). Duration = how long the fade-to-dark itself takes.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-base-800 p-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
+                    Revealed → Spinning (next draw)
+                  </span>
+                  <p className="mt-0.5 text-[10px] leading-snug text-base-500">
+                    Right when the next Draw/Redo picks a new candidate.
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelClass}>Delay (ms)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                        value={background.dimEndDelayMs ?? 0}
+                        onChange={(e) => onChange({ dimEndDelayMs: Math.max(0, Number(e.target.value)) })}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Duration (ms)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
+                        value={background.dimEndDurationMs ?? 1000}
+                        onChange={(e) => onChange({ dimEndDurationMs: Math.max(0, Number(e.target.value)) })}
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-[10px] leading-snug text-base-500">
+                    Duration = how long the fade-back-to-normal itself takes, from start to fully
+                    bright again.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
-        </>
-      )}
+        </details>
+      </div>
     </div>
   );
 }

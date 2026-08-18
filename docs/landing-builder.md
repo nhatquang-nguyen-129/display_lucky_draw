@@ -191,6 +191,29 @@ dù là lượt Draw đầu hay 1 lượt "quay lại" từ chính action Draw �
 `WheelTemplate.tsx`/`DigitRollerTemplate.tsx`), dừng đúng lúc animation THẬT SỰ kết thúc, không phải
 đoán 1 delay cố định.
 
+**Nút Draw có thêm 1 mũi tên dropdown (▾) cạnh nó** (`DrawMenu` trong `ButtonView.tsx`, chỉ hiện ở
+Present Mode thật) — dropdown này là 1 BỘ CHỌN CHẾ ĐỘ (kiểu radio, có dấu ✓ cạnh mục đang chọn),
+KHÔNG tự chạy draw. Chọn xong, người vận hành phải tự bấm nút Draw CHÍNH để thật sự tiến hành quay
+theo đúng chế độ đã ARM (`sequence.drawMode`/`drawCount`, chạy qua `sequence.runDraw()` — xem
+`runAction`'s case `"draw"` trong `ButtonView.tsx`):
+
+| Chế độ | Chọn trong dropdown | Khi bấm nút Draw chính |
+|---|---|---|
+| **Single Draw** | Set thẳng, không hỏi gì | Y hệt hành vi Draw gốc: đang có candidate chờ Confirm thì `redo()`, chưa có gì thì `pick()` |
+| **Multiple Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua popup (`DrawModeCountPopup.tsx`) | Lặp lại ĐÚNG quy trình Single Draw (pick → chờ Wheel hiện xong → tự Confirm) N lần liên tiếp, nghỉ ngắn giữa mỗi người |
+| **Quick Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua cùng 1 popup | Quay + Confirm ĐÚNG N người NGAY LẬP TỨC (không nghỉ giữa các lượt), tự mở Scoreboard khi xong |
+
+Multiple/Quick đều BẮT BUỘC đã chọn 1 giải qua Prize Image/Prize Gallery (`sequence.selectedPrizeId`)
+NGAY TỪ LÚC chọn mục trong dropdown — không phụ thuộc trang có UI chọn giải hay không (khác Single
+Draw). `runMultipleDrawInternal`/`runQuickDrawInternal` (`useDrawSequence.ts`) tự gọi thẳng
+`window.api.draw.pick`/`commit` (không tái dùng nội bộ `pick()`/`confirm()`), tự re-validate lại
+count/remaining MỚI NHẤT ngay lúc bấm Draw (phòng trường hợp đổi từ lúc ARM tới lúc bấm, hoặc đổi
+sang giải khác), và giữ `sequence.spinning = true` SUỐT quá trình — tái dùng nguyên vẹn mọi điểm khoá
+"gần như mọi chức năng" đã có sẵn cho `spinning` thường, không cần thêm cờ khoá riêng. Trong lúc Quick
+Draw đang chạy, Winner Name hiện `props.quickDrawText` (mặc định "Congratulations!") THAY VÌ tên
+người trúng — Quick Draw ra nhiều người cùng lúc nên không có 1 tên "đúng" nào để hiện (xem
+`WinnerNameProps.quickDrawText`, `DrawSequenceActions.quickDrawResult`).
+
 ## 7. Present Mode render khác Builder canvas thế nào
 
 Cả 2 dùng chung `LandingRenderer.tsx`, khác nhau ở prop `interactive`:
