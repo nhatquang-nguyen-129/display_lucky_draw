@@ -2,7 +2,39 @@
 // khi thả). Thêm loại mới chỉ cần thêm 1 entry ở đây (sau khi đã có type ở lib/landing/types.ts
 // và view/panel tương ứng) — xem checklist ở đầu lib/landing/types.ts.
 
-import { LandingComponent, LandingComponentType, newComponentId } from "@/lib/landing/types";
+import { LandingComponent, LandingComponentType, newComponentId, PrizeEffectName, PrizeGroupEffect, PrizeStageEffect } from "@/lib/landing/types";
+
+function noGroupEffect(): PrizeGroupEffect {
+  return { effect: "none", color: "#FFCA2D", size: 24, directionX: 50, directionY: 50, handleX: 50, handleY: 50, anchorPlaced: false };
+}
+
+// Default mới cho 1 giai đoạn tương tác prize (PrizeInteractions, xem types.ts) — "none" = tắt hẳn cả
+// 3 nhóm (đúng hành vi mặc định cũ trước khi có hệ effect này). `group`/`effect` (nếu truyền) chỉ bật
+// ĐÚNG 1 nhóm, 2 nhóm còn lại giữ "none" — `onSelect` mặc định bật nhóm Focus với "scaleUp" 10% từ
+// giữa (handleY lệch 10 đơn vị so với directionY — khoảng cách này CHÍNH LÀ % zoom, xem doc-comment
+// PrizeGroupEffect trong types.ts), mô phỏng GẦN NHẤT hành vi zoom-khi-chọn cũ để không gây hụt hẫng
+// khi thêm component mới.
+function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: PrizeEffectName = "none"): PrizeStageEffect {
+  const active: PrizeGroupEffect = {
+    effect,
+    color: "#FFCA2D",
+    size: effect === "scaleUp" ? 10 : 24,
+    directionX: 50,
+    directionY: 50,
+    handleX: 50,
+    handleY: effect === "scaleUp" ? 40 : 50,
+    // false dù ĐÃ có sẵn Anchor/Direction dùng được ngay (10% zoom từ giữa) — cờ này CHỈ đánh dấu đã
+    // đi qua đúng luồng click-để-thả chưa (xem doc-comment PrizeGroupEffect trong types.ts), không ảnh
+    // hưởng gì tới việc effect có chạy hay không; panel vẫn hiện nút "Drop anchor point" để người dùng
+    // chủ động thả lại nếu muốn tuỳ chỉnh trực quan trên canvas.
+    anchorPlaced: false,
+  };
+  return {
+    focus: group === "focus" ? active : noGroupEffect(),
+    highlight: group === "highlight" ? active : noGroupEffect(),
+    motion: group === "motion" ? active : noGroupEffect(),
+  };
+}
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
 // nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette.
@@ -86,6 +118,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       fallbackText: "—",
       revealEffect: "none",
       transitionEffect: "none",
+      quickDrawText: "Congratulations!",
     }),
   },
   prizeName: {
@@ -104,18 +137,20 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   },
   prizeImage: {
     label: "Prize Image",
-    description: "A prize's image — latest winner's, or one specific prize pinned to custom artwork",
+    description: "One specific prize's image, pinned to custom artwork — click in Present Mode to select it for Draw",
     category: "Draw & Results",
     defaultWidth: 300,
     defaultHeight: 300,
     createDefaultProps: () => ({
       fit: "cover",
       borderRadius: 12,
-      fallbackImageDataUrl: null,
-      source: "latestWinner",
       prizeId: "",
-      selectable: false,
-      glowColor: "#FFCA2D",
+      onHover: defaultPrizeStage(),
+      onSelect: defaultPrizeStage("focus", "scaleUp"),
+      onWon: defaultPrizeStage(),
+      onOutOfStock: defaultPrizeStage(),
+      outOfStockDimAmount: 58,
+      dimUnselectedAmount: 60,
     }),
   },
   prizeList: {
@@ -132,7 +167,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   },
   prizeGallery: {
     label: "Prize Gallery",
-    description: "Grid of every prize's image — hover to preview, click to lock in which prize Draw targets",
+    description: "Grid of every prize's image — click to lock in which prize Draw targets",
     category: "Draw & Results",
     defaultWidth: 600,
     defaultHeight: 400,
@@ -144,7 +179,12 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       showName: true,
       nameFontSize: 14,
       nameColor: "#FFFFFF",
-      glowColor: "#FFCA2D",
+      onHover: defaultPrizeStage(),
+      onSelect: defaultPrizeStage("focus", "scaleUp"),
+      onWon: defaultPrizeStage(),
+      onOutOfStock: defaultPrizeStage(),
+      outOfStockDimAmount: 58,
+      dimUnselectedAmount: 60,
     }),
   },
   countdown: {
@@ -199,13 +239,15 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   },
   button: {
     label: "Button",
-    description: "Runs one fixed action (Draw, Confirm, Reset, Show Winner, Open Link) when clicked in Present Mode",
+    description:
+      "Runs one fixed action (Draw, Confirm, Reset, Show Winner, Open Link) when clicked in Present Mode — Draw also gets a small dropdown for Multiple/Quick Draw",
     category: "Interactive",
     defaultWidth: 220,
     defaultHeight: 64,
     createDefaultProps: () => ({
       action: "none",
       urlField: "",
+      multipleDrawPaceMs: 600,
       label: "Button",
       fontSize: 22,
       color: "#0B0B10",

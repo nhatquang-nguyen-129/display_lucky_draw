@@ -1,11 +1,11 @@
 import { EFFECT_NAMES, EffectName, LiveTextProps, WINNER_TRANSITION_EFFECTS, WinnerTransitionEffect } from "@/lib/landing/types";
 
 interface LiveTextPanelProps {
-  props: LiveTextProps & { revealEffect?: EffectName; transitionEffect?: WinnerTransitionEffect };
+  props: LiveTextProps & { revealEffect?: EffectName; transitionEffect?: WinnerTransitionEffect; quickDrawText?: string };
   onChange: (patch: Record<string, any>) => void;
-  // CHỈ true cho Winner Name — Prize Name dùng chung panel này nhưng KHÔNG có 2 field revealEffect/
-  // transitionEffect (xem WinnerNameProps trong types.ts để biết lý do), nên ẩn hẳn phần này khi
-  // false thay vì hiện control không có tác dụng gì.
+  // CHỈ true cho Winner Name — Prize Name dùng chung panel này nhưng KHÔNG có các field revealEffect/
+  // transitionEffect/quickDrawText (xem WinnerNameProps trong types.ts để biết lý do), nên ẩn hẳn
+  // phần này khi false thay vì hiện control không có tác dụng gì.
   showWinnerFields?: boolean;
 }
 
@@ -73,6 +73,19 @@ export default function LiveTextPanel({ props, onChange, showWinnerFields }: Liv
 
       {showWinnerFields && (
         <>
+          <div>
+            <label className={labelClass}>Quick Draw text</label>
+            <input
+              className={fieldClass}
+              value={props.quickDrawText ?? "Congratulations!"}
+              onChange={(e) => onChange({ quickDrawText: e.target.value })}
+            />
+            <p className="mt-1 text-[10px] leading-snug text-base-500">
+              Shown instead of a winner's name right after a Quick Draw finishes on the Draw button —
+              Quick Draw confirms many winners at once, so there's no single name left to show.
+            </p>
+          </div>
+
           <div>
             <label className={labelClass}>Reveal effect</label>
             <select

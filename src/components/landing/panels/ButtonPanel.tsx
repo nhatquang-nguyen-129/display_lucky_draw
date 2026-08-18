@@ -161,11 +161,37 @@ export default function ButtonPanel({ props, participants, usedActionOwners, onC
         </div>
       )}
 
+      {props.action === "draw" && (
+        <div>
+          <label className={labelClass}>Multiple Draw delay (ms)</label>
+          <input
+            type="number"
+            min={0}
+            step={100}
+            className={fieldClass}
+            value={props.multipleDrawPaceMs ?? 600}
+            onChange={(e) => onChange({ multipleDrawPaceMs: Math.max(0, Number(e.target.value)) })}
+          />
+          <p className="mt-1 text-[10px] leading-snug text-base-500">
+            Pause after each winner is confirmed before drawing the next one — only used by the
+            "Multiple Draw" mode from the dropdown next to this button. Quick Draw always runs with no
+            delay.
+          </p>
+        </div>
+      )}
+
       <div className="h-px bg-base-800" />
 
       <div>
         <label className={labelClass}>Label</label>
         <input className={fieldClass} value={props.label} onChange={(e) => onChange({ label: e.target.value })} />
+        {props.action === "draw" && (
+          <p className="mt-1 text-[10px] leading-snug text-base-500">
+            Ignored while Action is "Draw" — the button text is generated automatically ("Single
+            Draw", "Multiple Draw (2/5)", "Quick Draw (5)") to always reflect the mode picked from
+            the dropdown next to it.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">

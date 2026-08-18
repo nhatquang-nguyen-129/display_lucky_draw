@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import Button from "@/components/Button";
 import ComponentPalette from "@/components/landing/ComponentPalette";
@@ -6,14 +6,21 @@ import LandingCanvas, { CanvasTool } from "@/components/landing/LandingCanvas";
 import LayersPanel from "@/components/landing/LayersPanel";
 import PropertiesPanel from "@/components/landing/PropertiesPanel";
 import { COMPONENT_REGISTRY, createComponentAt } from "@/components/landing/componentRegistry";
+import { useConfigHistory } from "@/components/landing/useConfigHistory";
 import {
+  AnchorEditTarget,
   BackgroundConfig,
   ButtonComponent,
   computeDigitRollerFitHeight,
+  DEFAULT_PRIZE_GROUP_EFFECT,
+  DEFAULT_PRIZE_STAGE_EFFECT,
   LandingComponent,
   LandingComponentType,
   LandingConfig,
+  LandingData,
   parseLandingConfig,
+  PrizeGroupEffect,
+  PrizeStageKey,
 } from "@/lib/landing/types";
 import { Participant, Prize, Session } from "@/types";
 
@@ -22,6 +29,11 @@ const floatingBtn =
 const floatingBtnIdle = "border-base-700 bg-base-900 text-base-100 hover:border-gold-500/50";
 const floatingBtnActive = "border-gold-500 bg-gold-500 text-base-950";
 const floatingBtnDisabled = "border-base-800 bg-base-900 text-base-700 cursor-not-allowed";
+
+// Nút icon nhỏ trong header (Undo/Redo/History) — phẳng, khác hẳn floatingBtn (tròn nổi, dành riêng
+// cho toolbar canvas), khớp phong cách header đang có.
+const headerIconBtn =
+  "flex h-7 w-7 items-center justify-center rounded-md text-base-300 transition-colors hover:bg-base-800 hover:text-base-100 disabled:cursor-not-allowed disabled:text-base-700 disabled:hover:bg-transparent";
 
 // Popup nhỏ hiện khi di chuột vào nút toolbar — tên nút + phím tắt, thay cho tooltip mặc định của
 // trình duyệt (title, có độ trễ ~1s và không style được). `delay-300` để không nhấp nháy khi rê
@@ -53,16 +65,26 @@ export default function LandingBuilderWindow() {
   const [session, setSession] = useState<Session | null>(null);
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [config, setConfig] = useState<LandingConfig | null>(null);
+  // Undo/Redo — xem doc-comment đầu useConfigHistory.ts. `config` giữ nguyên tên/kiểu như trước
+  // (LandingConfig | null) để không phải sửa lại MỌI chỗ đang đọc `config` bên dưới.
+  const history = useConfigHistory();
+  const config = history.config;
   // Nhiều component có thể được chọn cùng lúc (Ctrl/Cmd+click hoặc kéo-marquee, xem LandingCanvas.tsx)
   // — mảng rỗng = không chọn gì, đúng 1 phần tử = chọn đơn (Properties Panel hiện form riêng theo
   // type), nhiều hơn 1 = Properties Panel chỉ hiện "N components selected" + xoá hàng loạt.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Đang sửa điểm neo Scale Up trực tiếp trên canvas (bấm nút ở ScaleAnchorTrigger.tsx bên Properties
+  // Panel, kéo-thả thật sự vẽ ở ScaleAnchorOverlay.tsx trong LandingCanvas.tsx) — xem doc-comment
+  // AnchorEditTarget trong types.ts. `null` = không có gì đang sửa.
+  const [anchorEdit, setAnchorEdit] = useState<AnchorEditTarget | null>(null);
   const [showPanel, setShowPanel] = useState(false);
   const [showAddFlyout, setShowAddFlyout] = useState(false);
   // Flyout Layers (xem LayersPanel.tsx) — danh sách + hide/unhide + kéo-thả đổi thứ tự trước/sau,
   // neo vào nút toolbar riêng đúng kiểu flyout Add component đã có sẵn.
   const [showLayers, setShowLayers] = useState(false);
+  // Flyout History (xem useConfigHistory.ts) — danh sách các bước đã áp dụng, click 1 dòng để rollback
+  // thẳng tới đó, cùng cơ chế với History panel của Data Editor.
+  const [showHistory, setShowHistory] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [zoom, setZoom] = useState(MIN_ZOOM);
@@ -94,7 +116,7 @@ export default function LandingBuilderWindow() {
       // savedConfigRef giữ bản GỐC (chưa sửa) nên nếu có thay đổi, badge tự hiện "Unsaved" để người
       // dùng chủ động bấm Save, không âm thầm ghi đè DB.
       const fitted = { ...parsed, components: known.map(fitDigitRollerHeight) };
-      setConfig(fitted);
+      history.reset(fitted);
       savedConfigRef.current = JSON.stringify(parsed);
     });
   }, [sessionId]);
@@ -120,6 +142,15 @@ export default function LandingBuilderWindow() {
     return () => clearInterval(interval);
   }, [sessionId]);
 
+  // Truyền xuống LandingCanvas -> LandingRenderer để Prize Image/Prize Gallery hiện ĐÚNG ảnh giải
+  // thật ngay trên canvas Builder (trước đây canvas không nhận `data` gì cả nên 2 component đó luôn
+  // rơi vào nhánh "No image" dù Prize đã có ảnh). `results: []` vì Builder không cần biết kết quả quay
+  // — WinnerName/PrizeName vẫn tự hiện fallbackText đúng như khi chưa có data.
+  const landingData: LandingData = useMemo(
+    () => ({ participants, prizes, results: [] }),
+    [participants, prizes]
+  );
+
   const dirty = !!config && JSON.stringify(config) !== savedConfigRef.current;
 
   useEffect(() => {
@@ -142,6 +173,42 @@ export default function LandingBuilderWindow() {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [showLayers]);
+
+  // Đóng flyout History khi click ra ngoài — cùng cơ chế với flyout Layers ở trên.
+  useEffect(() => {
+    if (!showHistory) return;
+    const close = () => setShowHistory(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [showHistory]);
+
+  // Đổi vùng chọn — tự suy ra `anchorEdit` MỚI theo component vừa chọn, KHÔNG cần người dùng bấm gì:
+  // đúng 1 component đang chọn và nó CÓ SẴN 1 stage đã cấu hình scaleUp (`anchorPlaced`) HOẶC lift (kéo
+  // lệch khỏi tâm, xem doc-comment PrizeGroupEffect trong types.ts) → tự hiện lại pin ở mode "locked"
+  // (thuần hiển thị, xem AnchorEditTarget); không có gì khớp (bỏ chọn/chọn nhiều/chọn component khác
+  // chưa cấu hình gì) → tắt hẳn. Đang trỏ ĐÚNG component hiện tại rồi (dù đang placing/editing/locked)
+  // thì GIỮ NGUYÊN, không ép lại — tránh cắt ngang phiên đang thao tác dở chỉ vì `config` đổi (mỗi lần
+  // kéo pin đều đổi config).
+  useEffect(() => {
+    if (anchorEdit && selectedIds.length === 1 && selectedIds[0] === anchorEdit.componentId) return;
+    if (selectedIds.length !== 1) {
+      setAnchorEdit(null);
+      return;
+    }
+    const id = selectedIds[0];
+    const component = config?.components.find((c) => c.id === id);
+    const props: Record<string, any> | undefined = component?.props;
+    const stageOrder: PrizeStageKey[] = ["onHover", "onSelect", "onWon", "onOutOfStock"];
+    function isConfigured(focus: any): boolean {
+      if (!focus) return false;
+      if (focus.effect === "scaleUp") return !!focus.anchorPlaced;
+      if (focus.effect === "lift") return focus.handleX !== 50 || focus.handleY !== 50;
+      return false;
+    }
+    const matchedStage = props ? stageOrder.find((key) => isConfigured(props[key]?.focus)) : undefined;
+    setAnchorEdit(matchedStage ? { componentId: id, stageKey: matchedStage, mode: "locked" } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds]);
 
   // Hand tool vô nghĩa khi đang ở mức zoom out tối đa (cả landing đã vừa khít khung nhìn, không còn
   // gì để kéo) — tự quay về Select nếu đang zoom out xuống mức đó mà Hand tool vẫn đang bật.
@@ -172,6 +239,19 @@ export default function LandingBuilderWindow() {
       if (mod && e.key === "-") {
         e.preventDefault();
         setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100));
+        return;
+      }
+      // Ctrl/Cmd+Z = Undo, Ctrl/Cmd+Shift+Z hoặc Ctrl/Cmd+Y = Redo (2 cách gõ Redo phổ biến trên
+      // Windows/macOS) — xem useConfigHistory.ts.
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) history.redo();
+        else history.undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        history.redo();
         return;
       }
       if (mod || e.altKey) return;
@@ -206,8 +286,16 @@ export default function LandingBuilderWindow() {
   // (xem PropertiesPanel.tsx, dựa vào `selectedCount` truyền riêng bên dưới).
   const selected = selectedIds.length === 1 ? config.components.find((c) => c.id === selectedIds[0]) ?? null : null;
 
-  function updateConfig(updater: (prev: LandingConfig) => LandingConfig) {
-    setConfig((prev) => (prev ? updater(prev) : prev));
+  // `commit: true` LUÔN tách thành 1 bước lịch sử RIÊNG (Add/Delete/Reorder...); mặc định (commit bỏ
+  // trống) GỘP vào bước hiện tại nếu cách lần sửa gần nhất dưới 600ms — đúng hành vi cần cho kéo-thả/
+  // resize trên canvas (bắn liên tục mỗi mousemove) và gõ chữ liên tục trong Properties Panel, xem
+  // doc-comment đầu useConfigHistory.ts.
+  function updateConfig(updater: (prev: LandingConfig) => LandingConfig, opts?: { commit?: boolean; label?: string }) {
+    history.set(updater, opts);
+  }
+
+  function labelForComponent(c: LandingComponent | undefined | null): string {
+    return c ? COMPONENT_REGISTRY[c.type]?.label ?? c.type : "component";
   }
 
   function handleSelect(id: string | null) {
@@ -252,32 +340,53 @@ export default function LandingBuilderWindow() {
   }
 
   function handleChangeBackground(patch: Partial<BackgroundConfig>) {
-    updateConfig((prev) => ({
-      ...prev,
-      canvas: { ...prev.canvas, background: { ...prev.canvas.background, ...patch } },
-    }));
+    updateConfig(
+      (prev) => ({
+        ...prev,
+        canvas: { ...prev.canvas, background: { ...prev.canvas.background, ...patch } },
+      }),
+      { label: "Edited background" }
+    );
   }
 
-  function handleUpdateComponent(id: string, patch: Partial<LandingComponent>) {
-    updateConfig((prev) => ({
-      ...prev,
-      components: prev.components.map((c) =>
-        c.id === id ? fitDigitRollerHeight({ ...c, ...patch } as LandingComponent) : c
-      ),
-    }));
+  // `opts.commit` truyền `true` cho các lần gọi RỜI RẠC (vd toggle ẩn/hiện layer) — mặc định (kéo-thả/
+  // resize trên canvas, bắn liên tục mỗi mousemove) để trống, tự gộp theo thời gian.
+  function handleUpdateComponent(id: string, patch: Partial<LandingComponent>, opts?: { commit?: boolean }) {
+    const target = config?.components.find((c) => c.id === id);
+    const name = labelForComponent(target);
+    const label =
+      "hiddenInBuilder" in patch
+        ? `Toggled visibility of ${name}`
+        : "width" in patch || "height" in patch
+          ? `Resized ${name}`
+          : "x" in patch || "y" in patch
+            ? `Moved ${name}`
+            : `Edited ${name}`;
+    updateConfig(
+      (prev) => ({
+        ...prev,
+        components: prev.components.map((c) =>
+          c.id === id ? fitDigitRollerHeight({ ...c, ...patch } as LandingComponent) : c
+        ),
+      }),
+      { commit: opts?.commit, label }
+    );
   }
 
   // orderedIds: thứ tự TRƯỚC → SAU do LayersPanel.tsx tính ra sau khi kéo-thả (phần tử đầu = lớp
   // trước cùng) — quy đổi thành zIndex thật (đầu mảng nhận zIndex CAO NHẤT, khớp đúng quy ước
   // "zIndex cao hơn = vẽ sau = nằm trên" đã dùng sẵn ở LandingRenderer.tsx).
   function handleReorderLayers(orderedIds: string[]) {
-    updateConfig((prev) => ({
-      ...prev,
-      components: prev.components.map((c) => {
-        const idx = orderedIds.indexOf(c.id);
-        return idx === -1 ? c : { ...c, zIndex: orderedIds.length - 1 - idx };
+    updateConfig(
+      (prev) => ({
+        ...prev,
+        components: prev.components.map((c) => {
+          const idx = orderedIds.indexOf(c.id);
+          return idx === -1 ? c : { ...c, zIndex: orderedIds.length - 1 - idx };
+        }),
       }),
-    }));
+      { commit: true, label: "Reordered layers" }
+    );
   }
 
   function handleUpdateProps(patch: Record<string, any>) {
@@ -285,12 +394,44 @@ export default function LandingBuilderWindow() {
     // này không bao giờ được gọi khi đang multi-select — guard lại cho chắc.
     if (selectedIds.length !== 1) return;
     const id = selectedIds[0];
-    updateConfig((prev) => ({
-      ...prev,
-      components: prev.components.map((c) =>
-        c.id === id ? fitDigitRollerHeight({ ...c, props: { ...c.props, ...patch } } as LandingComponent) : c
-      ),
-    }));
+    const label = `Edited ${labelForComponent(config?.components.find((c) => c.id === id))}`;
+    updateConfig(
+      (prev) => ({
+        ...prev,
+        components: prev.components.map((c) =>
+          c.id === id ? fitDigitRollerHeight({ ...c, props: { ...c.props, ...patch } } as LandingComponent) : c
+        ),
+      }),
+      { label }
+    );
+  }
+
+  // Cập nhật nhóm "focus" (nhóm DUY NHẤT chứa scaleUp) ở ĐÚNG 1 stage — dùng chung cho cả điểm neo
+  // (directionX/Y) lẫn điểm Direction (handleX/Y, xem doc-comment PrizeGroupEffect trong types.ts),
+  // gọi liên tục mỗi lần kéo (không `commit`, tự gộp theo thời gian như handleUpdateComponent lúc
+  // kéo-di-chuyển, xem doc-comment đầu useConfigHistory.ts) từ ScaleAnchorOverlay.tsx (kéo-thả THẬT SỰ
+  // diễn ra ở canvas, xem LandingCanvas.tsx's renderAnchorOverlay). Không dùng lại handleUpdateProps ở
+  // trên vì patch ở đây LỒNG SÂU hơn 1 cấp (props.<stageKey>.focus.<field>, không phải field phẳng
+  // ngay dưới props) — cần tự đọc + fallback riêng từng cấp giống PrizeEffectPicker.tsx.
+  function handleUpdateAnchor(stageKey: AnchorEditTarget["stageKey"], patch: Partial<PrizeGroupEffect>) {
+    if (selectedIds.length !== 1) return;
+    const id = selectedIds[0];
+    updateConfig(
+      (prev) => ({
+        ...prev,
+        components: prev.components.map((c) => {
+          if (c.id !== id) return c;
+          const props: any = c.props;
+          const stage = props[stageKey] ?? DEFAULT_PRIZE_STAGE_EFFECT;
+          const focus = stage.focus ?? DEFAULT_PRIZE_GROUP_EFFECT;
+          return {
+            ...c,
+            props: { ...props, [stageKey]: { ...stage, focus: { ...focus, ...patch } } },
+          } as LandingComponent;
+        }),
+      }),
+      { label: "Edited anchor point" }
+    );
   }
 
   // Digit Roller không cho tự do chỉnh height — khung kéo-thả luôn PHẢI sát kích thước thật, không
@@ -326,30 +467,43 @@ export default function LandingBuilderWindow() {
       );
       let name = "Button";
       for (let n = 2; usedNames.has(name); n++) name = `Button ${n}`;
-      updateConfig((prev) => {
-        const component = createComponentAt(type, x, y, prev.components.length) as ButtonComponent;
-        component.name = name;
-        setSelectedIds([component.id]);
-        setShowPanel(true);
-        return { ...prev, components: [...prev.components, component] };
-      });
+      updateConfig(
+        (prev) => {
+          const component = createComponentAt(type, x, y, prev.components.length) as ButtonComponent;
+          component.name = name;
+          setSelectedIds([component.id]);
+          setShowPanel(true);
+          return { ...prev, components: [...prev.components, component] };
+        },
+        { commit: true, label: `Added ${COMPONENT_REGISTRY[type].label}` }
+      );
       setShowAddFlyout(false);
       return;
     }
 
-    updateConfig((prev) => {
-      const component = createComponentAt(type, x, y, prev.components.length);
-      setSelectedIds([component.id]);
-      setShowPanel(true);
-      return { ...prev, components: [...prev.components, component] };
-    });
+    updateConfig(
+      (prev) => {
+        const component = createComponentAt(type, x, y, prev.components.length);
+        setSelectedIds([component.id]);
+        setShowPanel(true);
+        return { ...prev, components: [...prev.components, component] };
+      },
+      { commit: true, label: `Added ${COMPONENT_REGISTRY[type].label}` }
+    );
     setShowAddFlyout(false);
   }
 
   // Xoá TẤT CẢ component đang được chọn (đơn hoặc nhiều — Ctrl/Cmd+click, marquee) cùng lúc.
   function handleDeleteSelected() {
     if (selectedIds.length === 0) return;
-    updateConfig((prev) => ({ ...prev, components: prev.components.filter((c) => !selectedIds.includes(c.id)) }));
+    const label =
+      selectedIds.length === 1
+        ? `Deleted ${labelForComponent(config?.components.find((c) => c.id === selectedIds[0]))}`
+        : `Deleted ${selectedIds.length} components`;
+    updateConfig(
+      (prev) => ({ ...prev, components: prev.components.filter((c) => !selectedIds.includes(c.id)) }),
+      { commit: true, label }
+    );
     setSelectedIds([]);
     setShowPanel(false);
   }
@@ -376,7 +530,7 @@ export default function LandingBuilderWindow() {
     if (!window.confirm("Discard all unsaved changes? This cannot be undone.")) return;
     const reverted = JSON.parse(savedConfigRef.current) as LandingConfig;
     const known = reverted.components.filter((c) => !!COMPONENT_REGISTRY[c.type]);
-    setConfig({ ...reverted, components: known.map(fitDigitRollerHeight) });
+    history.reset({ ...reverted, components: known.map(fitDigitRollerHeight) });
     setSelectedIds([]);
     setShowPanel(false);
   }
@@ -389,6 +543,61 @@ export default function LandingBuilderWindow() {
           <p className="text-xs text-base-500">{session.name}</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Undo/Redo + History — xem useConfigHistory.ts. Đặt tách biệt khỏi cụm Discard/Save (nút
+              phá huỷ/ghi DB thật) bằng 1 vạch chia, tránh bấm nhầm. */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={history.undo}
+              disabled={!history.canUndo}
+              title="Undo (Ctrl/Cmd+Z)"
+              className={headerIconBtn}
+            >
+              <UndoIcon />
+            </button>
+            <button
+              onClick={history.redo}
+              disabled={!history.canRedo}
+              title="Redo (Ctrl/Cmd+Shift+Z)"
+              className={headerIconBtn}
+            >
+              <RedoIcon />
+            </button>
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setShowHistory((v) => !v)}
+                title="History"
+                className={`${headerIconBtn} w-auto gap-1 px-2 text-xs ${showHistory ? "bg-base-800 text-base-100" : ""}`}
+              >
+                <HistoryIcon />
+                {history.historyLabels.length}
+              </button>
+              {showHistory && (
+                <div className="absolute right-0 z-30 mt-1 max-h-64 w-72 overflow-y-auto rounded-lg border border-base-700 bg-base-900 p-2 text-xs shadow-2xl">
+                  {history.historyLabels.length === 0 ? (
+                    <span className="block px-2 py-1 text-base-500">No actions yet.</span>
+                  ) : (
+                    <ol className="space-y-0.5">
+                      {history.historyLabels.map((label, i) => (
+                        <li key={i}>
+                          <button
+                            className="block w-full rounded px-2 py-1 text-left text-base-200 hover:bg-base-800"
+                            onClick={() => {
+                              history.jumpTo(i + 1);
+                              setShowHistory(false);
+                            }}
+                            title="Roll back to right after this step"
+                          >
+                            {i + 1}. {label}
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="h-5 w-px bg-base-800" />
           {toast && <span className="text-xs text-teal-400">{toast}</span>}
           <span className="text-xs text-base-500">
             {dirty ? <span className="text-highlight-500">Unsaved</span> : <span className="text-teal-400">Saved</span>}
@@ -405,6 +614,7 @@ export default function LandingBuilderWindow() {
       <div className="relative min-h-0 flex-1">
         <LandingCanvas
           config={config}
+          data={landingData}
           selectedIds={selectedIds}
           showGrid={showGrid}
           tool={tool}
@@ -415,6 +625,10 @@ export default function LandingBuilderWindow() {
           onMarqueeSelect={handleMarqueeSelect}
           onUpdateComponent={handleUpdateComponent}
           onDropNewComponent={handleDropNewComponent}
+          anchorEdit={anchorEdit}
+          onUpdateAnchor={handleUpdateAnchor}
+          onDoneAnchorEdit={() => setAnchorEdit((prev) => (prev ? { ...prev, mode: "locked" } : prev))}
+          onAnchorPlaced={() => setAnchorEdit((prev) => (prev ? { ...prev, mode: "editing" } : prev))}
         />
 
         {/* Thông báo lớn giữa màn hình khi 1 thao tác thất bại rõ ràng (vd hết action Button) —
@@ -512,7 +726,7 @@ export default function LandingBuilderWindow() {
                   onSelect={handleSelect}
                   onToggleHidden={(id) => {
                     const c = config.components.find((c) => c.id === id);
-                    if (c) handleUpdateComponent(id, { hiddenInBuilder: !c.hiddenInBuilder });
+                    if (c) handleUpdateComponent(id, { hiddenInBuilder: !c.hiddenInBuilder }, { commit: true });
                   }}
                   onReorder={handleReorderLayers}
                 />
@@ -591,6 +805,8 @@ export default function LandingBuilderWindow() {
                 onChangeComponent={(patch) => selected && handleUpdateComponent(selected.id, patch)}
                 onChangeProps={handleUpdateProps}
                 onDelete={handleDeleteSelected}
+                anchorEdit={anchorEdit}
+                onSetAnchorEdit={setAnchorEdit}
               />
             </div>
           </div>
@@ -631,6 +847,34 @@ function LayersIcon() {
       <path d="M12 3.5 3 8l9 4.5 9-4.5-9-4.5Z" />
       <path d="M3 12l9 4.5 9-4.5" />
       <path d="M3 16l9 4.5 9-4.5" />
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+      <path d="M8 7 3 12l5 5" />
+      <path d="M3 12h11a6 6 0 0 1 0 12h-2" />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+      <path d="M16 7l5 5-5 5" />
+      <path d="M21 12H10a6 6 0 0 0 0 12h2" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 8v4l3 2" />
     </svg>
   );
 }
