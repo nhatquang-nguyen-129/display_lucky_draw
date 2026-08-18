@@ -33,6 +33,7 @@ export default function WinnerNameView({
   data,
   builderPreview,
   revealDelayMs = 0,
+  quickDrawActive,
 }: {
   component: WinnerNameComponent;
   data?: LandingData;
@@ -42,8 +43,14 @@ export default function WinnerNameView({
   // remount HẲN component này mỗi khi results[0].id đổi (xem REMOUNT_ON_RESULT_TYPES), nên state ở
   // đây luôn bắt đầu lại từ đầu đúng lúc có candidate mới — không cần tự so sánh id ở đây.
   revealDelayMs?: number;
+  // Vừa chạy xong 1 Quick Draw (xem DrawSequenceActions.quickDrawResult trong types.ts) — hiện
+  // component.props.quickDrawText THAY VÌ tên người trúng, vì Quick Draw ra NHIỀU người cùng lúc,
+  // không có 1 tên "đúng" nào để hiện. Ưu tiên CAO HƠN cả tên thật lẫn fallback (chỉ builderPreview
+  // mới ghi đè được nó, xem `text` bên dưới).
+  quickDrawActive?: boolean;
 }) {
-  const { fontSize, color, fontWeight, align, fallbackText, revealEffect, transitionEffect } = component.props;
+  const { fontSize, color, fontWeight, align, fallbackText, revealEffect, transitionEffect, quickDrawText } =
+    component.props;
   const latest = data?.results[0];
 
   const [revealed, setRevealed] = useState(revealDelayMs <= 0);
@@ -55,7 +62,13 @@ export default function WinnerNameView({
   }, []);
 
   const isRevealed = !builderPreview && !!latest && revealed;
-  const text = builderPreview ? BUILDER_PLACEHOLDER : isRevealed ? latest!.participant_name : fallbackText;
+  const text = builderPreview
+    ? BUILDER_PLACEHOLDER
+    : quickDrawActive
+      ? quickDrawText
+      : isRevealed
+        ? latest!.participant_name
+        : fallbackText;
   const effect = transitionEffect ?? "none";
 
   // "current"/"previous" — 2 lớp text CHỒNG LÊN NHAU trong lúc chuyển cảnh (transitionEffect):

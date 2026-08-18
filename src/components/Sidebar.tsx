@@ -4,8 +4,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: "grid" },
   { to: "/participants", label: "Participants", icon: "users" },
   { to: "/prizes", label: "Prizes", icon: "gift" },
-  { to: "/draw", label: "Draw", icon: "target" },
-  { to: "/landing", label: "Landing Page", icon: "layout" },
+  { to: "/landing", label: "Draw", icon: "layout" },
   { to: "/settings", label: "Settings", icon: "settings" },
   { to: "/help", label: "Help", icon: "help" },
 ];
@@ -34,13 +33,6 @@ const icons: Record<string, JSX.Element> = {
       <path d="M12 9v12" />
       <path d="M12 9c-1.5-3-3.5-4-4.7-2.8C6 7.5 7.5 9 12 9Z" />
       <path d="M12 9c1.5-3 3.5-4 4.7-2.8C18 7.5 16.5 9 12 9Z" />
-    </svg>
-  ),
-  target: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="12" cy="12" r="8.5" />
-      <circle cx="12" cy="12" r="4.5" />
-      <circle cx="12" cy="12" r="0.8" fill="currentColor" />
     </svg>
   ),
   layout: (

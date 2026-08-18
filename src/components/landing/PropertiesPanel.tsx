@@ -1,4 +1,4 @@
-import { BackgroundConfig, ButtonAction, LandingComponent, LandingConfig } from "@/lib/landing/types";
+import { AnchorEditTarget, BackgroundConfig, ButtonAction, LandingComponent, LandingConfig } from "@/lib/landing/types";
 import { Participant, Prize } from "@/types";
 import BackgroundPanel from "./panels/BackgroundPanel";
 import SharedFields from "./panels/SharedFields";
@@ -30,6 +30,10 @@ interface PropertiesPanelProps {
   onChangeComponent: (patch: Partial<LandingComponent>) => void;
   onChangeProps: (patch: Record<string, any>) => void;
   onDelete: () => void;
+  // Đang sửa điểm neo Scale Up trực tiếp trên canvas hay không — xem doc-comment AnchorEditTarget
+  // trong types.ts. Chỉ 2 panel dùng tới (LiveImagePanel.tsx/PrizeGalleryPanel.tsx).
+  anchorEdit: AnchorEditTarget | null;
+  onSetAnchorEdit: (target: AnchorEditTarget | null) => void;
 }
 
 // Container của Properties Panel — không có gì được chọn thì hiện form Background; chọn đúng 1 thì
@@ -48,6 +52,8 @@ export default function PropertiesPanel({
   onChangeComponent,
   onChangeProps,
   onDelete,
+  anchorEdit,
+  onSetAnchorEdit,
 }: PropertiesPanelProps) {
   if (selectedCount > 1) {
     return (
@@ -91,10 +97,25 @@ export default function PropertiesPanel({
         />
       )}
       {selected.type === "prizeImage" && (
-        <LiveImagePanel props={selected.props} prizes={prizes} onChange={onChangeProps} />
+        <LiveImagePanel
+          props={selected.props}
+          prizes={prizes}
+          onChange={onChangeProps}
+          componentId={selected.id}
+          anchorEdit={anchorEdit}
+          onSetAnchorEdit={onSetAnchorEdit}
+        />
       )}
       {selected.type === "prizeList" && <PrizeListPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "prizeGallery" && <PrizeGalleryPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "prizeGallery" && (
+        <PrizeGalleryPanel
+          props={selected.props}
+          onChange={onChangeProps}
+          componentId={selected.id}
+          anchorEdit={anchorEdit}
+          onSetAnchorEdit={onSetAnchorEdit}
+        />
+      )}
       {selected.type === "countdown" && <CountdownPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "currentTime" && <CurrentTimePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "participantCount" && (

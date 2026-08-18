@@ -35,7 +35,7 @@ electron/
 src/
   types.ts            # Participant/Prize/Session/DrawResultRow + khai báo type window.api
   context/SessionContext.tsx   # State "tab nào đang active" cho cửa sổ chính
-  pages/              # 1 file = 1 route (Dashboard, Participants, Prizes, DrawSessionDetail...)
+  pages/              # 1 file = 1 route (Dashboard, Participants, Prizes, LandingPage...)
   components/
     DataEditorModal.tsx         # Component chính của Data Editor (rất lớn, xem mục 5)
     landing/
@@ -158,7 +158,7 @@ An toàn khi chạy lại nhiều lần (idempotent — luôn kiểm tra cột �
 
 | Cửa sổ | Route | Đặc điểm |
 |---|---|---|
-| Cửa sổ chính | `/`, `/participants`, `/prizes`, `/draw`, `/landing`, `/settings` | Có `<Layout>` (sidebar + `TabBar`), theo tab đang active qua `SessionContext` |
+| Cửa sổ chính | `/`, `/participants`, `/prizes`, `/landing`, `/settings` | Có `<Layout>` (sidebar + `TabBar`), theo tab đang active qua `SessionContext` |
 | Present Mode | `/present/:sessionId` | Không sidebar, full-screen, `LandingRenderer interactive=true` — nơi khán giả xem |
 | Landing Builder | `/landing-builder/:sessionId` | Không sidebar, full-screen, canvas kéo-thả — nơi người tổ chức THIẾT KẾ (không tương tác thật) |
 

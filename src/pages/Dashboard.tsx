@@ -89,7 +89,7 @@ export default function Dashboard() {
               1. Import the participant list (CSV/Excel or Google Sheets)
             </li>
             <li className={prizes.length ? "line-through text-base-600" : ""}>2. Set up the prize list</li>
-            <li>3. Go to "Draw" to start drawing for this tab</li>
+            <li>3. Go to "Draw" to set up the presentation and run the draw</li>
           </ul>
         </section>
       </div>

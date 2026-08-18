@@ -167,3 +167,230 @@
 .winner-transition-zoom-in {
   animation: winner-transition-zoom-in 0.5s both;
 }
+
+/* Hiệu ứng "glow" một-lần (oneshot, PrizeEffectName "glow" — xem types.ts) — LỚP PHỦ RIÊNG (absolute
+   inset-0) nằm TRÊN ảnh thật, KHÔNG đụng gì tới transform (scale/translate) đã có sẵn ở element NGOÀI
+   (khác element, không xung đột CSS property). React chỉ MOUNT lớp phủ này đúng lúc trigger (xem
+   PrizeImageView.tsx/PrizeGalleryView.tsx), animation `both` tự dừng lại ở khung hình cuối (opacity 0)
+   sau khi chạy xong, không lặp lại cho tới lần mount MỚI tiếp theo. Dùng `currentColor` (đặt qua CSS
+   `color`, xem PrizeEffectOverlay.tsx) để nhận đúng màu đã cấu hình, `filter: drop-shadow` (KHÔNG
+   phải box-shadow) trên 1 bản sao <img> chồng khớp lên ảnh gốc — drop-shadow tự bám theo alpha channel
+   thật của PNG, ra quầng sáng theo đúng silhouette, không phải khung chữ nhật bao quanh như box-shadow.
+   `--prize-fx-glow-size` (đặt qua PrizeEffectOverlay.tsx, giá trị THÔ 4-80 không kèm đơn vị) điều
+   khiển độ lan toả của 2 lớp NGOÀI — lớp ĐẦU (2px) LUÔN cố định, không phụ thuộc size, giữ độ rực sát
+   viền không bị pha loãng khi size lớn (cùng lý do đã bàn ở PrizeEffectOverlay.tsx cho bản persistent);
+   `currentColor` luôn opaque nên bù độ rực bằng cách STACK nhiều lớp (không tách alpha riêng được như
+   bản persistent) — component cha bật `mix-blend-mode: screen` để các lớp chồng CỘNG DỒN sáng thay vì
+   đè phẳng lên nhau. */
+
+@keyframes prize-fx-glow-pulse {
+  0% {
+    opacity: 0;
+    filter: drop-shadow(0 0 0 currentColor);
+  }
+  30% {
+    opacity: 1;
+    filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 calc(var(--prize-fx-glow-size, 24) * 0.7px) currentColor)
+      drop-shadow(0 0 calc(var(--prize-fx-glow-size, 24) * 1.4px) currentColor);
+  }
+  65% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 calc(var(--prize-fx-glow-size, 24) * 0.5px) currentColor);
+  }
+  100% {
+    opacity: 0;
+    filter: drop-shadow(0 0 0 currentColor);
+  }
+}
+.prize-fx-glowPulse {
+  animation: prize-fx-glow-pulse 900ms ease-out both;
+}
+
+/* -120% -> 300% (tính theo width CỦA CHÍNH wrapper, xem PrizeEffectOverlay.tsx) đủ xa để
+   wrapper đi HẲN qua khỏi 2 cạnh khung hình ở cả điểm đầu lẫn điểm cuối — bản cũ (-130% -> 230%)
+   dừng lại giữa chừng vẫn còn 1 phần nằm trong khung do quãng đường chưa đủ, y hệt lỗi "ánh sáng
+   quét xong còn dừng lại 1 chút" người dùng báo. Thêm fade opacity ở 2 đầu để tia sáng biến mất mượt
+   thay vì bị cắt cụt lúc ra khỏi mask hình silhouette (không đều mép như khung chữ nhật). */
+@keyframes prize-fx-sweep {
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+    opacity: 0;
+  }
+  14% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(300%) skewX(-20deg);
+    opacity: 0;
+  }
+}
+.prize-fx-sweep-wrap {
+  animation: prize-fx-sweep 850ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Quầng sáng prize (hover/selected/confirmed, xem PrizeEffectOverlay.tsx) — lặp vô hạn suốt lúc còn
+   mount, khác hẳn 4 hiệu ứng prize-fx-* ở trên (chạy 1 LẦN rồi đứng yên). Biên độ CỐ Ý nhỏ (opacity
+   0.82-1, scale 1-1.015) — đủ để trông "sống", không đủ để gây chú ý/giật mắt như 1 hiệu ứng nháy. */
+@keyframes prize-select-breathe {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.015);
+  }
+}
+.prize-select-breathe {
+  animation: prize-select-breathe 2.4s ease-in-out infinite;
+}
+
+/* ============================================================================================
+   Hệ hiệu ứng Prize MỚI (PrizeEffectName, xem types.ts) — dùng bởi PrizeEffectOverlay.tsx (nhóm
+   Highlight: glow/sweep — LỚP PHỦ riêng) và prizeEffectTransform.ts (nhóm Focus/Motion:
+   scaleUp/lift/bounce/pulse/shake — biến đổi TRỰC TIẾP element ảnh thật, không qua overlay). Mỗi
+   effect có 2 biến thể: "-once" (mode="oneshot", chạy 1 LẦN rồi đứng yên — dùng cho When
+   Click/Won) và "-loop" (mode="persistent", lặp vô hạn suốt trạng thái — dùng cho When
+   Select/Out of Stock). `glow` tái dùng NGUYÊN `.prize-select-breathe` (loop) + `.prize-fx-glowPulse`
+   (once) đã có ở trên; `sweep` "-once" tái dùng NGUYÊN `.prize-fx-sweep-wrap` đã có, chỉ thêm bản
+   "-loop" mới ở đây. */
+
+/* sweep loop — CÙNG hình dạng quét với bản once, nhưng nén vào ~28% ĐẦU của 1 chu kỳ 3s rồi đứng im
+   (mờ) phần còn lại — tạo cảm giác "cứ vài giây lại quét 1 lượt" thay vì quét liên tục không nghỉ. */
+@keyframes prize-fx-sweep-loop {
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+    opacity: 0;
+  }
+  4.7% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 1;
+  }
+  28.3% {
+    transform: translateX(300%) skewX(-20deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(300%) skewX(-20deg);
+    opacity: 0;
+  }
+}
+.prize-fx-sweep-loop {
+  animation: prize-fx-sweep-loop 3000ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Focus/Motion (transform-category) — biên độ đọc qua CSS custom property, set INLINE theo từng
+   instance (xem prizeEffectTransform.ts) vì cùng 1 keyframe dùng chung cho mọi Prize component,
+   không thể hardcode số cố định. `--prize-fx-px`/`--prize-fx-dx`/`--prize-fx-dy` đơn vị px;
+   `--prize-fx-scale` là PHÂN SỐ (vd 0.1 = phóng thêm 10%), không phải %, để dùng thẳng trong calc(). */
+
+@keyframes prize-fx-scale-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(calc(1 + var(--prize-fx-scale, 0.1) * 1.3));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.prize-fx-scaleUp-once {
+  animation: prize-fx-scale-pop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Lift KHÁC HẲN mọi effect khác ở đây (scaleUp-once/bounce/pulse/shake đều "bật lên rồi VỀ vị trí
+   gốc") — bản chất của lift là "DI CHUYỂN tới đúng offset đã cấu hình rồi Ở LẠI đó", nên persistent
+   CŨNG animate (không đứng yên tức thì như trước) và oneshot CŨNG dừng ở đích (không trả về 0), xem
+   doc-comment computePrizeTransform trong prizeEffectTransform.ts — cả 2 mode dùng CHUNG keyframe này.
+   3 pha THEO THỜI GIAN (không phải theo quãng đường): 10% đầu tăng tốc dần (ease-in) → 80% giữa tốc độ
+   ĐỀU (linear, đúng nghĩa "tốc độ cố định") → 10% cuối giảm tốc về 0 (ease-out) rồi DỪNG HẲN —
+   `animation-timing-function` đặt NGAY TẠI 1 keyframe áp dụng cho đoạn NGAY SAU nó tới keyframe kế
+   tiếp (tính năng chuẩn CSS). Vị trí tại mốc 10%/90% tính đúng theo vật lý tăng/giảm tốc ĐỀU (diện
+   tích tam giác vận tốc-thời gian): quãng đường đi trong pha tăng/giảm tốc = 1/2 × vận tốc đỉnh × thời
+   gian pha đó — với t1=t3=10%T, t2=80%T thì vận tốc đỉnh v = D / (0.9T) (D = tổng quãng đường, T = tổng
+   thời gian), ra đúng quãng đường 5.56% tại mốc 10% và 94.44% tại mốc 90%. */
+@keyframes prize-fx-lift-move {
+  0% {
+    transform: translate(0, 0);
+    animation-timing-function: ease-in;
+  }
+  10% {
+    transform: translate(calc(var(--prize-fx-dx, 0px) * 0.0556), calc(var(--prize-fx-dy, 0px) * 0.0556));
+    animation-timing-function: linear;
+  }
+  90% {
+    transform: translate(calc(var(--prize-fx-dx, 0px) * 0.9444), calc(var(--prize-fx-dy, 0px) * 0.9444));
+    animation-timing-function: ease-out;
+  }
+  100% {
+    transform: translate(var(--prize-fx-dx, 0px), var(--prize-fx-dy, 0px));
+  }
+}
+.prize-fx-lift-once,
+.prize-fx-lift-settle {
+  animation: prize-fx-lift-move 700ms both;
+}
+
+@keyframes prize-fx-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(calc(-1 * var(--prize-fx-px, 12px)));
+  }
+}
+.prize-fx-bounce-once {
+  animation: prize-fx-bounce 500ms ease-in-out both;
+}
+.prize-fx-bounce-loop {
+  animation: prize-fx-bounce 1.2s ease-in-out infinite;
+}
+
+@keyframes prize-fx-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(calc(1 + var(--prize-fx-scale, 0.05)));
+  }
+}
+.prize-fx-pulse-once {
+  animation: prize-fx-pulse 500ms ease-in-out both;
+}
+.prize-fx-pulse-loop {
+  animation: prize-fx-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes prize-fx-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(calc(-1 * var(--prize-fx-px, 6px)));
+  }
+  40% {
+    transform: translateX(var(--prize-fx-px, 6px));
+  }
+  60% {
+    transform: translateX(calc(-0.6 * var(--prize-fx-px, 6px)));
+  }
+  80% {
+    transform: translateX(calc(0.6 * var(--prize-fx-px, 6px)));
+  }
+}
+.prize-fx-shake-once {
+  animation: prize-fx-shake 450ms ease-in-out both;
+}
+.prize-fx-shake-loop {
+  animation: prize-fx-shake 1.4s ease-in-out infinite;
+}

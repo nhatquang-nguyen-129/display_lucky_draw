@@ -166,24 +166,190 @@ export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
 export interface WinnerNameProps extends LiveTextProps {
   revealEffect: EffectName;
   transitionEffect: WinnerTransitionEffect;
+  // Hiện THAY CHO tên người trúng ngay sau khi 1 Quick Draw vừa chạy xong (xem
+  // DrawSequenceActions.quickDrawResult/runDraw trong useDrawSequence.ts) — Quick Draw ra NHIỀU
+  // người trúng cùng lúc nên không có 1 cái tên "đúng" nào để hiện, dùng 1 câu chung thay thế. Chỉ
+  // Winner Name có field này (Prize Name dùng chung LiveTextPanel.tsx nhưng không có, gate theo
+  // showWinnerFields y hệt revealEffect/transitionEffect ở trên).
+  quickDrawText: string;
 }
 
-// CHỈ dùng bởi PrizeImageComponent — "latestWinner" là hành vi GỐC (tự đổi theo results[0], dùng cho
-// kiểu "công bố kết quả"). "specificPrize" LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn
-// (`prizeId`), không đổi theo kết quả quay — dùng để đặt NHIỀU Prize Image rải rác khắp landing,
-// mỗi cái tự do vị trí/kích thước khớp đúng 1 chỗ trong ảnh nền artwork (vd 1 cái đè lên ảnh xe đẩy,
-// 1 cái đè lên ảnh hộp sữa), đại diện đúng 1 giải — KHÔNG sinh thêm ảnh theo quantity của giải.
-// `selectable` (chỉ có ý nghĩa khi source = "specificPrize") bật hover-glow + click để CHỌN giải đó
-// cho Draw — tái dùng NGUYÊN VẸN DrawSequenceActions.selectedPrizeId/togglePrizeSelection/
-// notifyOutOfStock đã có (xem PrizeGalleryView.tsx, hành vi glow/xám khi hết hàng giống hệt).
-export interface LiveImageProps {
+// Hệ hiệu ứng CHUNG cho ảnh giải (Prize Image/Prize Gallery) — 1 danh mục DUY NHẤT dùng ở cả 4 giai
+// đoạn tương tác (xem PrizeInteractions bên dưới), chia 3 NHÓM cố định — mỗi nhóm là 1 "kênh" độc
+// lập, hiển thị trong Properties Panel (PrizeEffectPicker.tsx):
+//   - Focus: scaleUp (phóng to, thay "Zoom" cũ), lift (nâng/dịch theo hướng).
+//   - Highlight: glow (viền sáng, thay "Glow" cũ), sweep (ánh sáng quét qua). Từng có thêm "spotlight"
+//     (đèn sân khấu chiếu từ trên xuống) — bỏ hẳn sau nhiều vòng thử vì không tìm được hướng đi ổn
+//     (polygon nhìn như hình khối phẳng lì; bản dựng lại kiểu 2D lighting/compositing photoreal cũng
+//     chưa ra hướng thoả đáng) — landing cũ lỡ chọn "spotlight" cho 1 giai đoạn nào đó tự rơi về "none"
+//     khi render (xem PrizeEffectOverlay.tsx), không crash.
+//   - Motion: bounce, pulse, shake.
+// TRONG CÙNG 1 nhóm chỉ chọn được ĐÚNG 1 effect (hoặc "none" = tắt nhóm đó) — nhưng 3 nhóm hoạt động
+// ĐỘC LẬP, nên 1 giai đoạn (vd "When Select") có thể BẬT ĐỒNG THỜI cả Focus lẫn Highlight lẫn Motion
+// (tối đa 3 effect cùng lúc, mỗi nhóm 1 cái) — xem PrizeStageEffect bên dưới. Xem
+// PrizeEffectOverlay.tsx/prizeEffectTransform.ts cho cách vẽ.
+export type PrizeEffectName = "none" | "scaleUp" | "lift" | "glow" | "sweep" | "bounce" | "pulse" | "shake";
+
+export const PRIZE_EFFECT_GROUPS: { key: "focus" | "highlight" | "motion"; label: string; effects: PrizeEffectName[] }[] = [
+  { key: "focus", label: "Focus", effects: ["scaleUp", "lift"] },
+  { key: "highlight", label: "Highlight", effects: ["glow", "sweep"] },
+  { key: "motion", label: "Motion", effects: ["bounce", "pulse", "shake"] },
+];
+
+// Cấu hình cho ĐÚNG 1 NHÓM (Focus/Highlight/Motion) trong ĐÚNG 1 giai đoạn — field PHẲNG dùng chung
+// cho mọi effect trong nhóm (giống style ButtonProps đã có, không tách interface riêng theo từng
+// effect cho gọn). Không phải effect nào cũng dùng hết field:
+//   - color: dùng bởi glow (màu quầng sáng).
+//   - size: Ý NGHĨA THEO TỪNG EFFECT (panel tự đổi label — xem PrizeEffectPicker.tsx): glow = bán kính
+//       lan toả (px) · bounce/pulse/shake = biên độ (px). sweep không dùng field này (cố định sẵn).
+//       scaleUp VÀ lift ĐỀU không còn dùng field này nữa (bỏ hẳn ô nhập số riêng — mức độ giờ SUY RA
+//       từ khoảng cách handleX/Y tới điểm cố định, xem `handleX/Y` bên dưới); giá trị `size` cũ của 1
+//       landing đã lưu TRƯỚC bản đổi này trở thành dữ liệu thừa vô hại cho 2 effect này (scaleUp còn
+//       dùng làm fallback 1 LẦN lúc suy ra handleX/Y mặc định — xem resolveScaleHandle trong
+//       prizeEffectTransform.ts; lift thì bỏ hẳn, không fallback gì).
+//   - directionX/Y: CHỈ scaleUp dùng — 0-100% mỗi trục, ĐÚNG toạ độ ĐIỂM NEO cố định (kéo-thả trực
+//     tiếp trên ảnh thật ở canvas Builder, xem ScaleAnchorOverlay.tsx) — KHÔNG nghịch đảo,
+//     transform-origin dùng THẲNG giá trị này (sau khi bám pixel thật gần nhất, xem
+//     nearestOpaqueBoxFraction trong pixelAlphaHitTest.ts). lift KHÔNG dùng field này nữa (điểm cố
+//     định của lift LUÔN là chính giữa khung, không cần lưu toạ độ riêng — xem `handleX/Y`).
+//   - handleX/Y: scaleUp VÀ lift ĐỀU dùng — toạ độ điểm "Direction" (0-100%, CÙNG hệ toạ độ với
+//     directionX/Y), kéo-thả trên canvas Builder (xem ScaleAnchorOverlay.tsx). Khoảng cách Euclid từ
+//     đây tới ĐIỂM CỐ ĐỊNH của effect đó (scaleUp: directionX/Y, điểm neo do người dùng đặt · lift:
+//     LUÔN (50,50) — chính giữa khung theo rectangle vòng ngoài, KHÔNG bám pixel, không đặt được) chính
+//     là mức độ effect (scaleUp: % phóng to thêm · lift: px dịch chuyển — cùng quy ước 1:1, xem
+//     computePrizeTransform trong prizeEffectTransform.ts); GÓC của vector này với scaleUp CHỈ để vẽ
+//     mũi tên trực quan (scale từ 1 điểm neo luôn nở đều mọi hướng), nhưng với lift GÓC CHÍNH LÀ hướng
+//     dịch chuyển thật (translate thẳng theo vector đó).
+//   - anchorPlaced: CHỈ scaleUp dùng, CHỈ Builder UI đọc (không ảnh hưởng gì tới cách render thật, xem
+//     computePrizeTransform) — cờ đánh dấu "đã CHỦ ĐỘNG thả Anchor qua luồng click-để-thả chưa" (xem
+//     ScaleAnchorTrigger.tsx/ScaleAnchorOverlay.tsx). `false` (mặc định, và MỌI landing lưu TRƯỚC khi
+//     có field này) = panel hiện nút "Drop anchor point", Anchor CHƯA cố định — landing cũ có
+//     directionX/Y/handleX/Y đã lưu vẫn RENDER ĐÚNG như cũ (field này không ảnh hưởng runtime), chỉ
+//     panel prompt lại người dùng thả Anchor mới nếu muốn dùng luồng kéo-thả trực quan. `true` = Anchor
+//     đã cố định, canvas LUÔN hiện pin (tĩnh, không kéo được) khi component đang chọn, panel đổi thành
+//     "Edit anchor & direction" + "Remove" — CHO ĐẾN KHI người dùng bấm Remove mới quay lại `false`.
+//     lift KHÔNG cần field boolean riêng — điểm cố định LUÔN tồn tại sẵn (không cần "thả"), "đã cấu
+//     hình chưa" suy thẳng từ `handleX !== 50 || handleY !== 50` (lệch khỏi tâm = đã kéo).
+export interface PrizeGroupEffect {
+  effect: PrizeEffectName;
+  color: string;
+  size: number;
+  directionX: number;
+  directionY: number;
+  handleX: number;
+  handleY: number;
+  anchorPlaced: boolean;
+}
+
+export const DEFAULT_PRIZE_GROUP_EFFECT: PrizeGroupEffect = {
+  effect: "none",
+  color: "#FFCA2D",
+  size: 24,
+  directionX: 50,
+  directionY: 50,
+  // (50,50) = ĐÚNG điểm cố định (giữa tâm) — khoảng cách 0 nghĩa là CHƯA cấu hình gì (0% zoom / 0px
+  // dịch chuyển), mặc định trung tính đúng nghĩa cho cả scaleUp lẫn lift. Preset "10% zoom mặc định"
+  // khi tạo Prize Image mới KHÔNG đọc từ đây — tự dựng literal riêng trong componentRegistry.ts.
+  handleX: 50,
+  handleY: 50,
+  anchorPlaced: false,
+};
+
+// Cấu hình ĐẦY ĐỦ cho 1 giai đoạn tương tác (When Hover/Select/Won/Out of Stock) — GỘP 3 nhóm ĐỘC
+// LẬP, mỗi nhóm tự bật/tắt/chọn effect riêng (xem PrizeGroupEffect) — vd `focus.effect="scaleUp"` VÀ
+// `highlight.effect="glow"` CÙNG LÚC là hợp lệ, chỉ riêng TRONG 1 nhóm mới bị giới hạn ĐÚNG 1 effect.
+export interface PrizeStageEffect {
+  focus: PrizeGroupEffect;
+  highlight: PrizeGroupEffect;
+  motion: PrizeGroupEffect;
+}
+
+// Landing lưu TRƯỚC KHI có hệ 4-giai-đoạn này (onHover/onSelect/onWon/onOutOfStock, xem
+// PrizeInteractions bên dưới) không hề có 4 field object này trong JSON đã lưu — dù TypeScript khai
+// báo chúng là BẮT BUỘC (không `?`), lúc đọc THẬT ở runtime từ config cũ chúng vẫn là `undefined`
+// (config lưu bởi bản TRƯỚC redesign 3-nhóm này cũng rơi vào cùng tình huống — object đó CÓ tồn tại
+// nhưng thiếu hẳn `focus`/`highlight`/`motion`, đọc `value.focus` ra `undefined` y hệt). MỌI nơi đọc
+// 4 field này (PrizeImageView.tsx/PrizeGalleryView.tsx/LiveImagePanel.tsx/PrizeGalleryPanel.tsx/
+// PrizeEffectPicker.tsx) PHẢI fallback về hằng số này (`?? DEFAULT_PRIZE_STAGE_EFFECT`), và mỗi nhóm
+// con bên trong PHẢI fallback riêng về `DEFAULT_PRIZE_GROUP_EFFECT` — thiếu bước này gây crash trắng
+// màn hình ngay khi mở Properties Panel của prize cũ (đã gặp thật: `value.effect` ném lỗi vì `value`
+// là `undefined`).
+export const DEFAULT_PRIZE_STAGE_EFFECT: PrizeStageEffect = {
+  focus: DEFAULT_PRIZE_GROUP_EFFECT,
+  highlight: DEFAULT_PRIZE_GROUP_EFFECT,
+  motion: DEFAULT_PRIZE_GROUP_EFFECT,
+};
+
+// 4 giai đoạn user tương tác với 1 prize (Prize Image/Prize Gallery, xem PrizeEffectPicker.tsx cho
+// UI cấu hình) — chia 2 KIỂU CHẠY khác nhau (xem PrizeEffectOverlay.tsx/prizeEffectTransform.ts):
+//   - onWon: 1 KHOẢNH KHẮC rời rạc → hiệu ứng chạy ĐÚNG 1 LẦN rồi tắt (mode="oneshot"), đúng lúc
+//     Wheel VỪA TRẢ VỀ người trúng giải này (candidate.prizeId === prizeId), KHÔNG đợi Confirm thật
+//     sự chạy — xem doc-comment justWon trong PrizeImageView.tsx/PrizeGalleryView.tsx.
+//   - onHover/onSelect/onOutOfStock: 1 TRẠNG THÁI kéo dài → hiệu ứng chạy LIÊN TỤC suốt trạng thái đó
+//     (mode="persistent"), ưu tiên onOutOfStock > onSelect > onHover khi trùng nhau (vd đang hover 1
+//     giải ĐÃ hết hàng thì hiện onOutOfStock, không phải onHover — xem PrizeImageView.tsx). onHover áp
+//     dụng khi di chuột GẦN/VÀO (chỉ lúc CHƯA chọn — click chính là hành động CHỌN, nên "When Click" và
+//     "When Select" là 1, không tách riêng); onSelect áp dụng suốt lúc giải này CỤ THỂ đang là giải
+//     được chọn; onOutOfStock áp dụng suốt lúc hết hàng/không active, LAYER THÊM lên trên
+//     `outOfStockDimAmount`.
+export type PrizeStageKey = "onHover" | "onSelect" | "onWon" | "onOutOfStock";
+
+// Pin Anchor/Direction (scaleUp) HOẶC pin Direction quanh điểm cố định chính giữa (lift) nào đang HIỆN
+// trên canvas Builder (LandingCanvas.tsx) — không phải trong Properties Panel (xem
+// ScaleAnchorTrigger.tsx/LiftDirectionTrigger.tsx/ScaleAnchorOverlay.tsx). `componentId` + `stageKey`
+// xác định ĐÚNG 1 nhóm "focus" đang hiện (group DUY NHẤT chứa CẢ scaleUp lẫn lift, xem
+// PRIZE_EFFECT_GROUPS — 2 effect này loại trừ nhau trong cùng 1 nhóm nên dùng CHUNG state này không
+// xung đột). State này sống ở LandingBuilderWindow.tsx (cha chung của cả Properties Panel lẫn canvas)
+// — CHỈ 1 cặp pin hiện tại 1 lúc trên toàn Builder. `null` = không có gì hiện. Tự đặt lại (không cần
+// người dùng bấm gì) mỗi khi đổi vùng chọn sang 1 component KHÁC đã có sẵn cấu hình — xem effect trong
+// LandingBuilderWindow.tsx.
+export interface AnchorEditTarget {
+  componentId: string;
+  stageKey: PrizeStageKey;
+  // "placing" — CHỈ scaleUp dùng (lift không có điểm neo để "thả" — điểm cố định của lift LUÔN có sẵn
+  //   sẵn, chính giữa khung, xem doc-comment PrizeGroupEffect trong types.ts): vừa bấm "Drop anchor
+  //   point", CHƯA có Anchor lượt này, canvas chờ ĐÚNG 1 click để "thả" (bám pixel thật gần nhất,
+  //   KHÔNG cho rơi vào vùng trong suốt) — xong tự chuyển "editing".
+  // "editing" — CHỈ pin Direction kéo-thả tự do được (scaleUp: quanh Anchor cố định · lift: quanh điểm
+  //   giữa khung cố định), các component KHÁC trên canvas tạm khoá tương tác (chống chọn nhầm khi 2
+  //   prize đặt gần nhau).
+  // "locked" — không còn kéo-thả gì (đã bấm "Done" hoặc vừa chọn lại component có sẵn cấu hình) — pin
+  //   vẫn HIỆN trên canvas làm tư liệu tham khảo, nhưng THUẦN HIỂN THỊ (không khoá gì, không kéo được)
+  //   cho tới khi bấm "Edit" (quay lại "editing") hoặc "Remove"/"Reset" (xoá hẳn, về `null`).
+  mode: "placing" | "editing" | "locked";
+}
+
+export interface PrizeInteractions {
+  onHover: PrizeStageEffect;
+  onSelect: PrizeStageEffect;
+  onWon: PrizeStageEffect;
+  onOutOfStock: PrizeStageEffect;
+  // 0-100 (%) — độ tối CỐ ĐỊNH khi hết hàng/không active (filter: brightness(1 - amount/100)), tách
+  // riêng khỏi `onOutOfStock` (effect CHỌN THÊM, tuỳ chọn) vì đây là tín hiệu "hết hàng" cơ bản LUÔN
+  // cần có để phân biệt được với giải còn hàng, không phụ thuộc có chọn effect gì hay không.
+  outOfStockDimAmount: number;
+}
+
+// CHỈ dùng bởi PrizeImageComponent — LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (`prizeId`),
+// không đổi theo kết quả quay — dùng để đặt NHIỀU Prize Image rải rác khắp landing, mỗi cái tự do
+// vị trí/kích thước khớp đúng 1 chỗ trong ảnh nền artwork (vd 1 cái đè lên ảnh xe đẩy, 1 cái đè lên
+// ảnh hộp sữa), đại diện đúng 1 giải — KHÔNG sinh thêm ảnh theo quantity của giải. LUÔN cho phép
+// hover-glow + click để CHỌN giải đó cho Draw (không có tuỳ chọn tắt — đây CHÍNH LÀ lý do component
+// này tồn tại, không phải 1 tính năng phụ) — tái dùng NGUYÊN VẸN
+// DrawSequenceActions.selectedPrizeId/togglePrizeSelection/notifyOutOfStock đã có (xem
+// PrizeGalleryView.tsx, hành vi glow/xám khi hết hàng giống hệt).
+// KHÔNG còn field fallback ảnh riêng — ảnh trình chiếu (display_image) giờ BẮT BUỘC phải nhập ở màn
+// Prizes (xem PrizeFormModal.tsx), nên Prize Image lấy THẲNG ảnh đó, luôn khớp y nguyên, không cần
+// ảnh dự phòng nào khác nữa.
+export interface LiveImageProps extends PrizeInteractions {
   fit: "cover" | "contain" | "stretch";
   borderRadius: number;
-  fallbackImageDataUrl: string | null;
-  source: "latestWinner" | "specificPrize";
-  prizeId?: string; // chỉ dùng khi source = "specificPrize"
-  selectable: boolean; // chỉ có ý nghĩa khi source = "specificPrize"
-  glowColor: string; // chỉ dùng khi selectable = true
+  prizeId?: string;
+  // "Spotlight khi Wheel đang quay" — dim giải NÀY khi 1 giải KHÁC đang được chọn/quay, KHÁC HẲN
+  // `onOutOfStock`/`outOfStockDimAmount` (PrizeInteractions — trigger theo TỰ THÂN giải này hết hàng
+  // hay không) — field này trigger theo giải NÀO đang được chọn trên toàn trang, không liên quan gì
+  // tới remaining của chính giải này, xem PrizeImageView.tsx.
+  dimUnselectedAmount: number;
 }
 
 export interface PrizeListProps {
@@ -198,7 +364,7 @@ export interface PrizeListProps {
 // electron/drawEngine.ts — không cần sửa gì tầng Electron/DB). Giải hết hàng (remaining <= 0) hoặc
 // không active tự xám lại, không chọn được — click vào đó hiện popup báo hết thay vì chọn (xem
 // PrizeGalleryView.tsx, DrawSequenceActions.notifyOutOfStock).
-export interface PrizeGalleryProps {
+export interface PrizeGalleryProps extends PrizeInteractions {
   columns: number;
   gap: number;
   imageFit: "cover" | "contain" | "stretch";
@@ -206,7 +372,9 @@ export interface PrizeGalleryProps {
   showName: boolean;
   nameFontSize: number;
   nameColor: string;
-  glowColor: string; // dùng chung cho glow lúc hover (nhạt) lẫn lúc đã chọn (đậm hơn)
+  // Cùng spec LiveImageProps.dimUnselectedAmount — áp riêng cho từng ô KHÔNG PHẢI giải đang chọn
+  // trong lưới, xem PrizeGalleryView.tsx.
+  dimUnselectedAmount: number;
 }
 
 export interface PrizeGalleryComponent extends BaseComponent {
@@ -375,6 +543,12 @@ export type ButtonAction = "none" | "draw" | "confirm" | "reset" | "toggleScoreb
 export interface ButtonProps {
   action: ButtonAction;
   urlField?: string; // chỉ dùng khi action = "openLink"
+  // Nghỉ (ms) SAU khi 1 người vừa Confirm xong, TRƯỚC khi pick người tiếp theo — CHỈ áp dụng cho chế
+  // độ Multiple Draw (xem DrawMenu/DrawSequenceActions.runDraw trong ButtonView.tsx/types.ts). Quick
+  // Draw không nghỉ gì (luôn chạy nhanh nhất có thể, không đọc field này). Chỉ dùng khi action =
+  // "draw" — đọc trực tiếp từ component.props ngay lúc bấm Draw (không cần "arm" cùng lúc chọn mode
+  // trong dropdown), nên đổi số ở Properties Panel có hiệu lực ngay từ lượt Multiple Draw kế tiếp.
+  multipleDrawPaceMs?: number;
   label: string;
   fontSize: number;
   color: string;
@@ -505,6 +679,15 @@ export function computeWheelRevealDelayMs(components: LandingComponent[]): numbe
   return Math.max(...wheels.map((w) => wheelRevealDurationMs(w.props)));
 }
 
+/** Trang có ÍT NHẤT 1 component cho phép chọn giải để Draw (Prize Gallery và Prize Image — cả 2 LUÔN
+ * cho chọn, không có tuỳ chọn tắt) hay không — dùng để quyết định Draw có BẮT BUỘC phải chọn giải
+ * trước hay không (xem useDrawSequence.ts's pick()). Trang KHÔNG có component nào như vậy thì Draw
+ * vẫn random có trọng số như cũ, không bắt buộc gì cả — chỉ khi người dùng đã chủ động thêm UI chọn
+ * giải vào trang thì mới bắt buộc dùng nó trước khi quay. */
+export function hasSelectablePrizeUI(components: LandingComponent[]): boolean {
+  return components.some((c) => c.type === "prizeGallery" || c.type === "prizeImage");
+}
+
 /** Đọc 1 field của Participant theo tên field logic dùng trong LuckyWheelProps (không bao giờ null).
  * Field không khớp 1 trong 5 tên cố định được coi là tên cột optional (extra_data) — tra qua
  * getParticipantExtraField, rỗng nếu participant không có cột đó (xem LuckyWheelPanel.tsx, nơi
@@ -553,6 +736,12 @@ export interface LandingData {
   results: import("@/types").DrawResultRow[];
 }
 
+// 3 chế độ khi bấm nút Draw chính — chọn qua dropdown mũi tên cạnh nút (ButtonView.tsx's DrawMenu),
+// xem DrawSequenceActions.drawMode/selectDrawMode bên dưới. "single" = hành vi Draw gốc (1 người/lượt
+// bấm, tự thủ công Confirm/Redo). "multiple"/"quick" đều thao tác N người trên ĐÚNG 1 giải đã chọn —
+// khác nhau ở tốc độ: multiple hiện tuần tự từng người rồi tự Confirm, quick chạy hết ngay lập tức.
+export type DrawMode = "single" | "multiple" | "quick";
+
 // Trạng thái + hành động của luồng Draw/Confirm/Redo — xem useDrawSequence.ts (nơi triển khai
 // thật) và ButtonView.tsx (nơi tiêu thụ). Khai báo shape ở đây (lớp dữ liệu) thay vì để ButtonView
 // import thẳng kiểu trả về của hook, giữ đúng phân lớp "views/ chỉ biết shape dữ liệu, không biết
@@ -594,11 +783,65 @@ export interface DrawSequenceActions {
   // giải cũ trước.
   selectedPrizeId: string | null;
   togglePrizeSelection: (prizeId: string) => void;
-  // Popup "hết hàng" — khác null = đang cần hiện (xem LandingRenderer.tsx). Tự bật khi giải đang
-  // CHỌN vừa hết hàng (remaining về 0, thường ngay sau Confirm — xem useDrawSequence.ts, tự bỏ chọn
-  // luôn lúc này), HOẶC khi PrizeGalleryView.tsx gọi notifyOutOfStock() vì người dùng click 1 giải
-  // ĐÃ xám (hết hàng/không active) từ trước, chưa từng được chọn.
-  outOfStockPrizeName: string | null;
+  // Popup thông báo dùng CHUNG cho mọi trường hợp "bấm 1 nút nhưng không làm được gì, cần biết vì
+  // sao" — khác null = đang cần hiện (xem LandingRenderer.tsx), dismiss-only (chỉ có nút OK, click
+  // nền tối/Esc cũng đóng). Nguồn gọi hiện có: notifyOutOfStock() (PrizeGalleryView.tsx/
+  // PrizeImageView.tsx, người dùng CHỦ ĐỘNG click 1 giải đã xám), và trực tiếp trong
+  // useDrawSequence.ts's pick()/confirm() khi bấm Draw mà chưa chọn giải (trang có UI chọn giải) hoặc
+  // bấm Confirm mà chưa có ai được quay (candidate null/đã confirm rồi). KHÔNG tự bật khi giải đang
+  // chọn vừa hết hàng (đã bỏ — gây mất trải nghiệm thị giác ngay lúc Wheel vừa quay xong) —
+  // useDrawSequence.ts vẫn tự âm thầm bỏ chọn giải đó lúc đó, không kèm popup.
+  infoPrompt: string | null;
   notifyOutOfStock: (prizeName: string) => void;
-  dismissOutOfStock: () => void;
+  dismissInfoPrompt: () => void;
+  // Đang trong khoảng Lucky Wheel quay (từ lúc có candidate mới tới đúng lúc animation quay xong hẳn
+  // — cùng mốc winnerRevealDelayMs dùng cho WinnerNameView/BackgroundDimOverlay, xem
+  // computeWheelRevealDelayMs trong file này) — gần như MỌI thao tác bị khoá trong lúc này (Button
+  // action nào cũng no-op, xem ButtonView.tsx; chọn/bỏ chọn giải cũng bị khoá, xem
+  // PrizeGalleryView.tsx/PrizeImageView.tsx — giải ĐANG chọn giữ nguyên, không đổi được cho tới khi
+  // quay xong). Trang không có Lucky Wheel nào thì gần như luôn false ngay (winnerRevealDelayMs = 0).
+  // Multiple/Quick Draw (xem batchProgress bên dưới) CŨNG giữ `spinning = true` SUỐT cả quá trình —
+  // batch draw về bản chất là 1 dạng mở rộng của "đang quay", tái dùng NGUYÊN VẸN mọi điểm khoá đã
+  // đọc field này (không cần thêm field khoá riêng cho batch).
+  spinning: boolean;
+  // Khác null = đang chạy Multiple/Quick Draw (xem runDraw bên dưới, triển khai ở useDrawSequence.ts)
+  // — ButtonView.tsx đọc để hiện tiến trình "Drawing N/M…" thay cho label cấu hình.
+  batchProgress: { mode: "multiple" | "quick"; current: number; total: number } | null;
+  // Kết quả Quick Draw VỪA CHẠY XONG — còn hiệu lực tới khi có 1 lượt pick()/redo()/runDraw() (chế độ
+  // multiple/quick khác)/resetSession() MỚI (tự clear ở đầu các hàm đó). WinnerNameView.tsx đọc field
+  // này (qua prop `quickDrawActive`, LandingRenderer.tsx truyền `!!quickDrawResult`) để hiện
+  // `quickDrawText` thay vì tên người trúng — Quick Draw ra nhiều người cùng lúc nên không có 1 tên
+  // "đúng" nào để hiện.
+  quickDrawResult: { count: number; prizeName: string } | null;
+  // Chế độ Draw ĐANG ĐƯỢC ARM — chọn qua dropdown mũi tên cạnh nút Draw (ButtonView.tsx's DrawMenu,
+  // có dấu tick cạnh mục đang chọn). Dropdown chỉ CẤU HÌNH (selectDrawMode/confirmDrawModePrompt bên
+  // dưới), KHÔNG tự chạy gì — nút Draw CHÍNH mới thật sự thực thi đúng chế độ này khi được bấm (xem
+  // runDraw bên dưới). "single" luôn có drawCount = null; "multiple"/"quick" luôn có drawCount là số
+  // đã nhập ở drawModePrompt.
+  drawMode: DrawMode;
+  drawCount: number | null;
+  // Bấm 1 mục trong dropdown — "single" set thẳng ngay (không cần hỏi gì). "multiple"/"quick" BẮT
+  // BUỘC đã chọn giải + còn hàng (không phụ thuộc requiresPrizeSelection, khác Single Draw) rồi mới
+  // mở drawModePrompt hỏi số lượng — không hợp lệ thì báo NGAY qua infoPrompt/notifyOutOfStock, không
+  // mở popup nhập số vô nghĩa.
+  selectDrawMode: (mode: DrawMode) => void;
+  // Popup nhập số lượng cho Multiple/Quick Draw — khác null = đang cần hiện (vẽ ở LandingRenderer.tsx
+  // qua DrawModeCountPopup.tsx, CÙNG kiểu overlay canh giữa canvas với confirmPrompt/infoPrompt, chỉ
+  // khác có thêm 1 ô nhập số). `max` = remaining hiện tại của giải đang chọn, dùng làm giới hạn trên
+  // cho input — nhập quá thì popup tự hiện cảnh báo NGAY (không cần đóng/mở lại). Popup này BẮT BUỘC
+  // sống trong LandingRenderer.tsx vì cần phủ toàn bộ canvas đã scale, 1 Button riêng lẻ không có
+  // toạ độ đó.
+  drawModePrompt: { mode: "multiple" | "quick"; prizeName: string; max: number } | null;
+  closeDrawModePrompt: () => void;
+  // ARM drawMode/drawCount theo đúng lựa chọn trong popup rồi đóng nó lại — CHƯA chạy gì cả, chỉ lưu
+  // cấu hình. Người vận hành phải tự bấm nút Draw chính để thật sự tiến hành quay.
+  confirmDrawModePrompt: (count: number) => void;
+  // Hàm THẬT SỰ chạy khi bấm nút Draw chính (ButtonView.tsx) — rẽ nhánh theo drawMode đang ARM:
+  // "multiple"/"quick" chạy batch với drawCount đã lưu (tự re-validate count/remaining MỚI NHẤT,
+  // phòng trường hợp đổi từ lúc arm tới lúc bấm Draw); "single" giữ NGUYÊN hành vi cũ — đang có
+  // candidate CHỜ CONFIRM (isPending) thì "quay lại" (redo), chưa có gì chờ thì pick() 1 candidate mới.
+  // `multipleDrawPaceMs` — ButtonView.tsx truyền thẳng `component.props.multipleDrawPaceMs` (đọc
+  // ngay lúc bấm, không phải lúc arm) — CHỈ có tác dụng khi drawMode === "multiple", bỏ qua hoàn
+  // toàn ở "single"/"quick" (Quick Draw không nghỉ gì, xem doc-comment ButtonProps.multipleDrawPaceMs).
+  runDraw: (multipleDrawPaceMs?: number) => Promise<void>;
 }
