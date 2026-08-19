@@ -57,8 +57,8 @@ export function useDrawSequence(
   sessionId: string | null,
   data: LandingData,
   // Gọi lại NGAY sau khi Confirm/Reset ghi DB xong (thay vì đợi tới POLL_MS tiếp theo của
-  // useLandingData.ts, tối đa 2s) — cả 2 hành động đều đổi `prizes.remaining`, và PrizeGalleryView.tsx/
-  // PrizeImageView.tsx đọc thẳng `remaining` từ `data` để quyết định 1 giải còn chọn được hay không.
+  // useLandingData.ts, tối đa 2s) — cả 2 hành động đều đổi `prizes.remaining`, và PrizeImageView.tsx
+  // đọc thẳng `remaining` từ `data` để quyết định 1 giải còn chọn được hay không.
   // Thiếu bước này thì có 1 khoảng hở: bấm Reset/Confirm xong, bấm chọn giải NGAY trong lúc `data`
   // trong bộ nhớ chưa kịp cập nhật → báo "hết hàng" sai (đã gặp thật với Reset). `busy` giữ `true`
   // xuyên suốt cả bước gọi lại này (xem confirm()/resetSession() bên dưới), nên UI (popup loading —
@@ -84,7 +84,7 @@ export function useDrawSequence(
   const pendingConfirmActionRef = useRef<(() => void) | null>(null);
   const excludeIdsRef = useRef<string[]>([]);
   const lockedPrizeIdRef = useRef<string | null>(null);
-  // Giải đang được CHỌN qua PrizeGalleryView.tsx — xem doc-comment DrawSequenceActions.selectedPrizeId
+  // Giải đang được CHỌN qua PrizeImageView.tsx — xem doc-comment DrawSequenceActions.selectedPrizeId
   // trong types.ts. Độc lập hoàn toàn với candidate/busy — thuần UI, không có IPC nào cho riêng nó.
   const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(null);
   // Popup thông báo dùng chung — xem doc-comment DrawSequenceActions.infoPrompt trong types.ts.
@@ -264,8 +264,8 @@ export function useDrawSequence(
   // tiếp — KHÔNG tái dùng nội bộ pick()/confirm() (tự gọi thẳng window.api.draw.pick/commit, y hệt
   // logic bên trong 2 hàm đó) để không có rủi ro động vào luồng thủ công đã ổn định. `spinning = true`
   // SUỐT cả vòng lặp (không chỉ 1 winnerRevealDelayMs mỗi lượt như startSpinLock()) — tái dùng
-  // NGUYÊN VẸN mọi điểm khoá đã đọc spinning (ButtonView.tsx, PrizeGalleryView.tsx/PrizeImageView.tsx
-  // ...) mà không cần sửa gì thêm ở đó, đúng tinh thần "batch draw là 1 dạng mở rộng của đang quay".
+  // NGUYÊN VẸN mọi điểm khoá đã đọc spinning (ButtonView.tsx, PrizeImageView.tsx...) mà không cần sửa
+  // gì thêm ở đó, đúng tinh thần "batch draw là 1 dạng mở rộng của đang quay".
   async function runMultipleDrawInternal(count: number, paceMs: number) {
     if (!sessionId || busy || spinning || batchProgress) return;
     const prize = requireSelectedPrizeForBatch();
@@ -440,10 +440,10 @@ export function useDrawSequence(
     setScoreboardVisible(false);
   }
 
-  // Click 1 ảnh giải trong PrizeGalleryView.tsx/PrizeImageView.tsx — click lại ĐÚNG giải đang chọn
-  // thì bỏ chọn, click giải KHÁC thì chuyển sang giải đó luôn (không cần bỏ chọn giải cũ trước). Bản
-  // thân 2 view đó đã tự chặn gọi hàm này khi đang spinning (giữ nguyên UI, không đổi gì) — chặn
-  // thêm ở đây cho chắc, phòng trường hợp có nơi khác gọi thẳng sau này mà quên kiểm tra spinning.
+  // Click 1 ảnh giải trong PrizeImageView.tsx — click lại ĐÚNG giải đang chọn thì bỏ chọn, click giải
+  // KHÁC thì chuyển sang giải đó luôn (không cần bỏ chọn giải cũ trước). Bản thân view đó đã tự chặn
+  // gọi hàm này khi đang spinning (giữ nguyên UI, không đổi gì) — chặn thêm ở đây cho chắc, phòng
+  // trường hợp có nơi khác gọi thẳng sau này mà quên kiểm tra spinning.
   function togglePrizeSelection(prizeId: string) {
     if (spinning) return;
     setSelectedPrizeId((cur) => (cur === prizeId ? null : prizeId));
@@ -458,7 +458,7 @@ export function useDrawSequence(
   // vừa hiện ra làm mất trải nghiệm thị giác). Ảnh giải đó vẫn tự xám ngay vì ô nhìn thẳng
   // `prize.remaining` từ `data`, không cần popup mới báo được là đã hết — popup giờ CHỈ hiện khi
   // người dùng chủ động click lại đúng giải đã xám đó (xem notifyOutOfStock, gọi từ
-  // PrizeGalleryView.tsx/PrizeImageView.tsx). Chờ hết `spinning` mới bỏ chọn — đúng ý "giữ nguyên
+  // PrizeImageView.tsx). Chờ hết `spinning` mới bỏ chọn — đúng ý "giữ nguyên
   // selection cho tới khi quay xong", tránh giật hình đang zoom/glow ngay giữa lúc Wheel còn đang quay.
   useEffect(() => {
     if (!selectedPrizeId || spinning) return;
