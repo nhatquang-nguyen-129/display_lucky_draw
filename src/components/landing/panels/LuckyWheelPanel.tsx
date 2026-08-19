@@ -11,7 +11,6 @@ import { Participant } from "@/types";
 
 interface LuckyWheelPanelProps {
   props: LuckyWheelProps;
-  sessionName: string;
   // Dùng để chỉ hiện các field CÓ dữ liệu thật trong session này (vd Email bỏ trống hết thì không
   // cho chọn) — tránh chọn nhầm 1 field rỗng khiến segment/kết quả biến mất hoàn toàn (xem hasData
   // bên dưới và getFieldOptions). Cũng dùng để liệt kê MỌI cột optional (extra_data) đang thực sự
@@ -23,6 +22,7 @@ interface LuckyWheelPanelProps {
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
 const TEMPLATE_OPTIONS: { value: LuckyWheelTemplate; label: string }[] = [
   { value: "wheel", label: "Wheel (circular)" },
@@ -49,12 +49,12 @@ const FONT_OPTIONS = [
   { value: "'Courier New', monospace", label: "Monospace" },
 ];
 
-export default function LuckyWheelPanel({
-  props,
-  sessionName,
-  participants,
-  onChange,
-}: LuckyWheelPanelProps) {
+// Kiểu bảng gọn — tham khảo LiveImagePanel.tsx: nhóm field theo groupLabelClass,
+// bỏ hết đoạn text giải thích dài dòng (label + option tự đủ rõ nghĩa; lý do 1 field bị xám vẫn xem
+// được qua tooltip khi hover, xem digitFieldOptions bên dưới) — KHÔNG còn field "Draw Session" (chỉ
+// hiện tên session hiện tại, không sửa được gì, thừa thãi) và "Name" (đã bỏ khỏi SharedFields.tsx,
+// dùng chung cho MỌI loại component chứ không riêng gì Lucky Wheel).
+export default function LuckyWheelPanel({ props, participants, onChange }: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
 
@@ -160,321 +160,282 @@ export default function LuckyWheelPanel({
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className={labelClass}>Draw Session</label>
-        <p className="rounded border border-base-800 bg-base-800/50 px-2 py-1.5 text-xs text-base-300">
-          {sessionName} <span className="text-base-500">(current session, fixed)</span>
-        </p>
-      </div>
-
-      <div>
-        <label className={labelClass}>Template</label>
-        <select
-          className={fieldClass}
-          value={props.template}
-          onChange={(e) => handleTemplateChange(e.target.value as LuckyWheelTemplate)}
-        >
-          {TEMPLATE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-[10px] leading-snug text-base-500">
-          More templates will be added here over time — this only changes how the winner is
-          revealed, the data binding below stays the same.
-        </p>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <span className={groupLabelClass}>Basic options</span>
+        <div>
+          <label className={labelClass}>Template</label>
+          <select
+            className={fieldClass}
+            value={props.template}
+            onChange={(e) => handleTemplateChange(e.target.value as LuckyWheelTemplate)}
+          >
+            {TEMPLATE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="h-px bg-base-800" />
-      <span className="block text-[10px] uppercase tracking-wide text-base-500">Data binding</span>
 
-      {isWheel && (
-        <>
-          <div>
-            <label className={labelClass}>Draw field (identifies each segment)</label>
-            <select
-              className={fieldClass}
-              value={props.drawField}
-              onChange={(e) => onChange({ drawField: e.target.value as ParticipantKeyField })}
-            >
-              {keyFieldOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Display field (shown on the wheel)</label>
-            <select
-              className={fieldClass}
-              value={props.displayField}
-              onChange={(e) => onChange({ displayField: e.target.value as ParticipantDisplayField })}
-            >
-              {displayFieldOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
-      )}
+      <div className="space-y-3">
+        <span className={groupLabelClass}>Data binding</span>
 
-      <div>
-        <label className={labelClass}>
-          {isDigitRoller
-            ? `Source field (must have exactly ${props.digitCount} characters)`
-            : "Winner display field (shown after landing)"}
-        </label>
-        <select
-          className={fieldClass}
-          value={props.winnerDisplayField}
-          onChange={(e) => onChange({ winnerDisplayField: e.target.value as ParticipantDisplayField })}
-        >
-          {isDigitRoller
-            ? digitFieldOptions.map((o) => (
-                <option
-                  key={o.value}
-                  value={o.value}
-                  disabled={!o.enabled}
-                  // Tooltip HTML title: 1 lý do thì hiện thẳng, nhiều lý do thì xuống dòng + gạch đầu
-                  // dòng (title hỗ trợ \n) — đúng yêu cầu định dạng.
-                  title={o.enabled ? undefined : o.reasons.length > 1 ? o.reasons.map((r) => `- ${r}`).join("\n") : o.reasons[0]}
-                >
-                  {o.label}
-                  {o.enabled ? "" : " — not eligible"}
-                </option>
-              ))
-            : winnerFieldOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-        </select>
+        {isWheel && (
+          <>
+            <div>
+              <label className={labelClass}>Draw field (identifies each segment)</label>
+              <select
+                className={fieldClass}
+                value={props.drawField}
+                onChange={(e) => onChange({ drawField: e.target.value as ParticipantKeyField })}
+              >
+                {keyFieldOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Display field (shown on the wheel)</label>
+              <select
+                className={fieldClass}
+                value={props.displayField}
+                onChange={(e) => onChange({ displayField: e.target.value as ParticipantDisplayField })}
+              >
+                {displayFieldOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+
+        <div>
+          <label className={labelClass}>
+            {isDigitRoller
+              ? `Source field (exactly ${props.digitCount} characters)`
+              : "Winner display field (shown after landing)"}
+          </label>
+          <select
+            className={fieldClass}
+            value={props.winnerDisplayField}
+            onChange={(e) => onChange({ winnerDisplayField: e.target.value as ParticipantDisplayField })}
+          >
+            {isDigitRoller
+              ? digitFieldOptions.map((o) => (
+                  <option
+                    key={o.value}
+                    value={o.value}
+                    disabled={!o.enabled}
+                    // Tooltip HTML title: 1 lý do thì hiện thẳng, nhiều lý do thì xuống dòng + gạch đầu
+                    // dòng (title hỗ trợ \n) — đúng yêu cầu định dạng.
+                    title={o.enabled ? undefined : o.reasons.length > 1 ? o.reasons.map((r) => `- ${r}`).join("\n") : o.reasons[0]}
+                  >
+                    {o.label}
+                    {o.enabled ? "" : " — not eligible"}
+                  </option>
+                ))
+              : winnerFieldOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+          </select>
+        </div>
+
         {isDigitRoller && (
-          <p className="mt-1 text-[10px] leading-snug text-base-500">
-            Every participant's value for this field must have exactly {props.digitCount}{" "}
-            characters — letters and symbols are fine, only the length matters. Grayed-out fields
-            don't qualify; hover one to see why.
-          </p>
+          <div>
+            <label className={labelClass}>Digit count</label>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              className={fieldClass}
+              value={props.digitCount}
+              onChange={(e) => onChange({ digitCount: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
+        )}
+
+        {isWheel && (
+          <label className="flex items-center gap-1.5 text-xs text-base-200">
+            <input
+              type="checkbox"
+              checked={props.maskSensitiveData}
+              onChange={(e) => onChange({ maskSensitiveData: e.target.checked })}
+              className="accent-gold-500"
+            />
+            Mask phone numbers
+          </label>
         )}
       </div>
 
       {isDigitRoller && (
-        <div>
-          <label className={labelClass}>Digit count</label>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            className={fieldClass}
-            value={props.digitCount}
-            onChange={(e) => onChange({ digitCount: Math.max(1, Number(e.target.value)) })}
-          />
-          <p className="mt-1 text-[10px] leading-snug text-base-500">
-            The box's height always auto-fits the cards at the current width — dragging the box or
-            changing this never leaves empty space.
-          </p>
-        </div>
-      )}
-
-      {isDigitRoller && (
         <>
-          <div>
-            <label className={labelClass}>Rolling style</label>
-            <select
-              className={fieldClass}
-              value={props.rollStyle ?? "flicker"}
-              onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
-            >
-              <option value="flicker">Flicker (random characters)</option>
-              <option value="reel">Reel (spinning scroll)</option>
-            </select>
-            <p className="mt-1 text-[10px] leading-snug text-base-500">
-              How each character looks while it's still spinning — flicker swaps random characters,
-              reel scrolls smoothly like a real odometer/slot reel.
-            </p>
-          </div>
+          <div className="h-px bg-base-800" />
+          <div className="space-y-3">
+            <span className={groupLabelClass}>Reveal animation</span>
 
-          {props.rollStyle === "reel" && (
-            <>
-              {/* 1 ô "reel" gồm 2 phần tách biệt: khung trắng chứa ký tự, và CHÍNH ký tự bên trong —
-                  mỗi phần hiệu ứng riêng khi vừa chốt, không gộp chung (xem DigitRollerTemplate.tsx). */}
-              <div>
-                <label className={labelClass}>Card effect</label>
-                <select
-                  className={fieldClass}
-                  value={props.reelCardEffect ?? "pop"}
-                  onChange={(e) => onChange({ reelCardEffect: e.target.value as LuckyWheelProps["reelCardEffect"] })}
-                >
-                  <option value="none">None</option>
-                  <option value="pop">Pop (flash in)</option>
-                </select>
-                <p className="mt-1 text-[10px] leading-snug text-base-500">
-                  The white card's own effect the moment it locks — independent of the number
-                  inside it.
-                </p>
-              </div>
-              <div>
-                <label className={labelClass}>Number effect</label>
-                <select
-                  className={fieldClass}
-                  value={props.reelNumberEffect ?? "bounce"}
-                  onChange={(e) =>
-                    onChange({ reelNumberEffect: e.target.value as LuckyWheelProps["reelNumberEffect"] })
-                  }
-                >
-                  <option value="none">None</option>
-                  <option value="bounce">Bounce (drops in, settles like a ball)</option>
-                </select>
-                <p className="mt-1 text-[10px] leading-snug text-base-500">
-                  The character itself bounces into place when it locks — independent of the card.
-                </p>
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className={labelClass}>Reveal timing</label>
-            <select
-              className={fieldClass}
-              value={props.revealTiming ?? "together"}
-              onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
-            >
-              <option value="together">All characters stop at once</option>
-              <option value="sequential">One at a time, left to right</option>
-            </select>
-            <p className="mt-1 text-[10px] leading-snug text-base-500">
-              {props.revealTiming === "sequential"
-                ? "Other characters keep spinning at full speed while one settles — the next one only starts slowing down after the previous one has fully stopped."
-                : "All characters spin and slow down together, stopping at the same moment."}
-            </p>
-          </div>
-
-          {props.revealTiming === "sequential" && (
             <div>
-              <label className={labelClass}>Reveal stagger (ms)</label>
-              <input
-                type="number"
-                min={0}
-                step={50}
-                className={fieldClass}
-                value={props.revealStaggerMs ?? 150}
-                onChange={(e) => onChange({ revealStaggerMs: Math.max(0, Number(e.target.value)) })}
-              />
-              <p className="mt-1 text-[10px] leading-snug text-base-500">
-                Extra pause after a character fully stops, before the next one starts slowing down.
-              </p>
-            </div>
-          )}
-
-          {props.rollStyle === "flicker" && (
-            <div>
-              <label className={labelClass}>Landing effect</label>
+              <label className={labelClass}>Rolling style</label>
               <select
                 className={fieldClass}
-                value={props.landingEffect ?? "none"}
-                onChange={(e) => onChange({ landingEffect: e.target.value as LuckyWheelProps["landingEffect"] })}
+                value={props.rollStyle ?? "flicker"}
+                onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
               >
-                <option value="none">None (stop instantly)</option>
-                <option value="bounce">Bounce (drop + settle)</option>
-                <option value="pop">Pop (scale up then back)</option>
+                <option value="flicker">Flicker (random characters)</option>
+                <option value="reel">Reel (spinning scroll)</option>
               </select>
-              <p className="mt-1 text-[10px] leading-snug text-base-500">
-                A one-shot effect the moment a character locks onto its final value.
-              </p>
             </div>
-          )}
+
+            {props.rollStyle === "reel" && (
+              // 1 ô "reel" gồm 2 phần tách biệt: khung trắng chứa ký tự, và CHÍNH ký tự bên trong —
+              // mỗi phần hiệu ứng riêng khi vừa chốt, không gộp chung (xem DigitRollerTemplate.tsx).
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelClass}>Card effect</label>
+                  <select
+                    className={fieldClass}
+                    value={props.reelCardEffect ?? "pop"}
+                    onChange={(e) => onChange({ reelCardEffect: e.target.value as LuckyWheelProps["reelCardEffect"] })}
+                  >
+                    <option value="none">None</option>
+                    <option value="pop">Pop (flash in)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Number effect</label>
+                  <select
+                    className={fieldClass}
+                    value={props.reelNumberEffect ?? "bounce"}
+                    onChange={(e) =>
+                      onChange({ reelNumberEffect: e.target.value as LuckyWheelProps["reelNumberEffect"] })
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="bounce">Bounce (settles like a ball)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className={labelClass}>Reveal timing</label>
+              <select
+                className={fieldClass}
+                value={props.revealTiming ?? "together"}
+                onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
+              >
+                <option value="together">All characters stop at once</option>
+                <option value="sequential">One at a time, left to right</option>
+              </select>
+            </div>
+
+            {props.revealTiming === "sequential" && (
+              <div>
+                <label className={labelClass}>Reveal stagger (ms)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  className={fieldClass}
+                  value={props.revealStaggerMs ?? 150}
+                  onChange={(e) => onChange({ revealStaggerMs: Math.max(0, Number(e.target.value)) })}
+                />
+              </div>
+            )}
+
+            {props.rollStyle === "flicker" && (
+              <div>
+                <label className={labelClass}>Landing effect</label>
+                <select
+                  className={fieldClass}
+                  value={props.landingEffect ?? "none"}
+                  onChange={(e) => onChange({ landingEffect: e.target.value as LuckyWheelProps["landingEffect"] })}
+                >
+                  <option value="none">None (stop instantly)</option>
+                  <option value="bounce">Bounce (drop + settle)</option>
+                  <option value="pop">Pop (scale up then back)</option>
+                </select>
+              </div>
+            )}
+          </div>
         </>
       )}
 
-      {isWheel && (
-        <label className="flex items-center gap-1.5 text-xs text-base-200">
-          <input
-            type="checkbox"
-            checked={props.maskSensitiveData}
-            onChange={(e) => onChange({ maskSensitiveData: e.target.checked })}
-            className="accent-gold-500"
-          />
-          Mask phone numbers
-        </label>
-      )}
-
       <div className="h-px bg-base-800" />
-      <span className="block text-[10px] uppercase tracking-wide text-base-500">Display</span>
 
-      <div>
-        <label className={labelClass}>Font</label>
-        <select className={fieldClass} value={props.fontFamily} onChange={(e) => onChange({ fontFamily: e.target.value })}>
-          {FONT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      {isWheel && (
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className={labelClass}>Font size</label>
-            <input
-              type="number"
-              className={fieldClass}
-              value={props.fontSize}
-              onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Color</label>
-            <input
-              type="color"
-              className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-              value={props.fontColor}
-              onChange={(e) => onChange({ fontColor: e.target.value })}
-            />
-          </div>
+      <div className="space-y-3">
+        <span className={groupLabelClass}>Display</span>
+        <div>
+          <label className={labelClass}>Font</label>
+          <select className={fieldClass} value={props.fontFamily} onChange={(e) => onChange({ fontFamily: e.target.value })}>
+            {FONT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
-      {isDigitRoller && (
-        <p className="text-[10px] leading-snug text-base-500">
-          Digit Roller always uses dark text on white cards for contrast, like a real ID board.
-          Its size follows the component's box on the canvas — resize the box to make the
-          characters bigger or smaller, same as the Wheel.
-        </p>
-      )}
+        {isWheel && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelClass}>Font size</label>
+              <input
+                type="number"
+                className={fieldClass}
+                value={props.fontSize}
+                onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Color</label>
+              <input
+                type="color"
+                className="h-[26px] w-full rounded border border-base-700 bg-base-800"
+                value={props.fontColor}
+                onChange={(e) => onChange({ fontColor: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="h-px bg-base-800" />
-      <span className="block text-[10px] uppercase tracking-wide text-base-500">Spin behavior</span>
 
-      <div>
-        <label className={labelClass}>Spin duration (ms)</label>
-        <input
-          type="number"
-          step={100}
-          min={500}
-          className={fieldClass}
-          value={props.spinDurationMs}
-          onChange={(e) => onChange({ spinDurationMs: Number(e.target.value) })}
-        />
+      <div className="space-y-3">
+        <span className={groupLabelClass}>Spin behavior</span>
+        <div>
+          <label className={labelClass}>Spin duration (ms)</label>
+          <input
+            type="number"
+            step={100}
+            min={500}
+            className={fieldClass}
+            value={props.spinDurationMs}
+            onChange={(e) => onChange({ spinDurationMs: Number(e.target.value) })}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Spin style</label>
+          <select
+            className={fieldClass}
+            value={props.spinEasing}
+            onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
+          >
+            <option value="linear">Linear (constant speed)</option>
+            <option value="easeOut">Fast start, slow stop</option>
+            <option value="easeInOut">Smooth start and stop</option>
+          </select>
+        </div>
       </div>
-      <div>
-        <label className={labelClass}>Spin style (acceleration/deceleration)</label>
-        <select
-          className={fieldClass}
-          value={props.spinEasing}
-          onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
-        >
-          <option value="linear">Linear (constant speed)</option>
-          <option value="easeOut">Fast start, slow stop</option>
-          <option value="easeInOut">Smooth start and stop</option>
-        </select>
-      </div>
-      <p className="text-[10px] leading-snug text-base-500">
-        Auto-stop is always on — it always lands on the real winner drawn from the Draw page.
-      </p>
     </div>
   );
 }
