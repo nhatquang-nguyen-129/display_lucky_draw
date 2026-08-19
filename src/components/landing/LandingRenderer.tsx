@@ -16,9 +16,6 @@ import LuckyWheelView from "./views/LuckyWheelView";
 import WinnerNameView from "./views/WinnerNameView";
 import PrizeNameView from "./views/PrizeNameView";
 import PrizeImageView from "./views/PrizeImageView";
-import PrizeListView from "./views/PrizeListView";
-import PrizeGalleryView from "./views/PrizeGalleryView";
-import CountdownView from "./views/CountdownView";
 import CurrentTimeView from "./views/CurrentTimeView";
 import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
@@ -201,7 +198,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
       )}
 
       {/* Popup thông báo dùng CHUNG — CHỈ ở Present Mode thật, khi sequence.infoPrompt đang có giá trị.
-          Nguồn: notifyOutOfStock() (PrizeGalleryView.tsx/PrizeImageView.tsx, click 1 ảnh giải đã xám),
+          Nguồn: notifyOutOfStock() (PrizeImageView.tsx, click 1 ảnh giải đã xám),
           hoặc trực tiếp trong useDrawSequence.ts's pick()/confirm() (bấm Draw mà chưa chọn giải trên
           trang có UI chọn giải, hoặc bấm Confirm mà chưa có ai được quay). Dismiss-only (chỉ có nút
           OK, không có lựa chọn Confirm/Cancel nào khác) — click nền tối hoặc Esc cũng đóng, cùng kiểu
@@ -273,12 +270,6 @@ function renderComponent(
       return <PrizeNameView component={component} data={data} />;
     case "prizeImage":
       return <PrizeImageView component={component} data={data} sequence={interactive ? sequence : undefined} />;
-    case "prizeList":
-      return <PrizeListView component={component} data={data} />;
-    case "prizeGallery":
-      return <PrizeGalleryView component={component} data={data} sequence={interactive ? sequence : undefined} />;
-    case "countdown":
-      return <CountdownView component={component} />;
     case "currentTime":
       return <CurrentTimeView component={component} />;
     case "participantCount":
