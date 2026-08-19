@@ -537,10 +537,11 @@ export default function LandingCanvas({
   // cho scaleUp (Anchor do người dùng thả) VÀ lift (điểm cố định LUÔN ở giữa khung, không thả) — chỉ
   // khi `anchorEdit` đang trỏ ĐÚNG component này VÀ nhóm "focus" của ĐÚNG stage đó đang thật sự là 1
   // trong 2 effect này (người dùng có thể đổi dropdown effect trong lúc panel còn mở mà chưa bấm
-  // "Done", overlay phải tự ẩn ngay, không đợi LandingBuilderWindow.tsx dọn state).
+  // "Done", overlay phải tự ẩn ngay, không đợi LandingBuilderWindow.tsx dọn state). CHỈ prizeImage có
+  // Anchor/Direction — đây là loại component DUY NHẤT còn hỗ trợ scaleUp/lift.
   function renderAnchorOverlay(component: LandingComponent) {
     if (!anchorEdit || anchorEdit.componentId !== component.id || !onUpdateAnchor) return null;
-    if (component.type !== "prizeImage" && component.type !== "prizeGallery") return null;
+    if (component.type !== "prizeImage") return null;
     const stage = component.props[anchorEdit.stageKey] ?? DEFAULT_PRIZE_STAGE_EFFECT;
     const focus = stage.focus ?? DEFAULT_PRIZE_GROUP_EFFECT;
     if (focus.effect !== "scaleUp" && focus.effect !== "lift") return null;
@@ -565,35 +566,10 @@ export default function LandingCanvas({
     };
     const onChangeHandle = (x: number, y: number) => updateGroup({ handleX: x, handleY: y });
 
-    if (component.type === "prizeImage") {
-      const imageSrc = data?.prizes.find((p) => p.id === component.props.prizeId)?.display_image ?? null;
-      return (
-        <ScaleAnchorOverlay
-          rect={{ left: 0, top: 0, width: component.width * scale, height: component.height * scale }}
-          mode={anchorEdit.mode}
-          anchorX={anchorX}
-          anchorY={anchorY}
-          handleX={handle.x}
-          handleY={handle.y}
-          onPlaceAnchor={placeAnchor}
-          onChangeHandle={onChangeHandle}
-          onDone={() => onDoneAnchorEdit?.()}
-          imageSrc={imageSrc}
-          fit={component.props.fit}
-        />
-      );
-    }
-
-    // prizeGallery — directionX/Y (scaleUp) áp dụng THEO TỪNG Ô (mọi ô luôn vuông), không phải cả
-    // lưới, xem doc-comment PrizeGalleryProps trong types.ts — overlay chỉ phủ đúng Ô ĐẦU TIÊN, kéo-thả
-    // trong đó áp dụng chung cho MỌI ô (mỗi ô tự bám pixel thật riêng của ẢNH RIÊNG lúc trình chiếu,
-    // xem prizeEffectTransform.ts). Ảnh nền chỉ để MINH HOẠ (giải ĐẦU TIÊN trong session) — panel này
-    // không gắn với 1 giải cố định nào.
-    const { columns, gap, imageFit } = component.props;
-    const cellSize = Math.max(0, (component.width - (columns - 1) * gap) / Math.max(1, columns));
+    const imageSrc = data?.prizes.find((p) => p.id === component.props.prizeId)?.display_image ?? null;
     return (
       <ScaleAnchorOverlay
-        rect={{ left: 0, top: 0, width: cellSize * scale, height: cellSize * scale }}
+        rect={{ left: 0, top: 0, width: component.width * scale, height: component.height * scale }}
         mode={anchorEdit.mode}
         anchorX={anchorX}
         anchorY={anchorY}
@@ -602,8 +578,8 @@ export default function LandingCanvas({
         onPlaceAnchor={placeAnchor}
         onChangeHandle={onChangeHandle}
         onDone={() => onDoneAnchorEdit?.()}
-        imageSrc={data?.prizes[0]?.display_image ?? null}
-        fit={imageFit}
+        imageSrc={imageSrc}
+        fit={component.props.fit}
       />
     );
   }
