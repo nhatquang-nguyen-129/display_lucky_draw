@@ -236,7 +236,7 @@ Toàn bộ layout 1 trang trình chiếu là **1 object `LandingConfig` duy nh�
 ```ts
 type LandingComponent =
   | TextComponent | ImageComponent | LuckyWheelComponent | WinnerNameComponent
-  | PrizeNameComponent | PrizeImageComponent | PrizeListComponent | CountdownComponent
+  | PrizeNameComponent | PrizeImageComponent
   | CurrentTimeComponent | ParticipantCountComponent | ButtonComponent;
 ```
 
