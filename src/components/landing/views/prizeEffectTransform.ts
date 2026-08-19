@@ -18,7 +18,31 @@ export interface PrizeTransform {
   transformOrigin?: string;
   className?: string;
   cssVars?: Record<string, string>;
+  // CHỈ scaleUp/lift persistent set field này — ghi đè `transition` mặc định ("transform 150ms
+  // ease-out...") mà PrizeImageView.tsx tự áp cho MỌI effect dùng `transform`
+  // INLINE (không `className`) khi effect đó KHÔNG active (bật/tắt tức thì không hợp — xem
+  // SETTLE_EASING bên dưới, cần transition RIÊNG khớp đúng nhịp lúc BẬT để lúc TẮT cảm giác như đảo
+  // ngược).
+  transition?: string;
 }
+
+// Easing DÙNG CHUNG cho MỌI effect persistent kiểu "di chuyển-tới-vị-trí-rồi-Ở-LẠI-đó" (scaleUp VÀ
+// lift) — PHẢI khớp với keyframe `prize-fx-lift-move` trong landingEffects.css (đổi 1 trong 2 chỗ thì
+// phải đổi luôn chỗ còn lại, xem doc-comment ở đó): 700ms, 3 pha tăng tốc/đều/giảm tốc theo đúng tỉ lệ
+// 10%-80%-10% thời gian. `linear()` là easing function CSS chuẩn (Chromium 113+, an toàn với Electron
+// 32 dùng Chromium 128) cho phép vẽ 1 đường cong TUỲ Ý qua các điểm mốc — dùng để tái tạo ĐÚNG hình
+// dạng piecewise của keyframe (không phải xấp xỉ bằng cubic-bezier) nhưng dưới dạng `transition`, thứ
+// TỰ ĐỘNG chạy NGƯỢC LẠI khi target đổi chiều (browser tự nội suy lại từ vị trí hiện tại tới đích mới
+// bằng ĐÚNG easing này) — vì đường cong này đối xứng điểm quanh (0.5, 0.5) (pha tăng tốc = ảnh gương
+// pha giảm tốc), chạy ngược cho ra ĐÚNG cảm giác "y hệt lúc vào, chỉ đảo chiều" mà không cần định
+// nghĩa animation "lùi" riêng cho từng effect.
+const SETTLE_DURATION_MS = 700;
+const SETTLE_EASING = "linear(0, 0.0556 10%, 0.9444 90%, 1)";
+// lift chỉ transition `transform` (không dùng transform-origin).
+const LIFT_TRANSITION = `transform ${SETTLE_DURATION_MS}ms ${SETTLE_EASING}`;
+// scaleUp PHẢI transition CẢ `transform-origin` CÙNG `transform` (điểm neo có thể lệch tâm) — thiếu 1
+// trong 2 gây "nhảy" vị trí giữa chừng, xem ghi chú tại nơi gọi trong PrizeImageView.tsx.
+const SCALE_UP_TRANSITION = `transform ${SETTLE_DURATION_MS}ms ${SETTLE_EASING}, transform-origin ${SETTLE_DURATION_MS}ms ${SETTLE_EASING}`;
 
 // Ảnh + kích thước khung (box) THẬT để tính neo Scale Up bám đúng pixel hiển thị — xem đoạn
 // "Hướng 'trồi tới'..." bên dưới. `boxWidth`/`boxHeight` chỉ cần ĐÚNG TỈ LỆ (không cần đúng pixel màn
@@ -53,18 +77,20 @@ export function resolveScaleHandle(config: PrizeGroupEffect): { x: number; y: nu
 }
 
 // Tính transform/animation cho 1 effect thuộc nhóm transform-category, ĐÚNG theo `mode`:
-//   - "persistent" (When Select/Out of Stock): scaleUp là 1 giá trị TĨNH (không animation — đứng yên ở
-//     đúng mức đã cấu hình suốt trạng thái); bounce/pulse/shake LẶP vô hạn (class "-loop", xem
-//     landingEffects.css). lift là NGOẠI LỆ DUY NHẤT — CŨNG animate (class "-settle", xem bên dưới),
-//     vì bản chất lift là "DI CHUYỂN tới vị trí rồi Ở LẠI đó", nên ngay cả lúc "đứng yên" (persistent)
-//     vẫn cần 1 lượt chuyển động mượt lúc bắt đầu mới đúng cảm giác, không phải bật/tắt tức thì.
+//   - "persistent" (When Select/Out of Stock): scaleUp VÀ lift ĐỀU set qua `transform` INLINE (không
+//     `className`) + `transition` RIÊNG (`SCALE_UP_TRANSITION`/`LIFT_TRANSITION` ở trên, CÙNG easing
+//     `SETTLE_EASING` 700ms) — để BẬT (chọn) và TẮT (bỏ chọn) đều chạy CÙNG 1 kiểu chuyển động, tạo
+//     cảm giác tắt là "lượt bật chạy ngược lại" (xem doc-comment SETTLE_EASING phía trên). Effect nào
+//     KHÔNG tự set `transition` (hiện chỉ còn bounce/pulse/shake, nhưng chúng dùng `className`/"-loop"
+//     LẶP vô hạn nên không cần) rơi về fallback chung 150ms trong PrizeImageView.tsx.
 //   - "oneshot" (When Click/Won): scaleUp chạy 1 "cú nảy" rồi TRỞ VỀ trung tính (class
 //     "prize-fx-scaleUp-once") — không đứng yên ở mức đã cấu hình, vì đây là 1 khoảnh khắc thoáng qua,
 //     không phải trạng thái; bounce/pulse/shake chạy ĐÚNG 1 lượt rồi cũng về trung tính (class "-once").
 //     lift LẠI là NGOẠI LỆ — "cú di chuyển" ĐÍCH THỊ là hiệu ứng (không phải 1 cú nảy rồi về gốc), nên
-//     oneshot cũng DỪNG LẠI ở vị trí đích, dùng CHUNG animation với persistent (xem `prize-fx-lift-move`
-//     trong landingEffects.css) — chỉ khác NHỊP KÍCH HOẠT (`key` remount mỗi lần thắng mới, xem
-//     doc-comment justWon trong PrizeImageView.tsx), không khác kiểu chuyển động.
+//     oneshot DỪNG LẠI ở vị trí đích, dùng class `prize-fx-lift-once` (keyframe `prize-fx-lift-move`
+//     trong landingEffects.css, CÙNG hình dạng 3 pha với `SETTLE_EASING` ở trên — chỉ khác cách biểu
+//     diễn: keyframe cho 1 lượt animate rồi đứng yên, không có khái niệm "tắt" vì oneshot chỉ chạy
+//     ĐÚNG 1 lần theo `key` remount mỗi lượt thắng mới, xem doc-comment justWon trong PrizeImageView.tsx).
 // `effect === "none"` hoặc thuộc overlay-category → trả object rỗng (không áp dụng gì ở đây).
 // `anchorImage` CHỈ cần cho scaleUp persistent (bám điểm ảnh thật, xem bên dưới) — bỏ trống ở mọi call
 // site khác (lift/bounce/pulse/shake không dùng, và Motion group không bao giờ là scaleUp).
@@ -94,7 +120,11 @@ export function computePrizeTransform(
       const origin = anchorImage
         ? nearestOpaqueBoxFraction(anchorImage.src, rawOriginX, rawOriginY, anchorImage.boxWidth, anchorImage.boxHeight, anchorImage.fit)
         : { x: rawOriginX, y: rawOriginY };
-      return { transform: `scale(${1 + scaleFraction})`, transformOrigin: `${origin.x * 100}% ${origin.y * 100}%` };
+      return {
+        transform: `scale(${1 + scaleFraction})`,
+        transformOrigin: `${origin.x * 100}% ${origin.y * 100}%`,
+        transition: SCALE_UP_TRANSITION,
+      };
     }
     return { className: "prize-fx-scaleUp-once", cssVars: { "--prize-fx-scale": String(scaleFraction) } };
   }
@@ -104,15 +134,16 @@ export function computePrizeTransform(
     // Builder) tới ĐIỂM CỐ ĐỊNH — LUÔN chính giữa khung (50,50 box-fraction, KHÔNG dời được như điểm
     // neo Scale Up, không bám pixel), xem doc-comment PrizeGroupEffect trong types.ts. Không còn dùng
     // directionX/Y/size (dial tròn cũ) — kéo xa 1 đơn vị % thì dịch 1px, cùng quy ước 1:1 đã dùng cho
-    // % zoom của Scale Up. CẢ 2 mode dùng CHUNG 1 kiểu chuyển động (xem doc-comment computePrizeTransform
-    // ở trên) — persistent "-settle" và oneshot "-once" chỉ khác TÊN CLASS (khác nhịp kích hoạt bên
-    // ngoài), cùng animation `prize-fx-lift-move`.
+    // % zoom của Scale Up.
     const dx = handleX - 50;
     const dy = handleY - 50;
-    return {
-      className: mode === "persistent" ? "prize-fx-lift-settle" : "prize-fx-lift-once",
-      cssVars: { "--prize-fx-dx": `${dx}px`, "--prize-fx-dy": `${dy}px` },
-    };
+    if (mode === "persistent") {
+      // `transform` INLINE (không `className`) — xem doc-comment LIFT_TRANSITION/computePrizeTransform
+      // phía trên: để wrapper tự transition CẢ lúc bật lẫn lúc tắt bằng CHÍNH easing này, thay vì chỉ
+      // animate lúc bật (className/keyframe) rồi tắt tức thì không animation.
+      return { transform: `translate(${dx}px, ${dy}px)`, transition: LIFT_TRANSITION };
+    }
+    return { className: "prize-fx-lift-once", cssVars: { "--prize-fx-dx": `${dx}px`, "--prize-fx-dy": `${dy}px` } };
   }
 
   const suffix = mode === "persistent" ? "loop" : "once";
@@ -152,12 +183,11 @@ export interface ResolvedPrizeEffects {
 // tự chọn ĐÚNG 1 stage theo độ ưu tiên của nó, xem PrizeImageView.tsx) với giai đoạn ONESHOT đang active
 // (chỉ có thể là onWon, kèm `key` remount duy nhất — xem doc-comment justWon trong PrizeImageView.tsx)
 // thành 1 bộ effect THẬT SỰ sẽ vẽ, theo ĐÚNG 3 nhóm độc lập (xem doc-comment PrizeStageEffect trong
-// types.ts) — dùng chung cho cả PrizeImageView.tsx (1 ảnh) lẫn PrizeGalleryView.tsx (lưới nhiều ảnh,
-// gọi lại hàm này cho MỖI prize) để không lặp code.
-// Landing lưu TRƯỚC KHI tách Focus/Highlight/Motion (bản flat PrizeStageEffect cũ trong session này —
-// {effect,color,size,directionX,directionY} thẳng ở gốc, KHÔNG có `.focus`/`.highlight`/`.motion`) vẫn
-// có thể còn trong DB — `onSelect`/`onWon`/... KHÔNG `undefined` (nên fallback `?? DEFAULT_PRIZE_STAGE_EFFECT`
-// ở PrizeImageView.tsx/PrizeGalleryView.tsx không bắt được ca này), nhưng đọc thẳng `.focus`/`.highlight`
+// types.ts) — dùng ở PrizeImageView.tsx.
+// Landing lưu TRƯỚC KHI tách Focus/Highlight/Motion (bản flat PrizeStageEffect cũ — {effect,color,size,
+// directionX,directionY} thẳng ở gốc, KHÔNG có `.focus`/`.highlight`/`.motion`) vẫn có thể còn trong DB
+// — `onSelect`/`onWon`/... KHÔNG `undefined` (nên fallback `?? DEFAULT_PRIZE_STAGE_EFFECT` ở
+// PrizeImageView.tsx không bắt được ca này), nhưng đọc thẳng `.focus`/`.highlight`
 // trên nó ra `undefined` — PHẢI fallback riêng ở ĐÚNG các điểm đọc bên dưới, thiếu bước này gây crash
 // trắng màn hình ngay khi có stage nào đó active (đã gặp thật: `stage.highlight.effect` ném lỗi vì
 // `stage.highlight` là `undefined`, kể cả lúc Draw vừa trả về người trúng — onWon activate ngay lập tức).
