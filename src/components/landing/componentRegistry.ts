@@ -2,7 +2,15 @@
 // khi thả). Thêm loại mới chỉ cần thêm 1 entry ở đây (sau khi đã có type ở lib/landing/types.ts
 // và view/panel tương ứng) — xem checklist ở đầu lib/landing/types.ts.
 
-import { LandingComponent, LandingComponentType, newComponentId, PrizeEffectName, PrizeGroupEffect, PrizeStageEffect } from "@/lib/landing/types";
+import {
+  DEFAULT_FIREWORK_EFFECT,
+  LandingComponent,
+  LandingComponentType,
+  newComponentId,
+  PrizeEffectName,
+  PrizeGroupEffect,
+  PrizeStageEffect,
+} from "@/lib/landing/types";
 
 function noGroupEffect(): PrizeGroupEffect {
   return { effect: "none", color: "#FFCA2D", size: 24, directionX: 50, directionY: 50, handleX: 50, handleY: 50, anchorPlaced: false };
@@ -151,54 +159,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       onOutOfStock: defaultPrizeStage(),
       outOfStockDimAmount: 58,
       dimUnselectedAmount: 60,
-    }),
-  },
-  prizeList: {
-    label: "Prize List",
-    description: "List of all prizes in this session",
-    category: "Draw & Results",
-    defaultWidth: 360,
-    defaultHeight: 300,
-    createDefaultProps: () => ({
-      fontSize: 18,
-      color: "#FFFFFF",
-      showRemaining: true,
-    }),
-  },
-  prizeGallery: {
-    label: "Prize Gallery",
-    description: "Grid of every prize's image — click to lock in which prize Draw targets",
-    category: "Draw & Results",
-    defaultWidth: 600,
-    defaultHeight: 400,
-    createDefaultProps: () => ({
-      columns: 3,
-      gap: 12,
-      imageFit: "cover",
-      borderRadius: 8,
-      showName: true,
-      nameFontSize: 14,
-      nameColor: "#FFFFFF",
-      onHover: defaultPrizeStage(),
-      onSelect: defaultPrizeStage("focus", "scaleUp"),
-      onWon: defaultPrizeStage(),
-      onOutOfStock: defaultPrizeStage(),
-      outOfStockDimAmount: 58,
-      dimUnselectedAmount: 60,
-    }),
-  },
-  countdown: {
-    label: "Countdown",
-    description: "Counts down to a target date/time",
-    category: "Live Info",
-    defaultWidth: 300,
-    defaultHeight: 60,
-    createDefaultProps: () => ({
-      targetIsoTime: null,
-      fontSize: 32,
-      color: "#FFFFFF",
-      align: "center",
-      completedText: "Time's up!",
+      onWonFirework: DEFAULT_FIREWORK_EFFECT,
     }),
   },
   currentTime: {
