@@ -76,11 +76,10 @@ function ensureListeners() {
   });
 }
 
-// Đăng ký 1 prize (Prize Image, hoặc 1 ô trong Prize Gallery) — `el` PHẢI là ĐÚNG phần tử DOM thật sự
-// bật `pointer-events: auto` (root div của PrizeImageView.tsx / <button> từng ô của
-// PrizeGalleryView.tsx) — component gọi hàm này trong `useEffect`, dùng con trỏ trả về để huỷ đăng ký
-// lúc unmount hoặc lúc `interactive` tắt đi (Builder canvas không đăng ký gì, giữ nguyên hành vi
-// pointer-events:none cũ ở đó).
+// Đăng ký 1 prize (Prize Image) — `el` PHẢI là ĐÚNG phần tử DOM thật sự bật `pointer-events: auto`
+// (root div của PrizeImageView.tsx) — component gọi hàm này trong `useEffect`, dùng con trỏ trả về để
+// huỷ đăng ký lúc unmount hoặc lúc `interactive` tắt đi (Builder canvas không đăng ký gì, giữ nguyên
+// hành vi pointer-events:none cũ ở đó).
 export function registerPrizeHitTarget(el: HTMLElement, target: PrizeHitTarget): () => void {
   ensureListeners();
   el.setAttribute(HIT_ATTR, "");
