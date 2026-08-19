@@ -1,5 +1,5 @@
 import { DrawResultRow } from "@/types";
-import { LandingData, ScoreboardComponent, ScoreboardField, SCOREBOARD_FIELD_LABELS } from "@/lib/landing/types";
+import { getParticipantExtraField, getScoreboardFieldLabel, LandingData, ScoreboardComponent, ScoreboardField } from "@/lib/landing/types";
 
 // Chỉ tính là "đã trúng thật" khi đã CONFIRM — loại bỏ dòng "pending-<seed>" mà useDrawSequence độn
 // vào đầu results cho candidate CHƯA Confirm (xem effectiveData trong useDrawSequence.ts).
@@ -15,7 +15,10 @@ function CloseIcon() {
   );
 }
 
-function valueOf(r: DrawResultRow, field: ScoreboardField): string {
+// prizeCategory và cột optional (extra_data) không có sẵn trên DrawResultRow — phải tra chéo qua
+// data.prizes/data.participants bằng participant_id/prize_id (LandingData đã có sẵn cả 2 mảng này,
+// không cần thêm cột mới ở SQL/IPC layer).
+function valueOf(r: DrawResultRow, field: ScoreboardField, data?: LandingData): string {
   switch (field) {
     case "participantName":
       return r.participant_name;
@@ -27,8 +30,15 @@ function valueOf(r: DrawResultRow, field: ScoreboardField): string {
       return r.participant_email ?? "—";
     case "prizeName":
       return r.prize_name;
-    case "prizeCode":
-      return r.prize_code ?? "—";
+    case "prizeCategory": {
+      const prize = data?.prizes.find((p) => p.id === r.prize_id);
+      return prize?.category ?? "—";
+    }
+    default: {
+      const participant = data?.participants.find((p) => p.id === r.participant_id);
+      if (!participant) return "—";
+      return getParticipantExtraField(participant, field) || "—";
+    }
   }
 }
 
@@ -116,10 +126,10 @@ export default function TableTemplate({
             {cols.map((f) => (
               <div
                 key={`head-${f}`}
-                className="sticky top-0 z-10 truncate px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide"
-                style={{ color, backgroundColor: headerBg }}
+                className="sticky top-0 z-10 truncate px-2 py-1.5 text-left font-semibold uppercase tracking-wide"
+                style={{ color, backgroundColor: headerBg, fontSize }}
               >
-                {SCOREBOARD_FIELD_LABELS[f]}
+                {getScoreboardFieldLabel(f)}
               </div>
             ))}
             {winners.map((r, i) =>
@@ -129,7 +139,7 @@ export default function TableTemplate({
                   className="truncate px-2 py-1.5"
                   style={{ color, fontSize, backgroundColor: i % 2 === 1 ? "rgba(0,0,0,0.045)" : undefined }}
                 >
-                  {valueOf(r, f)}
+                  {valueOf(r, f, data)}
                 </div>
               ))
             )}
