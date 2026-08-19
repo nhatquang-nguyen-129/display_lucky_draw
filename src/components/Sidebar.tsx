@@ -5,7 +5,6 @@ const navItems = [
   { to: "/participants", label: "Participants", icon: "users" },
   { to: "/prizes", label: "Prizes", icon: "gift" },
   { to: "/landing", label: "Draw", icon: "layout" },
-  { to: "/settings", label: "Settings", icon: "settings" },
   { to: "/help", label: "Help", icon: "help" },
 ];
 
@@ -40,12 +39,6 @@ const icons: Record<string, JSX.Element> = {
       <rect x="3" y="3" width="18" height="18" rx="1.5" />
       <path d="M3 9h18" />
       <path d="M9 9v12" />
-    </svg>
-  ),
-  settings: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z" />
     </svg>
   ),
   help: (
@@ -84,10 +77,6 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      <div className="rounded-lg border border-base-800 bg-base-800/50 px-3 py-3 text-xs text-base-400">
-        Runs fully offline. Data is stored locally on this machine.
-      </div>
     </aside>
   );
 }
