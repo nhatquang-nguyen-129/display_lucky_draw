@@ -456,6 +456,17 @@ export default function LandingBuilderWindow() {
       return;
     }
 
+    // Lucky Wheel cũng chỉ cho phép đúng 1 cái/trang — cùng tinh thần Scoreboard: mọi Wheel trên trang
+    // đều tự đọc CHUNG 1 nguồn candidate/results (xem doc-comment WheelTemplate.tsx/DigitRollerTemplate.tsx
+    // "tự phát hiện có candidate mới qua results[0].id đổi"), không có khái niệm "2 lượt quay độc lập"
+    // — thêm cái thứ 2 chỉ khiến 2 Wheel cùng lúc quay/hiện lại ĐÚNG 1 kết quả giống hệt nhau, không
+    // có lý do nghiệp vụ nào cần.
+    if (type === "luckyWheel" && (config?.components ?? []).some((c) => c.type === "luckyWheel")) {
+      showCenterNotice("Can't create more Lucky Wheels — a page can only have 1.");
+      setShowAddFlyout(false);
+      return;
+    }
+
     // Không bắt buộc tên duy nhất (không còn Trigger Graph cần phân biệt) — vẫn tự đặt tên rảnh đầu
     // tiên ("Button", "Button 2", "Button 3"...) cho dễ nhận diện trong LayersPanel khi trang có
     // nhiều Button.
@@ -798,7 +809,6 @@ export default function LandingBuilderWindow() {
                 config={config}
                 selected={selected}
                 selectedCount={selectedIds.length}
-                sessionName={session.name}
                 prizes={prizes}
                 participants={participants}
                 onChangeBackground={handleChangeBackground}
