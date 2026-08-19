@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_PRIZE_STAGE_EFFECT, DrawSequenceActions, LandingData, PrizeImageComponent } from "@/lib/landing/types";
+import { DEFAULT_FIREWORK_EFFECT, DEFAULT_PRIZE_STAGE_EFFECT, DrawSequenceActions, LandingData, PrizeImageComponent } from "@/lib/landing/types";
+import { launchFirework } from "./fireworkCoordinator";
 import PrizeEffectOverlay from "./PrizeEffectOverlay";
 import { ensureAlphaLoaded } from "./pixelAlphaHitTest";
 import { computePrizeTransform, cssVarsToStyle, resolvePrizeEffects } from "./prizeEffectTransform";
@@ -8,9 +9,8 @@ import { registerPrizeHitTarget } from "./prizeHitCoordinator";
 // LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (props.prizeId), không đổi theo kết quả quay. Đặt
 // nhiều instance rải khắp landing (mỗi cái tự do vị trí/kích thước khớp artwork nền) để mỗi ảnh đại
 // diện ĐÚNG 1 giải — không sinh thêm ảnh theo quantity của giải. LUÔN click được để "select prize to
-// draw" (không có tuỳ chọn tắt — đây CHÍNH LÀ lý do component này tồn tại). Tái dùng nguyên
-// `sequence.selectedPrizeId`/`togglePrizeSelection`/`notifyOutOfStock` đã có (xem PrizeGalleryView.tsx
-// — cùng 1 spec thị giác, dùng chung để nhất quán dù đặt rời hay theo lưới).
+// draw" (không có tuỳ chọn tắt — đây CHÍNH LÀ lý do component này tồn tại). Dùng
+// `sequence.selectedPrizeId`/`togglePrizeSelection`/`notifyOutOfStock` đã có ở useDrawSequence.ts.
 //
 // 4 giai đoạn tương tác (PrizeInteractions, xem types.ts) — 2 KIỂU CHẠY khác nhau:
 //   - onHover (suốt lúc di chuột gần/vào, CHƯA chọn) / onSelect (suốt lúc là giải ĐANG chọn) /
@@ -45,6 +45,7 @@ export default function PrizeImageView({
   const onWon = component.props.onWon ?? DEFAULT_PRIZE_STAGE_EFFECT;
   const onOutOfStock = component.props.onOutOfStock ?? DEFAULT_PRIZE_STAGE_EFFECT;
   const outOfStockDimAmount = component.props.outOfStockDimAmount ?? 58;
+  const onWonFirework = component.props.onWonFirework ?? DEFAULT_FIREWORK_EFFECT;
   // Chuột đang ở TRONG khung ảnh này hay không — chỉ có ý nghĩa lúc CHƯA chọn (click chính là hành
   // động CHỌN nên khi đã selected, hover không còn là 1 trạng thái tách biệt cần hiện riêng). Tính
   // theo ĐÚNG pixel alpha của ảnh, và QUA prizeHitCoordinator.ts (không phải onMouseMove/onClick cục
@@ -67,7 +68,7 @@ export default function PrizeImageView({
   // Khoá TẠM THỜI (busy: 1 hành động ghi DB + nạp lại data đang chạy; spinning: Wheel đang quay, giữ
   // nguyên selection cho tới khi quay xong) — KHÁC với `disabled` (hết hàng/không active, tối đi
   // VĨNH VIỄN tới khi có thêm hàng). Locked KHÔNG đổi giao diện (không tối đi) — chỉ tắt tương tác +
-  // đổi cursor, đúng cảm giác "tạm dừng" (xem PrizeGalleryView.tsx — cùng 1 spec).
+  // đổi cursor, đúng cảm giác "tạm dừng".
   const locked = interactive && (sequence!.busy || sequence!.spinning);
   const selected = interactive && sequence!.selectedPrizeId === boundPrize!.id;
   // "Spotlight" — SUỐT lúc Wheel đang quay, giải KHÔNG PHẢI giải đang chọn tự tối đi để làm nổi bật
@@ -85,6 +86,18 @@ export default function PrizeImageView({
   // báo hiệu "người trúng MỚI".
   const justWon =
     !!sequence && !!boundPrize && !!sequence.candidate && sequence.candidate.prizeId === boundPrize.id && !sequence.spinning;
+
+  // Bắn pháo hoa toàn màn hình (FireworkOverlay.tsx, mount ở PresentMode.tsx) đúng 1 LẦN mỗi lượt
+  // thắng mới — dep là `seed` (không phải object `onWonFirework` hay `justWon` không thôi) nên effect
+  // chỉ chạy lại khi THẬT SỰ có 1 lượt thắng mới, không chạy lại mỗi lần re-render trong lúc `justWon`
+  // vẫn đang true (đúng seed cũ), khớp quy ước "seed = danh tính 1 lượt thắng" đã dùng làm remount key
+  // cho scaleUp/glow/... ở JSX bên dưới.
+  const fireworkRef = useRef(onWonFirework);
+  fireworkRef.current = onWonFirework;
+  useEffect(() => {
+    if (!justWon || !fireworkRef.current.enabled) return;
+    launchFirework(fireworkRef.current);
+  }, [justWon, sequence?.candidate?.seed]);
 
   // Dữ liệu "sống" cho target đăng ký với prizeHitCoordinator.ts — đọc qua ref để callback của nó
   // luôn thấy giá trị MỚI NHẤT mà không cần đăng ký lại (huỷ + tạo lại listener) mỗi lần render, chỉ
@@ -164,7 +177,10 @@ export default function PrizeImageView({
           // TỨC (không animate) trong khi transform vẫn đang chuyển mượt, tạo cảm giác ảnh "nhảy" sang
           // vị trí khác rồi mới thu nhỏ, thay vì thu gọn liên tục đúng từ vị trí hiện tại.
           transformOrigin: focusTransform.transformOrigin,
-          transition: focusTransform.className ? undefined : "transform 150ms ease-out, transform-origin 150ms ease-out",
+          // `focusTransform.transition` — CHỈ lift persistent set (xem doc-comment PrizeTransform/
+          // LIFT_TRANSITION trong prizeEffectTransform.ts), ghi đè fallback 150ms mặc định bằng đúng
+          // nhịp 3 pha khớp animation lúc bật, để BẬT/TẮT chạy CÙNG kiểu, cảm giác tắt là "đảo ngược".
+          transition: focusTransform.className ? undefined : (focusTransform.transition ?? "transform 150ms ease-out, transform-origin 150ms ease-out"),
           ...cssVarsToStyle(focusTransform.cssVars),
         }}
       >
