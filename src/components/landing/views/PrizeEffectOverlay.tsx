@@ -19,9 +19,9 @@ function alphaHex(fraction: number): string {
 // cuối file (không khớp "glow" cũng không khớp "sweep"), không crash.
 //
 // `mode`: "persistent" (When Select/Out of Stock — lặp vô hạn suốt trạng thái) hay "oneshot" (When
-// Click/Won — chạy đúng 1 lần rồi đứng yên ở khung cuối). Component cha (PrizeImageView.tsx/
-// PrizeGalleryView.tsx) chịu trách nhiệm MOUNT/UNMOUNT đúng lúc cho "oneshot" (React mount = animation
-// tự chạy từ đầu) — component này không tự quản lý timer/key gì.
+// Click/Won — chạy đúng 1 lần rồi đứng yên ở khung cuối). Component cha (PrizeImageView.tsx) chịu
+// trách nhiệm MOUNT/UNMOUNT đúng lúc cho "oneshot" (React mount = animation tự chạy từ đầu) —
+// component này không tự quản lý timer/key gì.
 export default function PrizeEffectOverlay({
   config,
   mode,
