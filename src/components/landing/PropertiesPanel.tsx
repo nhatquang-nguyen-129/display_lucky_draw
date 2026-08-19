@@ -7,9 +7,6 @@ import ImagePanel from "./panels/ImagePanel";
 import LuckyWheelPanel from "./panels/LuckyWheelPanel";
 import LiveTextPanel from "./panels/LiveTextPanel";
 import LiveImagePanel from "./panels/LiveImagePanel";
-import PrizeListPanel from "./panels/PrizeListPanel";
-import PrizeGalleryPanel from "./panels/PrizeGalleryPanel";
-import CountdownPanel from "./panels/CountdownPanel";
 import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
@@ -23,7 +20,6 @@ interface PropertiesPanelProps {
   // Background) với "nhiều hơn 1 chọn" (hiện bulk panel), 2 trạng thái mà `selected` một mình không
   // phân biệt được (cả 2 đều null).
   selectedCount: number;
-  sessionName: string;
   prizes: Prize[];
   participants: Participant[];
   onChangeBackground: (patch: Partial<BackgroundConfig>) => void;
@@ -31,7 +27,7 @@ interface PropertiesPanelProps {
   onChangeProps: (patch: Record<string, any>) => void;
   onDelete: () => void;
   // Đang sửa điểm neo Scale Up trực tiếp trên canvas hay không — xem doc-comment AnchorEditTarget
-  // trong types.ts. Chỉ 2 panel dùng tới (LiveImagePanel.tsx/PrizeGalleryPanel.tsx).
+  // trong types.ts. Chỉ LiveImagePanel.tsx dùng tới.
   anchorEdit: AnchorEditTarget | null;
   onSetAnchorEdit: (target: AnchorEditTarget | null) => void;
 }
@@ -45,7 +41,6 @@ export default function PropertiesPanel({
   config,
   selected,
   selectedCount,
-  sessionName,
   prizes,
   participants,
   onChangeBackground,
@@ -82,12 +77,7 @@ export default function PropertiesPanel({
       {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "luckyWheel" && (
-        <LuckyWheelPanel
-          props={selected.props}
-          sessionName={sessionName}
-          participants={participants}
-          onChange={onChangeProps}
-        />
+        <LuckyWheelPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
       {(selected.type === "winnerName" || selected.type === "prizeName") && (
         <LiveTextPanel
@@ -106,17 +96,6 @@ export default function PropertiesPanel({
           onSetAnchorEdit={onSetAnchorEdit}
         />
       )}
-      {selected.type === "prizeList" && <PrizeListPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "prizeGallery" && (
-        <PrizeGalleryPanel
-          props={selected.props}
-          onChange={onChangeProps}
-          componentId={selected.id}
-          anchorEdit={anchorEdit}
-          onSetAnchorEdit={onSetAnchorEdit}
-        />
-      )}
-      {selected.type === "countdown" && <CountdownPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "currentTime" && <CurrentTimePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "participantCount" && (
         <ParticipantCountPanel props={selected.props} onChange={onChangeProps} />
@@ -138,7 +117,9 @@ export default function PropertiesPanel({
           onChange={onChangeProps}
         />
       )}
-      {selected.type === "scoreboard" && <ScoreboardPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "scoreboard" && (
+        <ScoreboardPanel props={selected.props} participants={participants} onChange={onChangeProps} />
+      )}
       <div className="h-px bg-base-800" />
       <SharedFields component={selected} onChange={onChangeComponent} onDelete={onDelete} />
     </div>
