@@ -1,5 +1,6 @@
 import {
   AnchorEditTarget,
+  DEFAULT_FIREWORK_EFFECT,
   DEFAULT_PRIZE_GROUP_EFFECT,
   DEFAULT_PRIZE_STAGE_EFFECT,
   LiveImageProps,
@@ -41,6 +42,7 @@ export default function LiveImagePanel({ props, prizes, onChange, componentId, a
   const onSelect = props.onSelect ?? DEFAULT_PRIZE_STAGE_EFFECT;
   const onWon = props.onWon ?? DEFAULT_PRIZE_STAGE_EFFECT;
   const onOutOfStock = props.onOutOfStock ?? DEFAULT_PRIZE_STAGE_EFFECT;
+  const onWonFirework = props.onWonFirework ?? DEFAULT_FIREWORK_EFFECT;
 
   // 3 callback cho ScaleAnchorTrigger.tsx/LiftDirectionTrigger.tsx (xem doc-comment ở đó cho ý nghĩa
   // từng nút) — chỉ 1 stage được canvas theo dõi cùng lúc (không cộng dồn, xem doc-comment
@@ -151,6 +153,70 @@ export default function LiveImagePanel({ props, prizes, onChange, componentId, a
           onDoneAnchor={() => doneAnchor("onWon")}
           onRemoveAnchor={() => removeAnchor("onWon")}
         />
+
+        <div className="space-y-3 rounded-lg border border-base-800 p-2.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-base-100">
+            <input
+              type="checkbox"
+              checked={onWonFirework.enabled}
+              onChange={(e) => onChange({ onWonFirework: { ...onWonFirework, enabled: e.target.checked } })}
+              className="accent-gold-500"
+            />
+            When Won — Firework
+          </label>
+          {onWonFirework.enabled && (
+            <>
+              <p className="text-[10px] leading-snug text-base-500">
+                Fires a full-screen celebration the instant this prize's winner is revealed — same
+                moment as the effects above, but drawn over the whole screen instead of just this image.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelClass}>Color 1</label>
+                  <input
+                    type="color"
+                    className="h-[26px] w-full rounded border border-base-700 bg-base-800"
+                    value={onWonFirework.color1}
+                    onChange={(e) => onChange({ onWonFirework: { ...onWonFirework, color1: e.target.value } })}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Color 2</label>
+                  <input
+                    type="color"
+                    className="h-[26px] w-full rounded border border-base-700 bg-base-800"
+                    value={onWonFirework.color2}
+                    onChange={(e) => onChange({ onWonFirework: { ...onWonFirework, color2: e.target.value } })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelClass}>Bursts</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    className={fieldClass}
+                    value={onWonFirework.burstCount}
+                    onChange={(e) => onChange({ onWonFirework: { ...onWonFirework, burstCount: Number(e.target.value) } })}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Duration (ms)</label>
+                  <input
+                    type="number"
+                    min={200}
+                    step={100}
+                    className={fieldClass}
+                    value={onWonFirework.durationMs}
+                    onChange={(e) => onChange({ onWonFirework: { ...onWonFirework, durationMs: Number(e.target.value) } })}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         <div className="space-y-3 rounded-lg border border-base-800 p-2.5">
           <span className="text-xs font-medium text-base-100">When Out of Stock</span>
