@@ -14,6 +14,19 @@ interface HelpSection {
 // chỗ trong panel, không dời qua đây — chỉ đoạn giải thích tổng quát "cái này hoạt động ra sao" mới dời.
 const SECTIONS: HelpSection[] = [
   {
+    heading: "About this project",
+    entries: [
+      {
+        title: "Maintainer & contact",
+        body: "This repository is currently maintained by the Digital Marketing Team at KidsPlaza. For questions, access requests, or contributions, please contact the team via email at quang.nn@kidsplaza.vn (internal) or nhatquang.nguyen.129@gmail.com (external). It powers Lucky Draw Studio, an offline, event-based prize drawing application built with Electron — letting organizers configure prize structures, participant lists, draw rules, and display logic for live events.",
+      },
+      {
+        title: "⚠️ Disclaimer",
+        body: "Intended for internal use only. It contains custom business logic designed specifically for KidsPlaza's event and prize-draw workflows, naming conventions, and data structures. Do not reuse, replicate, or adapt this application outside of this context without prior approval. Redistribution, publication, or open-sourcing of any part of this project is strictly prohibited without explicit written consent from the company.",
+      },
+    ],
+  },
+  {
     heading: "Interactive",
     entries: [
       {
