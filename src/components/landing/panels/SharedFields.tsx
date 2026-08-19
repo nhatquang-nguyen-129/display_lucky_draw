@@ -1,5 +1,4 @@
 import { EFFECT_NAMES, EffectName, LandingComponent } from "@/lib/landing/types";
-import { COMPONENT_REGISTRY } from "../componentRegistry";
 
 interface SharedFieldsProps {
   component: LandingComponent;
@@ -20,20 +19,6 @@ export default function SharedFields({ component, onChange, onDelete }: SharedFi
   const heightLocked = component.type === "luckyWheel" && component.props.template === "digitRoller";
   return (
     <div className="space-y-3">
-      <div>
-        <label className={labelClass}>Name</label>
-        <input
-          className={fieldClass}
-          placeholder={COMPONENT_REGISTRY[component.type].label}
-          value={component.name ?? ""}
-          onChange={(e) => onChange({ name: e.target.value })}
-        />
-        <p className="mt-1 text-[10px] leading-snug text-base-500">
-          Optional — shown in the Layers panel so this component is easy to tell apart from others of
-          the same type. Leave blank to just show "{COMPONENT_REGISTRY[component.type].label}".
-        </p>
-      </div>
-
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className={labelClass}>X</label>
