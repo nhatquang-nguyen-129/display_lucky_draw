@@ -172,8 +172,8 @@ function GroupEffectFields({
   );
 }
 
-// Panel con DÙNG CHUNG cho cả 4 mục When Hover/Select/Won/Out of Stock (LiveImagePanel.tsx/
-// PrizeGalleryPanel.tsx) — GỘP 3 nhóm ĐỘC LẬP (Focus/Highlight/Motion, xem PRIZE_EFFECT_GROUPS trong
+// Panel con DÙNG CHUNG cho cả 4 mục When Hover/Select/Won/Out of Stock (LiveImagePanel.tsx) — GỘP 3
+// nhóm ĐỘC LẬP (Focus/Highlight/Motion, xem PRIZE_EFFECT_GROUPS trong
 // types.ts) trong CÙNG 1 <details>: mỗi nhóm tự có dropdown + field phụ riêng (color/size/direction
 // theo đúng effect nhóm đó đang chọn), và có thể BẬT ĐỒNG THỜI (vd vừa Focus vừa Highlight) — chỉ
 // riêng TRONG 1 nhóm mới giới hạn ĐÚNG 1 effect. Bọc trong <details> — mặc định MỞ nếu BẤT KỲ nhóm
@@ -195,14 +195,14 @@ export default function PrizeEffectPicker({
   value: PrizeStageEffect;
   onChange: (patch: Partial<PrizeStageEffect>) => void;
   // Chuyển THẲNG xuống nhóm "focus" — group DUY NHẤT chứa scaleUp VÀ lift (xem PRIZE_EFFECT_GROUPS).
-  // Optional vì không phải mọi caller cần bật tính năng này (chỉ LiveImagePanel.tsx/PrizeGalleryPanel.tsx,
-  // nơi component đang sửa THẬT SỰ vẽ được trên canvas — xem doc-comment ScaleAnchorOverlay.tsx).
+  // Optional vì không phải mọi caller cần bật tính năng này (chỉ LiveImagePanel.tsx, nơi component
+  // đang sửa THẬT SỰ vẽ được trên canvas — xem doc-comment ScaleAnchorOverlay.tsx).
   anchorMode?: "placing" | "editing" | "locked" | null;
   onStartEditingAnchor?: () => void;
   onDoneAnchor?: () => void;
   onRemoveAnchor?: () => void;
 }) {
-  // Lớp phòng thủ THỨ 2 (gọi viên đã tự fallback ở LiveImagePanel.tsx/PrizeGalleryPanel.tsx rồi) —
+  // Lớp phòng thủ THỨ 2 (gọi viên đã tự fallback ở LiveImagePanel.tsx rồi) —
   // phòng trường hợp 1 caller sau này quên fallback, tránh crash trắng màn hình y hệt bug đã gặp, xem
   // doc-comment DEFAULT_PRIZE_STAGE_EFFECT trong types.ts. Mỗi nhóm con fallback RIÊNG vì config lưu
   // bởi bản trước khi có 3-nhóm (hoặc landing rất cũ trước cả 4-giai-đoạn) thiếu hẳn `focus`/
