@@ -171,7 +171,7 @@
 /* Hiệu ứng "glow" một-lần (oneshot, PrizeEffectName "glow" — xem types.ts) — LỚP PHỦ RIÊNG (absolute
    inset-0) nằm TRÊN ảnh thật, KHÔNG đụng gì tới transform (scale/translate) đã có sẵn ở element NGOÀI
    (khác element, không xung đột CSS property). React chỉ MOUNT lớp phủ này đúng lúc trigger (xem
-   PrizeImageView.tsx/PrizeGalleryView.tsx), animation `both` tự dừng lại ở khung hình cuối (opacity 0)
+   PrizeImageView.tsx), animation `both` tự dừng lại ở khung hình cuối (opacity 0)
    sau khi chạy xong, không lặp lại cho tới lần mount MỚI tiếp theo. Dùng `currentColor` (đặt qua CSS
    `color`, xem PrizeEffectOverlay.tsx) để nhận đúng màu đã cấu hình, `filter: drop-shadow` (KHÔNG
    phải box-shadow) trên 1 bản sao <img> chồng khớp lên ảnh gốc — drop-shadow tự bám theo alpha channel
@@ -306,11 +306,15 @@
 }
 
 /* Lift KHÁC HẲN mọi effect khác ở đây (scaleUp-once/bounce/pulse/shake đều "bật lên rồi VỀ vị trí
-   gốc") — bản chất của lift là "DI CHUYỂN tới đúng offset đã cấu hình rồi Ở LẠI đó", nên persistent
-   CŨNG animate (không đứng yên tức thì như trước) và oneshot CŨNG dừng ở đích (không trả về 0), xem
-   doc-comment computePrizeTransform trong prizeEffectTransform.ts — cả 2 mode dùng CHUNG keyframe này.
-   3 pha THEO THỜI GIAN (không phải theo quãng đường): 10% đầu tăng tốc dần (ease-in) → 80% giữa tốc độ
-   ĐỀU (linear, đúng nghĩa "tốc độ cố định") → 10% cuối giảm tốc về 0 (ease-out) rồi DỪNG HẲN —
+   gốc") — bản chất của lift là "DI CHUYỂN tới đúng offset đã cấu hình rồi Ở LẠI đó", nên oneshot CŨNG
+   dừng ở đích (không trả về 0), xem doc-comment computePrizeTransform trong prizeEffectTransform.ts.
+   CHỈ oneshot (`.prize-fx-lift-once`) dùng keyframe này — persistent dùng `transform` INLINE +
+   `transition` (biến `LIFT_TRANSITION` trong prizeEffectTransform.ts, KHÔNG phải class ở đây) để ĐÚNG
+   easing đó tự chạy NGƯỢC LẠI lúc tắt (bỏ chọn), thay vì cần định nghĩa thêm 1 animation "lùi" riêng —
+   2 nơi BIỂU DIỄN CÙNG 1 hình dạng đường cong theo 2 cách khác nhau (keyframe timing-function-per-stop
+   vs CSS `linear()` easing function), PHẢI giữ khớp nhau (đổi 1 chỗ thì đổi luôn chỗ còn lại): 3 pha THEO
+   THỜI GIAN (không phải theo quãng đường) — 10% đầu tăng tốc dần (ease-in) → 80% giữa tốc độ ĐỀU
+   (linear, đúng nghĩa "tốc độ cố định") → 10% cuối giảm tốc về 0 (ease-out) rồi DỪNG HẲN —
    `animation-timing-function` đặt NGAY TẠI 1 keyframe áp dụng cho đoạn NGAY SAU nó tới keyframe kế
    tiếp (tính năng chuẩn CSS). Vị trí tại mốc 10%/90% tính đúng theo vật lý tăng/giảm tốc ĐỀU (diện
    tích tam giác vận tốc-thời gian): quãng đường đi trong pha tăng/giảm tốc = 1/2 × vận tốc đỉnh × thời
@@ -333,8 +337,7 @@
     transform: translate(var(--prize-fx-dx, 0px), var(--prize-fx-dy, 0px));
   }
 }
-.prize-fx-lift-once,
-.prize-fx-lift-settle {
+.prize-fx-lift-once {
   animation: prize-fx-lift-move 700ms both;
 }
 
