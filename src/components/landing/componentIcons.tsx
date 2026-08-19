@@ -63,35 +63,6 @@ function PrizeImageIcon() {
   );
 }
 
-function PrizeListIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M8 6h12M8 12h12M8 18h12" />
-      <path d="M4 6h.01M4 12h.01M4 18h.01" />
-    </svg>
-  );
-}
-
-function PrizeGalleryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </svg>
-  );
-}
-
-function CountdownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M6 3h12M6 21h12" />
-      <path d="M7 3c0 5 5 6.5 5 9s-5 4-5 9M17 3c0 5-5 6.5-5 9s5 4 5 9" />
-    </svg>
-  );
-}
-
 function CurrentTimeIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -145,9 +116,6 @@ const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   winnerName: WinnerNameIcon,
   prizeName: PrizeNameIcon,
   prizeImage: PrizeImageIcon,
-  prizeList: PrizeListIcon,
-  prizeGallery: PrizeGalleryIcon,
-  countdown: CountdownIcon,
   currentTime: CurrentTimeIcon,
   participantCount: ParticipantCountIcon,
   button: ButtonIcon,
