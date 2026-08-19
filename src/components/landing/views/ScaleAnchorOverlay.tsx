@@ -18,10 +18,8 @@ import { ensureAlphaLoaded, nearestOpaqueBoxFraction } from "./pixelAlphaHitTest
 //     cấu hình gì — trước đây thoát chế độ sửa là mất trắng pin, gây bối rối không biết đã kéo hay
 //     chưa, đây là lý do mode này tồn tại thay vì ẩn hẳn) cho tới khi bấm "Edit" (quay lại "editing")
 //     hoặc "Remove"/"Reset" ở ScaleAnchorTrigger.tsx/LiftDirectionTrigger.tsx.
-// `rect` do LandingCanvas.tsx tính sẵn (đã nhân `scale`, đặt tương đối trong đúng wrapper của
-// component đang chọn): Prize Image dùng NGUYÊN khung component; Prize Gallery dùng khung Ô ĐẦU TIÊN
-// (mọi ô luôn vuông, "aspect-square") vì directionX/Y áp dụng THEO TỪNG Ô, không phải theo cả lưới —
-// xem doc-comment PrizeGalleryProps trong types.ts.
+// `rect` do LandingCanvas.tsx tính sẵn (đã nhân `scale`, đặt tương đối trong đúng wrapper của Prize
+// Image đang chọn — component DUY NHẤT còn dùng Anchor/Direction).
 // `pointer-events-auto` ở root BẮT BUỘC khi "placing"/"editing" — cha của nó (lớp tương tác chọn/kéo-thả
 // component trong LandingCanvas.tsx) tự tắt hẳn `pointer-events` suốt 2 mode này, để 2 prize đặt
 // gần/chồng bounding box nhau (use-case CHÍNH của Prize Image) không còn vô tình hover/click trúng
@@ -49,7 +47,7 @@ export default function ScaleAnchorOverlay({
   onPlaceAnchor: (x: number, y: number) => void;
   onChangeHandle: (x: number, y: number) => void;
   onDone: () => void;
-  // `null`/thiếu ảnh (chưa chọn Prize, hoặc Prize Gallery chưa có giải nào) — vẫn kéo-thả/thả được,
+  // `null`/thiếu ảnh (chưa chọn Prize cho Prize Image này) — vẫn kéo-thả/thả được,
   // chỉ không có ảnh nền + không bám pixel thật được (mọi hàm bám pixel tự fallback trả nguyên toạ độ
   // đầu vào — xem nearestOpaqueBoxFraction trong pixelAlphaHitTest.ts).
   imageSrc?: string | null;
