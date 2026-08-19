@@ -1,7 +1,13 @@
-import { SCOREBOARD_FIELDS, SCOREBOARD_FIELD_LABELS, ScoreboardField, ScoreboardProps } from "@/lib/landing/types";
+import { useMemo, useState } from "react";
+import { getScoreboardFieldLabel, SCOREBOARD_FIELDS, ScoreboardField, ScoreboardProps } from "@/lib/landing/types";
+import { Participant } from "@/types";
 
 interface ScoreboardPanelProps {
   props: ScoreboardProps;
+  // Dùng để dò MỌI cột optional (extra_data) đang thực sự tồn tại trong session này — hợp nhất với
+  // 6 field cố định (SCOREBOARD_FIELDS) làm danh sách cột đầy đủ có thể chọn, đúng kiểu extraColumns
+  // của LuckyWheelPanel.tsx.
+  participants: Participant[];
   onChange: (patch: Partial<ScoreboardProps>) => void;
 }
 
@@ -30,8 +36,26 @@ function normalizeProps(props: ScoreboardProps) {
   };
 }
 
-export default function ScoreboardPanel({ props, onChange }: ScoreboardPanelProps) {
+export default function ScoreboardPanel({ props, participants, onChange }: ScoreboardPanelProps) {
   const { titleBarColor, columns, backgroundType, backgroundImageFit } = normalizeProps(props);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
+  // Mọi tên cột optional (extra_data) đang THỰC SỰ xuất hiện ở ít nhất 1 participant trong session
+  // này — nối vào sau 6 field cố định, đúng cách LuckyWheelPanel.tsx dò extraColumns.
+  const extraColumns = useMemo(() => {
+    const keys = new Set<string>();
+    participants.forEach((p) => {
+      if (!p.extra_data) return;
+      try {
+        const extra = JSON.parse(p.extra_data) as Record<string, string>;
+        Object.keys(extra).forEach((k) => keys.add(k));
+      } catch {
+        // extra_data hỏng ở dòng này — bỏ qua, không chặn cả danh sách cột
+      }
+    });
+    return Array.from(keys).sort();
+  }, [participants]);
+  const allFields: ScoreboardField[] = [...SCOREBOARD_FIELDS, ...extraColumns];
 
   function handleImageFile(file: File) {
     if (file.type !== "image/png" && file.type !== "image/jpeg") return;
@@ -44,8 +68,8 @@ export default function ScoreboardPanel({ props, onChange }: ScoreboardPanelProp
     const next = new Set(columns);
     if (checked) next.add(field);
     else next.delete(field);
-    // Giữ đúng thứ tự cố định của SCOREBOARD_FIELDS — đây cũng là thứ tự cột trái → phải trên bảng.
-    onChange({ columns: SCOREBOARD_FIELDS.filter((f) => next.has(f)) });
+    // Giữ đúng thứ tự cố định + cột optional theo sau — đây cũng là thứ tự cột trái → phải trên bảng.
+    onChange({ columns: allFields.filter((f) => next.has(f)) });
   }
 
   return (
@@ -77,20 +101,28 @@ export default function ScoreboardPanel({ props, onChange }: ScoreboardPanelProp
       </div>
 
       <div className="h-px bg-base-800" />
-      <span className={sectionClass}>Columns</span>
-      <div className="space-y-1">
-        {SCOREBOARD_FIELDS.map((f) => (
-          <label key={f} className="flex items-center gap-1.5 text-xs text-base-200">
-            <input
-              type="checkbox"
-              checked={columns.includes(f)}
-              onChange={(e) => toggleColumn(f, e.target.checked)}
-              className="accent-gold-500"
-            />
-            {SCOREBOARD_FIELD_LABELS[f]}
-          </label>
-        ))}
-      </div>
+      <details
+        open={columnsOpen}
+        onToggle={(e) => setColumnsOpen(e.currentTarget.open)}
+        className="rounded-lg border border-base-800"
+      >
+        <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
+          Columns ({columns.length} selected)
+        </summary>
+        <div className="max-h-48 space-y-1 overflow-y-auto border-t border-base-800 px-2.5 py-2">
+          {allFields.map((f) => (
+            <label key={f} className="flex items-center gap-1.5 text-xs text-base-200">
+              <input
+                type="checkbox"
+                checked={columns.includes(f)}
+                onChange={(e) => toggleColumn(f, e.target.checked)}
+                className="accent-gold-500"
+              />
+              {getScoreboardFieldLabel(f)}
+            </label>
+          ))}
+        </div>
+      </details>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className={labelClass}>Font size</label>
