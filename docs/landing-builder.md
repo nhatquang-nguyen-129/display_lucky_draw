@@ -97,10 +97,9 @@ input/textarea/select/contentEditable.
 `PropertiesPanel.tsx` là 1 switch thuần: chưa chọn gì → `BackgroundPanel` (nền trang); có chọn → 1
 Panel riêng theo đúng `type` của component + `SharedFields.tsx` luôn hiện ở cuối.
 
-`SharedFields.tsx` — dùng chung cho MỌI loại: **Name** (optional, chỉ để dễ nhận diện trong
-LayersPanel khi trang có nhiều component cùng loại — không có yêu cầu duy nhất nào), **X/Y/Width/
-Height** (Height khoá "auto" nếu là Lucky Wheel dùng template Digit Roller — chiều cao tự tính theo
-`digitCount`), **Effect** (fade/slide/pulse/bounce khi component xuất hiện), nút **Delete component**.
+`SharedFields.tsx` — dùng chung cho MỌI loại: **X/Y/Width/Height** (Height khoá "auto" nếu là Lucky
+Wheel dùng template Digit Roller — chiều cao tự tính theo `digitCount`), **Effect** (fade/slide/pulse/
+bounce khi component xuất hiện), nút **Delete component**.
 
 | Panel file | Dùng cho |
 |---|---|
@@ -110,8 +109,6 @@ Height** (Height khoá "auto" nếu là Lucky Wheel dùng template Digit Roller 
 | `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) |
 | `LiveTextPanel.tsx` | Winner Name, Prize Name (dùng chung) |
 | `LiveImagePanel.tsx` | Prize Image |
-| `PrizeListPanel.tsx` | Prize List |
-| `CountdownPanel.tsx` | Countdown |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
 | `ButtonPanel.tsx` | Button (chọn action + styling, xem mục 6) |
@@ -130,10 +127,8 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 | | Winner Name | Tên người trúng gần nhất |
 | | Prize Name | Tên giải vừa trúng gần nhất |
 | | Prize Image | Ảnh giải vừa trúng gần nhất |
-| | Prize List | Danh sách toàn bộ giải trong session |
 | | Scoreboard | Bảng người trúng đã confirm, hiện qua popup |
-| **Live Info** | Countdown | Đếm ngược tới 1 mốc thời gian |
-| | Current Time | Đồng hồ thời gian thực |
+| **Live Info** | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem mục 6 |
 
@@ -203,7 +198,7 @@ theo đúng chế độ đã ARM (`sequence.drawMode`/`drawCount`, chạy qua `s
 | **Multiple Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua popup (`DrawModeCountPopup.tsx`) | Lặp lại ĐÚNG quy trình Single Draw (pick → chờ Wheel hiện xong → tự Confirm) N lần liên tiếp, nghỉ ngắn giữa mỗi người |
 | **Quick Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua cùng 1 popup | Quay + Confirm ĐÚNG N người NGAY LẬP TỨC (không nghỉ giữa các lượt), tự mở Scoreboard khi xong |
 
-Multiple/Quick đều BẮT BUỘC đã chọn 1 giải qua Prize Image/Prize Gallery (`sequence.selectedPrizeId`)
+Multiple/Quick đều BẮT BUỘC đã chọn 1 giải qua Prize Image (`sequence.selectedPrizeId`)
 NGAY TỪ LÚC chọn mục trong dropdown — không phụ thuộc trang có UI chọn giải hay không (khác Single
 Draw). `runMultipleDrawInternal`/`runQuickDrawInternal` (`useDrawSequence.ts`) tự gọi thẳng
 `window.api.draw.pick`/`commit` (không tái dùng nội bộ `pick()`/`confirm()`), tự re-validate lại
