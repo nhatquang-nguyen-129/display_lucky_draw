@@ -86,7 +86,7 @@ export default function Dashboard() {
           <h2 className="mb-3 font-display text-base font-medium text-base-100">Next steps (this session)</h2>
           <ul className="space-y-2 text-sm text-base-300">
             <li className={participants.length ? "line-through text-base-600" : ""}>
-              1. Import the participant list (CSV/Excel or Google Sheets)
+              1. Import the participant list (CSV/Excel)
             </li>
             <li className={prizes.length ? "line-through text-base-600" : ""}>2. Set up the prize list</li>
             <li>3. Go to "Draw" to set up the presentation and run the draw</li>
