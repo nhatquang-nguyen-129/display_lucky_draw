@@ -107,12 +107,13 @@ bounce khi component xuất hiện), nút **Delete component**.
 | `TextPanel.tsx` | Text |
 | `ImagePanel.tsx` | Image |
 | `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) |
-| `LiveTextPanel.tsx` | Winner Name, Prize Name (dùng chung) |
-| `LiveImagePanel.tsx` | Prize Image |
+| `LiveTextPanel.tsx` | Winner |
+| `LiveImagePanel.tsx` | Prize |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
 | `ButtonPanel.tsx` | Button (chọn action + styling, xem mục 6) |
 | `ScoreboardPanel.tsx` | Scoreboard |
+| `FireworkPanel.tsx` | Firework |
 
 ## 5. Nhóm component (`ComponentPalette.tsx`)
 
@@ -124,13 +125,13 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 | **Basic** | Text | Nhãn/tiêu đề tĩnh |
 | | Image | Logo, banner, ảnh trang trí |
 | **Draw & Results** | Lucky Wheel | Vòng quay/Digit Roller gắn với Draw Engine |
-| | Winner Name | Tên người trúng gần nhất |
-| | Prize Name | Tên giải vừa trúng gần nhất |
-| | Prize Image | Ảnh giải vừa trúng gần nhất |
+| | Winner | Tên người trúng gần nhất |
+| | Prize | Ảnh giải vừa trúng gần nhất |
 | | Scoreboard | Bảng người trúng đã confirm, hiện qua popup |
 | **Live Info** | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem mục 6 |
+| **Effects** | Firework | Pháo hoa thưa/nhẹ, gắn 1 giải cụ thể — bắn trong đúng khung của nó lúc giải đó vừa được công bố |
 
 ## 6. Button — action cố định
 
@@ -174,7 +175,7 @@ option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `conf
 > `Draw` "nhẹ" hơn: cả `sequence.pick()` lẫn `sequence.redo()` (2 hàm cùng đứng sau action **Draw**,
 > xem bảng trên) đều KHÔNG ghi DB (chỉ SELECT chọn ứng viên), nhưng ứng viên đang chờ đó (`candidate`)
 > đã được "độn" ngay vào `results[0]` (1 dòng giả, xem `useDrawSequence.ts`'s `effectiveData`) —
-> nghĩa là MỌI component đọc dữ liệu (Winner Name, Lucky Wheel...) đã thấy "có kết quả" NGAY khi Draw
+> nghĩa là MỌI component đọc dữ liệu (Winner, Lucky Wheel...) đã thấy "có kết quả" NGAY khi Draw
 > chạy, **trước khi** Confirm ghi DB thật. Nếu Draw chạy nhưng Confirm không bao giờ chạy theo sau,
 > ứng viên đó vẫn hiện trên màn hình nhưng KHÔNG BAO GIỜ thật sự tồn tại trong `draw_results`.
 >
@@ -205,7 +206,7 @@ Draw). `runMultipleDrawInternal`/`runQuickDrawInternal` (`useDrawSequence.ts`) t
 count/remaining MỚI NHẤT ngay lúc bấm Draw (phòng trường hợp đổi từ lúc ARM tới lúc bấm, hoặc đổi
 sang giải khác), và giữ `sequence.spinning = true` SUỐT quá trình — tái dùng nguyên vẹn mọi điểm khoá
 "gần như mọi chức năng" đã có sẵn cho `spinning` thường, không cần thêm cờ khoá riêng. Trong lúc Quick
-Draw đang chạy, Winner Name hiện `props.quickDrawText` (mặc định "Congratulations!") THAY VÌ tên
+Draw đang chạy, Winner hiện `props.quickDrawText` (mặc định "Congratulations!") THAY VÌ tên
 người trúng — Quick Draw ra nhiều người cùng lúc nên không có 1 tên "đúng" nào để hiện (xem
 `WinnerNameProps.quickDrawText`, `DrawSequenceActions.quickDrawResult`).
 
