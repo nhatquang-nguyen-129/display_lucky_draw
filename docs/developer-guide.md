@@ -236,8 +236,8 @@ Toàn bộ layout 1 trang trình chiếu là **1 object `LandingConfig` duy nh�
 ```ts
 type LandingComponent =
   | TextComponent | ImageComponent | LuckyWheelComponent | WinnerNameComponent
-  | PrizeNameComponent | PrizeImageComponent
-  | CurrentTimeComponent | ParticipantCountComponent | ButtonComponent;
+  | PrizeImageComponent | CurrentTimeComponent | ParticipantCountComponent
+  | ButtonComponent | ScoreboardComponent | FireworkComponent;
 ```
 
 Mỗi variant = `BaseComponent` (x/y/width/height/zIndex/effect/reactions) + `props` riêng theo type. **Checklist thêm 1 loại component mới** (viết sẵn thành comment ở đầu file `types.ts`), đúng 4 bước, không cần sửa chỗ nào khác:
