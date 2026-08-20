@@ -177,6 +177,10 @@ export interface ResolvedPrizeEffects {
   // trên) — PrizeEffectOverlay tự vẽ riêng từng lớp, không đụng transform của ảnh gốc.
   highlightPersistent: PrizeGroupEffect | null;
   highlightOneshot: { config: PrizeGroupEffect; key: string } | null;
+  // true nếu giai đoạn ĐANG active (persistent HOẶC oneshot, không phân biệt — khác 3 nhóm ở trên,
+  // đây thuần là 1 công tắc OR, không có khái niệm "thắng/xếp chồng") có appearance="disappear" — xem
+  // PrizeImageView.tsx cho cách áp dụng (opacity, không phải display:none, để còn transition mượt).
+  hidden: boolean;
 }
 
 // Gộp cấu hình của giai đoạn PERSISTENT đang active (vd onSelect/onHover/onOutOfStock — component cha
@@ -220,5 +224,9 @@ export function resolvePrizeEffects(
       ? { config: highlightOneshotGroup, key: oneshotStage!.key }
       : null;
 
-  return { focus: winner("focus"), motion: winner("motion"), highlightPersistent, highlightOneshot };
+  // Landing lưu TRƯỚC KHI có nhóm Appearance không có field này trong JSON đã lưu — PHẢI fallback
+  // "none", cùng lý do đã ghi ở readGroup phía trên.
+  const hidden = (persistentStage?.appearance ?? "none") === "disappear" || (oneshotStage?.stage.appearance ?? "none") === "disappear";
+
+  return { focus: winner("focus"), motion: winner("motion"), highlightPersistent, highlightOneshot, hidden };
 }
