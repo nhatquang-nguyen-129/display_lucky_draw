@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_FIREWORK_EFFECT, DEFAULT_PRIZE_STAGE_EFFECT, DrawSequenceActions, LandingData, PrizeImageComponent } from "@/lib/landing/types";
-import { launchFirework } from "./fireworkCoordinator";
+import { DEFAULT_PRIZE_STAGE_EFFECT, DrawSequenceActions, LandingData, PrizeImageComponent } from "@/lib/landing/types";
 import PrizeEffectOverlay from "./PrizeEffectOverlay";
 import { ensureAlphaLoaded } from "./pixelAlphaHitTest";
 import { computePrizeTransform, cssVarsToStyle, resolvePrizeEffects } from "./prizeEffectTransform";
@@ -36,7 +35,7 @@ export default function PrizeImageView({
   data?: LandingData;
   sequence?: DrawSequenceActions;
 }) {
-  const { fit, borderRadius, prizeId, dimUnselectedAmount } = component.props;
+  const { fit, borderRadius, prizeId } = component.props;
   // Landing lưu TRƯỚC KHI có hệ 4-giai-đoạn này không có 4 field object dưới đây trong JSON đã lưu dù
   // TypeScript khai báo bắt buộc — PHẢI fallback, xem doc-comment DEFAULT_PRIZE_STAGE_EFFECT trong
   // types.ts (thiếu bước này crash trắng màn hình ngay khi mở Properties Panel của prize cũ).
@@ -45,7 +44,6 @@ export default function PrizeImageView({
   const onWon = component.props.onWon ?? DEFAULT_PRIZE_STAGE_EFFECT;
   const onOutOfStock = component.props.onOutOfStock ?? DEFAULT_PRIZE_STAGE_EFFECT;
   const outOfStockDimAmount = component.props.outOfStockDimAmount ?? 58;
-  const onWonFirework = component.props.onWonFirework ?? DEFAULT_FIREWORK_EFFECT;
   // Chuột đang ở TRONG khung ảnh này hay không — chỉ có ý nghĩa lúc CHƯA chọn (click chính là hành
   // động CHỌN nên khi đã selected, hover không còn là 1 trạng thái tách biệt cần hiện riêng). Tính
   // theo ĐÚNG pixel alpha của ảnh, và QUA prizeHitCoordinator.ts (không phải onMouseMove/onClick cục
@@ -71,11 +69,6 @@ export default function PrizeImageView({
   // đổi cursor, đúng cảm giác "tạm dừng".
   const locked = interactive && (sequence!.busy || sequence!.spinning);
   const selected = interactive && sequence!.selectedPrizeId === boundPrize!.id;
-  // "Spotlight" — SUỐT lúc Wheel đang quay, giải KHÔNG PHẢI giải đang chọn tự tối đi để làm nổi bật
-  // đúng giải đang quay (nhiều instance Prize Image rải khắp trang, xem doc-comment
-  // LiveImageProps.dimUnselectedAmount). Loại trừ `disabled` (đã có dim riêng cho hết hàng) và chính
-  // `selected` (giải đang chọn luôn giữ nguyên độ sáng, tương phản với những giải bị tối đi).
-  const dimmed = interactive && !disabled && !selected && sequence!.spinning && !!sequence!.selectedPrizeId;
   // ĐÚNG giải này VỪA được Wheel trả về (candidate hiện tại chính là giải này) — KHÔNG đợi Confirm.
   // `!sequence.spinning` — candidate được set NGAY khi bấm Draw (xem useDrawSequence.ts's pick()),
   // TRƯỚC KHI Wheel/WinnerName quay/hiện xong (spinning giữ true suốt winnerRevealDelayMs) — thiếu
@@ -86,18 +79,6 @@ export default function PrizeImageView({
   // báo hiệu "người trúng MỚI".
   const justWon =
     !!sequence && !!boundPrize && !!sequence.candidate && sequence.candidate.prizeId === boundPrize.id && !sequence.spinning;
-
-  // Bắn pháo hoa toàn màn hình (FireworkOverlay.tsx, mount ở PresentMode.tsx) đúng 1 LẦN mỗi lượt
-  // thắng mới — dep là `seed` (không phải object `onWonFirework` hay `justWon` không thôi) nên effect
-  // chỉ chạy lại khi THẬT SỰ có 1 lượt thắng mới, không chạy lại mỗi lần re-render trong lúc `justWon`
-  // vẫn đang true (đúng seed cũ), khớp quy ước "seed = danh tính 1 lượt thắng" đã dùng làm remount key
-  // cho scaleUp/glow/... ở JSX bên dưới.
-  const fireworkRef = useRef(onWonFirework);
-  fireworkRef.current = onWonFirework;
-  useEffect(() => {
-    if (!justWon || !fireworkRef.current.enabled) return;
-    launchFirework(fireworkRef.current);
-  }, [justWon, sequence?.candidate?.seed]);
 
   // Dữ liệu "sống" cho target đăng ký với prizeHitCoordinator.ts — đọc qua ref để callback của nó
   // luôn thấy giá trị MỚI NHẤT mà không cần đăng ký lại (huỷ + tạo lại listener) mỗi lần render, chỉ
@@ -156,20 +137,23 @@ export default function PrizeImageView({
       }`}
       style={{
         borderRadius,
-        pointerEvents: interactive ? "auto" : undefined,
-        transition: "filter 150ms ease-out",
-        filter: disabled
-          ? `brightness(${1 - (outOfStockDimAmount ?? 58) / 100})`
-          : dimmed
-            ? `brightness(${1 - (dimUnselectedAmount ?? 60) / 100})`
-            : undefined,
+        // Appearance "Disappear" (xem PrizeStageEffect.appearance trong types.ts) tắt luôn tương tác —
+        // ảnh đã biến mất thì không còn gì để bấm chọn.
+        pointerEvents: interactive && !resolved.hidden ? "auto" : undefined,
+        transition: "filter 150ms ease-out, opacity 200ms ease-out",
+        opacity: resolved.hidden ? 0 : 1,
+        filter: disabled ? `brightness(${1 - (outOfStockDimAmount ?? 58) / 100})` : undefined,
       }}
     >
       {/* Wrapper Focus — chỉ chiếm transform của NHÓM Focus (scaleUp/lift), `key` remount lúc oneshot
-          để replay đúng lượt Multiple Draw dù cùng 1 effect (xem resolvePrizeEffects). */}
+          để replay đúng lượt Multiple Draw dù cùng 1 effect (xem resolvePrizeEffects). `isolate` mở 1
+          stacking context RIÊNG cho khung này — bắt buộc để z-index âm của lớp glow (xem
+          PrizeEffectOverlay.tsx, `-z-10` đặt lớp glow XUỐNG DƯỚI ảnh thật để chỉ còn outer glow, không
+          đè sáng lên chính ảnh) chỉ "chìm xuống" đúng bên trong khung này, không lỡ chìm xuống dưới
+          những component/nền khác ở xa hơn trong cây render. */}
       <div
         key={resolved.focus?.mode === "oneshot" ? resolved.focus.key : undefined}
-        className={`relative flex h-full w-full items-center justify-center ${focusTransform.className ?? ""}`}
+        className={`isolate relative flex h-full w-full items-center justify-center ${focusTransform.className ?? ""}`}
         style={{
           transform: focusTransform.transform ?? "scale(1)",
           // `transformOrigin` cũng PHẢI transition CÙNG `transform` — thiếu nó thì lúc scaleUp có
