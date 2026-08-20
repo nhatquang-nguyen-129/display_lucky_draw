@@ -2,15 +2,7 @@
 // khi thả). Thêm loại mới chỉ cần thêm 1 entry ở đây (sau khi đã có type ở lib/landing/types.ts
 // và view/panel tương ứng) — xem checklist ở đầu lib/landing/types.ts.
 
-import {
-  DEFAULT_FIREWORK_EFFECT,
-  LandingComponent,
-  LandingComponentType,
-  newComponentId,
-  PrizeEffectName,
-  PrizeGroupEffect,
-  PrizeStageEffect,
-} from "@/lib/landing/types";
+import { LandingComponent, LandingComponentType, newComponentId, PrizeEffectName, PrizeGroupEffect, PrizeStageEffect } from "@/lib/landing/types";
 
 function noGroupEffect(): PrizeGroupEffect {
   return { effect: "none", color: "#FFCA2D", size: 24, directionX: 50, directionY: 50, handleX: 50, handleY: 50, anchorPlaced: false };
@@ -41,12 +33,13 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
     focus: group === "focus" ? active : noGroupEffect(),
     highlight: group === "highlight" ? active : noGroupEffect(),
     motion: group === "motion" ? active : noGroupEffect(),
+    appearance: "none",
   };
 }
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
 // nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette.
-export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive"] as const;
+export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive", "Effects"] as const;
 export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
 
 export interface ComponentRegistryEntry {
@@ -113,7 +106,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
     }),
   },
   winnerName: {
-    label: "Winner Name",
+    label: "Winner",
     description: "Latest winner's name",
     category: "Draw & Results",
     defaultWidth: 500,
@@ -129,22 +122,8 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       quickDrawText: "Congratulations!",
     }),
   },
-  prizeName: {
-    label: "Prize Name",
-    description: "Latest won prize's name",
-    category: "Draw & Results",
-    defaultWidth: 500,
-    defaultHeight: 60,
-    createDefaultProps: () => ({
-      fontSize: 28,
-      color: "#FFFFFF",
-      fontWeight: "normal",
-      align: "center",
-      fallbackText: "—",
-    }),
-  },
   prizeImage: {
-    label: "Prize Image",
+    label: "Prize",
     description: "One specific prize's image, pinned to custom artwork — click in Present Mode to select it for Draw",
     category: "Draw & Results",
     defaultWidth: 300,
@@ -158,8 +137,6 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       onWon: defaultPrizeStage(),
       onOutOfStock: defaultPrizeStage(),
       outOfStockDimAmount: 58,
-      dimUnselectedAmount: 60,
-      onWonFirework: DEFAULT_FIREWORK_EFFECT,
     }),
   },
   currentTime: {
@@ -236,6 +213,23 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       backgroundColor: "#FFFFFF",
       backgroundImageDataUrl: null,
       backgroundImageFit: "cover",
+    }),
+  },
+  firework: {
+    label: "Firework",
+    description: "Sparse, subtle fireworks bound to one prize — fires within this box the instant that prize's winner is revealed.",
+    category: "Effects",
+    defaultWidth: 480,
+    defaultHeight: 360,
+    // Preset "Subtle Champagne" mặc định — xem PRESETS trong FireworkPanel.tsx.
+    createDefaultProps: () => ({
+      prizeId: "",
+      color1: "#F6D98B",
+      color2: "#E8C66A",
+      intervalMs: 1200,
+      delayMs: 0,
+      mode: "duration",
+      durationMs: 4000,
     }),
   },
 };
