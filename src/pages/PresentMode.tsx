@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 import { useLandingData } from "@/components/landing/useLandingData";
 import { useDrawSequence } from "@/components/landing/useDrawSequence";
 import LandingRenderer from "@/components/landing/LandingRenderer";
-import FireworkOverlay from "@/components/landing/views/FireworkOverlay";
 import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
 import {
   CANVAS_HEIGHT,
@@ -68,9 +67,6 @@ export default function PresentMode() {
       <div style={{ width: config.canvas.width * scale, height: config.canvas.height * scale }}>
         <LandingRenderer config={config} data={sequence.effectiveData} scale={scale} interactive sequence={sequence} />
       </div>
-      {/* Toàn màn hình thật, NGOÀI khung đã scale ở trên (xem doc-comment onWonFirework trong types.ts)
-          — pháo hoa cần bay ra ngoài phạm vi 16:9 của landing để trông tự nhiên, không bị cắt viền. */}
-      <FireworkOverlay />
       {sequence.error && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg border border-danger-500/40 bg-base-950/90 px-4 py-2 text-sm text-danger-500 shadow-2xl">
           {sequence.error}
