@@ -42,17 +42,6 @@ function WinnerNameIcon() {
   );
 }
 
-function PrizeNameIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <rect x="3" y="9" width="18" height="11" rx="1.5" />
-      <path d="M3 9h18v4H3z" />
-      <path d="M12 9v11" />
-      <path d="M12 9c-1-3-3.5-5-5.5-4S6 8 9 9M12 9c1-3 3.5-5 5.5-4S18 8 15 9" />
-    </svg>
-  );
-}
-
 function PrizeImageIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -101,6 +90,17 @@ function ScoreboardIcon() {
   );
 }
 
+function FireworkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="M12 3v3M12 3l-2 2M12 3l2 2" />
+      <path d="M12 10v11M12 10 5 21M12 10l7 11" />
+      <circle cx="18" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function GenericComponentIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" className="h-5 w-5">
@@ -114,8 +114,8 @@ const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   image: ImageIcon,
   luckyWheel: LuckyWheelIcon,
   winnerName: WinnerNameIcon,
-  prizeName: PrizeNameIcon,
   prizeImage: PrizeImageIcon,
+  firework: FireworkIcon,
   currentTime: CurrentTimeIcon,
   participantCount: ParticipantCountIcon,
   button: ButtonIcon,
