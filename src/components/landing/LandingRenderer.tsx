@@ -14,12 +14,12 @@ import TextView from "./views/TextView";
 import ImageView from "./views/ImageView";
 import LuckyWheelView from "./views/LuckyWheelView";
 import WinnerNameView from "./views/WinnerNameView";
-import PrizeNameView from "./views/PrizeNameView";
 import PrizeImageView from "./views/PrizeImageView";
 import CurrentTimeView from "./views/CurrentTimeView";
 import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
+import FireworkView from "./views/FireworkView";
 import DrawModeCountPopup from "./views/DrawModeCountPopup";
 
 interface LandingRendererProps {
@@ -43,7 +43,7 @@ interface LandingRendererProps {
 // mỗi khi có kết quả quay MỚI, để hiệu ứng entrance (fadeIn/slideUp...) tự bắn lại — không cần thêm
 // timer/JS nào khác. luckyWheel KHÔNG nằm trong danh sách này vì nó tự quản lý animation quay liên
 // tục qua state nội bộ, remount sẽ làm mất góc quay hiện tại.
-const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["winnerName", "prizeName", "prizeImage"]);
+const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["winnerName", "prizeImage"]);
 
 // Painter thuần, chỉ đọc — không có state, không có tương tác. Dùng chung nguyên vẹn bởi
 // LandingCanvas (lớp nền trong Builder) và PresentMode (toàn màn hình) để 2 nơi không bao giờ
@@ -266,8 +266,6 @@ function renderComponent(
           quickDrawActive={interactive && !!sequence?.quickDrawResult}
         />
       );
-    case "prizeName":
-      return <PrizeNameView component={component} data={data} />;
     case "prizeImage":
       return <PrizeImageView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     case "currentTime":
@@ -280,6 +278,8 @@ function renderComponent(
       // Chỉ tới đây khi KHÔNG interactive (Builder) — ở Present Mode, scoreboard đã bị lọc khỏi
       // `sorted` phía trên và vẽ riêng như overlay canh giữa, xem khối sau vòng lặp map() chính.
       return <ScoreboardView component={component} data={data} />;
+    case "firework":
+      return <FireworkView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     default:
       return null;
   }
