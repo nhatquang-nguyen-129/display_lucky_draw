@@ -142,10 +142,10 @@ export default function LandingBuilderWindow() {
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  // Truyền xuống LandingCanvas -> LandingRenderer để Prize Image/Prize Gallery hiện ĐÚNG ảnh giải
-  // thật ngay trên canvas Builder (trước đây canvas không nhận `data` gì cả nên 2 component đó luôn
-  // rơi vào nhánh "No image" dù Prize đã có ảnh). `results: []` vì Builder không cần biết kết quả quay
-  // — WinnerName/PrizeName vẫn tự hiện fallbackText đúng như khi chưa có data.
+  // Truyền xuống LandingCanvas -> LandingRenderer để Prize Image hiện ĐÚNG ảnh giải thật ngay trên
+  // canvas Builder (trước đây canvas không nhận `data` gì cả nên component đó luôn rơi vào nhánh
+  // "No image" dù Prize đã có ảnh). `results: []` vì Builder không cần biết kết quả quay — Winner
+  // vẫn tự hiện fallbackText đúng như khi chưa có data.
   const landingData: LandingData = useMemo(
     () => ({ participants, prizes, results: [] }),
     [participants, prizes]
