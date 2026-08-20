@@ -4,10 +4,10 @@ import { LandingData, WinnerNameComponent, WinnerTransitionEffect } from "@/lib/
 // CHỈ trong canvas kéo-thả của Landing Builder (xem `builderPreview` — bắt nguồn từ `clip={false}`,
 // tín hiệu riêng LandingCanvas.tsx đã dùng sẵn để tự nhận diện, xem LandingRenderer.tsx) — hiện chữ
 // này thay vì fallbackText thật của component (thường chỉ "—", nhìn qua rất khó biết đây là khung
-// Winner Name để chọn/sửa). LandingPage.tsx (preview read-only ở cửa sổ chính) và Present Mode thật
+// Winner để chọn/sửa). LandingPage.tsx (preview read-only ở cửa sổ chính) và Present Mode thật
 // PHẢI giữ nguyên fallbackText/tên người trúng thật — 2 nơi đó không truyền `builderPreview`, dù bản
 // thân chúng cũng không "interactive" giống LandingPage.tsx, nên KHÔNG được gộp chung với cờ đó.
-const BUILDER_PLACEHOLDER = "Winner Name";
+const BUILDER_PLACEHOLDER = "Winner";
 
 // Phải khớp đúng 0.5s khai báo cho các class winner-transition-*-in/out trong landingEffects.css —
 // đổi 1 trong 2 chỗ thì phải đổi luôn chỗ còn lại.
