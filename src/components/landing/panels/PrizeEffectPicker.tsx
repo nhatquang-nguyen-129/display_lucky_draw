@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 import {
   DEFAULT_PRIZE_GROUP_EFFECT,
   DEFAULT_PRIZE_STAGE_EFFECT,
+  PRIZE_APPEARANCE_NAMES,
   PRIZE_EFFECT_GROUPS,
+  PrizeAppearanceName,
   PrizeEffectName,
   PrizeGroupEffect,
   PrizeStageEffect,
@@ -23,6 +25,11 @@ const EFFECT_LABELS: Record<PrizeEffectName, string> = {
   bounce: "Bounce",
   pulse: "Pulse",
   shake: "Shake",
+};
+
+const APPEARANCE_LABELS: Record<PrizeAppearanceName, string> = {
+  none: "None",
+  disappear: "Disappear",
 };
 
 // Nhãn + khoảng giá trị cho field "size" — Ý NGHĨA THEO TỪNG EFFECT, xem doc-comment PrizeGroupEffect
@@ -182,16 +189,15 @@ function GroupEffectFields({
 // BackgroundPanel.tsx).
 export default function PrizeEffectPicker({
   title,
-  description,
   value,
   onChange,
   anchorMode,
   onStartEditingAnchor,
   onDoneAnchor,
   onRemoveAnchor,
+  children,
 }: {
   title: string;
-  description?: string;
   value: PrizeStageEffect;
   onChange: (patch: Partial<PrizeStageEffect>) => void;
   // Chuyển THẲNG xuống nhóm "focus" — group DUY NHẤT chứa scaleUp VÀ lift (xem PRIZE_EFFECT_GROUPS).
@@ -201,6 +207,11 @@ export default function PrizeEffectPicker({
   onStartEditingAnchor?: () => void;
   onDoneAnchor?: () => void;
   onRemoveAnchor?: () => void;
+  // Nội dung phụ (vd thanh Dim amount của "When Out of Stock") hiện TRƯỚC 3 nhóm Focus/Highlight/
+  // Motion, TRONG CÙNG 1 <details> — dùng để gộp "When Out of Stock" vào chung khuôn 4 mục When...,
+  // không cần lồng thêm 1 <details> con riêng cho phần effect (giữ đúng 2 cấp: Self Interactions →
+  // When...).
+  children?: ReactNode;
 }) {
   // Lớp phòng thủ THỨ 2 (gọi viên đã tự fallback ở LiveImagePanel.tsx rồi) —
   // phòng trường hợp 1 caller sau này quên fallback, tránh crash trắng màn hình y hệt bug đã gặp, xem
@@ -211,7 +222,8 @@ export default function PrizeEffectPicker({
   const focus = stage.focus ?? DEFAULT_PRIZE_GROUP_EFFECT;
   const highlight = stage.highlight ?? DEFAULT_PRIZE_GROUP_EFFECT;
   const motion = stage.motion ?? DEFAULT_PRIZE_GROUP_EFFECT;
-  const anyActive = focus.effect !== "none" || highlight.effect !== "none" || motion.effect !== "none";
+  const appearance = stage.appearance ?? "none";
+  const anyActive = focus.effect !== "none" || highlight.effect !== "none" || motion.effect !== "none" || appearance !== "none";
   const [open, setOpen] = useState(() => anyActive);
   const groupValues: Record<"focus" | "highlight" | "motion", PrizeGroupEffect> = { focus, highlight, motion };
 
@@ -219,7 +231,7 @@ export default function PrizeEffectPicker({
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="rounded-lg border border-base-800">
       <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">{title}</summary>
       <div className="space-y-2 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
-        {description && <p className="text-[10px] leading-snug text-base-500">{description}</p>}
+        {children}
 
         {PRIZE_EFFECT_GROUPS.map((group) => (
           <GroupEffectFields
@@ -234,6 +246,24 @@ export default function PrizeEffectPicker({
             onRemoveAnchor={group.key === "focus" ? onRemoveAnchor : undefined}
           />
         ))}
+
+        <div className="space-y-2 rounded border border-base-800/70 p-2">
+          <div>
+            <label className={labelClass}>Appearance</label>
+            <select
+              className={fieldClass}
+              value={appearance}
+              onChange={(e) => onChange({ appearance: e.target.value as PrizeAppearanceName })}
+            >
+              <option value="none">None</option>
+              {PRIZE_APPEARANCE_NAMES.map((name) => (
+                <option key={name} value={name}>
+                  {APPEARANCE_LABELS[name]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
     </details>
   );
