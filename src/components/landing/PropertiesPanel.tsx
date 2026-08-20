@@ -11,6 +11,7 @@ import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
 import ScoreboardPanel from "./panels/ScoreboardPanel";
+import FireworkPanel from "./panels/FireworkPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
@@ -79,13 +80,7 @@ export default function PropertiesPanel({
       {selected.type === "luckyWheel" && (
         <LuckyWheelPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
-      {(selected.type === "winnerName" || selected.type === "prizeName") && (
-        <LiveTextPanel
-          props={selected.props}
-          onChange={onChangeProps}
-          showWinnerFields={selected.type === "winnerName"}
-        />
-      )}
+      {selected.type === "winnerName" && <LiveTextPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "prizeImage" && (
         <LiveImagePanel
           props={selected.props}
@@ -120,6 +115,7 @@ export default function PropertiesPanel({
       {selected.type === "scoreboard" && (
         <ScoreboardPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
+      {selected.type === "firework" && <FireworkPanel props={selected.props} prizes={prizes} onChange={onChangeProps} />}
       <div className="h-px bg-base-800" />
       <SharedFields component={selected} onChange={onChangeComponent} onDelete={onDelete} />
     </div>
