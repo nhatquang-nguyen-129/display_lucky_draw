@@ -130,8 +130,7 @@ export interface LuckyWheelComponent extends BaseComponent {
   props: LuckyWheelProps;
 }
 
-// winnerName/prizeName dùng chung 1 shape props (và chung 1 PropertiesPanel form — LiveTextPanel)
-// vì chỉ khác nhau ở NGUỒN dữ liệu đọc (participant_name vs prize_name), không khác về cấu hình.
+// Shape props dùng chung của LiveTextPanel.tsx (Properties Panel) — hiện chỉ WinnerNameProps kế thừa.
 export interface LiveTextProps {
   fontSize: number;
   color: string;
@@ -156,9 +155,8 @@ export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
   "zoom",
 ];
 
-// CHỈ Winner Name có thêm 2 field này (prizeName KHÔNG có — xem PrizeNameView.tsx không hề "chờ" gì
-// cả, hiện dữ liệu thật ngay khi có, không có pha "fallback rồi đổi sang thật" như Winner Name có
-// nhờ revealDelayMs, nên không có khoảnh khắc nào để 1 hiệu ứng riêng phát huy tác dụng). `revealEffect`
+// CHỈ Winner Name có 2 field này — nhờ `revealDelayMs`, nó có 1 pha "fallback rồi đổi sang thật" mà
+// `transitionEffect` phát huy tác dụng đúng lúc đổi. `revealEffect`
 // KHÁC với field `effect` chung (SharedFields.tsx, áp cho khung NGOÀI mỗi khi có lượt quay mới) —
 // field này tái dùng nguyên bộ EffectName/CSS class đã có (landingEffects.css) cho quen mắt, áp cho
 // ĐOẠN TEXT đang hiện (fallback hoặc tên thật) ở TRẠNG THÁI ĐỨNG YÊN — không định nghĩa hẳn 1 bộ hiệu
@@ -195,6 +193,14 @@ export const PRIZE_EFFECT_GROUPS: { key: "focus" | "highlight" | "motion"; label
   { key: "highlight", label: "Highlight", effects: ["glow", "sweep"] },
   { key: "motion", label: "Motion", effects: ["bounce", "pulse", "shake"] },
 ];
+
+// Nhóm THỨ 4, TÁCH RIÊNG khỏi 3 nhóm ở trên (Focus/Highlight/Motion — đều dùng chung shape
+// PrizeGroupEffect với color/size/direction) vì bản chất khác hẳn: chỉ là 1 công tắc hiện/ẩn, không
+// có field phụ nào (màu/kích thước/hướng đều vô nghĩa với "biến mất") — nên dùng type phẳng riêng
+// thay vì nhét vào PrizeGroupEffect. "disappear" hiện là lựa chọn DUY NHẤT ngoài "none" — mảng này là
+// chỗ thêm lựa chọn mới sau này (vd "fade out" chậm hơn) mà không cần đổi shape.
+export type PrizeAppearanceName = "none" | "disappear";
+export const PRIZE_APPEARANCE_NAMES: PrizeAppearanceName[] = ["disappear"];
 
 // Cấu hình cho ĐÚNG 1 NHÓM (Focus/Highlight/Motion) trong ĐÚNG 1 giai đoạn — field PHẲNG dùng chung
 // cho mọi effect trong nhóm (giống style ButtonProps đã có, không tách interface riêng theo từng
@@ -258,10 +264,14 @@ export const DEFAULT_PRIZE_GROUP_EFFECT: PrizeGroupEffect = {
 // Cấu hình ĐẦY ĐỦ cho 1 giai đoạn tương tác (When Hover/Select/Won/Out of Stock) — GỘP 3 nhóm ĐỘC
 // LẬP, mỗi nhóm tự bật/tắt/chọn effect riêng (xem PrizeGroupEffect) — vd `focus.effect="scaleUp"` VÀ
 // `highlight.effect="glow"` CÙNG LÚC là hợp lệ, chỉ riêng TRONG 1 nhóm mới bị giới hạn ĐÚNG 1 effect.
+// `appearance` là nhóm THỨ 4 (xem PrizeAppearanceName) — độc lập hoàn toàn với 3 nhóm kia, cũng chỉ
+// chọn được 1 giá trị. `hidden` ở ResolvedPrizeEffects (prizeEffectTransform.ts) OR 2 giai đoạn đang
+// active (persistent + oneshot) lại — bất kỳ giai đoạn nào đang "disappear" cũng đủ ẩn ảnh.
 export interface PrizeStageEffect {
   focus: PrizeGroupEffect;
   highlight: PrizeGroupEffect;
   motion: PrizeGroupEffect;
+  appearance: PrizeAppearanceName;
 }
 
 // Landing lưu TRƯỚC KHI có hệ 4-giai-đoạn này (onHover/onSelect/onWon/onOutOfStock, xem
@@ -278,6 +288,7 @@ export const DEFAULT_PRIZE_STAGE_EFFECT: PrizeStageEffect = {
   focus: DEFAULT_PRIZE_GROUP_EFFECT,
   highlight: DEFAULT_PRIZE_GROUP_EFFECT,
   motion: DEFAULT_PRIZE_GROUP_EFFECT,
+  appearance: "none",
 };
 
 // 4 giai đoạn user tương tác với 1 prize (Prize Image, xem PrizeEffectPicker.tsx cho UI cấu hình) —
@@ -328,34 +339,7 @@ export interface PrizeInteractions {
   // riêng khỏi `onOutOfStock` (effect CHỌN THÊM, tuỳ chọn) vì đây là tín hiệu "hết hàng" cơ bản LUÔN
   // cần có để phân biệt được với giải còn hàng, không phụ thuộc có chọn effect gì hay không.
   outOfStockDimAmount: number;
-  // Pháo hoa toàn màn hình mừng khi giải NÀY vừa được công bố — TÁCH RIÊNG khỏi `onWon` ở trên (3 nhóm
-  // Focus/Highlight/Motion) vì bản chất khác hẳn: những effect đó áp transform/overlay lên ĐÚNG khung
-  // ảnh giải, còn pháo hoa vẽ PHỦ TOÀN MÀN HÌNH, vượt ngoài phạm vi khung kéo-thả của component này —
-  // xem FireworkOverlay.tsx (mount ở PresentMode.tsx, NGOÀI canvas đã scale, nên toạ độ là pixel màn
-  // hình thật) + fireworkCoordinator.ts (nơi PrizeImageView.tsx bắn sự kiện "launch" đúng lúc `justWon`
-  // chuyển true cho 1 seed mới). CHỈ có ở "When Won" (oneshot) — không có khái niệm ăn mừng toàn màn
-  // hình cho Hover/Select/Out of Stock (những trạng thái kéo dài, không phải khoảnh khắc).
-  onWonFirework: FireworkEffect;
 }
-
-// enabled=false là mặc định AN TOÀN cho landing đã lưu trước khi có field này (đọc `undefined` qua
-// `?? DEFAULT_FIREWORK_EFFECT`, xem LiveImagePanel.tsx/PrizeImageView.tsx) — không tự nhiên bắn pháo
-// hoa cho landing cũ chưa từng bật tính năng này.
-export interface FireworkEffect {
-  enabled: boolean;
-  color1: string;
-  color2: string;
-  burstCount: number; // số đợt pháo hoa bắn trong 1 lượt ăn mừng
-  durationMs: number; // tổng thời lượng ăn mừng — burstCount đợt được rải đều (+ jitter ngẫu nhiên) trong khoảng này
-}
-
-export const DEFAULT_FIREWORK_EFFECT: FireworkEffect = {
-  enabled: false,
-  color1: "#FFCA2D",
-  color2: "#20C7F1",
-  burstCount: 6,
-  durationMs: 3500,
-};
 
 // CHỈ dùng bởi PrizeImageComponent — LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (`prizeId`),
 // không đổi theo kết quả quay — dùng để đặt NHIỀU Prize Image rải rác khắp landing, mỗi cái tự do
@@ -372,11 +356,6 @@ export interface LiveImageProps extends PrizeInteractions {
   fit: "cover" | "contain" | "stretch";
   borderRadius: number;
   prizeId?: string;
-  // "Spotlight khi Wheel đang quay" — dim giải NÀY khi 1 giải KHÁC đang được chọn/quay, KHÁC HẲN
-  // `onOutOfStock`/`outOfStockDimAmount` (PrizeInteractions — trigger theo TỰ THÂN giải này hết hàng
-  // hay không) — field này trigger theo giải NÀO đang được chọn trên toàn trang, không liên quan gì
-  // tới remaining của chính giải này, xem PrizeImageView.tsx.
-  dimUnselectedAmount: number;
 }
 
 export interface WinnerNameComponent extends BaseComponent {
@@ -384,14 +363,40 @@ export interface WinnerNameComponent extends BaseComponent {
   props: WinnerNameProps;
 }
 
-export interface PrizeNameComponent extends BaseComponent {
-  type: "prizeName";
-  props: LiveTextProps;
-}
-
 export interface PrizeImageComponent extends BaseComponent {
   type: "prizeImage";
   props: LiveImageProps;
+}
+
+// Pháo hoa gắn với ĐÚNG 1 giải (`prizeId`, giống cách chọn giải của Prize Image) — vẽ THƯA/mảnh, đúng
+// trong khung x/y/width/height CỦA CHÍNH NÓ (không phủ toàn màn hình — xem FireworkView.tsx cho toàn
+// bộ vật lý/zone-coverage). Đặt NHIỀU instance (mỗi cái gắn 1 `prizeId` khác) nếu muốn nhiều giải đều
+// kích hoạt ăn mừng riêng.
+//
+// Bắt đầu bắn sau `delayMs` kể từ lúc giải đó VỪA được công bố (justWon — không đợi Confirm, giống
+// "When Won" của Prize Image), rồi dừng theo `mode`:
+//   - "duration": bắn trong đúng `durationMs` rồi tắt hẳn.
+//   - "continuous": bắn liên tục KHÔNG GIỚI HẠN thời lượng, cho tới khi có 1 lượt quay MỚI bất kỳ bắt
+//     đầu (candidate đổi sang seed khác — dù cùng giải này thắng tiếp hay giải khác được chọn) thì mới
+//     dừng. Xem FireworkView.tsx cho cách theo dõi mốc này bằng ref (không remount lại toàn bộ engine
+//     hạt mỗi lần đổi trạng thái, tránh giật khi 1 lượt ăn mừng đang chạy dở).
+// Suốt cửa sổ đang bắn, nhịp bắn (1 quả 1 lúc, cách nhau ngẫu nhiên quanh `intervalMs`) + phủ đều khung
+// theo zone giống hệt bản trước — chỉ khác Ở CHỖ có "cửa sổ thời gian được phép bắn" thay vì bắn vô
+// thời hạn ngay từ lúc mount. Panel CHỈ phơi ra vài field chính (không có control riêng cho từng lớp
+// trail/core/rays/sparks/falling) — phần hình dạng/độ mảnh xử lý NGẦM bằng hằng số trong code.
+export interface FireworkProps {
+  prizeId?: string;
+  color1: string; // màu CHÍNH — tia phóng, tia nổ, quầng sáng
+  color2: string; // màu PHỤ — tàn pháo rơi chậm (hơi khác tông cho có chiều sâu, xem preset trong FireworkPanel.tsx)
+  intervalMs: number; // khoảng cách TRUNG BÌNH giữa 2 lần bắn trong lúc đang active (có jitter ngẫu nhiên quanh giá trị này) — số CÀNG NHỎ càng dày
+  delayMs: number; // chờ bao lâu SAU khi thắng mới bắt đầu bắn
+  mode: "duration" | "continuous";
+  durationMs: number; // CHỈ dùng khi mode "duration" — bắn trong bao lâu rồi tắt hẳn
+}
+
+export interface FireworkComponent extends BaseComponent {
+  type: "firework";
+  props: FireworkProps;
 }
 
 // Thêm template mới: thêm giá trị vào union này + 1 file trong components/landing/scoreboardTemplates/
@@ -557,12 +562,12 @@ export type LandingComponent =
   | ImageComponent
   | LuckyWheelComponent
   | WinnerNameComponent
-  | PrizeNameComponent
   | PrizeImageComponent
   | CurrentTimeComponent
   | ParticipantCountComponent
   | ButtonComponent
-  | ScoreboardComponent;
+  | ScoreboardComponent
+  | FireworkComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 
