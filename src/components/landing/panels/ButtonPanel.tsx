@@ -18,6 +18,7 @@ interface ButtonPanelProps {
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
 // Tên ngắn thuần, không kèm giải thích — giữ nguyên value nội bộ ("reset", "toggleScoreboard",
 // "openLink"...) trong ButtonAction/ButtonView.tsx, chỉ đổi CHỮ HIỂN THỊ ở đây. Không còn action
@@ -43,7 +44,10 @@ const FIXED_FIELD_OPTIONS = [
 
 // Button chạy đúng 1 action CỐ ĐỊNH khi bấm (xem ButtonView.tsx) — panel này chỉ chọn action đó +
 // styling thị giác. "openLink" cần thêm picker URL field, y hệt LinkOpenerPanel.tsx (đã gộp vào
-// đây từ lúc bỏ Trigger Graph — không còn 1 component "Link Opener" riêng nữa).
+// đây từ lúc bỏ Trigger Graph — không còn 1 component "Link Opener" riêng nữa). 1 nhóm "Basic
+// options" phẳng DUY NHẤT — cùng khuôn đã dùng cho các panel khác. Button KHÔNG có nhóm "Self
+// Interactions"/"Interactions with Draw" — action chạy NGAY lúc bấm, không có giai đoạn/trạng thái
+// nào khác để cấu hình riêng.
 export default function ButtonPanel({ props, participants, usedActionOwners, onChange }: ButtonPanelProps) {
   // Dropdown Action tự dựng (không dùng <select> gốc) — <select> native không cho chèn tooltip
   // riêng vào từng option (đóng khung bởi OS, không style/nội dung tuỳ ý được), mà yêu cầu là phải
@@ -92,6 +96,7 @@ export default function ButtonPanel({ props, participants, usedActionOwners, onC
 
   return (
     <div className="space-y-3">
+      <span className={groupLabelClass}>Basic options</span>
       <div className="relative" onClick={(e) => e.stopPropagation()}>
         <label className={labelClass}>Action (on click)</label>
         <button
@@ -172,27 +177,19 @@ export default function ButtonPanel({ props, participants, usedActionOwners, onC
             value={props.multipleDrawPaceMs ?? 600}
             onChange={(e) => onChange({ multipleDrawPaceMs: Math.max(0, Number(e.target.value)) })}
           />
-          <p className="mt-1 text-[10px] leading-snug text-base-500">
-            Pause after each winner is confirmed before drawing the next one — only used by the
-            "Multiple Draw" mode from the dropdown next to this button. Quick Draw always runs with no
-            delay.
-          </p>
         </div>
       )}
 
-      <div className="h-px bg-base-800" />
-
-      <div>
-        <label className={labelClass}>Label</label>
-        <input className={fieldClass} value={props.label} onChange={(e) => onChange({ label: e.target.value })} />
-        {props.action === "draw" && (
-          <p className="mt-1 text-[10px] leading-snug text-base-500">
-            Ignored while Action is "Draw" — the button text is generated automatically ("Single
-            Draw", "Multiple Draw (2/5)", "Quick Draw (5)") to always reflect the mode picked from
-            the dropdown next to it.
-          </p>
-        )}
-      </div>
+      {/* Ẩn hẳn khi action = "draw" thay vì hiện kèm ghi chú "bị bỏ qua" — field này THẬT SỰ vô tác
+          dụng lúc đó (ButtonView.tsx tự sinh chữ "Single Draw"/"Multiple Draw (2/5)"/"Quick Draw (5)"
+          theo mode đã ARM, không đọc props.label), nên bỏ hẳn khỏi panel gọn hơn là giữ 1 ô nhập
+          không làm gì. */}
+      {props.action !== "draw" && (
+        <div>
+          <label className={labelClass}>Label</label>
+          <input className={fieldClass} value={props.label} onChange={(e) => onChange({ label: e.target.value })} />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <div>

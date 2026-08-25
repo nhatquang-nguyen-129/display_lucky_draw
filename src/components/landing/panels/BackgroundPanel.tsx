@@ -12,18 +12,13 @@ const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-
 // 3 bước 1 lượt quay THẬT SỰ đi qua — dò từ DrawSequenceActions (useDrawSequence.ts), KHÔNG bịa
 // thêm mốc nào khác: Idle (chưa có candidate) → Spinning (candidate mới, sequence.spinning === true,
 // Wheel đang animate) → Revealed (spinning vừa về false, tên/số đã hiện — Confirm có chạy hay chưa
-// không tạo thêm mốc thị giác riêng nào). Dùng để chú thích khung tham chiếu trước khi chỉnh 2 khối
-// timing bên dưới, và để đặt tên 2 khối đó CHÍNH XÁC theo đúng bước đang nói tới.
-const WHEEL_STEPS: { name: string; detail: string }[] = [
-  { name: "Idle", detail: "Standing by, nothing drawn yet (or just Reset)." },
-  { name: "Spinning", detail: "Draw/Redo just picked someone — the Wheel is turning." },
-  { name: "Revealed", detail: "The Wheel has stopped — name/number is showing." },
-];
-
+// không tạo thêm mốc thị giác riêng nào). Tên nhóm "When Revealed" bên dưới đặt theo ĐÚNG bước này.
+//
 // Dim nền lúc Wheel Revealed — GIỮ NGUYÊN 100% field/logic đã có (dimOnSpinEnd, dimAmount,
 // dimStart/EndDelay/DurationMs, xem BackgroundConfig trong types.ts + BackgroundDimOverlay.tsx) —
-// panel này CHỈ tổ chức lại JSX/label cho khớp đúng 3 bước ở trên, không đổi hành vi/dữ liệu, tránh
-// mất cấu hình landing cũ đã lưu.
+// panel này CHỈ tổ chức lại JSX/label cho khớp cấu trúc "Basic options" phẳng + "Interactions with
+// Draw" 2 cấp đã dùng cho các panel khác, không đổi hành vi/dữ liệu, tránh mất cấu hình landing cũ
+// đã lưu.
 export default function BackgroundPanel({ background, onChange }: BackgroundPanelProps) {
   // Mở sẵn nếu tính năng đang bật (không giấu mất cấu hình user đã set), nhưng SAU ĐÓ hoàn toàn do
   // người dùng tự đóng/mở — không đọc lại `background.dimOnSpinEnd` mỗi render (nếu không, sửa 1 số
@@ -98,8 +93,7 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
       <div className="h-px bg-base-800" />
 
       <div className="space-y-2">
-        <span className={groupLabelClass}>Interactions</span>
-        <p className="text-[10px] leading-snug text-base-500">How the background reacts to other components on the page.</p>
+        <span className={groupLabelClass}>Interactions with Draw</span>
 
         <details
           open={wheelSectionOpen}
@@ -107,21 +101,10 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
           className="rounded-lg border border-base-800"
         >
           <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
-            Interact with Wheel
+            When Revealed
           </summary>
 
           <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
-            <ol className="space-y-0.5">
-              {WHEEL_STEPS.map((step, i) => (
-                <li key={step.name} className="text-[10px] leading-snug text-base-500">
-                  <span className="font-medium text-base-400">
-                    {i + 1}. {step.name}
-                  </span>{" "}
-                  — {step.detail}
-                </li>
-              ))}
-            </ol>
-
             <label className="flex items-center gap-1.5 text-xs text-base-200">
               <input
                 type="checkbox"
@@ -144,14 +127,10 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
                     value={background.dimAmount ?? 50}
                     onChange={(e) => onChange({ dimAmount: Number(e.target.value) })}
                   />
-                  <p className="mt-1 text-[10px] leading-snug text-base-500">
-                    How dark it gets at full dim — shared by both directions below.
-                  </p>
                 </div>
 
                 <div className="rounded-lg border border-base-800 p-2">
                   <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">Spinning → Revealed</span>
-                  <p className="mt-0.5 text-[10px] leading-snug text-base-500">Right when the Wheel stops turning.</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <div>
                       <label className={labelClass}>Delay (ms)</label>
@@ -173,20 +152,12 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
                       />
                     </div>
                   </div>
-                  <p className="mt-1 text-[10px] leading-snug text-base-500">
-                    Delay counted from the moment the Wheel fully stops (0 = right when it stops;
-                    negative = start that many ms before it stops, while still slowing down; positive
-                    = wait that long after). Duration = how long the fade-to-dark itself takes.
-                  </p>
                 </div>
 
                 <div className="rounded-lg border border-base-800 p-2">
                   <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
                     Revealed → Spinning (next draw)
                   </span>
-                  <p className="mt-0.5 text-[10px] leading-snug text-base-500">
-                    Right when the next Draw/Redo picks a new candidate.
-                  </p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <div>
                       <label className={labelClass}>Delay (ms)</label>
@@ -209,10 +180,6 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
                       />
                     </div>
                   </div>
-                  <p className="mt-1 text-[10px] leading-snug text-base-500">
-                    Duration = how long the fade-back-to-normal itself takes, from start to fully
-                    bright again.
-                  </p>
                 </div>
               </>
             )}
