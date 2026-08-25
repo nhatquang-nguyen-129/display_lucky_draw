@@ -219,9 +219,12 @@ export default function LandingBuilderWindow() {
   // Phím tắt đổi tool — H = Hand (giống Photoshop, chỉ khi đã zoom in), V hoặc Esc = quay lại Select,
   // G = bật/tắt Gridline (giống hệt nút Gridline ở toolbar). Ctrl/Cmd +/- = Zoom In/Out.
   // Delete/Backspace = xoá component đang chọn (đúng hành vi nút "Delete component" trong
-  // SharedFields.tsx, chỉ thêm lối tắt bàn phím). Phải bỏ qua khi đang gõ trong input/textarea/select
-  // của Properties Panel, không thì gõ chữ "h" trong nội dung Text component sẽ bị nuốt mất thành
-  // phím tắt, và Backspace khi sửa Name/số sẽ vô tình xoá cả component.
+  // SharedFields.tsx, chỉ thêm lối tắt bàn phím). Tab = ẩn/hiện Properties Panel (đúng hành vi nút "✕"
+  // trong panel/nút nổi "Show panel" khi đang ẩn — chỉ thêm lối tắt bàn phím, xem showPanel bên dưới).
+  // `e.preventDefault()` riêng cho Tab — mặc định trình duyệt dùng Tab để chuyển focus, phải chặn lại
+  // thì mới dùng được làm phím tắt riêng. Phải bỏ qua khi đang gõ trong input/textarea/select của
+  // Properties Panel, không thì gõ chữ "h" trong nội dung Text component sẽ bị nuốt mất thành phím
+  // tắt, và Backspace khi sửa Name/số sẽ vô tình xoá cả component.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -259,6 +262,12 @@ export default function LandingBuilderWindow() {
       if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
         e.preventDefault();
         handleDeleteSelected();
+        return;
+      }
+
+      if (e.key === "Tab") {
+        e.preventDefault();
+        setShowPanel((v) => !v);
         return;
       }
 

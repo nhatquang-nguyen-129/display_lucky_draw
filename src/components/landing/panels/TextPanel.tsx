@@ -8,10 +8,16 @@ interface TextPanelProps {
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
+// 1 nhóm "Basic options" phẳng DUY NHẤT — cùng khuôn đã dùng cho các panel khác (LiveImagePanel.tsx,
+// LuckyWheelPanel.tsx...). Text KHÔNG có giai đoạn tương tác/hiệu ứng nào (nội dung tĩnh, không phản
+// ứng với Draw hay tự thân đổi trạng thái) nên không có nhóm "Self Interactions"/"Interactions with
+// Draw" — giống lý do ScoreboardPanel.tsx không có 2 nhóm đó.
 export default function TextPanel({ props, onChange }: TextPanelProps) {
   return (
     <div className="space-y-3">
+      <span className={groupLabelClass}>Basic options</span>
       <div>
         <label className={labelClass}>Content</label>
         <textarea

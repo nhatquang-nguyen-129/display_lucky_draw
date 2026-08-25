@@ -8,7 +8,10 @@ interface ImagePanelProps {
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
+// 1 nhóm "Basic options" phẳng DUY NHẤT — cùng khuôn đã dùng cho các panel khác. Image KHÔNG có giai
+// đoạn tương tác/hiệu ứng nào nên không có nhóm "Self Interactions"/"Interactions with Draw".
 export default function ImagePanel({ props, onChange }: ImagePanelProps) {
   function handleFile(file: File) {
     if (file.type !== "image/png") return;
@@ -19,6 +22,7 @@ export default function ImagePanel({ props, onChange }: ImagePanelProps) {
 
   return (
     <div className="space-y-3">
+      <span className={groupLabelClass}>Basic options</span>
       <div>
         <label className={labelClass}>Image (PNG)</label>
         <input

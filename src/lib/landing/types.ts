@@ -95,7 +95,13 @@ export interface LuckyWheelProps {
   rollStyle: "flicker" | "reel";
   // Sub-setting của rollStyle "reel" (KHÔNG phải landingEffect, chỉ có ý nghĩa khi rollStyle =
   // "reel") — 1 ô số hình dung gồm 2 PHẦN TÁCH BIỆT: khung trắng chứa ký tự, và CHÍNH ký tự bên
-  // trong. Mỗi phần có hiệu ứng RIÊNG lúc vừa chốt, không gộp chung:
+  // trong, mỗi phần VỀ MẶT DỮ LIỆU/RENDER (DigitRollerTemplate.tsx) vẫn là 2 field tách rời — nhưng
+  // LuckyWheelPanel.tsx giờ LUÔN đọc/ghi ĐỒNG THỜI cả 2 qua ĐÚNG 1 dropdown "Effect" (1 combination
+  // đồng bộ, không cho chọn lẻ từng lớp nữa — xem landingEffectValue/handleLandingEffectChange ở đó):
+  // "Pop" = reelCardEffect="pop" VÀ reelNumberEffect="bounce" CÙNG BẬT, "None" = cả 2 cùng "none".
+  // Landing lưu TRƯỚC bản gộp này (từng cho bật lẻ/không đồng bộ) vẫn chạy đúng y nguyên field gốc,
+  // chỉ khác ở panel: không khớp ĐÚNG combination "Pop" ở trên thì hiện "None" dù 1 trong 2 field vẫn
+  // đang bật.
   // reelCardEffect — hiệu ứng cho KHUNG TRẮNG: "pop" = khung "bật ra" (scale+fade), tạo cảm giác
   // xuất hiện chớp nhoáng. Không đụng gì tới bản thân ký tự bên trong.
   reelCardEffect: "none" | "pop";
@@ -108,7 +114,9 @@ export interface LuckyWheelProps {
   // lượt, ô đó vẫn nhấp nháy/cuộn NHANH BÌNH THƯỜNG (không giảm tốc theo ô đang chốt).
   revealTiming: "together" | "sequential";
   // Chỉ có tác dụng khi revealTiming = "sequential" — khoảng nghỉ (ms) SAU KHI ô này đã dừng hẳn,
-  // trước khi ô kế tiếp bắt đầu giảm tốc.
+  // trước khi ô kế tiếp bắt đầu giảm tốc. KHÔNG còn ô nhập riêng trong Properties Panel (đơn giản hoá
+  // theo yêu cầu "When Draw" chỉ còn đúng 3 dropdown, không có field ms nào) — luôn dùng giá trị đã
+  // lưu (mặc định 150, xem componentRegistry.ts), landing cũ từng chỉnh tay vẫn giữ nguyên giá trị đó.
   revealStaggerMs: number;
   // Trục 3 — hiệu ứng 1 LẦN ngay khi 1 ô vừa chốt xong ký tự thật, CHỈ áp dụng cho rollStyle
   // "flicker" (rollStyle "reel" dùng reelCardEffect/reelNumberEffect riêng ở trên, không dùng field
