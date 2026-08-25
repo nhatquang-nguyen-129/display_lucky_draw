@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   getParticipantExtraField,
   getParticipantField,
@@ -53,10 +53,30 @@ const FONT_OPTIONS = [
 // bỏ hết đoạn text giải thích dài dòng (label + option tự đủ rõ nghĩa; lý do 1 field bị xám vẫn xem
 // được qua tooltip khi hover, xem digitFieldOptions bên dưới) — KHÔNG còn field "Draw Session" (chỉ
 // hiện tên session hiện tại, không sửa được gì, thừa thãi) và "Name" (đã bỏ khỏi SharedFields.tsx,
-// dùng chung cho MỌI loại component chứ không riêng gì Lucky Wheel).
+// dùng chung cho MỌI loại component chứ không riêng gì Lucky Wheel). "Basic options" GỘP CHUNG cả
+// Template lẫn field data-binding cũ (Draw/Display/Winner-Source field, Digit count, Mask phone
+// numbers) VÀ field display cũ (Font, Font size, Color) thành 1 nhóm PHẲNG DUY NHẤT (không collapsible,
+// không còn tách riêng "Data binding"/"Display" nữa — gộp lại cho gọn) — CÙNG kiểu "menu 2 cấp" + CÙNG
+// quy ước đặt tên "When..." với LiveImagePanel.tsx's Self Interactions ở 2 nhóm còn lại (Self
+// Interactions LUÔN đứng TRƯỚC Interactions with Draw — tự thân component trước, phản ứng theo sự
+// kiện ngoài sau):
+//   - "Self Interactions" (LUÔN hiện) → "When Spinning" (Spin Behavior — cách wheel tự quay, không
+//     phụ thuộc Draw đã xong hay chưa).
+//   - "Interactions with Draw" (CHỈ digitRoller) → "When Draw" (Reveal Animation — phản ứng đúng lúc
+//     Draw trả kết quả).
+// Mỗi nhóm gồm ĐÚNG 1 <details> con — mở sẵn mặc định (`useState(true)`, không phải `open` tĩnh —
+// tránh React ép mở lại mỗi lần re-render, xem revealOpen/spinOpen) vì đây là cấu hình CỐT LÕI, khác
+// PrizeEffectPicker.tsx (effect tuỳ chọn thêm, mặc định đóng trừ khi đã cấu hình).
 export default function LuckyWheelPanel({ props, participants, onChange }: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
+  // Mở sẵn mặc định — khác PrizeEffectPicker.tsx (chỉ mở nếu ĐÃ cấu hình gì đó, vì hiệu ứng ở đó là
+  // tuỳ chọn thêm) — Reveal Animation/Spin Behavior là cấu hình CỐT LÕI của Wheel, hầu như ai cũng
+  // cần thấy ngay. `useState` (không phải "open" tĩnh) để tôn trọng lần đóng thủ công của người dùng
+  // — nếu để `open` là 1 giá trị cố định, React ép lại thành true mỗi lần re-render, đóng lại vẫn tự
+  // bung ra.
+  const [revealOpen, setRevealOpen] = useState(true);
+  const [spinOpen, setSpinOpen] = useState(true);
 
   // Mọi tên cột optional (extra_data) đang THỰC SỰ xuất hiện ở ít nhất 1 participant trong session
   // này — hợp nhất với 4 field cố định để Source/Draw/Display field không còn giới hạn chỉ Name/
@@ -159,6 +179,26 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
     onChange(patch);
   }
 
+  // "Effect" — 1 Ô CHUNG, 1 COMBINATION ĐỒNG BỘ cho cả 2 rollStyle, không phải chọn riêng từng lớp:
+  // "pop" bật ĐỒNG THỜI cả reelCardEffect ("pop" — khung trắng flash/scale in) LẪN reelNumberEffect
+  // ("bounce" — ký tự nảy nhẹ), 2 field gốc luôn ĐI CÙNG NHAU qua field này (không còn bật lẻ được
+  // từng cái như trước) — không đổi gì ở DigitRollerTemplate.tsx, vẫn đọc đúng 2 field cũ đó. flicker
+  // dùng thẳng field `landingEffect` sẵn có ("bounce" cũ vẫn hợp lệ trong type nhưng KHÔNG còn hiện
+  // trong dropdown — trước mắt chỉ 2 lựa chọn None/Pop, "trước mắt" nghĩa là còn mở rộng thêm sau).
+  // Landing đã lưu TRƯỚC bản gộp này vẫn chạy ĐÚNG y nguyên (field gốc không đổi) — chỉ riêng lúc
+  // HIỂN THỊ, dropdown chỉ coi là "Pop" khi ĐÚNG combination trên, còn lại (kể cả bounce lẻ/legacy
+  // không đồng bộ) đều hiện "None".
+  const landingEffectValue: "none" | "pop" =
+    props.rollStyle === "reel" ? (props.reelCardEffect === "pop" ? "pop" : "none") : props.landingEffect === "pop" ? "pop" : "none";
+
+  function handleLandingEffectChange(value: "none" | "pop") {
+    if (props.rollStyle === "reel") {
+      onChange({ reelCardEffect: value === "pop" ? "pop" : "none", reelNumberEffect: value === "pop" ? "bounce" : "none" });
+    } else {
+      onChange({ landingEffect: value });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-3">
@@ -177,12 +217,6 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
             ))}
           </select>
         </div>
-      </div>
-
-      <div className="h-px bg-base-800" />
-
-      <div className="space-y-3">
-        <span className={groupLabelClass}>Data binding</span>
 
         {isWheel && (
           <>
@@ -275,105 +309,7 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
             Mask phone numbers
           </label>
         )}
-      </div>
 
-      {isDigitRoller && (
-        <>
-          <div className="h-px bg-base-800" />
-          <div className="space-y-3">
-            <span className={groupLabelClass}>Reveal animation</span>
-
-            <div>
-              <label className={labelClass}>Rolling style</label>
-              <select
-                className={fieldClass}
-                value={props.rollStyle ?? "flicker"}
-                onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
-              >
-                <option value="flicker">Flicker (random characters)</option>
-                <option value="reel">Reel (spinning scroll)</option>
-              </select>
-            </div>
-
-            {props.rollStyle === "reel" && (
-              // 1 ô "reel" gồm 2 phần tách biệt: khung trắng chứa ký tự, và CHÍNH ký tự bên trong —
-              // mỗi phần hiệu ứng riêng khi vừa chốt, không gộp chung (xem DigitRollerTemplate.tsx).
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className={labelClass}>Card effect</label>
-                  <select
-                    className={fieldClass}
-                    value={props.reelCardEffect ?? "pop"}
-                    onChange={(e) => onChange({ reelCardEffect: e.target.value as LuckyWheelProps["reelCardEffect"] })}
-                  >
-                    <option value="none">None</option>
-                    <option value="pop">Pop (flash in)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Number effect</label>
-                  <select
-                    className={fieldClass}
-                    value={props.reelNumberEffect ?? "bounce"}
-                    onChange={(e) =>
-                      onChange({ reelNumberEffect: e.target.value as LuckyWheelProps["reelNumberEffect"] })
-                    }
-                  >
-                    <option value="none">None</option>
-                    <option value="bounce">Bounce (settles like a ball)</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className={labelClass}>Reveal timing</label>
-              <select
-                className={fieldClass}
-                value={props.revealTiming ?? "together"}
-                onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
-              >
-                <option value="together">All characters stop at once</option>
-                <option value="sequential">One at a time, left to right</option>
-              </select>
-            </div>
-
-            {props.revealTiming === "sequential" && (
-              <div>
-                <label className={labelClass}>Reveal stagger (ms)</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={50}
-                  className={fieldClass}
-                  value={props.revealStaggerMs ?? 150}
-                  onChange={(e) => onChange({ revealStaggerMs: Math.max(0, Number(e.target.value)) })}
-                />
-              </div>
-            )}
-
-            {props.rollStyle === "flicker" && (
-              <div>
-                <label className={labelClass}>Landing effect</label>
-                <select
-                  className={fieldClass}
-                  value={props.landingEffect ?? "none"}
-                  onChange={(e) => onChange({ landingEffect: e.target.value as LuckyWheelProps["landingEffect"] })}
-                >
-                  <option value="none">None (stop instantly)</option>
-                  <option value="bounce">Bounce (drop + settle)</option>
-                  <option value="pop">Pop (scale up then back)</option>
-                </select>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      <div className="h-px bg-base-800" />
-
-      <div className="space-y-3">
-        <span className={groupLabelClass}>Display</span>
         <div>
           <label className={labelClass}>Font</label>
           <select className={fieldClass} value={props.fontFamily} onChange={(e) => onChange({ fontFamily: e.target.value })}>
@@ -410,32 +346,94 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
 
       <div className="h-px bg-base-800" />
 
-      <div className="space-y-3">
-        <span className={groupLabelClass}>Spin behavior</span>
-        <div>
-          <label className={labelClass}>Spin duration (ms)</label>
-          <input
-            type="number"
-            step={100}
-            min={500}
-            className={fieldClass}
-            value={props.spinDurationMs}
-            onChange={(e) => onChange({ spinDurationMs: Number(e.target.value) })}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Spin style</label>
-          <select
-            className={fieldClass}
-            value={props.spinEasing}
-            onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
-          >
-            <option value="linear">Linear (constant speed)</option>
-            <option value="easeOut">Fast start, slow stop</option>
-            <option value="easeInOut">Smooth start and stop</option>
-          </select>
-        </div>
+      <div className="space-y-2">
+        <span className={groupLabelClass}>Self Interactions</span>
+        <details
+          open={spinOpen}
+          onToggle={(e) => setSpinOpen(e.currentTarget.open)}
+          className="rounded-lg border border-base-800"
+        >
+          <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
+            When Spinning
+          </summary>
+          <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
+            <div>
+              <label className={labelClass}>Spin duration (ms)</label>
+              <input
+                type="number"
+                step={100}
+                min={500}
+                className={fieldClass}
+                value={props.spinDurationMs}
+                onChange={(e) => onChange({ spinDurationMs: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Spin style</label>
+              <select
+                className={fieldClass}
+                value={props.spinEasing}
+                onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
+              >
+                <option value="linear">Linear (constant speed)</option>
+                <option value="easeOut">Fast start, slow stop</option>
+                <option value="easeInOut">Smooth start and stop</option>
+              </select>
+            </div>
+          </div>
+        </details>
       </div>
+
+      {isDigitRoller && (
+        <>
+          <div className="h-px bg-base-800" />
+          <div className="space-y-2">
+            <span className={groupLabelClass}>Interactions with Draw</span>
+            <details
+              open={revealOpen}
+              onToggle={(e) => setRevealOpen(e.currentTarget.open)}
+              className="rounded-lg border border-base-800"
+            >
+              <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
+                When Draw
+              </summary>
+              <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
+                <div>
+                  <label className={labelClass}>Style</label>
+                  <select
+                    className={fieldClass}
+                    value={props.rollStyle ?? "flicker"}
+                    onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
+                  >
+                    <option value="flicker">Flicker (random characters)</option>
+                    <option value="reel">Reel (spinning scroll)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Timing</label>
+                  <select
+                    className={fieldClass}
+                    value={props.revealTiming ?? "together"}
+                    onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
+                  >
+                    <option value="together">All characters stop at once</option>
+                    <option value="sequential">One at a time, left to right</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Effect</label>
+                  <select className={fieldClass} value={landingEffectValue} onChange={(e) => handleLandingEffectChange(e.target.value as "none" | "pop")}>
+                    <option value="none">None</option>
+                    <option value="pop">Pop</option>
+                  </select>
+                </div>
+              </div>
+            </details>
+          </div>
+        </>
+      )}
     </div>
   );
 }

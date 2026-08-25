@@ -8,7 +8,7 @@ interface ParticipantCountPanelProps {
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
-const sectionClass = "text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
 const FONT_OPTIONS = [
   { value: "Inter, ui-sans-serif, sans-serif", label: "Sans (default)" },
@@ -18,6 +18,11 @@ const FONT_OPTIONS = [
 
 // Config cũ (trước khi tách Label/Count) chỉ có fontSize/color dùng chung — fallback đọc lại field
 // đó nếu field mới chưa có (landing đã lưu từ trước), xem comment ở types.ts.
+//
+// 1 nhóm "Basic options" phẳng DUY NHẤT — gộp cả Label/Count/Align lẫn 3 khối style con (Label text/
+// Count number/Background) trước đây tách riêng, cùng hướng đã gộp Data binding + Display vào Basic
+// options ở LuckyWheelPanel.tsx. Participant Count KHÔNG có giai đoạn tương tác/hiệu ứng nào nên
+// không có nhóm "Self Interactions"/"Interactions with Draw".
 function legacyStyle(props: ParticipantCountProps) {
   return props as unknown as { fontSize?: number; color?: string };
 }
@@ -41,6 +46,7 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
 
   return (
     <div className="space-y-3">
+      <span className={groupLabelClass}>Basic options</span>
       <div>
         <label className={labelClass}>Label</label>
         <input className={fieldClass} value={props.label} onChange={(e) => onChange({ label: e.target.value })} />
@@ -69,8 +75,6 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
         </select>
       </div>
 
-      <div className="h-px bg-base-800" />
-      <span className={sectionClass}>Label text</span>
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
           <label className={labelClass}>Font</label>
@@ -106,8 +110,6 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
         </div>
       </div>
 
-      <div className="h-px bg-base-800" />
-      <span className={sectionClass}>Count number</span>
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
           <label className={labelClass}>Font</label>
@@ -143,10 +145,8 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
         </div>
       </div>
 
-      <div className="h-px bg-base-800" />
-      <span className={sectionClass}>Background</span>
       <div>
-        <label className={labelClass}>Type</label>
+        <label className={labelClass}>Background</label>
         <select
           className={fieldClass}
           value={backgroundType}
