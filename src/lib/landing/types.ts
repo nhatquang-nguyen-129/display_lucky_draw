@@ -44,6 +44,14 @@ export interface TextProps {
   color: string;
   fontWeight: "normal" | "bold";
   align: "left" | "center" | "right";
+  // Mặc định undefined/false = giữ NGUYÊN hành vi cũ (luôn hiện `content`, không phụ thuộc Draw) —
+  // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = ẩn hẳn lúc Idle (chưa có kết
+  // quả), CHỈ hiện khi Wheel/Draw vừa tiết lộ 1 candidate (dùng lại đúng winnerRevealDelayMs mà
+  // Winner Name đã dùng — xem TextView.tsx/drawRevealHooks.ts), tự ẩn lại (disappearEffect) khi quay
+  // về Idle — cùng cơ chế/vocab hiệu ứng với WinnerNameProps.appearEffect/disappearEffect.
+  syncWithDraw?: boolean;
+  appearEffect?: WinnerTransitionEffect;
+  disappearEffect?: WinnerTransitionEffect;
 }
 
 export interface ImageProps {
@@ -144,15 +152,13 @@ export interface LiveTextProps {
   color: string;
   fontWeight: "normal" | "bold";
   align: "left" | "center" | "right";
-  fallbackText: string; // hiện khi chưa có lượt quay nào
 }
 
-// Hiệu ứng CHUYỂN CẢNH — đúng 1 LẦN, đúng khoảnh khắc fallbackText bị THAY bằng tên người trúng thật
-// (xem WinnerNameView.tsx) — 2 lớp text chồng lên nhau (fallback đang mất đi + tên thật đang hiện ra)
-// cùng lúc, KHÁC HẲN `revealEffect` bên dưới (hiệu ứng "đứng yên/xuất hiện" áp cho BẤT KỲ đoạn text
-// nào đang hiện tại 1 thời điểm, kể cả lúc còn là fallback — vd chọn "pulse" thì fallback tự pulse
-// liên tục trong lúc chờ). "none" = đổi tức khắc, không hiệu ứng chuyển cảnh gì (revealEffect vẫn áp
-// bình thường cho lớp mới ngay khi hiện).
+// Hiệu ứng ẨN/HIỆN 1 LẦN — dùng cho CẢ Winner Name lẫn Text (khi bật `syncWithDraw`, xem
+// TextProps/TextView.tsx): "Appear" chạy lúc nội dung từ rỗng chuyển sang có (mới được tiết lộ),
+// "Disappear" chạy lúc từ có chuyển về rỗng (quay lại Idle/Reset hoặc 1 lượt Draw mới vừa bắt đầu).
+// 2 lớp text chồng lên nhau trong lúc chuyển (lớp cũ chạy class "-out", lớp mới chạy class "-in",
+// xem WinnerNameView.tsx/TextView.tsx/drawRevealHooks.ts). "none" = đổi tức khắc, không hiệu ứng gì.
 export type WinnerTransitionEffect = "none" | "crossfade" | "slideUp" | "slideDown" | "zoom";
 
 export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
@@ -163,20 +169,18 @@ export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
   "zoom",
 ];
 
-// CHỈ Winner Name có 2 field này — nhờ `revealDelayMs`, nó có 1 pha "fallback rồi đổi sang thật" mà
-// `transitionEffect` phát huy tác dụng đúng lúc đổi. `revealEffect`
-// KHÁC với field `effect` chung (SharedFields.tsx, áp cho khung NGOÀI mỗi khi có lượt quay mới) —
-// field này tái dùng nguyên bộ EffectName/CSS class đã có (landingEffects.css) cho quen mắt, áp cho
-// ĐOẠN TEXT đang hiện (fallback hoặc tên thật) ở TRẠNG THÁI ĐỨNG YÊN — không định nghĩa hẳn 1 bộ hiệu
-// ứng mới cho việc này.
+// Winner Name KHÔNG còn "Fallback text" — lúc chưa có kết quả (Idle) component ẩn hẳn (nội dung
+// rỗng), `appearEffect` chạy đúng lúc tên thật xuất hiện, `disappearEffect` chạy đúng lúc quay lại
+// Idle (Reset, hoặc 1 lượt Draw mới vừa bắt đầu — tên CŨ biến mất trước khi tên MỚI kịp hiện, xem
+// useRevealed trong drawRevealHooks.ts). 2 field ĐỘC LẬP nhau (không còn 1 field `transitionEffect`
+// dùng chung cho cả 2 chiều như trước).
 export interface WinnerNameProps extends LiveTextProps {
-  revealEffect: EffectName;
-  transitionEffect: WinnerTransitionEffect;
+  appearEffect: WinnerTransitionEffect;
+  disappearEffect: WinnerTransitionEffect;
   // Hiện THAY CHO tên người trúng ngay sau khi 1 Quick Draw vừa chạy xong (xem
   // DrawSequenceActions.quickDrawResult/runDraw trong useDrawSequence.ts) — Quick Draw ra NHIỀU
   // người trúng cùng lúc nên không có 1 cái tên "đúng" nào để hiện, dùng 1 câu chung thay thế. Chỉ
-  // Winner Name có field này (Prize Name dùng chung LiveTextPanel.tsx nhưng không có, gate theo
-  // showWinnerFields y hệt revealEffect/transitionEffect ở trên).
+  // Winner Name có field này.
   quickDrawText: string;
 }
 

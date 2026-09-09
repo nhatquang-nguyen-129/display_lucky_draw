@@ -42,8 +42,12 @@ interface LandingRendererProps {
 // Các loại component "động" đơn giản (không tự quản lý animation state như luckyWheel) được remount
 // mỗi khi có kết quả quay MỚI, để hiệu ứng entrance (fadeIn/slideUp...) tự bắn lại — không cần thêm
 // timer/JS nào khác. luckyWheel KHÔNG nằm trong danh sách này vì nó tự quản lý animation quay liên
-// tục qua state nội bộ, remount sẽ làm mất góc quay hiện tại.
-const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["winnerName", "prizeImage"]);
+// tục qua state nội bộ, remount sẽ làm mất góc quay hiện tại. winnerName CŨNG không còn nằm trong
+// danh sách này nữa (tự quản lý ẩn/hiện + Appear/Disappear qua drawRevealHooks.ts, xem
+// WinnerNameView.tsx) — remount sẽ HUỶ MẤT NGAY DOM node cũ đúng lúc results[0].id đổi (xem
+// effectiveData trong useDrawSequence.ts, đổi id NGAY lúc pick(), trước khi Wheel quay xong), không
+// còn cơ hội nào để chạy disappearEffect.
+const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["prizeImage"]);
 
 // Painter thuần, chỉ đọc — không có state, không có tương tác. Dùng chung nguyên vẹn bởi
 // LandingCanvas (lớp nền trong Builder) và PresentMode (toàn màn hình) để 2 nơi không bao giờ
@@ -73,9 +77,9 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   const winnerRevealDelayMs = computeWheelRevealDelayMs(config.components);
   // `clip={false}` là tín hiệu RIÊNG LandingCanvas.tsx đã dùng sẵn để tự nhận diện "đây là canvas kéo
   // thả của Builder" (xem doc-comment `clip` trong LandingRendererProps) — dùng LẠI đúng tín hiệu này
-  // cho WinnerNameView thay vì suy luận qua `interactive`, vì LandingPage.tsx (preview read-only ở
-  // cửa sổ chính) CŨNG không interactive nhưng phải hiện đúng fallbackText/tên thật như Present Mode
-  // thật, không được lẫn với chữ giữ chỗ chỉ dành riêng cho Builder.
+  // cho WinnerNameView/TextView thay vì suy luận qua `interactive`, vì LandingPage.tsx (preview
+  // read-only ở cửa sổ chính) CŨNG không interactive nhưng phải hiện đúng trạng thái ẩn/hiện thật như
+  // Present Mode thật, không được lẫn với chữ giữ chỗ chỉ dành riêng cho Builder.
   const builderPreview = clip === false;
 
   return (
@@ -251,7 +255,7 @@ function renderComponent(
 ) {
   switch (component.type) {
     case "text":
-      return <TextView component={component} />;
+      return <TextView component={component} data={data} builderPreview={builderPreview} revealDelayMs={winnerRevealDelayMs} />;
     case "image":
       return <ImageView component={component} />;
     case "luckyWheel":

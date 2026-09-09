@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { EFFECT_NAMES, EffectName, LiveTextProps, WINNER_TRANSITION_EFFECTS, WinnerTransitionEffect } from "@/lib/landing/types";
+import { LiveTextProps, WINNER_TRANSITION_EFFECTS, WinnerTransitionEffect } from "@/lib/landing/types";
 
 interface LiveTextPanelProps {
-  props: LiveTextProps & { revealEffect?: EffectName; transitionEffect?: WinnerTransitionEffect; quickDrawText?: string };
+  props: LiveTextProps & { appearEffect?: WinnerTransitionEffect; disappearEffect?: WinnerTransitionEffect; quickDrawText?: string };
   onChange: (patch: Record<string, any>) => void;
 }
 
@@ -14,31 +14,23 @@ const detailsClass = "rounded-lg border border-base-800";
 const summaryClass = "cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100";
 const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5";
 
-// Cùng khuôn "Basic options" phẳng + nhóm "Self Interactions"/"Interactions with Draw" 2 cấp, đặt tên
-// "When..." đã dùng cho LiveImagePanel.tsx/LuckyWheelPanel.tsx — Self Interactions LUÔN đứng TRƯỚC
-// Interactions with Draw (tự thân component trước, phản ứng theo sự kiện ngoài sau):
-//   - "Self Interactions" → "When Idle" (Reveal effect — hiệu ứng đứng yên áp cho BẤT KỲ đoạn text nào
-//     đang hiện, kể cả fallback lúc còn chờ, không phụ thuộc đã có kết quả Draw hay chưa).
-//   - "Interactions with Draw" → "When Revealed" (Transition effect — đúng khoảnh khắc fallback đổi
-//     thành tên thật) và "When Quick Draw" (Quick Draw text — hiện thay tên khi 1 Quick Draw vừa
-//     chạy xong) — cả 2 đều CHỈ xảy ra vì Draw đã chạy.
+// Cùng khuôn "Basic options" phẳng + "Interactions with Draw" đã dùng cho các panel khác — KHÔNG có
+// "Self Interactions" (Winner Name không bị click/hover/select trực tiếp, mọi thứ nó làm đều VÌ Draw
+// đã chạy). Không còn "Fallback text" — lúc Idle component ẩn hẳn (nội dung rỗng), thay bằng đúng 1
+// cặp Appear/Disappear:
+//   - "When Revealed" (Appear effect — đúng khoảnh khắc tên thật xuất hiện)
+//   - "When Idle" (Disappear effect — đúng khoảnh khắc quay lại rỗng, Reset hoặc 1 lượt Draw mới vừa
+//     bắt đầu)
+//   - "When Quick Draw" (Quick Draw text — hiện thay tên khi 1 Quick Draw vừa chạy xong)
 export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
-  const [idleOpen, setIdleOpen] = useState(true);
   const [revealedOpen, setRevealedOpen] = useState(true);
+  const [idleOpen, setIdleOpen] = useState(true);
   const [quickDrawOpen, setQuickDrawOpen] = useState(true);
 
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <span className={groupLabelClass}>Basic options</span>
-        <div>
-          <label className={labelClass}>Fallback text (before the first draw)</label>
-          <input
-            className={fieldClass}
-            value={props.fallbackText}
-            onChange={(e) => onChange({ fallbackText: e.target.value })}
-          />
-        </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={labelClass}>Font size</label>
@@ -87,18 +79,18 @@ export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
       <div className="h-px bg-base-800" />
 
       <div className="space-y-2">
-        <span className={groupLabelClass}>Self Interactions</span>
-        <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Idle</summary>
+        <span className={groupLabelClass}>Interactions with Draw</span>
+        <details open={revealedOpen} onToggle={(e) => setRevealedOpen(e.currentTarget.open)} className={detailsClass}>
+          <summary className={summaryClass}>When Revealed</summary>
           <div className={detailsBodyClass}>
             <div>
-              <label className={labelClass}>Reveal effect</label>
+              <label className={labelClass}>Appear effect</label>
               <select
                 className={fieldClass}
-                value={props.revealEffect ?? "none"}
-                onChange={(e) => onChange({ revealEffect: e.target.value as EffectName })}
+                value={props.appearEffect ?? "none"}
+                onChange={(e) => onChange({ appearEffect: e.target.value as WinnerTransitionEffect })}
               >
-                {EFFECT_NAMES.map((name) => (
+                {WINNER_TRANSITION_EFFECTS.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -107,21 +99,15 @@ export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
             </div>
           </div>
         </details>
-      </div>
-
-      <div className="h-px bg-base-800" />
-
-      <div className="space-y-2">
-        <span className={groupLabelClass}>Interactions with Draw</span>
-        <details open={revealedOpen} onToggle={(e) => setRevealedOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Revealed</summary>
+        <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
+          <summary className={summaryClass}>When Idle</summary>
           <div className={detailsBodyClass}>
             <div>
-              <label className={labelClass}>Transition effect</label>
+              <label className={labelClass}>Disappear effect</label>
               <select
                 className={fieldClass}
-                value={props.transitionEffect ?? "none"}
-                onChange={(e) => onChange({ transitionEffect: e.target.value as WinnerTransitionEffect })}
+                value={props.disappearEffect ?? "none"}
+                onChange={(e) => onChange({ disappearEffect: e.target.value as WinnerTransitionEffect })}
               >
                 {WINNER_TRANSITION_EFFECTS.map((name) => (
                   <option key={name} value={name}>
