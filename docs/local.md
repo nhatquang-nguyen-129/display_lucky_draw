@@ -281,25 +281,60 @@ git
 
 ## 3. Run Application on Local
 
-### 3.1. Free the development port
+### 3.1. Windows
 
-- The Vite development server uses port **5173** by default. If port **5173** is already in use, Vite may fail to start or Electron may connect to an old development server.
+- The Vite development server uses port **5173** by default. If port **5173** is already in use, Vite may fail to start or Electron may connect to an old development server. Free it first:
 
-- Free the development port on macOS/Linux
+```powershell
+Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+
+- This project uses native Node.js modules such as `better-sqlite3`. After installing dependencies, switching Node.js versions, updating Electron, or performing a clean installation, rebuild all native modules:
+
+```powershell
+npx electron-rebuild
+```
+
+- Skipping the rebuild step may result in errors such as `NODE_MODULE_VERSION mismatch` or `The module was compiled against a different Node.js version.`
+
+- Start the development environment — builds the Electron main process, starts the Vite dev server (`http://localhost:5173`), and opens Developer Tools (development mode):
+
+```powershell
+npm run electron:dev
+```
+
+- If the app exits immediately on launch with `TypeError: Cannot read properties of undefined (reading 'getPath')` (thrown at `dist-electron/db.js`), the shell has `ELECTRON_RUN_AS_NODE=1` set — this is the default inside the **VS Code integrated terminal** and any terminal spawned by a VS Code extension. Clear the variable, then start again:
+
+```powershell
+Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+npm run electron:dev
+```
+
+- Alternatively, run `npm run electron:dev` from a standalone **Windows Terminal / PowerShell** window instead of the VS Code integrated terminal.
+
+- Editing files in `electron/` requires stopping and restarting `npm run electron:dev` — the main process is not hot-reloaded (only the renderer is). On Windows, `Ctrl+C` does not always terminate every child process; leftover `electron.exe` / `node.exe` may keep holding port **5173** or lock files under `dist-electron/`. Terminate them before restarting:
+
+```powershell
+taskkill /F /IM electron.exe 2>$null
+taskkill /F /IM node.exe 2>$null
+```
+
+- The SQLite database is created automatically on the first launch at `%APPDATA%\lucky-draw-app\lucky-draw.db`. Open its folder with:
+
+```powershell
+explorer $env:APPDATA\lucky-draw-app
+```
+
+- To reset all application data, close the application, delete the database file, then start the application again.
+
+### 3.2. macOS
+
+- The Vite development server uses port **5173** by default. If port **5173** is already in use, Vite may fail to start or Electron may connect to an old development server. Free it first (macOS / Linux):
 
 ```bash
 lsof -ti:5173 | xargs kill -9
 ```
-
-- Free the development port on Windows PowerShell
-
-```powershell
-Get-NetTCPConnection -LocalPort 5173 | ForEach-Object {
-    Stop-Process -Id $_.OwningProcess -Force
-}
-```
-
-## 3.2. Rebuild Electron native modules
 
 - This project uses native Node.js modules such as `better-sqlite3`. After installing dependencies, switching Node.js versions, updating Electron, or performing a clean installation, rebuild all native modules:
 
@@ -307,33 +342,21 @@ Get-NetTCPConnection -LocalPort 5173 | ForEach-Object {
 npx electron-rebuild
 ```
 
-- Skipping this step may result in errors such as:
+- Skipping the rebuild step may result in errors such as `NODE_MODULE_VERSION mismatch` or `The module was compiled against a different Node.js version.`
 
-```text
-NODE_MODULE_VERSION mismatch
-```
+- Start the development environment — builds the Electron main process, starts the Vite dev server (`http://localhost:5173`), and opens Developer Tools (development mode):
 
-or
-
-```text
-The module was compiled against a different Node.js version.
-```
-
-## 3.3. Start the development environment
-
-- Builds the Electron main process to starts the Vite development server (`http://localhost:5173`) and opens Developer Tools (development mode)
 ```bash
 npm run electron:dev
 ```
 
-## 3.4. Locate SQLite Database
+- Editing files in `electron/` requires stopping and restarting `npm run electron:dev` — the main process is not hot-reloaded (only the renderer is). Stopping with `Ctrl+C` normally tears down the Vite and Electron child processes together (`concurrently -k`).
 
-- The database is created automatically on the first launch.
+- The SQLite database is created automatically on the first launch:
 
 | Operating System | Database Location |
 |-----------------|-------------------|
 | macOS | `~/Library/Application Support/lucky-draw-app/lucky-draw.db` |
-| Windows | `%APPDATA%\lucky-draw-app\lucky-draw.db` |
 | Linux | `~/.config/lucky-draw-app/lucky-draw.db` |
 
-- To reset all application data, close the application, delete the database file then start the application again
+- To reset all application data, close the application, delete the database file, then start the application again.
