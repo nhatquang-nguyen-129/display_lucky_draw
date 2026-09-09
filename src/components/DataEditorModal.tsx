@@ -290,6 +290,15 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     return rows;
   }, [history.state.rows, issueFilter, issuesByRow, columnFilters, sortColumn, sortDirection]);
 
+  // Bỏ filter issue khi loại issue đang chọn không còn tồn tại (đã sửa hết) — nếu không, chip
+  // "Clear filter" bị ẩn (issues.length === 0) mà visibleRows vẫn rỗng, kẹt ở "No rows to display".
+  useEffect(() => {
+    if (!issueFilter) return;
+    const stillExists =
+      issueFilter === "__any__" ? issues.length > 0 : issueGroups.some((g) => g.message === issueFilter);
+    if (!stillExists) setIssueFilter(null);
+  }, [issueFilter, issues.length, issueGroups]);
+
   function commitEdit() {
     if (!editingCell) return;
     const cmd = editCellCommand(history.state, editingCell.rowId, editingCell.col, editValue);
@@ -570,7 +579,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
           onPaste={handlePaste}
           className="flex h-[75vh] flex-col outline-none"
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-base-800 bg-base-900 pb-2">
+          <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-base-800 bg-base-900 pb-2">
             <div className="flex gap-1">
               {GROUPS.map((g) => (
                 <div key={g.key} className="relative">
@@ -1074,7 +1083,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   <col key={col} style={{ width: columnWidths[col] ?? DEFAULT_COLUMN_WIDTH }} />
                 ))}
               </colgroup>
-              <thead className="sticky top-0 z-[5] bg-base-900 text-xs uppercase tracking-wide text-base-400">
+              <thead className="sticky top-0 z-20 bg-base-900 text-xs uppercase tracking-wide text-base-400">
                 <tr>
                   <th className="px-2 py-2">
                     <input
@@ -1171,7 +1180,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                       />
                       {openColumnMenu === col && (
                         <div
-                          className="absolute left-0 z-20 mt-1 w-48 rounded-lg border border-base-700 bg-base-900 p-2 text-left normal-case shadow-2xl"
+                          className="absolute left-0 z-40 mt-1 w-48 rounded-lg border border-base-700 bg-base-900 p-2 text-left normal-case shadow-2xl"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
