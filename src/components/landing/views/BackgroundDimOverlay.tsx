@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BackgroundConfig, LandingData } from "@/lib/landing/types";
+import { BackgroundConfig, isLiveDrawResultId, LandingData } from "@/lib/landing/types";
 
 // Lớp phủ đen mờ dần lên TRÊN background, DƯỚI mọi component khác (render làm con ĐẦU TIÊN trong
 // LandingRenderer.tsx, trước {sorted.map(...)}) — "spotlight" cho nội dung nổi bật hơn (Winner Name,
@@ -27,7 +27,10 @@ export default function BackgroundDimOverlay({
   const startDurationMs = background.dimStartDurationMs ?? 1000;
   const endDelayMs = Math.max(0, background.dimEndDelayMs ?? 0);
   const endDurationMs = background.dimEndDurationMs ?? 1000;
-  const latestId = data?.results[0]?.id;
+  // Chỉ dim theo dòng kết quả LIVE (id "pending-*" — 1 lượt Draw đang diễn ra trong phiên Present
+  // này), bỏ qua kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở (nếu không nền tự dim xuống sau
+  // winnerRevealDelayMs dù chưa ai bấm Draw).
+  const latestId = isLiveDrawResultId(data?.results[0]?.id) ? data!.results[0]!.id : undefined;
 
   const [dimmed, setDimmed] = useState(false);
   // Thời gian transition cho LẦN đổi opacity SẮP TỚI — đổi giá trị này TRƯỚC khi gọi setDimmed() ở

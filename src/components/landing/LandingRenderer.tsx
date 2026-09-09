@@ -1,6 +1,7 @@
 import {
   computeWheelRevealDelayMs,
   DrawSequenceActions,
+  isLiveDrawResultId,
   LandingComponent,
   LandingComponentType,
   LandingConfig,
@@ -108,7 +109,10 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
       )}
 
       {sorted.map((component) => {
-        const resultKey = data?.results[0]?.id ?? "empty";
+        // Chỉ remount theo dòng kết quả LIVE (id "pending-*" — 1 lượt Draw đang diễn ra trong phiên
+        // Present này). Kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở luôn quy về "idle" nên
+        // component không tự bắn lại entrance effect lúc mount.
+        const resultKey = isLiveDrawResultId(data?.results[0]?.id) ? data!.results[0]!.id : "idle";
         const key = REMOUNT_ON_RESULT_TYPES.has(component.type) ? `${component.id}-${resultKey}` : component.id;
         return (
           <div

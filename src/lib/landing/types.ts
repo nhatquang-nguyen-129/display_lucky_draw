@@ -454,6 +454,19 @@ export function getScoreboardFieldLabel(field: ScoreboardField): string {
   return SCOREBOARD_FIELD_LABELS[field] ?? field;
 }
 
+// Prefix cho "dòng kết quả giả" mà useDrawSequence.effectiveData độn vào ĐẦU results khi đang có 1
+// lượt Draw diễn ra trong phiên Present hiện tại (candidate chưa/đã Confirm nhưng chưa Reset). Chỉ
+// dòng mang prefix này mới là "kết quả LIVE": các component tự quay / tự hiện winner
+// (WheelTemplate / DigitRollerTemplate / WinnerNameView / TextView, và việc remount theo
+// results[0].id trong LandingRenderer) CHỈ phản ứng với nó. Kết quả đọc từ DB khi mở lại 1 phiên đã
+// quay dở KHÔNG mang prefix này nên không kích hoạt tự quay / nhảy tên winner khi chưa ai bấm Draw.
+// Ngược lại, Scoreboard (TableTemplate.tsx) LỌC BỎ đúng các dòng này vì chúng chưa Confirm.
+export const PENDING_RESULT_ID_PREFIX = "pending-";
+
+export function isLiveDrawResultId(id: string | null | undefined): boolean {
+  return typeof id === "string" && id.startsWith(PENDING_RESULT_ID_PREFIX);
+}
+
 // Danh sách người đã trúng giải VÀ ĐÃ CONFIRM (draw_results thật — xem ScoreboardView.tsx, lọc bỏ
 // dòng "pending-*" do useDrawSequence độn vào khi có candidate chưa Confirm, không tính là đã trúng
 // thật). Danh sách có thể dài (nhiều lượt quay) nên bản thân component cuộn dọc bên trong khung cố

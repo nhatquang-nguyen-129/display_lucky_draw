@@ -1,4 +1,4 @@
-import { LandingData, TextComponent } from "@/lib/landing/types";
+import { isLiveDrawResultId, LandingData, TextComponent } from "@/lib/landing/types";
 import { APPEAR_CLASS, DISAPPEAR_CLASS, useRevealed, useRevealTransition } from "./drawRevealHooks";
 
 export default function TextView({
@@ -16,10 +16,13 @@ export default function TextView({
 }) {
   const { content, fontSize, color, fontWeight, align, syncWithDraw, appearEffect, disappearEffect } = component.props;
   const latest = data?.results[0];
+  // Chỉ 1 lượt Draw LIVE (id "pending-*") mới kích hoạt reveal — kết quả cũ từ DB khi mở lại phiên
+  // không làm Text tự hiện, xem chú thích tương tự trong WinnerNameView.tsx.
+  const liveResultId = isLiveDrawResultId(latest?.id) ? latest!.id : undefined;
 
   // Hook LUÔN được gọi (kể cả khi syncWithDraw tắt) — tuân thủ Rules of Hooks, chỉ giá trị TRẢ VỀ có
   // được dùng hay không mới tuỳ nhánh bên dưới.
-  const revealed = useRevealed(latest?.id, revealDelayMs);
+  const revealed = useRevealed(liveResultId, revealDelayMs);
   const text = !syncWithDraw || builderPreview ? content : revealed ? content : "";
   const { current, previous } = useRevealTransition(text, appearEffect ?? "none", disappearEffect ?? "none");
 

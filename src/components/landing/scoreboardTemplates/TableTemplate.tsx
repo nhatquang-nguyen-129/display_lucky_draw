@@ -1,10 +1,17 @@
 import { DrawResultRow } from "@/types";
-import { getParticipantExtraField, getScoreboardFieldLabel, LandingData, ScoreboardComponent, ScoreboardField } from "@/lib/landing/types";
+import {
+  getParticipantExtraField,
+  getScoreboardFieldLabel,
+  isLiveDrawResultId,
+  LandingData,
+  ScoreboardComponent,
+  ScoreboardField,
+} from "@/lib/landing/types";
 
 // Chỉ tính là "đã trúng thật" khi đã CONFIRM — loại bỏ dòng "pending-<seed>" mà useDrawSequence độn
 // vào đầu results cho candidate CHƯA Confirm (xem effectiveData trong useDrawSequence.ts).
 function confirmedWinners(data?: LandingData) {
-  return (data?.results ?? []).filter((r) => !r.id.startsWith("pending-"));
+  return (data?.results ?? []).filter((r) => !isLiveDrawResultId(r.id));
 }
 
 function CloseIcon() {
