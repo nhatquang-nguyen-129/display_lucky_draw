@@ -145,7 +145,8 @@ export default function LandingBuilderWindow() {
   // Truyền xuống LandingCanvas -> LandingRenderer để Prize Image hiện ĐÚNG ảnh giải thật ngay trên
   // canvas Builder (trước đây canvas không nhận `data` gì cả nên component đó luôn rơi vào nhánh
   // "No image" dù Prize đã có ảnh). `results: []` vì Builder không cần biết kết quả quay — Winner
-  // vẫn tự hiện fallbackText đúng như khi chưa có data.
+  // Name/Text (Sync with Draw) vẫn tự hiện placeholder/nội dung thật đúng như khi chưa có data, nhờ
+  // `builderPreview` (xem `clip={false}` trong LandingCanvas.tsx).
   const landingData: LandingData = useMemo(
     () => ({ participants, prizes, results: [] }),
     [participants, prizes]

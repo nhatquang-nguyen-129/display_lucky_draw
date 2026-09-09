@@ -57,12 +57,14 @@
   animation: landing-bounce 1.2s ease-in-out infinite;
 }
 
-/* Hiệu ứng CHUYỂN CẢNH riêng cho Winner Name (WinnerNameProps.transitionEffect, xem
-   WinnerNameView.tsx) — KHÁC hẳn 4 hiệu ứng "đứng yên/xuất hiện" ở trên: chạy đúng 1 LẦN, đúng
-   khoảnh khắc fallbackText bị thay bằng tên người trúng thật, trên 2 LỚP TEXT CHỒNG NHAU cùng lúc
-   (lớp cũ đang MẤT ĐI dùng class "-out", lớp mới đang HIỆN RA dùng class "-in") — không phải hiệu
-   ứng lặp lại như pulse/bounce. Thời lượng CỐ ĐỊNH 0.5s, khớp TRANSITION_MS trong WinnerNameView.tsx —
-   đổi 1 trong 2 chỗ thì phải đổi luôn chỗ còn lại. */
+/* Hiệu ứng Appear/Disappear DÙNG CHUNG bởi Winner Name (WinnerNameProps.appearEffect/
+   disappearEffect) VÀ Text khi bật syncWithDraw (TextProps.appearEffect/disappearEffect) — xem
+   WinnerNameView.tsx/TextView.tsx/drawRevealHooks.ts — KHÁC hẳn 4 hiệu ứng "đứng yên/xuất hiện" ở
+   trên: chạy đúng 1 LẦN, đúng khoảnh khắc nội dung rỗng (Idle) đổi thành có (Revealed) hoặc ngược
+   lại, trên 2 LỚP TEXT CHỒNG NHAU cùng lúc (lớp cũ đang MẤT ĐI dùng class "-out"/disappearEffect,
+   lớp mới đang HIỆN RA dùng class "-in"/appearEffect) — không phải hiệu ứng lặp lại như pulse/bounce.
+   Thời lượng CỐ ĐỊNH 0.5s, khớp TRANSITION_MS trong drawRevealHooks.ts — đổi 1 trong 2 chỗ thì phải
+   đổi luôn chỗ còn lại. */
 
 @keyframes winner-transition-crossfade-out {
   from {
