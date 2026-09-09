@@ -29,18 +29,25 @@ export const APPEAR_CLASS: Record<WinnerTransitionEffect, string> = {
 // (mirror đúng khoảng trống "tên cũ biến mất lúc lượt Draw mới vừa bắt đầu" đã có từ trước), rồi chờ
 // đúng `revealDelayMs` (khớp thời lượng Wheel quay xong hẳn, 0 nếu trang không có Wheel) mới bật lại.
 export function useRevealed(resultId: string | undefined, revealDelayMs: number): boolean {
-  const [revealed, setRevealed] = useState(() => resultId !== undefined && revealDelayMs <= 0);
+  const initialRevealed = resultId !== undefined && revealDelayMs <= 0;
+  const [revealed, setRevealed] = useState(initialRevealed);
+
+  // Ẩn NGAY trong lúc render khi resultId đổi — KHÔNG đợi useEffect. Nếu để useEffect lo việc này, có
+  // đúng 1 khung hình `revealed` còn `true` của lượt CŨ trong khi `results[0]` đã là candidate MỚI,
+  // khiến Winner Name/Text flash tên người trúng mới ra 1 nhịp trước khi Wheel quay tiếp (bug khi bấm
+  // Draw lại lúc đang chờ Confirm — redo()). setState-trong-render có điều kiện + so KHÁC giá trị là
+  // pattern React hợp lệ: React huỷ output render hiện tại rồi render lại ngay với state mới TRƯỚC khi
+  // paint, nên khung hình lộ tên mới không bao giờ hiển thị.
+  const prevIdRef = useRef(resultId);
+  if (prevIdRef.current !== resultId) {
+    prevIdRef.current = resultId;
+    setRevealed(initialRevealed);
+  }
 
   useEffect(() => {
-    if (resultId === undefined) {
-      setRevealed(false);
-      return;
-    }
-    setRevealed(false);
-    if (revealDelayMs <= 0) {
-      setRevealed(true);
-      return;
-    }
+    // resultId === undefined (Idle) hoặc revealDelayMs <= 0 (không có Wheel) đã được xử lý đúng ngay
+    // trong render ở trên — chỉ cần hẹn giờ bật lại cho nhánh "có Wheel, đang chờ quay xong".
+    if (resultId === undefined || revealDelayMs <= 0) return;
     const timer = setTimeout(() => setRevealed(true), revealDelayMs);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
