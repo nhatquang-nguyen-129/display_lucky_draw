@@ -4,6 +4,7 @@ import type { DrawCandidate } from "./drawEngine";
 const api = {
   participants: {
     list: (sessionId: string) => ipcRenderer.invoke("participants:list", sessionId),
+    stats: (sessionId: string) => ipcRenderer.invoke("participants:stats", sessionId),
     create: (data: {
       sessionId: string;
       name: string;

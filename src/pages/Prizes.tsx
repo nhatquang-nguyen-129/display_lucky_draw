@@ -168,12 +168,9 @@ export default function Prizes() {
   return (
     <div>
       <header className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Prizes</h1>
-          <p className="mt-1 text-sm text-base-400">
-            Session "{activeSession.name}" — {items.length} prizes.
-          </p>
-        </div>
+        <p className="text-sm text-base-400">
+          Session "{activeSession.name}" — {items.length} prizes.
+        </p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={openEditSelected} disabled={!selectedId}>
             Edit

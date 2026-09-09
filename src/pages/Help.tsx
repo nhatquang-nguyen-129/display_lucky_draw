@@ -58,8 +58,7 @@ export default function Help() {
   return (
     <div>
       <header className="mb-6">
-        <h1 className="font-display text-2xl font-medium text-base-100">Help</h1>
-        <p className="mt-1 text-sm text-base-400">
+        <p className="text-sm text-base-400">
           How specific Landing Builder components behave — the Properties Panel itself only shows the
           fields you can edit.
         </p>

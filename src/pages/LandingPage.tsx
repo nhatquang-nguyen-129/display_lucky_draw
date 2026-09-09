@@ -77,7 +77,6 @@ export default function LandingPage() {
     <div className="flex h-full flex-col">
       <div className="mb-3 flex shrink-0 items-center justify-between">
         <div>
-          <h1 className="font-display text-xl font-medium text-base-100">Landing Page</h1>
           <p className="text-xs text-base-500">
             Session "{activeSession.name}" · {config.components.length} component(s)
           </p>
