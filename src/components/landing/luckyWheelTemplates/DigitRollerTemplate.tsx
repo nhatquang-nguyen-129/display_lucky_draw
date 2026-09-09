@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import { getParticipantField, isLiveDrawResultId, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
 import "./digitRollerEffects.css";
 
 // Tốc độ nhấp nháy ký tự lúc "đang quay" (rollStyle "flicker") — chạy từ nhanh (MIN_DELAY) tới chậm
@@ -294,12 +294,13 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
     }
   }, []);
 
-  // Tự phát hiện có candidate MỚI (results[0].id đổi) rồi tự bắt đầu quay — cơ chế gốc trước khi có
-  // Trigger Graph (đã bỏ), xem comment tương tự ở WheelTemplate.tsx.
+  // Tự phát hiện có candidate MỚI rồi tự bắt đầu quay — cơ chế gốc trước khi có Trigger Graph (đã bỏ),
+  // xem comment tương tự ở WheelTemplate.tsx. CHỈ phản ứng với dòng kết quả LIVE (id "pending-*") —
+  // bỏ qua kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở, tránh tự quay tới winner cũ lúc mount.
   const lastSpunIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const latestId = results[0]?.id;
-    if (latestId === undefined || latestId === lastSpunIdRef.current) return;
+    if (!isLiveDrawResultId(latestId) || latestId === lastSpunIdRef.current) return;
     lastSpunIdRef.current = latestId;
     startSpin();
     // eslint-disable-next-line react-hooks/exhaustive-deps

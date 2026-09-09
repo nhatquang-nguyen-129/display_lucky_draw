@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DrawCandidate, DrawResultRow, Prize } from "@/types";
-import { DrawMode, DrawSequenceActions, LandingData } from "@/lib/landing/types";
+import { DrawMode, DrawSequenceActions, LandingData, PENDING_RESULT_ID_PREFIX } from "@/lib/landing/types";
 
 // Hook trung tâm cho luồng Button Draw/Confirm/Redo trên Landing Page (Present Mode only).
 // pick() gọi draw:pick — CHỌN nhưng CHƯA ghi DB — giữ candidate trong state để hiện lên màn hình
@@ -488,7 +488,7 @@ export function useDrawSequence(
     const participant = data.participants.find((p) => p.id === candidate.participantId);
     const prize = data.prizes.find((p) => p.id === candidate.prizeId);
     const synthetic: DrawResultRow = {
-      id: `pending-${candidate.seed}`,
+      id: `${PENDING_RESULT_ID_PREFIX}${candidate.seed}`,
       session_id: sessionId ?? "",
       participant_id: candidate.participantId,
       prize_id: candidate.prizeId,

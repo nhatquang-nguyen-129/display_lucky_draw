@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Participant } from "@/types";
-import { getParticipantField, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import { getParticipantField, isLiveDrawResultId, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
 import { displayValue } from "./displayValue";
 
 const FULL_TURNS = 5;
@@ -68,14 +68,14 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
   }, []);
 
-  // Tự phát hiện có candidate MỚI (results[0].id đổi) rồi tự bắt đầu quay — cơ chế gốc trước khi có
-  // Trigger Graph (đã bỏ). lastSpunIdRef bắt đầu undefined nên nếu trang vừa mở đã có sẵn 1 candidate
-  // đang chờ (vd Builder reload giữa chừng), Wheel sẽ quay ngay 1 lần lúc mount — chấp nhận được,
-  // đúng tinh thần "quay đúng candidate mới nhất" thay vì im lặng đứng yên với dữ liệu cũ.
+  // Tự phát hiện có candidate MỚI rồi tự bắt đầu quay — cơ chế gốc trước khi có Trigger Graph (đã bỏ).
+  // CHỈ phản ứng với dòng kết quả LIVE (id "pending-*" do useDrawSequence độn vào khi có 1 lượt Draw
+  // đang diễn ra trong phiên Present này) — bỏ qua kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở,
+  // nếu không Wheel sẽ tự quay tới winner cũ ngay lúc mount dù chưa ai bấm Draw.
   const lastSpunIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const latestId = results[0]?.id;
-    if (latestId === undefined || latestId === lastSpunIdRef.current) return;
+    if (!isLiveDrawResultId(latestId) || latestId === lastSpunIdRef.current) return;
     lastSpunIdRef.current = latestId;
     startSpin();
     // eslint-disable-next-line react-hooks/exhaustive-deps

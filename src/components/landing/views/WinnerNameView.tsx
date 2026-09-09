@@ -1,4 +1,4 @@
-import { LandingData, WinnerNameComponent } from "@/lib/landing/types";
+import { isLiveDrawResultId, LandingData, WinnerNameComponent } from "@/lib/landing/types";
 import { APPEAR_CLASS, DISAPPEAR_CLASS, useRevealed, useRevealTransition } from "./drawRevealHooks";
 
 // CHỈ trong canvas kéo-thả của Landing Builder (xem `builderPreview` — bắt nguồn từ `clip={false}`,
@@ -30,8 +30,12 @@ export default function WinnerNameView({
 }) {
   const { fontSize, color, fontWeight, align, appearEffect, disappearEffect, quickDrawText } = component.props;
   const latest = data?.results[0];
+  // CHỈ coi là "có winner để hiện" khi results[0] là dòng LIVE (id "pending-*" — 1 lượt Draw đang diễn
+  // ra trong phiên Present này). Kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở KHÔNG kích hoạt
+  // reveal — nếu không tên winner cũ sẽ tự nhảy lên sau revealDelayMs dù chưa ai bấm Draw.
+  const liveResultId = isLiveDrawResultId(latest?.id) ? latest!.id : undefined;
 
-  const revealed = useRevealed(latest?.id, revealDelayMs);
+  const revealed = useRevealed(liveResultId, revealDelayMs);
   const isRevealed = !builderPreview && revealed;
   const text = builderPreview ? BUILDER_PLACEHOLDER : quickDrawActive ? quickDrawText : isRevealed ? latest!.participant_name : "";
 
