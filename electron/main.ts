@@ -190,8 +190,27 @@ type ExtraData = Record<string, string>;
 
 ipcMain.handle("participants:list", (_e, sessionId: string) => {
   return db
-    .prepare(`SELECT * FROM participants WHERE session_id = ? ORDER BY sort_order ASC, created_at DESC`)
+    .prepare(
+      `SELECT * FROM participants WHERE session_id = ? AND status != 'removed' ORDER BY sort_order ASC, created_at DESC`
+    )
     .all(sessionId);
+});
+
+// Đếm số liệu gốc vs hiện tại của 1 session. Xoá trong Data Editor / "Delete all" là SOFT-DELETE
+// (status = 'removed'), nên hàng vẫn nằm trong DB — "original" gồm cả những dòng đã bị dedup/xoá,
+// "removed" = chênh lệch do dọn dữ liệu đầu vào sai. Draw Engine đã tự lọc status = 'active' nên
+// người bị 'removed' không bao giờ được quay.
+ipcMain.handle("participants:stats", (_e, sessionId: string) => {
+  const row = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS original,
+         SUM(CASE WHEN status != 'removed' THEN 1 ELSE 0 END) AS current
+       FROM participants WHERE session_id = ?`
+    )
+    .get(sessionId) as { original: number; current: number | null };
+  const current = row.current ?? 0;
+  return { original: row.original, current, removed: row.original - current };
 });
 
 function nextSortOrder(sessionId: string): number {
@@ -287,12 +306,14 @@ ipcMain.handle(
   }
 );
 
+// Soft-delete: giữ hàng lại để đối chiếu với số liệu gốc (xem participants:stats). Draw Engine lọc
+// status = 'active' nên hàng 'removed' tự động không vào vòng quay; participants:list cũng ẩn nó đi.
 ipcMain.handle("participants:delete", (_e, id: string) => {
-  db.prepare(`DELETE FROM participants WHERE id = ?`).run(id);
+  db.prepare(`UPDATE participants SET status = 'removed' WHERE id = ?`).run(id);
 });
 
 ipcMain.handle("participants:bulkDelete", (_e, ids: string[]) => {
-  const del = db.prepare(`DELETE FROM participants WHERE id = ?`);
+  const del = db.prepare(`UPDATE participants SET status = 'removed' WHERE id = ? AND status != 'removed'`);
   const tx = db.transaction((items: string[]) => {
     let deleted = 0;
     for (const id of items) deleted += del.run(id).changes;

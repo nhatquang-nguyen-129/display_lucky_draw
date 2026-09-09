@@ -75,6 +75,7 @@ declare global {
     api: {
       participants: {
         list: (sessionId: string) => Promise<Participant[]>;
+        stats: (sessionId: string) => Promise<{ original: number; current: number; removed: number }>;
         create: (
           data: Partial<Participant> & { sessionId: string; name: string; extra?: Record<string, string> }
         ) => Promise<string>;

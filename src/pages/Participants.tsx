@@ -95,13 +95,10 @@ export default function Participants() {
   return (
     <div>
       <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Participants</h1>
-          <p className="mt-1 text-sm text-base-400">
-            {items.length} participants in session "{activeSession.name}" — quick view here, all edits happen in
-            the Data Editor.
-          </p>
-        </div>
+        <p className="text-sm text-base-400">
+          {items.length} participants in session "{activeSession.name}" — quick view here, all edits happen in
+          the Data Editor.
+        </p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowEditor(true)}>
             Data Editor
