@@ -475,6 +475,18 @@ ipcMain.handle(
   }
 );
 
+// Lưu nhãn hiển thị tùy biến của cột trong Data Editor ({ [tênCột]: "Nhãn" }). Cột lõi chỉ đổi nhãn,
+// dữ liệu vẫn ở cột SQL name/phone/code/email.
+ipcMain.handle(
+  "sessions:updateColumnLabels",
+  (_e, data: { id: string; columnLabels: Record<string, string> }) => {
+    db.prepare(`UPDATE sessions SET participant_column_labels = ? WHERE id = ?`).run(
+      JSON.stringify(data.columnLabels),
+      data.id
+    );
+  }
+);
+
 // Lưu layout Landing Page Builder — Builder chỉ sửa JSON này, PresentMode chỉ render nó.
 ipcMain.handle(
   "sessions:updateLandingConfig",

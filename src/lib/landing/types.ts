@@ -752,6 +752,44 @@ export interface LandingData {
   results: import("@/types").DrawResultRow[];
 }
 
+// 4 field cố định của Participant — luôn tồn tại kể cả khi bảng rỗng.
+const FIXED_PARTICIPANT_FIELDS = ["name", "phone", "code", "email"];
+
+/** Tập tên cột Participant đang THỰC SỰ tồn tại: 4 field cố định + mọi key extra_data xuất hiện ở ít
+ * nhất 1 dòng. Dùng để phát hiện component Landing đang bind vào 1 cột đã bị xoá trong Data Editor. */
+export function availableParticipantColumns(participants: import("@/types").Participant[]): Set<string> {
+  const cols = new Set<string>(FIXED_PARTICIPANT_FIELDS);
+  for (const p of participants) {
+    if (!p.extra_data) continue;
+    try {
+      for (const k of Object.keys(JSON.parse(p.extra_data) as Record<string, unknown>)) cols.add(k);
+    } catch {
+      /* ignore */
+    }
+  }
+  return cols;
+}
+
+/** Các cột Participant mà 1 component đang bind tới NHƯNG không còn tồn tại (xem
+ * availableParticipantColumns). Rỗng = ổn. Chỉ xét các loại component thật sự bind cột:
+ * Lucky Wheel (drawField/displayField/winnerDisplayField), Scoreboard (columns), Button openLink
+ * (urlField). "participantId" là khoá nội bộ, luôn hợp lệ. */
+export function missingColumnBindings(component: LandingComponent, available: Set<string>): string[] {
+  const check = (f: unknown): f is string =>
+    typeof f === "string" && f !== "" && f !== "participantId" && !available.has(f);
+  const out = new Set<string>();
+  if (component.type === "luckyWheel") {
+    for (const f of [component.props.drawField, component.props.displayField, component.props.winnerDisplayField]) {
+      if (check(f)) out.add(f);
+    }
+  } else if (component.type === "scoreboard") {
+    for (const f of component.props.columns) if (check(f)) out.add(f);
+  } else if (component.type === "button" && component.props.action === "openLink") {
+    if (check(component.props.urlField)) out.add(component.props.urlField as string);
+  }
+  return [...out];
+}
+
 // 3 chế độ khi bấm nút Draw chính — chọn qua dropdown mũi tên cạnh nút (ButtonView.tsx's DrawMenu),
 // xem DrawSequenceActions.drawMode/selectDrawMode bên dưới. "single" = hành vi Draw gốc (1 người/lượt
 // bấm, tự thủ công Confirm/Redo). "multiple"/"quick" đều thao tác N người trên ĐÚNG 1 giải đã chọn —

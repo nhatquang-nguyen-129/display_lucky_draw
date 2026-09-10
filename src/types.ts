@@ -41,6 +41,7 @@ export interface Session {
   landing_config: string | null;
   participant_column_types: string | null; // JSON: { [tênCột]: "phone" | "name" | "email" | "text" | "code" | "url" }
   participant_duplicate_columns: string | null; // JSON string[]: các cột xác định trùng lặp (compound key)
+  participant_column_labels: string | null; // JSON: { [tênCột]: "Nhãn hiển thị" } — cột lõi chỉ đổi nhãn
   created_at: string;
 }
 
@@ -142,6 +143,7 @@ declare global {
         }) => Promise<void>;
         updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) => Promise<void>;
         updateDuplicateColumns: (data: { id: string; duplicateColumns: string[] }) => Promise<void>;
+        updateColumnLabels: (data: { id: string; columnLabels: Record<string, string> }) => Promise<void>;
         updateLandingConfig: (data: { id: string; landingConfig: LandingConfig }) => Promise<void>;
         delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
