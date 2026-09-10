@@ -23,12 +23,10 @@ import {
   renameColumnCommand,
   reorderRowsCommand,
   runningNumberCommand,
-  sequentialIdDigitWidth,
 } from "@/lib/dataEditor/commands";
 import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
 import {
   ColumnType,
-  COLUMN_TYPE_HINTS,
   COLUMN_TYPE_LABELS,
   defaultColumnType,
   DUPLICATE_ISSUE_MESSAGE,
@@ -45,9 +43,14 @@ interface DataEditorModalProps {
   onSaved: () => void;
 }
 
-type Group = "edit" | "generate";
+// Menu = ĐỘNG TỪ thuần (giống Google Sheets). Phạm vi (cột/dòng/ô) do người dùng chọn TRỰC TIẾP trên
+// bảng — không menu nào chứa selector cột/dòng nữa (trước đây nhồi dropdown "Apply to column" +
+// checkbox list dedup nên menu dài vô hạn).
+type Group = "edit" | "format" | "data" | "generate";
 const GROUPS: { key: Group; label: string }[] = [
   { key: "edit", label: "Edit" },
+  { key: "format", label: "Format" },
+  { key: "data", label: "Data" },
   { key: "generate", label: "Generate" },
 ];
 
@@ -98,7 +101,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
   const history = useCommandHistory({ columns: [], rows: [] } as EditorState);
 
-  const [activeGroup, setActiveGroup] = useState<Group>("edit");
+  const [openMenu, setOpenMenu] = useState<Group | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; col: string } | null>(null);
   const [editingCell, setEditingCell] = useState<{ rowId: string; col: string } | null>(null);
@@ -112,13 +115,10 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   >(null);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
 
-  const [editMenuOpen, setEditMenuOpen] = useState(false);
-  const [generateMenuOpen, setGenerateMenuOpen] = useState(false);
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [selectedColKeys, setSelectedColKeys] = useState<Set<string>>(new Set());
   const [lastSelectedCol, setLastSelectedCol] = useState<string | null>(null);
 
-  const [cleanColumn, setCleanColumn] = useState("phone");
   const [findText, setFindText] = useState("");
   const [replaceText, setReplaceText] = useState("");
   const [findCaseSensitive, setFindCaseSensitive] = useState(false);
@@ -131,24 +131,31 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const [displayPhoneCol, setDisplayPhoneCol] = useState("display_phone");
   const [displayPhonePattern, setDisplayPhonePattern] = useState<"last3" | "maskLast3" | "maskMost">("maskMost");
   const [combineCol, setCombineCol] = useState("combined");
-  const [combineSources, setCombineSources] = useState<string[]>([]);
   const [combineSeparator, setCombineSeparator] = useState(" - ");
 
   const [issueFilter, setIssueFilter] = useState<string | null>(null); // null = không lọc, "__any__" = mọi lỗi, hoặc đúng message 1 loại lỗi
   const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
   const [duplicateColumns, setDuplicateColumns] = useState<string[]>([]);
+  // Nhãn hiển thị TÙY BIẾN cho cột (đổi qua "Rename column") — với cột lõi chỉ là nhãn, dữ liệu vẫn ở
+  // cột SQL name/phone/... Lưu trong session.participant_column_labels. Cột phụ đổi tên bằng
+  // renameColumnCommand (đổi key thật) nên không cần ở đây.
+  const [columnLabels, setColumnLabels] = useState<Record<string, string>>({});
+  const labelFor = (col: string) => columnLabels[col] ?? COLUMN_LABELS[col] ?? col;
+  // Cột lõi đã bị "xoá cột" trong phiên editing này — ẩn khỏi bảng (dữ liệu đã bị clear qua
+  // removeColumnCommand, Undo sẽ khôi phục giá trị; đóng/mở lại editor thì cột hiện lại rỗng).
+  const [droppedCoreCols, setDroppedCoreCols] = useState<Set<string>>(new Set());
 
   // Thứ tự hiển thị cột — riêng biệt với history (kéo-thả cột chỉ là view, không cần Undo).
   // Đồng bộ lại mỗi khi có cột optional được thêm/xoá qua command.
   const [columnOrder, setColumnOrder] = useState<string[]>([...CORE_FIELDS]);
   useEffect(() => {
     setColumnOrder((prev) => {
-      const all = [...CORE_FIELDS, ...history.state.columns];
+      const all = [...CORE_FIELDS.filter((c) => !droppedCoreCols.has(c)), ...history.state.columns];
       const kept = prev.filter((c) => all.includes(c));
       const missing = all.filter((c) => !kept.includes(c));
       return [...kept, ...missing];
     });
-  }, [history.state.columns]);
+  }, [history.state.columns, droppedCoreCols]);
 
   const [dragColKey, setDragColKey] = useState<string | null>(null);
   const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
@@ -189,7 +196,18 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     setOriginalRows(rows);
     history.reset({ columns, rows });
     setSelectedRowIds(new Set());
+    setSelectedColKeys(new Set());
     setSelectedCell(null);
+    setDroppedCoreCols(new Set());
+    if (session?.participant_column_labels) {
+      try {
+        setColumnLabels(JSON.parse(session.participant_column_labels));
+      } catch {
+        setColumnLabels({});
+      }
+    } else {
+      setColumnLabels({});
+    }
     if (session?.participant_column_types) {
       try {
         setColumnTypes(JSON.parse(session.participant_column_types));
@@ -219,10 +237,14 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     });
   }
 
-  function toggleDuplicateColumn(col: string) {
-    setDuplicateColumns((prev) => {
-      const next = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
-      window.api.sessions.updateDuplicateColumns({ id: sessionId, duplicateColumns: next });
+  // Đổi NHÃN hiển thị của 1 cột (chủ yếu cho cột lõi — cột phụ đổi tên bằng renameColumnCommand).
+  // label rỗng / trùng nhãn mặc định → xoá override.
+  function setColumnLabel(col: string, label: string) {
+    setColumnLabels((prev) => {
+      const next = { ...prev };
+      if (!label.trim() || label.trim() === (COLUMN_LABELS[col] ?? col)) delete next[col];
+      else next[col] = label.trim();
+      window.api.sessions.updateColumnLabels({ id: sessionId, columnLabels: next });
       return next;
     });
   }
@@ -258,9 +280,19 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     };
   }, [contextMenu]);
 
+  // Cột đích cho các action Format/Data — LẤY TỪ SELECTION trên bảng, không có selector trong menu:
+  // ưu tiên các cột đang bôi ở header (selectedColKeys), nếu chưa bôi cột nào thì dùng cột chứa ô con
+  // trỏ đang ở (selectedCell) — luôn có 1 mục tiêu, giống Google Sheets. Rỗng = chưa chọn gì cả.
+  const targetColumns = useMemo(() => {
+    if (selectedColKeys.size > 0) return columnOrder.filter((c) => selectedColKeys.has(c));
+    if (selectedCell) return [selectedCell.col];
+    return [];
+  }, [selectedColKeys, selectedCell, columnOrder]);
+  const targetColumnLabel = targetColumns.map((c) => labelFor(c)).join(", ");
+
   const issues = useMemo(
-    () => validateState(history.state, columnTypes, duplicateColumns),
-    [history.state, columnTypes, duplicateColumns]
+    () => validateState(history.state, columnTypes, duplicateColumns, [...droppedCoreCols]),
+    [history.state, columnTypes, duplicateColumns, droppedCoreCols]
   );
   const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
   const issueGroups = useMemo(() => groupIssuesByMessage(issues), [issues]);
@@ -354,24 +386,16 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     return () => window.removeEventListener("click", close);
   }, [openColumnMenu]);
 
-  // Đóng dropdown Edit / menu chọn cột trùng lặp khi click ra ngoài
+  // Đóng menu toolbar (Edit/Format/Data/Generate) khi click ra ngoài
   useEffect(() => {
-    if (!editMenuOpen) return;
+    if (!openMenu) return;
     const close = () => {
-      setEditMenuOpen(false);
+      setOpenMenu(null);
       setShowFindReplace(false);
     };
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
-  }, [editMenuOpen]);
-
-  // Đóng dropdown Generate khi click ra ngoài
-  useEffect(() => {
-    if (!generateMenuOpen) return;
-    const close = () => setGenerateMenuOpen(false);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [generateMenuOpen]);
+  }, [openMenu]);
 
   // Đóng dropdown Lịch sử khi click ra ngoài
   useEffect(() => {
@@ -392,6 +416,21 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     setSelectedRowIds(new Set());
   }
 
+  // Xoá các cột đang bôi ở header. Cột phụ → drop hẳn key. Cột lõi → clear sạch giá trị + ẩn khỏi
+  // editor (xem removeColumnCommand + droppedCoreCols). Tất cả trong 1 bước Undo.
+  function deleteSelectedColumns() {
+    const cols = Array.from(selectedColKeys).filter((c) => columnOrder.includes(c));
+    if (cols.length === 0) return;
+    const coreCols = cols.filter(isCoreField);
+    const cmd = combineCommands(
+      cols.length === 1 ? `Delete column "${cols[0]}"` : `Delete ${cols.length} columns`,
+      cols.map((c) => removeColumnCommand(history.state, c))
+    );
+    if (cmd) history.run(cmd);
+    if (coreCols.length) setDroppedCoreCols((prev) => new Set([...prev, ...coreCols]));
+    setSelectedColKeys(new Set());
+  }
+
   // Chèn N cột trống tại vị trí hiển thị `atIndex` trong columnOrder — dùng cho right-click
   // "Chèn cột" (Excel-style). Tên cột tự sinh ("Cột mới", "Cột mới 2"...), đổi tên sau qua
   // "Đổi tên cột". columnOrder được set thủ công ngay vì effect đồng bộ chỉ APPEND cột thiếu,
@@ -406,10 +445,19 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     });
   }
 
+  // Áp transform lên MỌI cột đang chọn (targetColumns). >1 cột → gộp thành 1 bước Undo.
   function applyClean(label: string, transform: (v: string) => string) {
-    const cmd = batchTransformCommand(history.state, label, cleanColumn, transform);
+    if (targetColumns.length === 0) {
+      setToast("Select a column (click its header) or a cell first.");
+      return;
+    }
+    const cmd = combineCommands(
+      targetColumns.length === 1 ? label : `${label} · ${targetColumns.length} cols`,
+      targetColumns.map((c) => batchTransformCommand(history.state, label, c, transform))
+    );
     if (cmd) history.run(cmd);
     else setToast("No cells needed changes.");
+    setOpenMenu(null);
   }
 
   function applyQuickClean() {
@@ -425,11 +473,15 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
   function applyFindReplace() {
     if (!findText) return;
-    const cmd = batchTransformCommand(
-      history.state,
-      `Find & Replace "${findText}"→"${replaceText}"`,
-      cleanColumn,
-      findReplaceTransform(findText, replaceText, findCaseSensitive)
+    if (targetColumns.length === 0) {
+      setToast("Select a column (click its header) or a cell first.");
+      return;
+    }
+    const transform = findReplaceTransform(findText, replaceText, findCaseSensitive);
+    const label = `Find & Replace "${findText}"→"${replaceText}"`;
+    const cmd = combineCommands(
+      label,
+      targetColumns.map((c) => batchTransformCommand(history.state, label, c, transform))
     );
     if (cmd) history.run(cmd);
     else setToast("No matching value found.");
@@ -451,18 +503,25 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     else setToast("No empty columns.");
   }
 
+  // Cột xác định trùng = cột đang chọn trên bảng. Cũng ghi lại vào session.participant_duplicate_columns
+  // để validate tiếp tục tô đỏ ô trùng (xem chip "duplicate" ở status bar) sau khi menu đóng.
   function applyRemoveDuplicates() {
-    if (duplicateColumns.length === 0) {
-      setToast("No duplicate-check columns selected — go to menu Edit → Deduplicate to choose.");
+    if (targetColumns.length === 0) {
+      setToast("Select the column(s) that define a duplicate (click their headers) first.");
       return;
     }
-    const ids = findDuplicateIdsToRemove(history.state, duplicateColumns);
+    if (JSON.stringify(targetColumns) !== JSON.stringify(duplicateColumns)) {
+      setDuplicateColumns(targetColumns);
+      window.api.sessions.updateDuplicateColumns({ id: sessionId, duplicateColumns: targetColumns });
+    }
+    const ids = findDuplicateIdsToRemove(history.state, targetColumns);
     if (ids.length === 0) {
-      setToast("No duplicates found on the selected columns.");
+      setToast(`No duplicate rows on: ${targetColumnLabel}.`);
       return;
     }
     const cmd = deleteRowsCommand(history.state, ids);
     if (cmd) history.run(cmd);
+    setOpenMenu(null);
   }
 
   function applyGenerate() {
@@ -478,8 +537,12 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       history.run(displayPhoneCommand(history.state, col, displayPhonePattern));
     } else if (genAction === "combine") {
       const col = combineCol.trim();
-      if (!col || combineSources.length === 0) return;
-      history.run(combineColumnsCommand(history.state, col, combineSources, combineSeparator));
+      // Nguồn để ghép = cột đang chọn trên bảng (theo đúng thứ tự hiển thị).
+      if (!col || targetColumns.length === 0) {
+        setToast("Select the source columns (click their headers) first.");
+        return;
+      }
+      history.run(combineColumnsCommand(history.state, col, targetColumns, combineSeparator));
     }
   }
 
@@ -566,6 +629,14 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const inputClass =
     "w-full bg-transparent border-b border-transparent px-1 py-1 text-sm text-base-100 outline-none focus:border-gold-500";
   const toolbarBtn = "rounded-md px-2.5 py-1.5 text-xs font-medium text-base-200 hover:bg-base-800 disabled:opacity-40 disabled:cursor-not-allowed";
+  // Menu toolbar (Edit/Format/Data): mỗi menu là 1 danh sách ĐỘNG TỪ ngắn, không có selector cột/dòng
+  // bên trong. `menuScopeLine` chỉ HIỂN THỊ phạm vi đang chọn trên bảng, không bấm được.
+  const menuBox =
+    "absolute left-0 z-30 mt-1 w-56 rounded-lg border border-base-700 bg-base-900 p-1.5 text-left shadow-2xl";
+  const menuItem =
+    "block w-full rounded px-2 py-1.5 text-left text-xs text-base-200 hover:bg-base-800 disabled:cursor-not-allowed disabled:opacity-40";
+  const menuScopeLine = "truncate px-2 pb-1 pt-0.5 text-[10px] text-base-500";
+  const selectedColsInView = Array.from(selectedColKeys).filter((c) => columnOrder.includes(c));
 
   return (
     <Modal open={open} title="Data Editor — Participants" onClose={requestClose} maxWidth="max-w-[95vw]">
@@ -586,163 +657,137 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveGroup(g.key);
-                      if (g.key === "edit") {
-                        setEditMenuOpen((v) => !v);
-                        setGenerateMenuOpen(false);
-                      } else {
-                        setGenerateMenuOpen((v) => !v);
-                        setEditMenuOpen(false);
-                      }
+                      setOpenMenu((m) => (m === g.key ? null : g.key));
+                      setShowFindReplace(false);
                     }}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                      activeGroup === g.key ? "bg-gold-500 text-base-950" : "text-base-300 hover:bg-base-800"
+                      openMenu === g.key ? "bg-gold-500 text-base-950" : "text-base-300 hover:bg-base-800"
                     }`}
                   >
                     {g.label}
                     <span className="ml-1 text-[9px] text-base-400">▾</span>
                   </button>
 
-                  {g.key === "edit" && editMenuOpen && (
-                    <div
-                      className="absolute left-0 z-30 mt-1 w-64 rounded-lg border border-base-700 bg-base-900 p-2 text-left shadow-2xl"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] uppercase tracking-wide text-base-500">
-                          Selected rows / columns
-                        </span>
-                      </div>
+                  {g.key === "edit" && openMenu === "edit" && (
+                    <div className={menuBox} onClick={(e) => e.stopPropagation()}>
+                      <p className={menuScopeLine}>
+                        {selectedRowIds.size === 0 && selectedColKeys.size === 0
+                          ? "Select rows (checkbox) or columns (click a header) first"
+                          : [
+                              selectedRowIds.size > 0 && `${selectedRowIds.size} row(s)`,
+                              selectedColKeys.size > 0 && `${selectedColKeys.size} column(s)`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") + " selected"}
+                      </p>
                       <button
-                        className={`block w-full rounded px-2 py-1 text-left text-xs ${
-                          selectedRowIds.size === 0
-                            ? "cursor-not-allowed text-base-600"
-                            : "text-danger-500 hover:bg-base-800"
-                        }`}
+                        className={`${menuItem} text-danger-500`}
                         disabled={selectedRowIds.size === 0}
                         onClick={() => {
                           deleteSelectedRows();
-                          setEditMenuOpen(false);
+                          setOpenMenu(null);
                         }}
                       >
-                        Delete {selectedRowIds.size > 0 ? `${selectedRowIds.size} selected row(s)` : "selected rows"}
+                        Delete rows{selectedRowIds.size > 0 ? ` (${selectedRowIds.size})` : ""}
                       </button>
-                      <p className="mt-1 px-2 text-[10px] text-base-500">
-                        Right-click a row/column to insert more — select multiple rows (checkbox) or multiple
-                        columns (Ctrl/Shift+click header) then right-click to insert several at once.
-                      </p>
-
-                      <div className="my-2 h-px bg-base-800" />
-
-                      <span className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">
-                        Deduplicate
-                      </span>
-                      <p className="mb-1.5 text-[10px] leading-snug text-base-500">
-                        Select 1 column → duplicates match on that column. Select several → ALL of them must match
-                        to count as a duplicate.
-                      </p>
-                      <div className="mb-1.5 max-h-28 overflow-y-auto rounded border border-base-800 p-1">
-                        {columnOrder.map((c) => (
-                          <label
-                            key={c}
-                            className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs text-base-200 hover:bg-base-800"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={duplicateColumns.includes(c)}
-                              onChange={() => toggleDuplicateColumn(c)}
-                              className="accent-gold-500"
-                            />
-                            {COLUMN_LABELS[c] ?? c}
-                          </label>
-                        ))}
-                      </div>
-                      <label className="mb-1.5 flex items-center gap-1.5 rounded px-2 py-1 text-xs text-base-200 hover:bg-base-800">
-                        <input
-                          type="checkbox"
-                          checked={issueFilter === DUPLICATE_ISSUE_MESSAGE}
-                          onChange={() =>
-                            setIssueFilter((f) => (f === DUPLICATE_ISSUE_MESSAGE ? null : DUPLICATE_ISSUE_MESSAGE))
-                          }
-                          className="accent-gold-500"
-                        />
-                        Show only duplicate rows
-                      </label>
                       <button
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
-                        onClick={applyRemoveDuplicates}
-                        title={
-                          duplicateColumns.length === 0
-                            ? "No duplicate-check columns selected"
-                            : `By column: ${duplicateColumns.map((c) => COLUMN_LABELS[c] ?? c).join(", ")}`
-                        }
+                        className={`${menuItem} text-danger-500`}
+                        disabled={selectedColsInView.length === 0}
+                        title="Click a column header to select it first. Deleting a core field (Name/Phone/Code/Email) clears all its values."
+                        onClick={() => {
+                          const coreHit = selectedColsInView.filter(isCoreField).map(labelFor);
+                          if (
+                            coreHit.length > 0 &&
+                            !confirm(
+                              `Delete ${selectedColsInView.length} column(s)? This clears every value in ${coreHit.join(
+                                ", "
+                              )} on Save and can't be undone after that.`
+                            )
+                          )
+                            return;
+                          deleteSelectedColumns();
+                          setOpenMenu(null);
+                        }}
                       >
-                        Delete duplicate rows
+                        Delete columns{selectedColsInView.length > 0 ? ` (${selectedColsInView.length})` : ""}
                       </button>
-
-                      <div className="my-2 h-px bg-base-800" />
-
-                      <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">
-                        Apply to column
-                      </label>
-                      <select
-                        value={cleanColumn}
-                        onChange={(e) => setCleanColumn(e.target.value)}
-                        className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-                      >
-                        {columnOrder.map((c) => (
-                          <option key={c} value={c}>
-                            {COLUMN_LABELS[c] ?? c}
-                          </option>
-                        ))}
-                      </select>
-
-                      <span className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">Text</span>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={() => applyClean("Upper Case", toUpperCase)}>
-                        UPPER CASE
-                      </button>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={() => applyClean("Lower Case", toLowerCase)}>
-                        lower case
-                      </button>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={() => applyClean("Title Case", toTitleCase)}>
-                        Title Case
-                      </button>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={() => applyClean("Trim Space", trimSpace)}>
-                        Trim whitespace
-                      </button>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={() => applyClean("Normalize Phone", normalizePhoneValue)}>
-                        Normalize phone
-                      </button>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={() => applyClean("Normalize Name", normalizeNameValue)}>
-                        Normalize name
-                      </button>
-
-                      <div className="my-2 h-px bg-base-800" />
-
+                      <div className="my-1 h-px bg-base-800" />
                       <button
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
+                        className={menuItem}
                         onClick={(e) => {
                           e.stopPropagation();
                           setShowFindReplace(true);
-                          setEditMenuOpen(false);
+                          setOpenMenu(null);
                         }}
                       >
-                        Find &amp; Replace...
+                        Find &amp; replace&hellip;
                       </button>
+                    </div>
+                  )}
 
-                      <div className="my-2 h-px bg-base-800" />
+                  {g.key === "format" && openMenu === "format" && (
+                    <div className={menuBox} onClick={(e) => e.stopPropagation()}>
+                      <p className={menuScopeLine}>
+                        {targetColumns.length > 0 ? `Column: ${targetColumnLabel}` : "Select a column or a cell first"}
+                      </p>
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Upper Case", toUpperCase)}>
+                        UPPER CASE
+                      </button>
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Lower Case", toLowerCase)}>
+                        lower case
+                      </button>
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Title Case", toTitleCase)}>
+                        Title Case
+                      </button>
+                      <div className="my-1 h-px bg-base-800" />
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Trim Space", trimSpace)}>
+                        Trim whitespace
+                      </button>
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Normalize Phone", normalizePhoneValue)}>
+                        Normalize phone
+                      </button>
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Normalize Name", normalizeNameValue)}>
+                        Normalize name
+                      </button>
+                    </div>
+                  )}
 
-                      <span className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">Cleanup</span>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={applyRemoveEmptyRows}>
+                  {g.key === "data" && openMenu === "data" && (
+                    <div className={menuBox} onClick={(e) => e.stopPropagation()}>
+                      <p className={menuScopeLine}>
+                        {targetColumns.length > 0
+                          ? `Duplicate key: ${targetColumnLabel}`
+                          : "Select the key column header(s) first"}
+                      </p>
+                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={applyRemoveDuplicates}>
+                        Remove duplicate rows
+                      </button>
+                      <div className="my-1 h-px bg-base-800" />
+                      <button
+                        className={menuItem}
+                        onClick={() => {
+                          applyRemoveEmptyRows();
+                          setOpenMenu(null);
+                        }}
+                      >
                         Delete empty rows
                       </button>
-                      <button className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800" onClick={applyRemoveEmptyColumns}>
+                      <button
+                        className={menuItem}
+                        onClick={() => {
+                          applyRemoveEmptyColumns();
+                          setOpenMenu(null);
+                        }}
+                      >
                         Delete empty columns
                       </button>
                       <button
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
-                        onClick={applyQuickClean}
+                        className={menuItem}
                         title="Trim + Normalize Name + Normalize Phone, in 1 Undo step"
+                        onClick={() => {
+                          applyQuickClean();
+                          setOpenMenu(null);
+                        }}
                       >
                         Quick Clean
                       </button>
@@ -763,20 +808,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                           ✕
                         </button>
                       </div>
-                      <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">
-                        Apply to column
-                      </label>
-                      <select
-                        value={cleanColumn}
-                        onChange={(e) => setCleanColumn(e.target.value)}
-                        className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-                      >
-                        {columnOrder.map((c) => (
-                          <option key={c} value={c}>
-                            {COLUMN_LABELS[c] ?? c}
-                          </option>
-                        ))}
-                      </select>
+                      <p className="mb-2 truncate text-[10px] text-base-500">
+                        {targetColumns.length > 0 ? `Column: ${targetColumnLabel}` : "Select a column or a cell first"}
+                      </p>
                       <input
                         autoFocus
                         value={findText}
@@ -811,7 +845,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                     </div>
                   )}
 
-                  {g.key === "generate" && generateMenuOpen && (
+                  {g.key === "generate" && openMenu === "generate" && (
                     <div
                       className="absolute left-0 z-30 mt-1 w-64 rounded-lg border border-base-700 bg-base-900 p-2 text-left shadow-2xl"
                       onClick={(e) => e.stopPropagation()}
@@ -844,20 +878,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             placeholder="Prefix (e.g. KH)"
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
-                          {genIdMode === "sequential" && (
-                            <p className="mb-2 text-[10px] leading-snug text-base-500">
-                              {/* Số chữ số tự tính theo số dòng hiện có — vừa đủ để đánh số không trùng,
-                                  không cố định 4 số như trước (xem sequentialIdDigitWidth). */}
-                              {history.state.rows.length} rows → {sequentialIdDigitWidth(history.state.rows.length)}{" "}
-                              digits, e.g. {genIdPrefix}
-                              {"1".padStart(sequentialIdDigitWidth(history.state.rows.length), "0")} ...{" "}
-                              {genIdPrefix}
-                              {String(history.state.rows.length).padStart(
-                                sequentialIdDigitWidth(history.state.rows.length),
-                                "0"
-                              )}
-                            </p>
-                          )}
                         </>
                       )}
 
@@ -906,18 +926,11 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             placeholder="New column name"
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
-                          <select
-                            multiple
-                            value={combineSources}
-                            onChange={(e) => setCombineSources(Array.from(e.target.selectedOptions, (o) => o.value))}
-                            className="mb-2 h-24 w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-                          >
-                            {columnOrder.map((c) => (
-                              <option key={c} value={c}>
-                                {COLUMN_LABELS[c] ?? c}
-                              </option>
-                            ))}
-                          </select>
+                          <p className="mb-2 truncate text-[10px] text-base-500">
+                            {targetColumns.length > 0
+                              ? `Sources: ${targetColumnLabel}`
+                              : "Select source column header(s) on the table"}
+                          </p>
                           <input
                             value={combineSeparator}
                             onChange={(e) => setCombineSeparator(e.target.value)}
@@ -930,7 +943,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                       <Button
                         onClick={() => {
                           applyGenerate();
-                          setGenerateMenuOpen(false);
+                          setOpenMenu(null);
                         }}
                         className="w-full text-xs"
                       >
@@ -1137,8 +1150,12 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
                             onBlur={() => {
-                              if (renameValue.trim() && renameValue.trim() !== col && !columnOrder.includes(renameValue.trim())) {
-                                history.run(renameColumnCommand(col, renameValue.trim()));
+                              const next = renameValue.trim();
+                              if (isCoreField(col)) {
+                                // Cột lõi: chỉ đổi NHÃN, dữ liệu vẫn ở cột SQL name/phone/...
+                                setColumnLabel(col, next);
+                              } else if (next && next !== col && !columnOrder.includes(next)) {
+                                history.run(renameColumnCommand(col, next));
                               }
                               setRenamingColumn(null);
                             }}
@@ -1146,9 +1163,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             className="w-24 border-b border-gold-500 bg-transparent text-xs normal-case text-base-100 outline-none"
                           />
                         ) : (
-                          <span className="flex min-w-0 items-center gap-1" title={COLUMN_LABELS[col] ?? col}>
+                          <span className="flex min-w-0 items-center gap-1" title={labelFor(col)}>
                             <span className="truncate">
-                              {COLUMN_LABELS[col] ?? col}
+                              {labelFor(col)}
                               {(col === "name" || col === "phone") && " *"}
                             </span>
                             {columnTypes[col] && columnTypes[col] !== "text" && (
@@ -1246,9 +1263,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               </option>
                             ))}
                           </select>
-                          <p className="mt-1 text-[10px] text-base-500">
-                            {COLUMN_TYPE_HINTS[columnTypes[col] ?? defaultColumnType(col)]}
-                          </p>
                         </div>
                       )}
                     </th>
@@ -1433,32 +1447,34 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   >
                     Insert {count} column(s) right
                   </button>
-                  {!isCoreField(contextMenu.col) && (
-                    <>
-                      <div className="my-1 h-px bg-base-800" />
-                      <button
-                        className="block w-full px-3 py-1.5 text-left text-base-200 hover:bg-base-800"
-                        onClick={() => {
-                          setRenamingColumn(contextMenu.col);
-                          setRenameValue(contextMenu.col);
-                          setContextMenu(null);
-                        }}
-                      >
-                        Rename column
-                      </button>
-                      <button
-                        className="block w-full px-3 py-1.5 text-left text-danger-500 hover:bg-base-800"
-                        onClick={() => {
-                          if (confirm(`Delete column "${contextMenu.col}"? Its data in every row will be lost on Save.`)) {
-                            history.run(removeColumnCommand(history.state, contextMenu.col));
-                          }
-                          setContextMenu(null);
-                        }}
-                      >
-                        Delete column
-                      </button>
-                    </>
-                  )}
+                  <div className="my-1 h-px bg-base-800" />
+                  <button
+                    className="block w-full px-3 py-1.5 text-left text-base-200 hover:bg-base-800"
+                    onClick={() => {
+                      const c = contextMenu.col;
+                      setRenamingColumn(c);
+                      setRenameValue(isCoreField(c) ? labelFor(c) : c);
+                      setContextMenu(null);
+                    }}
+                  >
+                    {isCoreField(contextMenu.col) ? "Rename column (label)" : "Rename column"}
+                  </button>
+                  <button
+                    className="block w-full px-3 py-1.5 text-left text-danger-500 hover:bg-base-800"
+                    onClick={() => {
+                      const c = contextMenu.col;
+                      const msg = isCoreField(c)
+                        ? `Delete column "${labelFor(c)}"? This clears every value in it on Save and can't be undone after that.`
+                        : `Delete column "${c}"? Its data in every row will be lost on Save.`;
+                      if (confirm(msg)) {
+                        history.run(removeColumnCommand(history.state, c));
+                        if (isCoreField(c)) setDroppedCoreCols((prev) => new Set([...prev, c]));
+                      }
+                      setContextMenu(null);
+                    }}
+                  >
+                    Delete column
+                  </button>
                 </>
               );
             })()}
