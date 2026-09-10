@@ -88,20 +88,24 @@ function findDuplicateIssues(state: EditorState, duplicateColumns: string[]): Ce
 export function validateState(
   state: EditorState,
   columnTypes: Record<string, ColumnType>,
-  duplicateColumns: string[] = []
+  duplicateColumns: string[] = [],
+  // Cột lõi người dùng đã "xoá" trong Data Editor — bỏ qua mọi cảnh báo trên cột đó (giá trị đã bị
+  // chủ động clear, không phải lỗi nhập liệu).
+  droppedColumns: string[] = []
 ): CellIssue[] {
+  const dropped = new Set(droppedColumns);
   const issues: CellIssue[] = [];
 
   // Tên & SĐT là 2 field bắt buộc phải có giá trị — gắn liền với việc đủ điều kiện quay số,
   // không phụ thuộc vào việc user có đổi type hay không.
   state.rows.forEach((r) => {
-    if (!r.name.trim()) issues.push({ rowId: r.id, col: "name", message: "Missing name" });
-    if (!r.phone.trim()) issues.push({ rowId: r.id, col: "phone", message: "Missing phone" });
+    if (!dropped.has("name") && !r.name.trim()) issues.push({ rowId: r.id, col: "name", message: "Missing name" });
+    if (!dropped.has("phone") && !r.phone.trim()) issues.push({ rowId: r.id, col: "phone", message: "Missing phone" });
   });
 
   issues.push(...findDuplicateIssues(state, duplicateColumns));
 
-  const allColumns = [...CORE_FIELDS, ...state.columns];
+  const allColumns = [...CORE_FIELDS, ...state.columns].filter((c) => !dropped.has(c));
 
   allColumns.forEach((col) => {
     const type = columnTypes[col] ?? defaultColumnType(col);

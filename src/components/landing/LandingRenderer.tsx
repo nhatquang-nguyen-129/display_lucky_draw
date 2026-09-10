@@ -1,4 +1,5 @@
 import {
+  availableParticipantColumns,
   computeWheelRevealDelayMs,
   DrawSequenceActions,
   isLiveDrawResultId,
@@ -6,6 +7,7 @@ import {
   LandingComponentType,
   LandingConfig,
   LandingData,
+  missingColumnBindings,
 } from "@/lib/landing/types";
 import Button from "@/components/Button";
 import "./landingEffects.css";
@@ -82,6 +84,10 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   // read-only ở cửa sổ chính) CŨNG không interactive nhưng phải hiện đúng trạng thái ẩn/hiện thật như
   // Present Mode thật, không được lẫn với chữ giữ chỗ chỉ dành riêng cho Builder.
   const builderPreview = clip === false;
+  // Trong canvas Builder (builderPreview): nếu 1 component đang bind vào cột Participant đã bị xoá
+  // trong Data Editor thì gắn cờ cảnh báo lên nó — xem missingColumnBindings. Không tính ở Present
+  // Mode để không làm rối buổi quay thật (cùng tinh thần với các badge chỉ-hiện-trong-Builder khác).
+  const availableCols = builderPreview ? availableParticipantColumns(data?.participants ?? []) : null;
 
   return (
     <div
@@ -114,6 +120,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         // component không tự bắn lại entrance effect lúc mount.
         const resultKey = isLiveDrawResultId(data?.results[0]?.id) ? data!.results[0]!.id : "idle";
         const key = REMOUNT_ON_RESULT_TYPES.has(component.type) ? `${component.id}-${resultKey}` : component.id;
+        const missingCols = availableCols ? missingColumnBindings(component, availableCols) : [];
         return (
           <div
             key={key}
@@ -133,6 +140,15 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
             }}
           >
             {renderComponent(component, data, interactive, sequence, winnerRevealDelayMs, builderPreview)}
+            {missingCols.length > 0 && (
+              <div
+                className="absolute -top-2 left-0 z-10 max-w-full truncate rounded bg-danger-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow"
+                style={{ pointerEvents: "none" }}
+                title={`Column(s) not found: ${missingCols.join(", ")} — deleted in the Data Editor`}
+              >
+                ⚠ Column not found: {missingCols.join(", ")}
+              </div>
+            )}
           </div>
         );
       })}

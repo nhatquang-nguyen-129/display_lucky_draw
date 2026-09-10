@@ -223,3 +223,18 @@ function migrateSessionDuplicateColumns() {
 }
 
 migrateSessionDuplicateColumns();
+
+/**
+ * Migration: thêm participant_column_labels vào sessions — nhãn HIỂN THỊ tùy biến cho từng cột trong
+ * Data Editor (JSON dạng { [tênCột]: "Nhãn" }). Với cột lõi name/phone/code/email đây chỉ là nhãn,
+ * dữ liệu vẫn nằm ở cột SQL tương ứng. An toàn khi chạy nhiều lần — chỉ ADD COLUMN khi chưa có,
+ * không đụng dữ liệu cũ (session cũ = NULL = dùng nhãn mặc định).
+ */
+function migrateSessionColumnLabels() {
+  const cols = (db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("participant_column_labels")) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN participant_column_labels TEXT`);
+  }
+}
+
+migrateSessionColumnLabels();

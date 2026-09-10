@@ -148,10 +148,22 @@ export function insertColumnsCommand(names: string[]): Command {
 }
 
 export function removeColumnCommand(state: EditorState, name: string): Command {
+  // Cột lõi (name/phone/code/email): cột SQL cố định, không drop được — "xoá cột" = clear sạch giá trị
+  // về "" ở mọi dòng (Save sẽ ghi name="" / phone|code|email=NULL). Việc ẩn cột khỏi editor do
+  // component tự quản (droppedCoreCols), ở đây chỉ lo dữ liệu để Undo khôi phục lại được.
+  if (isCoreField(name)) {
+    const before = new Map(state.rows.map((r) => [r.id, r[name]]));
+    return {
+      label: `Delete column "${name}" (clears all values)`,
+      execute: (s) => ({ ...s, rows: s.rows.map((r) => ({ ...r, [name]: "" })) }),
+      undo: (s) => ({ ...s, rows: s.rows.map((r) => ({ ...r, [name]: before.get(r.id) ?? "" })) }),
+    };
+  }
   const before = new Map(state.rows.map((r) => [r.id, r.extra[name]]));
   return {
     label: `Delete column "${name}"`,
     execute: (s) => ({
+      ...s,
       columns: s.columns.filter((c) => c !== name),
       rows: s.rows.map((r) => {
         const { [name]: _drop, ...rest } = r.extra;
@@ -159,6 +171,7 @@ export function removeColumnCommand(state: EditorState, name: string): Command {
       }),
     }),
     undo: (s) => ({
+      ...s,
       columns: [...s.columns, name],
       rows: s.rows.map((r) => {
         const v = before.get(r.id);
