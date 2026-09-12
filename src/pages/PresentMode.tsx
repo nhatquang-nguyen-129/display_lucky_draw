@@ -21,13 +21,21 @@ const CONFIG_POLL_MS = 2000;
 export default function PresentMode() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [config, setConfig] = useState<LandingConfig | null>(null);
+  const [participantColumnTypesJson, setParticipantColumnTypesJson] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const data = useLandingData(sessionId ?? null);
   // `config` có thể chưa tải xong (null) ở lần render đầu — 0/false lúc đó là an toàn (chưa biết
   // Wheel/component nào cả), tự tính lại đúng ngay khi `config` có giá trị thật.
   const winnerRevealDelayMs = config ? computeWheelRevealDelayMs(config.components) : 0;
   const requiresPrizeSelection = config ? hasSelectablePrizeUI(config.components) : false;
-  const sequence = useDrawSequence(sessionId ?? null, data, data.refresh, winnerRevealDelayMs, requiresPrizeSelection);
+  const sequence = useDrawSequence(
+    sessionId ?? null,
+    data,
+    data.refresh,
+    winnerRevealDelayMs,
+    requiresPrizeSelection,
+    participantColumnTypesJson
+  );
 
   useEffect(() => {
     if (!sessionId) return;
@@ -38,6 +46,7 @@ export default function PresentMode() {
         // trước khi bỏ Trigger Graph) — tránh crash ở LandingRenderer.tsx, cùng cơ chế với
         // LandingBuilderWindow.tsx lúc mở Builder.
         setConfig({ ...parsed, components: parsed.components.filter((c) => !!COMPONENT_REGISTRY[c.type]) });
+        setParticipantColumnTypesJson(s?.participant_column_types ?? null);
       });
     load();
     const interval = setInterval(load, CONFIG_POLL_MS);

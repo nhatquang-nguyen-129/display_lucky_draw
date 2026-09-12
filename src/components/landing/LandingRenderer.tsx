@@ -177,7 +177,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         ))}
 
       {/* Popup xác nhận cho action "confirm"/"reset" của Button (ghi dữ liệu THẬT, VĨNH VIỄN — xem
-          docs/landing-builder.md mục 6) — CHỈ ở Present Mode thật, khi sequence.confirmPrompt đang
+          docs/landing/button-actions.md) — CHỈ ở Present Mode thật, khi sequence.confirmPrompt đang
           có giá trị (ButtonView.tsx gọi sequence.requestConfirm() thay vì chạy action ngay). Click
           nền tối (ngoài thẻ) hoặc bấm Esc = Cancel, giống hành vi đóng modal thông thường. z-50 để
           LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. */}

@@ -742,6 +742,69 @@ export function getParticipantExtraField(p: import("@/types").Participant, field
   }
 }
 
+/** ColumnType của Data Editor (xem src/lib/dataEditor/validate.ts) — khai báo lại ở đây vì
+ * landing/types.ts không import được từ dataEditor/ (2 nhánh độc lập của renderer, tránh phụ thuộc
+ * chéo không cần thiết giữa 2 tính năng). Sửa 1 bên nhớ soi lại bên kia nếu đổi logic resolve. */
+export type ParticipantColumnType = "text" | "name" | "phone" | "email" | "code" | "url";
+const RESOLVABLE_CORE_FIELDS = ["name", "phone", "code", "email"] as const;
+
+function defaultParticipantColumnType(col: string): ParticipantColumnType {
+  if (col === "name") return "name";
+  if (col === "phone") return "phone";
+  if (col === "email") return "email";
+  if (col === "code") return "code";
+  return "text";
+}
+
+/** Core field nào trong TOÀN BỘ danh sách participants đang có dữ liệu thật — dùng làm điều kiện
+ * "core field đang active" khi resolve, khớp đúng những gì Data Editor đang hiện cho người vận hành
+ * thấy (xem isCoreFieldActive trong dataEditor/validate.ts). Tính 1 lần, dùng lại cho nhiều lượt resolve. */
+export function computeActiveParticipantCoreFields(
+  participants: import("@/types").Participant[]
+): Set<(typeof RESOLVABLE_CORE_FIELDS)[number]> {
+  const active = new Set<(typeof RESOLVABLE_CORE_FIELDS)[number]>();
+  for (const col of RESOLVABLE_CORE_FIELDS) {
+    if (participants.some((p) => (getParticipantField(p, col) || "").trim())) active.add(col);
+  }
+  return active;
+}
+
+/**
+ * Resolve giá trị "Name"/"Phone"/"Code"/"Email" thật của 1 participant theo cột đang được Data
+ * Editor gán Data Type tương ứng — KHÔNG đọc cứng participant.name/.phone/... Dùng cho Winner Name/
+ * Scoreboard ở Present Mode, thay cho việc giả định field cố định luôn đúng (xem
+ * docs/participants/column-mapping.md, docs/architecture/draw-engine.md). `participant_name` của
+ * draw_results/DrawCandidate (từ server) đã tự resolve kiểu này rồi — hàm này dùng cho phần renderer
+ * còn lại (candidate CHƯA commit, xem useDrawSequence.ts's effectiveData).
+ */
+export function resolveParticipantDisplayField(
+  p: import("@/types").Participant,
+  columnTypesJson: string | null | undefined,
+  activeCoreFields: ReadonlySet<string>,
+  type: ParticipantColumnType
+): string {
+  let columnTypes: Record<string, ParticipantColumnType> = {};
+  if (columnTypesJson) {
+    try {
+      columnTypes = JSON.parse(columnTypesJson);
+    } catch {
+      columnTypes = {};
+    }
+  }
+  for (const col of RESOLVABLE_CORE_FIELDS) {
+    if (!activeCoreFields.has(col)) continue;
+    if ((columnTypes[col] ?? defaultParticipantColumnType(col)) === type) return getParticipantField(p, col);
+  }
+  for (const [col, t] of Object.entries(columnTypes)) {
+    if (t === type && !(RESOLVABLE_CORE_FIELDS as readonly string[]).includes(col)) {
+      const v = getParticipantExtraField(p, col);
+      if (v) return v;
+    }
+  }
+  if (type === "name" || type === "phone" || type === "code" || type === "email") return getParticipantField(p, type);
+  return "";
+}
+
 // Gói dữ liệu sống (participants/prizes/kết quả quay) — 1 nơi fetch/poll duy nhất
 // (xem useLandingData.ts), truyền xuống mọi view "động" (luckyWheel, winnerName...) qua LandingRenderer.
 // Text/Image ở Phase 1-2 không cần, nhưng chữ ký LandingRenderer nhận sẵn để các phase sau không
@@ -822,7 +885,7 @@ export interface DrawSequenceActions {
   // đúng nghĩa. Chỉ khoá bởi busy, không phụ thuộc isPending (khác confirm/redo).
   resetSession: () => void;
   // Popup xác nhận chung — dùng cho action "confirm"/"reset" của Button (2 action ghi dữ liệu THẬT,
-  // VĨNH VIỄN, xem docs/landing-builder.md mục 6), tránh bấm nhầm giữa lúc trình chiếu trực tiếp.
+  // VĨNH VIỄN, xem docs/landing/button-actions.md), tránh bấm nhầm giữa lúc trình chiếu trực tiếp.
   // ButtonView.tsx gọi requestConfirm(message, action) THAY VÌ chạy action ngay — action thật (vd
   // sequence.confirm()) chỉ chạy SAU KHI resolveConfirmPrompt(true) từ nút "Confirm" trên popup (vẽ
   // ở LandingRenderer.tsx, đọc confirmPrompt). resolveConfirmPrompt(false) (nút Cancel/bấm ra ngoài)
