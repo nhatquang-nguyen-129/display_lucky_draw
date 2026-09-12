@@ -1,5 +1,6 @@
 import { randomUUID, randomInt } from "crypto";
 import { db } from "./db";
+import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 
 export interface DrawOptions {
   sessionId: string;
@@ -149,9 +150,25 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
   const idx = randomInt(0, eligibleParticipants.length);
   const chosenParticipant = eligibleParticipants[idx];
 
+  // Tên hiển thị của người trúng KHÔNG đọc cứng participant.name — Draw Engine không cần biết cột
+  // SQL nào tên gì, chỉ cần biết cột nào đang được Data Editor gán Data Type = "Name" (xem
+  // docs/architecture/draw-engine.md, docs/participants/column-mapping.md). activeCoreFields tính
+  // trên TOÀN BỘ participants của session (không chỉ nhóm đủ điều kiện) để khớp đúng những gì Data
+  // Editor đang hiện cho người vận hành thấy.
+  const allParticipants = db
+    .prepare(`SELECT name, phone, code, email, extra_data FROM participants WHERE session_id = ?`)
+    .all(sessionId) as { name: string; phone: string | null; code: string | null; email: string | null; extra_data: string | null }[];
+  const activeCoreFields = computeActiveCoreFields(allParticipants);
+  const participantName = resolveParticipantField(
+    chosenParticipant,
+    session.participant_column_types,
+    "name",
+    activeCoreFields
+  );
+
   return {
     participantId: chosenParticipant.id,
-    participantName: chosenParticipant.name,
+    participantName: participantName || chosenParticipant.name,
     prizeId: chosenPrize.id,
     prizeName: chosenPrize.name,
     seed: randomUUID(),

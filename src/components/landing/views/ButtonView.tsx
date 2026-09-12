@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ButtonAction, ButtonComponent, DrawMode, DrawSequenceActions, getParticipantField, LandingData } from "@/lib/landing/types";
 
-// 2 action ghi dữ liệu THẬT, VĨNH VIỄN (xem docs/landing-builder.md mục 6) — bắt buộc xác nhận qua
+// 2 action ghi dữ liệu THẬT, VĨNH VIỄN (xem docs/landing/button-actions.md) — bắt buộc xác nhận qua
 // popup (sequence.requestConfirm(), vẽ ở LandingRenderer.tsx) trước khi thật sự chạy, tránh bấm
 // nhầm giữa lúc trình chiếu trực tiếp. Action còn lại không cần — hoặc vô hại (draw/
 // toggleScoreboard/openLink không ghi gì bất thuận nghịch), hoặc đã tự no-op an toàn sẵn.

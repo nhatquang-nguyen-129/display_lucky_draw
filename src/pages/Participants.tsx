@@ -5,12 +5,37 @@ import Button from "@/components/Button";
 import DataEditorModal from "@/components/DataEditorModal";
 import { useSession } from "@/context/SessionContext";
 import { Participant } from "@/types";
+import { computeActiveParticipantCoreFields, getParticipantField } from "@/lib/landing/types";
+
+const CORE_COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
 
 export default function Participants() {
   const { activeSessionId, activeSession } = useSession();
   const [items, setItems] = useState<Participant[]>([]);
   const [showEditor, setShowEditor] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+
+  // Preview RAW, giống hệt cột đang hiện trong Data Editor trước khi gán nhãn — không còn ép cứng 4
+  // cột Name/Code/Phone/Email (import generic để trống chúng cho tới khi được gán Data Type, xem
+  // docs/participants/column-mapping.md). Core field chỉ hiện nếu đang có dữ liệu thật (dữ liệu cũ
+  // trước khi đổi thiết kế); phần còn lại lấy nguyên tên cột trong extra_data, đúng thứ tự xuất hiện.
+  const activeCoreFields = Array.from(computeActiveParticipantCoreFields(items));
+  const extraColumns: string[] = [];
+  const seenExtra = new Set<string>();
+  items.forEach((p) => {
+    if (!p.extra_data) return;
+    try {
+      Object.keys(JSON.parse(p.extra_data) as Record<string, string>).forEach((k) => {
+        if (!seenExtra.has(k)) {
+          seenExtra.add(k);
+          extraColumns.push(k);
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+  });
+  const previewColumns = [...activeCoreFields, ...extraColumns];
 
   const refresh = () => {
     if (activeSessionId) window.api.participants.list(activeSessionId).then(setItems);
@@ -30,7 +55,14 @@ export default function Participants() {
 
     let rows: any[] = [];
     if (result.ext === "csv") {
-      const parsed = Papa.parse(result.text!, { header: true, skipEmptyLines: true });
+      // Excel xuất CSV UTF-8 thường kèm BOM ở đầu file, khiến header cột đầu tiên
+      // bị dính ﻿ nếu không bỏ trước khi parse.
+      const text = result.text!.replace(/^﻿/, "");
+      const parsed = Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h) => h.trim(),
+      });
       rows = parsed.data as any[];
     } else {
       const binary = atob(result.base64!);
@@ -41,33 +73,30 @@ export default function Participants() {
       rows = XLSX.utils.sheet_to_json(sheet);
     }
 
-    const CORE_KEYS = new Set([
-      "name", "Name", "Họ tên", "Tên", "full_name",
-      "code", "Code", "Mã",
-      "phone", "Phone", "SĐT", "Số điện thoại", "phone_number",
-      "email", "Email",
-    ]);
-
-    const normalized = rows.map((r) => {
-      const name = r.name ?? r.Name ?? r.full_name ?? r["Họ tên"] ?? r["Tên"] ?? "";
-      const code = r.code ?? r.Code ?? r["Mã"] ?? undefined;
-      const phone = r.phone ?? r.Phone ?? r.phone_number ?? r["SĐT"] ?? r["Số điện thoại"] ?? undefined;
-      const email = r.email ?? r.Email ?? undefined;
-
-      const extra: Record<string, string> = {};
-      Object.keys(r).forEach((key) => {
-        if (CORE_KEYS.has(key)) return;
-        const value = r[key];
-        if (value !== undefined && value !== null && String(value).trim() !== "") {
-          extra[key] = String(value);
-        }
-      });
-
-      return { name, code, phone, email, extra: Object.keys(extra).length ? extra : undefined };
-    });
+    // Import KHÔNG đoán cột nào là tên/sđt/email — mọi cột trong file vào thẳng extra_data y
+    // nguyên tên gốc. Việc gán cột nào đóng vai trò Name/Phone/Code/Email là thao tác thủ công của
+    // người dùng, làm SAU khi đã import xong, qua dropdown "Data type" trên header cột trong Data
+    // Editor (xem docs/participants/column-mapping.md). Chỉ bỏ qua dòng trắng hoàn toàn (mọi cột đều rỗng).
+    const detectedHeaders = rows.length > 0 ? Object.keys(rows[0]).map((k) => k.trim()) : [];
+    const normalized = rows
+      .map((r) => {
+        const extra: Record<string, string> = {};
+        Object.keys(r).forEach((key) => {
+          const value = r[key];
+          if (value !== undefined && value !== null && String(value).trim() !== "") {
+            extra[key.trim()] = String(value).trim();
+          }
+        });
+        return { name: "", extra: Object.keys(extra).length ? extra : undefined };
+      })
+      .filter((r) => r.extra);
 
     const inserted = await window.api.participants.bulkImport(activeSessionId, normalized);
-    setImportMsg(`Imported ${inserted}/${normalized.length} participants from the file.`);
+    setImportMsg(
+      `Imported ${inserted}/${normalized.length} rows. Columns detected: ${
+        detectedHeaders.join(", ") || "(none)"
+      }. Open Data Editor and set "Data type" on each column header to label Name/Phone/Code/Email.`
+    );
     refresh();
   }
 
@@ -118,34 +147,38 @@ export default function Participants() {
         </div>
       )}
 
-      {/* Bảng preview — chỉ để xem nhanh, không có thao tác sửa/xoá từng dòng.
-          Mọi chỉnh sửa (kể cả thêm thủ công) đều thực hiện trong Data Editor để tránh 2 nơi thao tác cùng dữ liệu. */}
-      <div className="overflow-hidden rounded-xl border border-base-800">
+      {/* Bảng preview — chỉ để xem nhanh, không có thao tác sửa/xoá từng dòng. Cột hiện RAW y hệt
+          Data Editor (không ép cứng Name/Code/Phone/Email) — overflow-x-auto vì file import có thể
+          có rất nhiều cột (vd Google Form). Mọi chỉnh sửa (kể cả thêm thủ công, gán Data Type) đều
+          thực hiện trong Data Editor để tránh 2 nơi thao tác cùng dữ liệu. */}
+      <div className="overflow-x-auto rounded-xl border border-base-800">
         <table className="w-full text-left text-sm">
           <thead className="bg-base-900 text-xs uppercase tracking-wide text-base-400">
             <tr>
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Code</th>
-              <th className="px-4 py-3 font-medium">Phone</th>
-              <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Source</th>
+              {previewColumns.map((col) => (
+                <th key={col} className="whitespace-nowrap px-4 py-3 font-medium">
+                  {CORE_COLUMN_LABELS[col] ?? col}
+                </th>
+              ))}
+              <th className="whitespace-nowrap px-4 py-3 font-medium">Source</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-base-800 bg-base-950">
             {items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-base-500">
+                <td colSpan={previewColumns.length + 1} className="px-4 py-8 text-center text-base-500">
                   No participants yet. Import a file to get started, or open the Data Editor to add manually.
                 </td>
               </tr>
             ) : (
               items.map((p) => (
                 <tr key={p.id} className="text-base-200">
-                  <td className="px-4 py-3">{p.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-base-400">{p.code ?? "—"}</td>
-                  <td className="px-4 py-3 text-base-400">{p.phone ?? "—"}</td>
-                  <td className="px-4 py-3 text-base-400">{p.email ?? "—"}</td>
-                  <td className="px-4 py-3 text-xs text-base-500">{p.source}</td>
+                  {previewColumns.map((col) => (
+                    <td key={col} className="whitespace-nowrap px-4 py-3 text-base-400">
+                      {getParticipantField(p, col) || "—"}
+                    </td>
+                  ))}
+                  <td className="whitespace-nowrap px-4 py-3 text-xs text-base-500">{p.source}</td>
                 </tr>
               ))
             )}

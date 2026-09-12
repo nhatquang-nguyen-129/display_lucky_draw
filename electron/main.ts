@@ -3,6 +3,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, resetSession } from "./drawEngine";
+import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 
 // Icon dùng lúc runtime (khác với build.icon trong package.json — đó là icon đóng gói
@@ -284,7 +285,11 @@ ipcMain.handle(
       let inserted = 0;
       let nextOrder = nextSortOrder(sessionId);
       for (const row of items) {
-        if (!row.name) continue;
+        // Import không đoán cột name/phone/... nữa (gán nhãn làm sau, thủ công, trong Data
+        // Editor) — name có thể rỗng ở bước này. Chỉ bỏ qua dòng KHÔNG có bất kỳ dữ liệu nào.
+        const hasAnyData =
+          row.name || row.code || row.phone || row.email || (row.extra && Object.keys(row.extra).length > 0);
+        if (!hasAnyData) continue;
         const result = insert.run(
           randomUUID(),
           sessionId,
@@ -511,10 +516,11 @@ ipcMain.handle("sessions:delete", (_e, id: string) => {
 });
 
 ipcMain.handle("sessions:results", (_e, sessionId: string) => {
-  return db
+  const rows = db
     .prepare(
       `SELECT dr.*,
-              p.name as participant_name, p.code as participant_code, p.phone as participant_phone, p.email as participant_email,
+              p.name as participant_name, p.code as participant_code, p.phone as participant_phone,
+              p.email as participant_email, p.extra_data as participant_extra_data,
               pr.name as prize_name, pr.code as prize_code, pr.display_image as prize_display_image
        FROM draw_results dr
        JOIN participants p ON p.id = dr.participant_id
@@ -522,7 +528,38 @@ ipcMain.handle("sessions:results", (_e, sessionId: string) => {
        WHERE dr.session_id = ?
        ORDER BY dr.drawn_at DESC`
     )
-    .all(sessionId);
+    .all(sessionId) as any[];
+
+  // Kết quả hiển thị (Winner Name/Scoreboard) đọc theo cột nào đang được Data Editor gán Data Type
+  // Name/Phone/Code/Email cho session này — KHÔNG đọc cứng p.name/.phone/... (xem
+  // docs/architecture/draw-engine.md). participant_extra_data chỉ dùng để resolve ở đây, không trả
+  // ra ngoài (giữ đúng shape DrawResultRow cũ, tránh renderer phải đổi theo).
+  const session = db.prepare(`SELECT participant_column_types FROM sessions WHERE id = ?`).get(sessionId) as
+    | { participant_column_types: string | null }
+    | undefined;
+  const allParticipants = db
+    .prepare(`SELECT name, phone, code, email, extra_data FROM participants WHERE session_id = ?`)
+    .all(sessionId) as { name: string; phone: string | null; code: string | null; email: string | null; extra_data: string | null }[];
+  const activeCoreFields = computeActiveCoreFields(allParticipants);
+  const columnTypesJson = session?.participant_column_types ?? null;
+
+  return rows.map((r) => {
+    const participant = {
+      name: r.participant_name,
+      phone: r.participant_phone,
+      code: r.participant_code,
+      email: r.participant_email,
+      extra_data: r.participant_extra_data,
+    };
+    const { participant_extra_data, ...rest } = r;
+    return {
+      ...rest,
+      participant_name: resolveParticipantField(participant, columnTypesJson, "name", activeCoreFields) || r.participant_name,
+      participant_phone: resolveParticipantField(participant, columnTypesJson, "phone", activeCoreFields) || r.participant_phone,
+      participant_code: resolveParticipantField(participant, columnTypesJson, "code", activeCoreFields) || r.participant_code,
+      participant_email: resolveParticipantField(participant, columnTypesJson, "email", activeCoreFields) || r.participant_email,
+    };
+  });
 });
 
 ipcMain.handle("draw:one", (_e, sessionId: string) => {

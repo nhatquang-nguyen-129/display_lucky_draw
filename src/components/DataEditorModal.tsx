@@ -32,6 +32,8 @@ import {
   DUPLICATE_ISSUE_MESSAGE,
   groupIssuesByMessage,
   groupIssuesByRow,
+  isCoreFieldActive,
+  resolveColumnForType,
   validateState,
 } from "@/lib/dataEditor/validate";
 
@@ -141,21 +143,29 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   // renameColumnCommand (đổi key thật) nên không cần ở đây.
   const [columnLabels, setColumnLabels] = useState<Record<string, string>>({});
   const labelFor = (col: string) => columnLabels[col] ?? COLUMN_LABELS[col] ?? col;
-  // Cột lõi đã bị "xoá cột" trong phiên editing này — ẩn khỏi bảng (dữ liệu đã bị clear qua
-  // removeColumnCommand, Undo sẽ khôi phục giá trị; đóng/mở lại editor thì cột hiện lại rỗng).
-  const [droppedCoreCols, setDroppedCoreCols] = useState<Set<string>>(new Set());
+
+  // Core field (name/phone/code/email) chỉ hiện khi thực sự có dữ liệu — import generic để trống cả
+  // 4 field này lúc mới import (xem docs/participants/import.md), "gán nhãn" giờ chỉ là chọn Data
+  // Type cho 1 cột phụ, không còn bước nào di chuyển dữ liệu vào core field nữa. Tính lại mỗi khi
+  // rows đổi (không phụ thuộc columns) nên tự ẩn/hiện đúng lúc, không cần state "đã xoá" riêng.
+  const activeCoreFields = useMemo(
+    () => CORE_FIELDS.filter((c) => isCoreFieldActive(c, history.state)),
+    [history.state]
+  );
+  const activeCoreFieldsKey = activeCoreFields.join("|");
 
   // Thứ tự hiển thị cột — riêng biệt với history (kéo-thả cột chỉ là view, không cần Undo).
-  // Đồng bộ lại mỗi khi có cột optional được thêm/xoá qua command.
-  const [columnOrder, setColumnOrder] = useState<string[]>([...CORE_FIELDS]);
+  // Đồng bộ lại mỗi khi có cột optional được thêm/xoá qua command, hoặc 1 core field bắt đầu/hết có dữ liệu.
+  const [columnOrder, setColumnOrder] = useState<string[]>([]);
   useEffect(() => {
     setColumnOrder((prev) => {
-      const all = [...CORE_FIELDS.filter((c) => !droppedCoreCols.has(c)), ...history.state.columns];
+      const all = [...activeCoreFields, ...history.state.columns];
       const kept = prev.filter((c) => all.includes(c));
       const missing = all.filter((c) => !kept.includes(c));
       return [...kept, ...missing];
     });
-  }, [history.state.columns, droppedCoreCols]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.state.columns, activeCoreFieldsKey]);
 
   const [dragColKey, setDragColKey] = useState<string | null>(null);
   const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
@@ -198,7 +208,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     setSelectedRowIds(new Set());
     setSelectedColKeys(new Set());
     setSelectedCell(null);
-    setDroppedCoreCols(new Set());
     if (session?.participant_column_labels) {
       try {
         setColumnLabels(JSON.parse(session.participant_column_labels));
@@ -291,9 +300,11 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const targetColumnLabel = targetColumns.map((c) => labelFor(c)).join(", ");
 
   const issues = useMemo(
-    () => validateState(history.state, columnTypes, duplicateColumns, [...droppedCoreCols]),
-    [history.state, columnTypes, duplicateColumns, droppedCoreCols]
+    () => validateState(history.state, columnTypes, duplicateColumns),
+    [history.state, columnTypes, duplicateColumns]
   );
+  const nameCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "name"), [history.state, columnTypes]);
+  const phoneCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "phone"), [history.state, columnTypes]);
   const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
   const issueGroups = useMemo(() => groupIssuesByMessage(issues), [issues]);
   const duplicateRowIds = useMemo(
@@ -416,19 +427,31 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     setSelectedRowIds(new Set());
   }
 
-  // Xoá các cột đang bôi ở header. Cột phụ → drop hẳn key. Cột lõi → clear sạch giá trị + ẩn khỏi
-  // editor (xem removeColumnCommand + droppedCoreCols). Tất cả trong 1 bước Undo.
+  // Xoá các cột đang bôi ở header. Cột phụ → drop hẳn key. Cột lõi → clear sạch giá trị (tự ẩn khỏi
+  // editor ngay sau đó vì hết dữ liệu, xem activeCoreFields/removeColumnCommand). Tất cả trong 1 bước Undo.
   function deleteSelectedColumns() {
     const cols = Array.from(selectedColKeys).filter((c) => columnOrder.includes(c));
     if (cols.length === 0) return;
-    const coreCols = cols.filter(isCoreField);
     const cmd = combineCommands(
       cols.length === 1 ? `Delete column "${cols[0]}"` : `Delete ${cols.length} columns`,
       cols.map((c) => removeColumnCommand(history.state, c))
     );
     if (cmd) history.run(cmd);
-    if (coreCols.length) setDroppedCoreCols((prev) => new Set([...prev, ...coreCols]));
     setSelectedColKeys(new Set());
+  }
+
+  // Bàn hoàn toàn trống (chưa import, chưa nhập tay lần nào) → không có cột nào để gõ vào cả, vì
+  // core field bị ẩn tới khi có dữ liệu (xem activeCoreFields) và cũng chưa có cột phụ nào. "+ Add
+  // first row" lúc này tự thêm kèm 2 cột phụ gợi ý ("Name"/"Phone", KHÔNG phải core field — người
+  // dùng đổi tên/xoá/gán Data Type tuỳ ý) để không rơi vào bảng trắng hoàn toàn không gõ được gì.
+  function addFirstRow() {
+    const isBlankSlate = history.state.columns.length === 0 && activeCoreFields.length === 0;
+    if (isBlankSlate) {
+      const cmd = combineCommands("Add first row", [insertColumnsCommand(["Name", "Phone"]), insertRowsCommand(0, 1)]);
+      if (cmd) history.run(cmd);
+    } else {
+      history.run(insertRowsCommand(0, 1));
+    }
   }
 
   // Chèn N cột trống tại vị trí hiển thị `atIndex` trong columnOrder — dùng cho right-click
@@ -728,7 +751,11 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   {g.key === "format" && openMenu === "format" && (
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
                       <p className={menuScopeLine}>
-                        {targetColumns.length > 0 ? `Column: ${targetColumnLabel}` : "Select a column or a cell first"}
+                        {targetColumns.length === 0
+                          ? "Select a column or a cell first"
+                          : targetColumns.length === 1
+                          ? `Column: ${targetColumnLabel} (${COLUMN_TYPE_LABELS[columnTypes[targetColumns[0]] ?? defaultColumnType(targetColumns[0])]})`
+                          : `Column: ${targetColumnLabel}`}
                       </p>
                       <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Upper Case", toUpperCase)}>
                         UPPER CASE
@@ -1166,7 +1193,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                           <span className="flex min-w-0 items-center gap-1" title={labelFor(col)}>
                             <span className="truncate">
                               {labelFor(col)}
-                              {(col === "name" || col === "phone") && " *"}
+                              {(col === nameCol || col === phoneCol) && " *"}
                             </span>
                             {columnTypes[col] && columnTypes[col] !== "text" && (
                               <span className="shrink-0 rounded bg-gold-500/20 px-1 text-[9px] normal-case text-gold-400">
@@ -1276,10 +1303,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                       {history.state.rows.length === 0 ? (
                         <>
                           No rows yet.{" "}
-                          <button
-                            className="text-gold-400 underline hover:text-gold-300"
-                            onClick={() => history.run(insertRowsCommand(0, 1))}
-                          >
+                          <button className="text-gold-400 underline hover:text-gold-300" onClick={addFirstRow}>
                             + Add first row
                           </button>
                         </>
@@ -1468,7 +1492,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         : `Delete column "${c}"? Its data in every row will be lost on Save.`;
                       if (confirm(msg)) {
                         history.run(removeColumnCommand(history.state, c));
-                        if (isCoreField(c)) setDroppedCoreCols((prev) => new Set([...prev, c]));
                       }
                       setContextMenu(null);
                     }}

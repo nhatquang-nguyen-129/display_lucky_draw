@@ -37,6 +37,36 @@ export function defaultColumnType(col: string): ColumnType {
   return "text";
 }
 
+/** Core field (name/phone/code/email) coi là "đang dùng" khi có dữ liệu thật ở ÍT NHẤT 1 dòng —
+ * import generic để trống hoàn toàn 4 field này (xem docs/participants/import.md), nên chỉ hiện/
+ * validate core field nào thực sự có dữ liệu (dữ liệu cũ trước khi đổi thiết kế), tránh 4 cột rỗng
+ * mặc định gây rối mắt. Cột phụ (extra) không cần hàm này — luôn hiện vì đã nằm trong state.columns. */
+export function isCoreFieldActive(col: (typeof CORE_FIELDS)[number], state: EditorState): boolean {
+  return state.rows.some((r) => r[col]?.trim());
+}
+
+/**
+ * Tìm cột nào đang thực sự đóng vai trò 1 ColumnType cụ thể (vd "cột nào là Name") — đây là cơ chế
+ * DUY NHẤT xác định "trường Name/Phone" của participant, thay cho việc đọc cứng participant.name.
+ * Ưu tiên core field (theo đúng bản chất, chỉ tính nếu đang có dữ liệu thật — xem isCoreFieldActive),
+ * sau đó tới cột phụ đầu tiên được gán TAY đúng type này (cột phụ mặc định luôn là "text" nên chỉ
+ * tính khi có override rõ ràng). Không tìm thấy → undefined, nghĩa là chưa ai gán nhãn này cả.
+ */
+export function resolveColumnForType(
+  state: EditorState,
+  columnTypes: Record<string, ColumnType>,
+  type: ColumnType
+): string | undefined {
+  for (const col of CORE_FIELDS) {
+    if (!isCoreFieldActive(col, state)) continue;
+    if ((columnTypes[col] ?? defaultColumnType(col)) === type) return col;
+  }
+  for (const col of state.columns) {
+    if (columnTypes[col] === type) return col;
+  }
+  return undefined;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 type CaseShape = "title" | "upper" | "lower" | "other";
@@ -88,24 +118,23 @@ function findDuplicateIssues(state: EditorState, duplicateColumns: string[]): Ce
 export function validateState(
   state: EditorState,
   columnTypes: Record<string, ColumnType>,
-  duplicateColumns: string[] = [],
-  // Cột lõi người dùng đã "xoá" trong Data Editor — bỏ qua mọi cảnh báo trên cột đó (giá trị đã bị
-  // chủ động clear, không phải lỗi nhập liệu).
-  droppedColumns: string[] = []
+  duplicateColumns: string[] = []
 ): CellIssue[] {
-  const dropped = new Set(droppedColumns);
   const issues: CellIssue[] = [];
 
-  // Tên & SĐT là 2 field bắt buộc phải có giá trị — gắn liền với việc đủ điều kiện quay số,
-  // không phụ thuộc vào việc user có đổi type hay không.
+  // Tên & SĐT bắt buộc phải có giá trị — nhưng CHỈ SAU KHI đã có 1 cột nào đó thực sự đóng vai trò
+  // Name/Phone (xem resolveColumnForType). Chưa gán nhãn nào cả thì chưa có gì để coi là "thiếu" —
+  // đúng tinh thần "generic trước, label sau" (xem docs/participants/column-mapping.md).
+  const nameCol = resolveColumnForType(state, columnTypes, "name");
+  const phoneCol = resolveColumnForType(state, columnTypes, "phone");
   state.rows.forEach((r) => {
-    if (!dropped.has("name") && !r.name.trim()) issues.push({ rowId: r.id, col: "name", message: "Missing name" });
-    if (!dropped.has("phone") && !r.phone.trim()) issues.push({ rowId: r.id, col: "phone", message: "Missing phone" });
+    if (nameCol && !getCell(r, nameCol).trim()) issues.push({ rowId: r.id, col: nameCol, message: "Missing name" });
+    if (phoneCol && !getCell(r, phoneCol).trim()) issues.push({ rowId: r.id, col: phoneCol, message: "Missing phone" });
   });
 
   issues.push(...findDuplicateIssues(state, duplicateColumns));
 
-  const allColumns = [...CORE_FIELDS, ...state.columns].filter((c) => !dropped.has(c));
+  const allColumns = [...CORE_FIELDS.filter((c) => isCoreFieldActive(c, state)), ...state.columns];
 
   allColumns.forEach((col) => {
     const type = columnTypes[col] ?? defaultColumnType(col);

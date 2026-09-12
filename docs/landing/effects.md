@@ -30,17 +30,18 @@ thiết kế logic, dồn thời gian cho phần khán giả thực sự nhìn t
 
 - `LandingRenderer.tsx` là painter THUẦN, dùng chung tuyệt đối bởi Builder (`LandingCanvas.tsx`) và
   Present Mode (`PresentMode.tsx`) qua 1 prop `interactive` — đảm bảo 2 nơi không bao giờ vẽ lệch
-  nhau. Effect mới PHẢI tôn trọng ranh giới này:
+  nhau (chi tiết ranh giới `interactive` xem [present-mode.md](./present-mode.md)). Effect mới PHẢI
+  tôn trọng ranh giới này:
   - `interactive=false` (Builder) → LUÔN hiện khung TĨNH/preview 1 khung hình, KHÔNG chạy animation
     loop thật — tránh giật/phân tâm khi đang kéo-thả nhiều component cùng lúc trong lúc dựng trang.
   - `interactive=true` (Present Mode) → animation thật mới chạy.
 - Mỗi effect là 1 **Component** độc lập theo đúng checklist 4 bước ở đầu `src/lib/landing/types.ts`
-  (Props/Component type → View → Panel → đăng ký `componentRegistry.ts`) — không gắn effect vào
-  component khác kiểu field phụ.
+  (Props/Component type → View → Panel → đăng ký `componentRegistry.ts` — xem
+  [config-lifecycle.md](./config-lifecycle.md)) — không gắn effect vào component khác kiểu field phụ.
 - **Không còn tầng tín hiệu trung gian nào** (đã bỏ Trigger Graph) — 1 effect mới cần "khi nào bắt
   đầu chạy" phải chọn 1 trong 2 cơ chế đã có tiền lệ trong app:
   1. **Button gọi thẳng** — action cố định trong `ButtonPanel.tsx` gọi thẳng 1 hàm (giống Draw/
-     Confirm hiện tại, xem `useDrawSequence.ts`/`ButtonView.tsx`).
+     Confirm hiện tại, xem [button-actions.md](./button-actions.md)).
   2. **Tự phát hiện qua data đổi** — component tự `useEffect` dò 1 giá trị trong `LandingData` đổi
      rồi tự chạy (giống Lucky Wheel dò `results[0].id`, xem `WheelTemplate.tsx`).
   Không tạo lại 1 hệ tín hiệu tổng quát mới — đúng tinh thần vừa quyết định đơn giản hoá.
@@ -136,9 +137,9 @@ chức sự kiện có sẵn designer/asset dựng animation ngoài.
 ## 5. Checklist kỹ thuật khi thêm 1 effect mới (bất kể tier nào)
 
 1. Theo đúng 4 bước component mới ở đầu `src/lib/landing/types.ts` (Props/Component → View → Panel →
-   `componentRegistry.ts`).
+   `componentRegistry.ts` — xem [config-lifecycle.md](./config-lifecycle.md)).
 2. Builder (`interactive=false`) LUÔN hiện khung tĩnh/preview — không chạy animation loop thật.
-3. Present Mode (`interactive=true`) mới chạy animation thật.
+3. Present Mode (`interactive=true`) mới chạy animation thật (xem [present-mode.md](./present-mode.md)).
 4. Cơ chế bắt đầu/dừng: Button gọi thẳng hàm HOẶC tự phát hiện qua data đổi (mục 2) — không dựng lại
    tầng tín hiệu trung gian nào.
 5. Dọn dẹp `useEffect` cleanup (`cancelAnimationFrame`/`clearTimeout`) khi unmount — effect có thể bị

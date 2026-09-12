@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DrawCandidate, DrawResultRow, Prize } from "@/types";
-import { DrawMode, DrawSequenceActions, LandingData, PENDING_RESULT_ID_PREFIX } from "@/lib/landing/types";
+import {
+  computeActiveParticipantCoreFields,
+  DrawMode,
+  DrawSequenceActions,
+  LandingData,
+  PENDING_RESULT_ID_PREFIX,
+  resolveParticipantDisplayField,
+} from "@/lib/landing/types";
 
 // Hook trung tâm cho luồng Button Draw/Confirm/Redo trên Landing Page (Present Mode only).
 // pick() gọi draw:pick — CHỌN nhưng CHƯA ghi DB — giữ candidate trong state để hiện lên màn hình
@@ -73,7 +80,11 @@ export function useDrawSequence(
   // trong types.ts), tính sẵn ở PresentMode.tsx — true thì Draw BẮT BUỘC phải chọn giải trước (xem
   // pick() bên dưới), tránh quay "trống" không ai biết đang nhắm giải nào trong khi rõ ràng trang có
   // hẳn UI để chọn. Trang không có UI đó thì Draw vẫn random có trọng số như cũ, không đổi gì.
-  requiresPrizeSelection: boolean
+  requiresPrizeSelection: boolean,
+  // JSON session.participant_column_types — dùng để resolve phone/code/email của candidate ĐANG
+  // CHỜ Confirm theo đúng cột đang được Data Editor gán Data Type (participant_name của candidate đã
+  // tự resolve kiểu này ở server, xem drawEngine.ts). null nếu chưa tải session xong.
+  participantColumnTypesJson: string | null
 ): DrawSequenceActions & { effectiveData: LandingData } {
   const [candidate, setCandidate] = useState<DrawCandidate | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -487,15 +498,22 @@ export function useDrawSequence(
     if (!candidate) return data;
     const participant = data.participants.find((p) => p.id === candidate.participantId);
     const prize = data.prizes.find((p) => p.id === candidate.prizeId);
+    // code/phone/email đọc theo đúng cột đang được Data Editor gán Data Type — KHÔNG đọc cứng
+    // participant.code/.phone/.email (xem resolveParticipantDisplayField trong lib/landing/types.ts).
+    const activeCoreFields = computeActiveParticipantCoreFields(data.participants);
+    const resolve = (type: "code" | "phone" | "email") =>
+      participant
+        ? resolveParticipantDisplayField(participant, participantColumnTypesJson, activeCoreFields, type) || null
+        : null;
     const synthetic: DrawResultRow = {
       id: `${PENDING_RESULT_ID_PREFIX}${candidate.seed}`,
       session_id: sessionId ?? "",
       participant_id: candidate.participantId,
       prize_id: candidate.prizeId,
       participant_name: candidate.participantName,
-      participant_code: participant?.code ?? null,
-      participant_phone: participant?.phone ?? null,
-      participant_email: participant?.email ?? null,
+      participant_code: resolve("code"),
+      participant_phone: resolve("phone"),
+      participant_email: resolve("email"),
       prize_name: candidate.prizeName,
       prize_code: prize?.code ?? null,
       prize_display_image: prize?.display_image ?? null,
@@ -503,7 +521,7 @@ export function useDrawSequence(
       rng_seed: candidate.seed,
     };
     return { ...data, results: [synthetic, ...data.results] };
-  }, [candidate, data, sessionId]);
+  }, [candidate, data, sessionId, participantColumnTypesJson]);
 
   return {
     candidate,
