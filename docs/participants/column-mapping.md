@@ -55,12 +55,12 @@ Core field chỉ "sống lại" (hiện ra) nếu dữ liệu thật xuất hi�
 const nameCol = resolveColumnForType(state, columnTypes, "name");
 const phoneCol = resolveColumnForType(state, columnTypes, "phone");
 state.rows.forEach((r) => {
-  if (nameCol && !getCell(r, nameCol).trim()) issues.push({ rowId: r.id, col: nameCol, message: "Missing name" });
-  if (phoneCol && !getCell(r, phoneCol).trim()) issues.push({ rowId: r.id, col: phoneCol, message: "Missing phone" });
+  if (nameCol && !getCell(r, nameCol).trim()) issues.push({ rowId: r.id, col: nameCol, message: "Missing Name" });
+  if (phoneCol && !getCell(r, phoneCol).trim()) issues.push({ rowId: r.id, col: phoneCol, message: "Missing Phone" });
 });
 ```
 
-Chưa gán Data Type = Name cho cột nào cả → `nameCol` là `undefined` → KHÔNG có issue "Missing name" nào cả (chưa có gì để coi là thiếu). Ngay khi gán xong, validate bắt đầu chạy đúng trên cột đó, dòng nào rỗng ở đúng cột đó mới bị flag — đúng tinh thần "generic trước, label sau, chỉ báo lỗi cụ thể SAU khi đã gán nhãn".
+Chưa gán Data Type = Name cho cột nào cả → `nameCol` là `undefined` → KHÔNG có issue "Missing Name" nào cả (chưa có gì để coi là thiếu). Ngay khi gán xong, validate bắt đầu chạy đúng trên cột đó, dòng nào rỗng ở đúng cột đó mới bị flag — đúng tinh thần "generic trước, label sau, chỉ báo lỗi cụ thể SAU khi đã gán nhãn".
 
 ## Cùng 1 logic, 3 bản sao (do ranh giới build khác nhau)
 
@@ -76,6 +76,8 @@ Chưa gán Data Type = Name cho cột nào cả → `nameCol` là `undefined` �
 
 `sessions.participant_column_labels` (`{ [tênCột]: "Nhãn hiển thị" }`) chỉ đổi **tên hiển thị** của core field trong Data Editor (vd đổi header "Phone" thành "Số điện thoại") — không liên quan gì tới việc gán ý nghĩa dữ liệu (Data Type). Đừng nhầm 2 khái niệm này.
 
-## Trùng lặp (duplicate) — cũng tách riêng
+## Trùng lặp (duplicate) — cũng tách riêng, và LUÔN LIVE theo selection
 
-`sessions.participant_duplicate_columns` (JSON `string[]`) — danh sách cột (có thể nhiều cột, compound key) dùng để tính trùng lặp trong tab "Data" của toolbar. Không gắn với Data Type — chọn trực tiếp bằng cách bôi đen header cột rồi bấm "Remove duplicate rows".
+Không gắn với Data Type — cột nào xác định trùng lặp (compound key, có thể nhiều cột) lấy TRỰC TIẾP từ cột đang bôi chọn trên bảng (`targetColumns`) NGAY LÚC ĐÓ, dùng chung cho cả chip "Duplicated Rows" ở status bar lẫn preset "Automate ▸ Deduplication ▸ Remove Duplicated Rows" (xem [data-editor.md](./data-editor.md)) — 2 nơi này luôn ra CÙNG 1 con số vì cùng gọi `findDuplicateIdsToRemove`. Chưa bôi cột nào thì không có gì để tính trùng cả — chip biến mất, preset yêu cầu bôi cột trước khi chạy.
+
+Từng có `sessions.participant_duplicate_columns` (JSON `string[]`, lưu riêng) làm nguồn cho việc này — đã BỎ khỏi luồng app (cột DB vẫn còn trong schema cho tương thích ngược, chỉ không còn ai ghi/đọc nữa) vì gây bug: đổi selection trên bảng không tự cập nhật config đã lưu, và chỉ cần MỞ preset dedup ra xem (dù sau đó Cancel) cũng đã âm thầm ghi đè config, để lại chip đỏ sai mà bôi lại cột khác không cách nào tự hết.

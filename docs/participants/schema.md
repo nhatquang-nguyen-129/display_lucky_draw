@@ -35,10 +35,12 @@ landing_config TEXT              -- JSON LandingConfig (không liên quan partic
 -- thêm qua các migration ở db.ts, mỗi cột phục vụ đúng 1 khái niệm — xem column-mapping.md
 participant_column_types TEXT        -- JSON { [tênCột]: ColumnType } — Name/Phone/Email/Code/URL/Text, mọi cột
 participant_column_labels TEXT       -- JSON { [tênCột]: "Nhãn hiển thị" } — chỉ đổi tên hiển thị core field
-participant_duplicate_columns TEXT   -- JSON string[] — cột dùng làm compound key khi Remove duplicate rows
+participant_duplicate_columns TEXT   -- JSON string[] — KHÔNG CÒN DÙNG (xem ghi chú bên dưới)
 ```
 
 Cả 3 cột đều là JSON dạng text, per-session (khác session khác cấu hình), migration idempotent theo đúng pattern chung của `db.ts` (`ALTER TABLE ... ADD COLUMN` nếu chưa có, không bao giờ `DROP`).
+
+`participant_duplicate_columns` từng lưu cột dùng làm compound key khi Remove duplicate rows — đã bỏ khỏi app (renderer không còn ghi/đọc, IPC `sessions:updateDuplicateColumns` đã xoá) vì việc xác định trùng lặp giờ LUÔN lấy trực tiếp từ cột đang bôi chọn trên bảng (`targetColumns`), không còn config nào lưu riêng nữa — xem [column-mapping.md](./column-mapping.md#trùng-lặp-duplicate--cũng-tách-riêng-và-luôn-live-theo-selection). Cột DB vẫn giữ nguyên trong schema (không `DROP`, tránh phá dữ liệu cũ), chỉ là không còn ý nghĩa với code hiện tại.
 
 **`participant_column_types` giờ mang 2 vai trò** (xem [column-mapping.md](./column-mapping.md)): nhãn validation (như từ đầu) VÀ nguồn xác định "cột nào là Name/Phone/Code/Email thật" cho Draw Engine/Winner Name/Scoreboard đọc động — không cần thêm cột DB nào khác cho việc này, vì không có dữ liệu nào bị DI CHUYỂN cả (khác thiết kế "Use as" ban đầu đã bỏ).
 

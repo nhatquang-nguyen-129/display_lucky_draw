@@ -94,4 +94,4 @@ Imported 555/555 rows. Columns detected: Họ tên, SĐT, Email, Ghi chú.
 Open Data Editor and set "Data type" on each column header to label Name/Phone/Code/Email.
 ```
 
-Chưa gán Data Type nào cả thì Data Editor sẽ KHÔNG báo "Missing name"/"Missing phone" (chưa có gì để coi là thiếu) — chỉ khi người dùng gán 1 cột thành Data Type = Name/Phone, validate mới bắt đầu chạy đúng trên cột đó (xem [column-mapping.md](./column-mapping.md)).
+Chưa gán Data Type nào cả thì Data Editor sẽ KHÔNG báo "Missing Name"/"Missing Phone" (chưa có gì để coi là thiếu) — chỉ khi người dùng gán 1 cột thành Data Type = Name/Phone, validate mới bắt đầu chạy đúng trên cột đó (xem [column-mapping.md](./column-mapping.md)).
