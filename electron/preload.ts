@@ -67,8 +67,6 @@ const api = {
       ipcRenderer.invoke("sessions:updateOptions", data),
     updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) =>
       ipcRenderer.invoke("sessions:updateColumnTypes", data),
-    updateDuplicateColumns: (data: { id: string; duplicateColumns: string[] }) =>
-      ipcRenderer.invoke("sessions:updateDuplicateColumns", data),
     updateColumnLabels: (data: { id: string; columnLabels: Record<string, string> }) =>
       ipcRenderer.invoke("sessions:updateColumnLabels", data),
     updateLandingConfig: (data: { id: string; landingConfig: unknown }) =>

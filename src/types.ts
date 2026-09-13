@@ -142,7 +142,6 @@ declare global {
           excludePreviousWinners: boolean;
         }) => Promise<void>;
         updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) => Promise<void>;
-        updateDuplicateColumns: (data: { id: string; duplicateColumns: string[] }) => Promise<void>;
         updateColumnLabels: (data: { id: string; columnLabels: Record<string, string> }) => Promise<void>;
         updateLandingConfig: (data: { id: string; landingConfig: LandingConfig }) => Promise<void>;
         delete: (id: string) => Promise<void>;

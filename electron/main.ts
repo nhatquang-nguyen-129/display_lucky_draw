@@ -468,18 +468,6 @@ ipcMain.handle(
   }
 );
 
-// Lưu danh sách cột dùng để xác định trùng lặp trong Data Editor — thay cho quy tắc cũ
-// mặc định tính trùng theo SĐT, giờ người dùng tự chọn 1 hoặc nhiều cột (compound key).
-ipcMain.handle(
-  "sessions:updateDuplicateColumns",
-  (_e, data: { id: string; duplicateColumns: string[] }) => {
-    db.prepare(`UPDATE sessions SET participant_duplicate_columns = ? WHERE id = ?`).run(
-      JSON.stringify(data.duplicateColumns),
-      data.id
-    );
-  }
-);
-
 // Lưu nhãn hiển thị tùy biến của cột trong Data Editor ({ [tênCột]: "Nhãn" }). Cột lõi chỉ đổi nhãn,
 // dữ liệu vẫn ở cột SQL name/phone/code/email.
 ipcMain.handle(

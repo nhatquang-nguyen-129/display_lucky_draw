@@ -1,4 +1,5 @@
 import { CORE_FIELDS, EditorState, getCell } from "./types";
+import { findDuplicateIdsToRemove } from "./commands";
 import { isValidUrl, isValidVietnamesePhone, toTitleCase } from "./transforms";
 
 export interface CellIssue {
@@ -12,7 +13,7 @@ export type ColumnType = "text" | "name" | "phone" | "email" | "code" | "url";
 export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
   text: "Text (no validation)",
   name: "Name",
-  phone: "Phone (VN)",
+  phone: "Phone",
   email: "Email",
   code: "Code",
   url: "URL",
@@ -22,7 +23,7 @@ export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
 export const COLUMN_TYPE_HINTS: Record<ColumnType, string> = {
   text: "No format validation.",
   name: "Flags rows whose capitalization differs from the most common style in the column (does not force Title Case).",
-  phone: "Applies Vietnamese phone rules: starts with 0, 10-11 digits. Select this column in Edit → Deduplicate to check for duplicates.",
+  phone: "Applies Vietnamese phone rules: starts with 0, 10-11 digits. Select this column on the table header to check for duplicates (Automate ▸ Deduplication).",
   email: "Must be a valid email format with a domain (e.g. name@example.com).",
   code: "No format validation.",
   url: "Must be a valid URL (e.g. https://example.com).",
@@ -80,31 +81,28 @@ function caseShapeOf(v: string): CaseShape | null {
   return "other";
 }
 
-/** Message cố định cho issue trùng lặp — dùng để lọc/nhận diện dòng trùng ở UI. */
-export const DUPLICATE_ISSUE_MESSAGE = "Duplicate on selected columns";
+/** Prefix cố định cho issue trùng lặp — message thật còn kèm "on N selected column(s)" (động theo
+ * số cột đang chọn), nên nơi cần nhận diện dòng trùng phải dùng `.startsWith(DUPLICATE_ISSUE_PREFIX)`,
+ * KHÔNG so sánh bằng (===) như các message tĩnh khác. */
+export const DUPLICATE_ISSUE_PREFIX = "Duplicated Rows";
 
 /**
- * Kiểm tra trùng lặp theo compound key trên các cột do người dùng chọn ở tab Overview
- * (thay cho quy tắc cũ luôn mặc định tính trùng theo SĐT). Chọn 1 cột → trùng theo đúng
- * cột đó; chọn nhiều cột → phải trùng TẤT CẢ các cột đó cùng lúc mới tính là trùng.
- * Dòng mà mọi cột trong bộ khoá đều rỗng thì bỏ qua, không tính là trùng với nhau.
+ * Kiểm tra trùng lặp theo compound key trên đúng các cột đang được TRUYỀN VÀO (xem `validateState`
+ * — nguồn là cột đang bôi chọn trên bảng NGAY LÚC NÀY, không phải 1 config đã lưu sẵn). Chọn 1 cột
+ * → trùng theo đúng cột đó; chọn nhiều cột → phải trùng TẤT CẢ các cột đó cùng lúc mới tính là trùng.
+ * Dùng CHUNG `findDuplicateIdsToRemove` (commands.ts) với preset "Automate ▸ Remove Duplicated Rows"
+ * — cố ý để 2 nơi luôn ra CÙNG 1 con số (chỉ tính dòng THỪA sẽ bị xoá, dòng "giữ lại" — hoàn chỉnh
+ * nhất trong mỗi nhóm — không bị tính là issue).
  */
 function findDuplicateIssues(state: EditorState, duplicateColumns: string[]): CellIssue[] {
   if (duplicateColumns.length === 0) return [];
-  const groups = new Map<string, string[]>();
-  state.rows.forEach((r) => {
-    const values = duplicateColumns.map((col) => getCell(r, col).trim());
-    if (values.every((v) => !v)) return;
-    const key = values.join("");
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(r.id);
-  });
+  const ids = findDuplicateIdsToRemove(state, duplicateColumns);
+  if (ids.length === 0) return [];
+  const n = duplicateColumns.length;
+  const message = `${DUPLICATE_ISSUE_PREFIX} on ${n} selected column${n === 1 ? "" : "s"}`;
   const issues: CellIssue[] = [];
-  groups.forEach((ids) => {
-    if (ids.length < 2) return;
-    ids.forEach((id) => {
-      duplicateColumns.forEach((col) => issues.push({ rowId: id, col, message: DUPLICATE_ISSUE_MESSAGE }));
-    });
+  ids.forEach((id) => {
+    duplicateColumns.forEach((col) => issues.push({ rowId: id, col, message }));
   });
   return issues;
 }
@@ -113,7 +111,13 @@ function findDuplicateIssues(state: EditorState, duplicateColumns: string[]): Ce
  * Validate tổng quát theo type đã gán cho từng cột — không chỉ giới hạn ở 2 core field
  * name/phone như bản cũ. Cột nào được gán type "phone" (kể cả cột optional lạ tên như
  * "Số ĐT liên hệ") đều được áp đúng quy tắc định dạng của phone. Trùng lặp là 1 khái niệm
- * tách riêng, không còn gắn với type — xem findDuplicateIssues + duplicateColumns.
+ * tách riêng, không còn gắn với type — xem findDuplicateIssues.
+ *
+ * `duplicateColumns` PHẢI là cột đang bôi chọn trên bảng NGAY LÚC validate chạy (không phải config
+ * đã lưu trong DB) — chưa chọn cột nào thì mảng rỗng, chip "Duplicated Rows" biến mất hoàn toàn khỏi
+ * status bar. Từng dùng `sessions.participant_duplicate_columns` (config lưu riêng) cho việc này,
+ * đã bỏ vì gây lệch: đổi selection trên bảng không làm chip tự cập nhật, và bấm mở preset dedup dù
+ * chỉ xem thử/Cancel cũng âm thầm đổi config, để lại chip sai không cách nào tự hết.
  */
 export function validateState(
   state: EditorState,
@@ -128,8 +132,8 @@ export function validateState(
   const nameCol = resolveColumnForType(state, columnTypes, "name");
   const phoneCol = resolveColumnForType(state, columnTypes, "phone");
   state.rows.forEach((r) => {
-    if (nameCol && !getCell(r, nameCol).trim()) issues.push({ rowId: r.id, col: nameCol, message: "Missing name" });
-    if (phoneCol && !getCell(r, phoneCol).trim()) issues.push({ rowId: r.id, col: phoneCol, message: "Missing phone" });
+    if (nameCol && !getCell(r, nameCol).trim()) issues.push({ rowId: r.id, col: nameCol, message: "Missing Name" });
+    if (phoneCol && !getCell(r, phoneCol).trim()) issues.push({ rowId: r.id, col: phoneCol, message: "Missing Phone" });
   });
 
   issues.push(...findDuplicateIssues(state, duplicateColumns));
@@ -143,7 +147,7 @@ export function validateState(
       state.rows.forEach((r) => {
         const value = getCell(r, col);
         if (value.trim() && !isValidVietnamesePhone(value)) {
-          issues.push({ rowId: r.id, col, message: "Invalid phone format (must start with 0, 10-11 digits)" });
+          issues.push({ rowId: r.id, col, message: "Invalid Phone Format" });
         }
       });
     }
@@ -152,7 +156,7 @@ export function validateState(
       state.rows.forEach((r) => {
         const value = getCell(r, col);
         if (value.trim() && !EMAIL_RE.test(value.trim())) {
-          issues.push({ rowId: r.id, col, message: "Invalid email format" });
+          issues.push({ rowId: r.id, col, message: "Invalid Email Format" });
         }
       });
     }
@@ -161,7 +165,7 @@ export function validateState(
       state.rows.forEach((r) => {
         const value = getCell(r, col);
         if (value.trim() && !isValidUrl(value)) {
-          issues.push({ rowId: r.id, col, message: "Invalid URL format" });
+          issues.push({ rowId: r.id, col, message: "Invalid URL Format" });
         }
       });
     }
@@ -179,7 +183,7 @@ export function validateState(
         const majorityShape = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
         shaped.forEach((s) => {
           if (s.shape !== majorityShape) {
-            issues.push({ rowId: s.id, col, message: "Capitalization inconsistent with other rows" });
+            issues.push({ rowId: s.id, col, message: "Capitalization Inconsistent" });
           }
         });
       }

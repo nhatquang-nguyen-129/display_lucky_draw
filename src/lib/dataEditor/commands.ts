@@ -290,8 +290,12 @@ export function findEmptyRowIds(state: EditorState): string[] {
     .map((r) => r.id);
 }
 
+export function findEmptyColumns(state: EditorState): string[] {
+  return state.columns.filter((col) => state.rows.every((r) => !r.extra[col]?.trim()));
+}
+
 export function removeEmptyColumnsCommand(state: EditorState): Command | null {
-  const emptyCols = state.columns.filter((col) => state.rows.every((r) => !r.extra[col]?.trim()));
+  const emptyCols = findEmptyColumns(state);
   if (emptyCols.length === 0) return null;
   const before = new Map(emptyCols.map((col) => [col, new Map(state.rows.map((r) => [r.id, r.extra[col]]))]));
   return {

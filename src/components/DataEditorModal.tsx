@@ -11,6 +11,7 @@ import {
   deleteRowsCommand,
   displayPhoneCommand,
   findDuplicateIdsToRemove,
+  findEmptyColumns,
   findEmptyRowIds,
   editCellCommand,
   generateIdCommand,
@@ -29,7 +30,7 @@ import {
   ColumnType,
   COLUMN_TYPE_LABELS,
   defaultColumnType,
-  DUPLICATE_ISSUE_MESSAGE,
+  DUPLICATE_ISSUE_PREFIX,
   groupIssuesByMessage,
   groupIssuesByRow,
   isCoreFieldActive,
@@ -48,11 +49,11 @@ interface DataEditorModalProps {
 // Menu = ĐỘNG TỪ thuần (giống Google Sheets). Phạm vi (cột/dòng/ô) do người dùng chọn TRỰC TIẾP trên
 // bảng — không menu nào chứa selector cột/dòng nữa (trước đây nhồi dropdown "Apply to column" +
 // checkbox list dedup nên menu dài vô hạn).
-type Group = "edit" | "format" | "data" | "generate";
+type Group = "edit" | "format" | "automate" | "generate";
 const GROUPS: { key: Group; label: string }[] = [
   { key: "edit", label: "Edit" },
   { key: "format", label: "Format" },
-  { key: "data", label: "Data" },
+  { key: "automate", label: "Automate" },
   { key: "generate", label: "Generate" },
 ];
 
@@ -99,11 +100,16 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const [saving, setSaving] = useState(false);
   const [originalRows, setOriginalRows] = useState<EditorRow[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  // Popup riêng cho menu Automate — KHÔNG dùng chung `toast` (status bar chỉ để báo tình trạng dữ
+  // liệu theo Data Type, không phải nơi hỏi/báo kết quả của 1 hành động vừa bấm). `onConfirm` vắng
+  // mặt = popup thông tin thuần (chỉ có nút X để đóng); có `onConfirm` = popup hỏi Confirm/Cancel.
+  const [automatePopup, setAutomatePopup] = useState<{ message: string; onConfirm?: () => void } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const history = useCommandHistory({ columns: [], rows: [] } as EditorState);
 
   const [openMenu, setOpenMenu] = useState<Group | null>(null);
+  const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; col: string } | null>(null);
   const [editingCell, setEditingCell] = useState<{ rowId: string; col: string } | null>(null);
@@ -137,7 +143,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
   const [issueFilter, setIssueFilter] = useState<string | null>(null); // null = không lọc, "__any__" = mọi lỗi, hoặc đúng message 1 loại lỗi
   const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
-  const [duplicateColumns, setDuplicateColumns] = useState<string[]>([]);
   // Nhãn hiển thị TÙY BIẾN cho cột (đổi qua "Rename column") — với cột lõi chỉ là nhãn, dữ liệu vẫn ở
   // cột SQL name/phone/... Lưu trong session.participant_column_labels. Cột phụ đổi tên bằng
   // renameColumnCommand (đổi key thật) nên không cần ở đây.
@@ -226,15 +231,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     } else {
       setColumnTypes({});
     }
-    if (session?.participant_duplicate_columns) {
-      try {
-        setDuplicateColumns(JSON.parse(session.participant_duplicate_columns));
-      } catch {
-        setDuplicateColumns([]);
-      }
-    } else {
-      setDuplicateColumns([]);
-    }
     setLoading(false);
   }
 
@@ -299,16 +295,31 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   }, [selectedColKeys, selectedCell, columnOrder]);
   const targetColumnLabel = targetColumns.map((c) => labelFor(c)).join(", ");
 
+  // duplicateColumns của validateState = targetColumns (cột đang bôi trên bảng NGAY LÚC NÀY) — không
+  // phải config đã lưu. Chưa bôi cột nào → mảng rỗng → chip "Duplicated Rows" tự biến mất khỏi status
+  // bar, không cần chọn cột nào để "tắt" nó (xem findDuplicateIssues trong validate.ts).
   const issues = useMemo(
-    () => validateState(history.state, columnTypes, duplicateColumns),
-    [history.state, columnTypes, duplicateColumns]
+    () => validateState(history.state, columnTypes, targetColumns),
+    [history.state, columnTypes, targetColumns]
+  );
+
+  // Đếm trước (không phải lúc bấm) để menu Automate tự vô hiệu hoá mục nào không có gì để làm —
+  // "chỉ available khi có đủ điều kiện" thay vì bấm xong mới báo "No empty rows."
+  const emptyRowCount = useMemo(() => findEmptyRowIds(history.state).length, [history.state]);
+  const emptyColumnCount = useMemo(() => findEmptyColumns(history.state).length, [history.state]);
+  // Duplicate PHỤ THUỘC cột đang bôi (targetColumns) — khác 2 cái trên (luôn tính được, không cần chọn
+  // gì). Chưa bôi cột nào thì không tính (0), nhưng nút KHÔNG bị disable vì lý do "chưa chọn" — bấm
+  // vào sẽ tự báo yêu cầu chọn cột (xem applyRemoveDuplicates).
+  const duplicateRowCount = useMemo(
+    () => (targetColumns.length > 0 ? findDuplicateIdsToRemove(history.state, targetColumns).length : 0),
+    [history.state, targetColumns]
   );
   const nameCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "name"), [history.state, columnTypes]);
   const phoneCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "phone"), [history.state, columnTypes]);
   const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
   const issueGroups = useMemo(() => groupIssuesByMessage(issues), [issues]);
   const duplicateRowIds = useMemo(
-    () => new Set(issues.filter((i) => i.message === DUPLICATE_ISSUE_MESSAGE).map((i) => i.rowId)),
+    () => new Set(issues.filter((i) => i.message.startsWith(DUPLICATE_ISSUE_PREFIX)).map((i) => i.rowId)),
     [issues]
   );
   const visibleRows = useMemo(() => {
@@ -402,6 +413,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     if (!openMenu) return;
     const close = () => {
       setOpenMenu(null);
+      setOpenSubmenu(null);
       setShowFindReplace(false);
     };
     window.addEventListener("click", close);
@@ -483,17 +495,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     setOpenMenu(null);
   }
 
-  function applyQuickClean() {
-    const cmd = combineCommands("Quick Clean (Trim + Normalize)", [
-      batchTransformCommand(history.state, "Trim", "name", trimSpace),
-      batchTransformCommand(history.state, "Trim", "phone", trimSpace),
-      batchTransformCommand(history.state, "Normalize Name", "name", normalizeNameValue),
-      batchTransformCommand(history.state, "Normalize Phone", "phone", normalizePhoneValue),
-    ]);
-    if (cmd) history.run(cmd);
-    else setToast("Data is already clean, nothing to normalize.");
-  }
-
   function applyFindReplace() {
     if (!findText) return;
     if (targetColumns.length === 0) {
@@ -510,41 +511,67 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     else setToast("No matching value found.");
   }
 
+  // Mọi preset trong menu Automate xoá dữ liệu HÀNG LOẠT theo tiêu chí tự động (không phải người dùng
+  // tự chọn từng dòng/cột) — LUÔN available (không disabled theo count), bấm vào là tự đếm ngay lúc
+  // đó rồi hiện `automatePopup`: 0 kết quả → popup chỉ có nút X (không có gì để làm); có kết quả →
+  // popup "Found N..." kèm Confirm/Cancel. KHÔNG dùng `toast`/status bar cho luồng này — status bar
+  // chỉ dành báo tình trạng dữ liệu theo Data Type (xem Validate & Issues), không phải nơi hỏi/báo
+  // kết quả của 1 hành động vừa bấm.
   function applyRemoveEmptyRows() {
+    setOpenMenu(null);
     const ids = findEmptyRowIds(history.state);
     if (ids.length === 0) {
-      setToast("No empty rows.");
+      setAutomatePopup({ message: "Found 0 empty row." });
       return;
     }
-    const cmd = deleteRowsCommand(history.state, ids);
-    if (cmd) history.run(cmd);
+    setAutomatePopup({
+      message: `Found ${ids.length} empty row(s). Are you sure you want to delete them?`,
+      onConfirm: () => {
+        const cmd = deleteRowsCommand(history.state, ids);
+        if (cmd) history.run(cmd);
+      },
+    });
   }
 
   function applyRemoveEmptyColumns() {
-    const cmd = removeEmptyColumnsCommand(history.state);
-    if (cmd) history.run(cmd);
-    else setToast("No empty columns.");
-  }
-
-  // Cột xác định trùng = cột đang chọn trên bảng. Cũng ghi lại vào session.participant_duplicate_columns
-  // để validate tiếp tục tô đỏ ô trùng (xem chip "duplicate" ở status bar) sau khi menu đóng.
-  function applyRemoveDuplicates() {
-    if (targetColumns.length === 0) {
-      setToast("Select the column(s) that define a duplicate (click their headers) first.");
+    setOpenMenu(null);
+    const emptyCols = findEmptyColumns(history.state);
+    if (emptyCols.length === 0) {
+      setAutomatePopup({ message: "Found 0 empty column." });
       return;
     }
-    if (JSON.stringify(targetColumns) !== JSON.stringify(duplicateColumns)) {
-      setDuplicateColumns(targetColumns);
-      window.api.sessions.updateDuplicateColumns({ id: sessionId, duplicateColumns: targetColumns });
+    setAutomatePopup({
+      message: `Found ${emptyCols.length} empty column(s). Are you sure you want to delete them?`,
+      onConfirm: () => {
+        const cmd = removeEmptyColumnsCommand(history.state);
+        if (cmd) history.run(cmd);
+      },
+    });
+  }
+
+  // Cột xác định trùng = cột đang chọn trên bảng NGAY LÚC NÀY (targetColumns) — không còn config nào
+  // lưu riêng nữa (đã bỏ sessions.participant_duplicate_columns khỏi luồng này, xem validate.ts) nên
+  // không có gì để "âm thầm đổi" khi chỉ xem thử/Cancel; status bar cũng đọc thẳng targetColumns nên
+  // luôn khớp 100% với con số ở đây. Chọn nhiều cột → phải trùng TẤT CẢ các cột đó cùng lúc mới tính
+  // là 1 nhóm trùng (compound key, xem findDuplicateIdsToRemove).
+  function applyRemoveDuplicates() {
+    setOpenMenu(null);
+    if (targetColumns.length === 0) {
+      setAutomatePopup({ message: "Select at least 1 column header first to define what counts as a duplicate." });
+      return;
     }
     const ids = findDuplicateIdsToRemove(history.state, targetColumns);
     if (ids.length === 0) {
-      setToast(`No duplicate rows on: ${targetColumnLabel}.`);
+      setAutomatePopup({ message: `Found 0 duplicate row(s) on: ${targetColumnLabel}.` });
       return;
     }
-    const cmd = deleteRowsCommand(history.state, ids);
-    if (cmd) history.run(cmd);
-    setOpenMenu(null);
+    setAutomatePopup({
+      message: `Found ${ids.length} duplicate row(s) on: ${targetColumnLabel}. The most complete row in each group is kept. Are you sure you want to delete the rest?`,
+      onConfirm: () => {
+        const cmd = deleteRowsCommand(history.state, ids);
+        if (cmd) history.run(cmd);
+      },
+    });
   }
 
   function applyGenerate() {
@@ -653,13 +680,42 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     "w-full bg-transparent border-b border-transparent px-1 py-1 text-sm text-base-100 outline-none focus:border-gold-500";
   const toolbarBtn = "rounded-md px-2.5 py-1.5 text-xs font-medium text-base-200 hover:bg-base-800 disabled:opacity-40 disabled:cursor-not-allowed";
   // Menu toolbar (Edit/Format/Data): mỗi menu là 1 danh sách ĐỘNG TỪ ngắn, không có selector cột/dòng
-  // bên trong. `menuScopeLine` chỉ HIỂN THỊ phạm vi đang chọn trên bảng, không bấm được.
+  // bên trong, và KHÔNG lặp lại tên cột/dòng đang chọn bằng text — màu highlight trên chính bảng đã
+  // đủ cho biết phạm vi đang tác động, nút nào không dùng được thì tự mờ đi (disabled).
   const menuBox =
     "absolute left-0 z-30 mt-1 w-56 rounded-lg border border-base-700 bg-base-900 p-1.5 text-left shadow-2xl";
   const menuItem =
     "block w-full rounded px-2 py-1.5 text-left text-xs text-base-200 hover:bg-base-800 disabled:cursor-not-allowed disabled:opacity-40";
-  const menuScopeLine = "truncate px-2 pb-1 pt-0.5 text-[10px] text-base-500";
   const selectedColsInView = Array.from(selectedColKeys).filter((c) => columnOrder.includes(c));
+
+  // Submenu 2 cấp kiểu Google Sheets (Format > Text Capitalization > UPPER CASE...): hover 1 mục cấp 1
+  // để mở flyout cấp 2 bên phải. `id` phải là duy nhất trong TOÀN BỘ toolbar (không chỉ trong 1 menu).
+  function renderSubmenu(id: string, label: string, disabled: boolean, content: React.ReactNode, onOpen?: () => void) {
+    return (
+      <div
+        key={id}
+        className="relative"
+        onMouseEnter={() => {
+          if (disabled) return;
+          onOpen?.();
+          setOpenSubmenu(id);
+        }}
+      >
+        <button type="button" disabled={disabled} className={`${menuItem} flex items-center justify-between gap-2`}>
+          {label}
+          <span className="text-base-500">▸</span>
+        </button>
+        {openSubmenu === id && !disabled && (
+          <div
+            className="absolute left-full top-0 z-40 -mt-1.5 ml-0.5 w-60 rounded-lg border border-base-700 bg-base-900 p-1.5 text-left shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {content}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Modal open={open} title="Data Editor — Participants" onClose={requestClose} maxWidth="max-w-[95vw]">
@@ -681,6 +737,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                     onClick={(e) => {
                       e.stopPropagation();
                       setOpenMenu((m) => (m === g.key ? null : g.key));
+                      setOpenSubmenu(null);
                       setShowFindReplace(false);
                     }}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium ${
@@ -693,47 +750,44 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
                   {g.key === "edit" && openMenu === "edit" && (
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
-                      <p className={menuScopeLine}>
-                        {selectedRowIds.size === 0 && selectedColKeys.size === 0
-                          ? "Select rows (checkbox) or columns (click a header) first"
-                          : [
-                              selectedRowIds.size > 0 && `${selectedRowIds.size} row(s)`,
-                              selectedColKeys.size > 0 && `${selectedColKeys.size} column(s)`,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ") + " selected"}
-                      </p>
-                      <button
-                        className={`${menuItem} text-danger-500`}
-                        disabled={selectedRowIds.size === 0}
-                        onClick={() => {
-                          deleteSelectedRows();
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Delete rows{selectedRowIds.size > 0 ? ` (${selectedRowIds.size})` : ""}
-                      </button>
-                      <button
-                        className={`${menuItem} text-danger-500`}
-                        disabled={selectedColsInView.length === 0}
-                        title="Click a column header to select it first. Deleting a core field (Name/Phone/Code/Email) clears all its values."
-                        onClick={() => {
-                          const coreHit = selectedColsInView.filter(isCoreField).map(labelFor);
-                          if (
-                            coreHit.length > 0 &&
-                            !confirm(
-                              `Delete ${selectedColsInView.length} column(s)? This clears every value in ${coreHit.join(
-                                ", "
-                              )} on Save and can't be undone after that.`
-                            )
-                          )
-                            return;
-                          deleteSelectedColumns();
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Delete columns{selectedColsInView.length > 0 ? ` (${selectedColsInView.length})` : ""}
-                      </button>
+                      {renderSubmenu(
+                        "edit-delete",
+                        "Delete",
+                        selectedRowIds.size === 0 && selectedColsInView.length === 0,
+                        <>
+                          <button
+                            className={`${menuItem} text-danger-500`}
+                            disabled={selectedRowIds.size === 0}
+                            onClick={() => {
+                              deleteSelectedRows();
+                              setOpenMenu(null);
+                            }}
+                          >
+                            Rows{selectedRowIds.size > 0 ? ` (${selectedRowIds.size})` : ""}
+                          </button>
+                          <button
+                            className={`${menuItem} text-danger-500`}
+                            disabled={selectedColsInView.length === 0}
+                            title="Click a column header to select it first. Deleting a core field (Name/Phone/Code/Email) clears all its values."
+                            onClick={() => {
+                              const coreHit = selectedColsInView.filter(isCoreField).map(labelFor);
+                              if (
+                                coreHit.length > 0 &&
+                                !confirm(
+                                  `Delete ${selectedColsInView.length} column(s)? This clears every value in ${coreHit.join(
+                                    ", "
+                                  )} on Save and can't be undone after that.`
+                                )
+                              )
+                                return;
+                              deleteSelectedColumns();
+                              setOpenMenu(null);
+                            }}
+                          >
+                            Columns{selectedColsInView.length > 0 ? ` (${selectedColsInView.length})` : ""}
+                          </button>
+                        </>
+                      )}
                       <div className="my-1 h-px bg-base-800" />
                       <button
                         className={menuItem}
@@ -750,74 +804,63 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
                   {g.key === "format" && openMenu === "format" && (
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
-                      <p className={menuScopeLine}>
-                        {targetColumns.length === 0
-                          ? "Select a column or a cell first"
-                          : targetColumns.length === 1
-                          ? `Column: ${targetColumnLabel} (${COLUMN_TYPE_LABELS[columnTypes[targetColumns[0]] ?? defaultColumnType(targetColumns[0])]})`
-                          : `Column: ${targetColumnLabel}`}
-                      </p>
-                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Upper Case", toUpperCase)}>
-                        UPPER CASE
-                      </button>
-                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Lower Case", toLowerCase)}>
-                        lower case
-                      </button>
-                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Title Case", toTitleCase)}>
-                        Title Case
-                      </button>
-                      <div className="my-1 h-px bg-base-800" />
+                      {renderSubmenu(
+                        "format-case",
+                        "Text Capitalization",
+                        targetColumns.length === 0,
+                        <>
+                          <button className={menuItem} onClick={() => applyClean("Upper Case", toUpperCase)}>
+                            UPPER CASE
+                          </button>
+                          <button className={menuItem} onClick={() => applyClean("Lower Case", toLowerCase)}>
+                            lower case
+                          </button>
+                          <button className={menuItem} onClick={() => applyClean("Title Case", toTitleCase)}>
+                            Title Case
+                          </button>
+                        </>
+                      )}
                       <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Trim Space", trimSpace)}>
                         Trim whitespace
                       </button>
-                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Normalize Phone", normalizePhoneValue)}>
-                        Normalize phone
-                      </button>
-                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Normalize Name", normalizeNameValue)}>
-                        Normalize name
-                      </button>
+                      {renderSubmenu(
+                        "format-normalize",
+                        "Normalize",
+                        targetColumns.length === 0,
+                        <>
+                          <button className={menuItem} onClick={() => applyClean("Normalize Phone", normalizePhoneValue)}>
+                            Normalize phone
+                          </button>
+                          <button className={menuItem} onClick={() => applyClean("Normalize Name", normalizeNameValue)}>
+                            Normalize name
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
 
-                  {g.key === "data" && openMenu === "data" && (
+                  {g.key === "automate" && openMenu === "automate" && (
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
-                      <p className={menuScopeLine}>
-                        {targetColumns.length > 0
-                          ? `Duplicate key: ${targetColumnLabel}`
-                          : "Select the key column header(s) first"}
-                      </p>
-                      <button className={menuItem} disabled={targetColumns.length === 0} onClick={applyRemoveDuplicates}>
-                        Remove duplicate rows
-                      </button>
-                      <div className="my-1 h-px bg-base-800" />
-                      <button
-                        className={menuItem}
-                        onClick={() => {
-                          applyRemoveEmptyRows();
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Delete empty rows
-                      </button>
-                      <button
-                        className={menuItem}
-                        onClick={() => {
-                          applyRemoveEmptyColumns();
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Delete empty columns
-                      </button>
-                      <button
-                        className={menuItem}
-                        title="Trim + Normalize Name + Normalize Phone, in 1 Undo step"
-                        onClick={() => {
-                          applyQuickClean();
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Quick Clean
-                      </button>
+                      {renderSubmenu(
+                        "automate-dedup",
+                        "Deduplication",
+                        false,
+                        <>
+                          <button className={menuItem} onClick={applyRemoveEmptyRows}>
+                            Remove Empty Rows{emptyRowCount > 0 ? ` (${emptyRowCount})` : ""}
+                          </button>
+                          <button className={menuItem} onClick={applyRemoveEmptyColumns}>
+                            Remove Empty Columns{emptyColumnCount > 0 ? ` (${emptyColumnCount})` : ""}
+                          </button>
+                          <button
+                            className={menuItem}
+                            title="With more than 1 column selected, a row must match on ALL of them to count as duplicate."
+                            onClick={applyRemoveDuplicates}
+                          >
+                            Remove Duplicated Rows{duplicateRowCount > 0 ? ` (${duplicateRowCount})` : ""}
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -835,9 +878,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                           ✕
                         </button>
                       </div>
-                      <p className="mb-2 truncate text-[10px] text-base-500">
-                        {targetColumns.length > 0 ? `Column: ${targetColumnLabel}` : "Select a column or a cell first"}
-                      </p>
                       <input
                         autoFocus
                         value={findText}
@@ -873,24 +913,13 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   )}
 
                   {g.key === "generate" && openMenu === "generate" && (
-                    <div
-                      className="absolute left-0 z-30 mt-1 w-64 rounded-lg border border-base-700 bg-base-900 p-2 text-left shadow-2xl"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">Type</label>
-                      <select
-                        value={genAction}
-                        onChange={(e) => setGenAction(e.target.value as typeof genAction)}
-                        className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                      >
-                        <option value="id">Generate ID (→ Code column)</option>
-                        <option value="running">Running Number</option>
-                        <option value="displayPhone">Display Phone</option>
-                        <option value="combine">Combine Columns</option>
-                      </select>
-
-                      {genAction === "id" && (
+                    <div className={menuBox} onClick={(e) => e.stopPropagation()}>
+                      {renderSubmenu(
+                        "gen-id",
+                        "Generate ID",
+                        false,
                         <>
+                          <p className="mb-1 px-1 text-[10px] text-base-500">Writes to the Code column</p>
                           <select
                             value={genIdMode}
                             onChange={(e) => setGenIdMode(e.target.value as typeof genIdMode)}
@@ -905,10 +934,22 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             placeholder="Prefix (e.g. KH)"
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
-                        </>
+                          <Button
+                            onClick={() => {
+                              applyGenerate();
+                              setOpenMenu(null);
+                            }}
+                            className="w-full text-xs"
+                          >
+                            Apply
+                          </Button>
+                        </>,
+                        () => setGenAction("id")
                       )}
-
-                      {genAction === "running" && (
+                      {renderSubmenu(
+                        "gen-running",
+                        "Running Number",
+                        false,
                         <>
                           <input
                             value={runningCol}
@@ -922,10 +963,22 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             onChange={(e) => setRunningStart(Number(e.target.value))}
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
-                        </>
+                          <Button
+                            onClick={() => {
+                              applyGenerate();
+                              setOpenMenu(null);
+                            }}
+                            className="w-full text-xs"
+                          >
+                            Apply
+                          </Button>
+                        </>,
+                        () => setGenAction("running")
                       )}
-
-                      {genAction === "displayPhone" && (
+                      {renderSubmenu(
+                        "gen-displayPhone",
+                        "Display Phone",
+                        false,
                         <>
                           <input
                             value={displayPhoneCol}
@@ -942,10 +995,22 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             <option value="maskLast3">xxxxxxx783 (mask all but last 3 digits)</option>
                             <option value="last3">783 (last 3 digits only)</option>
                           </select>
-                        </>
+                          <Button
+                            onClick={() => {
+                              applyGenerate();
+                              setOpenMenu(null);
+                            }}
+                            className="w-full text-xs"
+                          >
+                            Apply
+                          </Button>
+                        </>,
+                        () => setGenAction("displayPhone")
                       )}
-
-                      {genAction === "combine" && (
+                      {renderSubmenu(
+                        "gen-combine",
+                        "Combine Columns",
+                        false,
                         <>
                           <input
                             value={combineCol}
@@ -953,29 +1018,24 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             placeholder="New column name"
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
-                          <p className="mb-2 truncate text-[10px] text-base-500">
-                            {targetColumns.length > 0
-                              ? `Sources: ${targetColumnLabel}`
-                              : "Select source column header(s) on the table"}
-                          </p>
                           <input
                             value={combineSeparator}
                             onChange={(e) => setCombineSeparator(e.target.value)}
                             placeholder="Join with"
                             className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
                           />
-                        </>
+                          <Button
+                            onClick={() => {
+                              applyGenerate();
+                              setOpenMenu(null);
+                            }}
+                            className="w-full text-xs"
+                          >
+                            Apply
+                          </Button>
+                        </>,
+                        () => setGenAction("combine")
                       )}
-
-                      <Button
-                        onClick={() => {
-                          applyGenerate();
-                          setOpenMenu(null);
-                        }}
-                        className="w-full text-xs"
-                      >
-                        Apply
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -1154,6 +1214,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             return next;
                           });
                           setLastSelectedCol(col);
+                        } else if (selectedColKeys.size === 1 && selectedColKeys.has(col)) {
+                          setSelectedColKeys(new Set());
+                          setLastSelectedCol(null);
                         } else {
                           setSelectedColKeys(new Set([col]));
                           setLastSelectedCol(col);
@@ -1501,6 +1564,45 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                 </>
               );
             })()}
+        </div>
+      )}
+
+      {automatePopup && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setAutomatePopup(null)}
+        >
+          <div
+            className="w-full max-w-xs rounded-lg border border-base-700 bg-base-900 p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <p className="text-sm text-base-100">{automatePopup.message}</p>
+              <button
+                onClick={() => setAutomatePopup(null)}
+                className="shrink-0 text-base-400 hover:text-base-100"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            {automatePopup.onConfirm && (
+              <div className="flex justify-end gap-2">
+                <button className={toolbarBtn} onClick={() => setAutomatePopup(null)}>
+                  Cancel
+                </button>
+                <Button
+                  onClick={() => {
+                    automatePopup.onConfirm!();
+                    setAutomatePopup(null);
+                  }}
+                  className="text-xs"
+                >
+                  Confirm
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </Modal>

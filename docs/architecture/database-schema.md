@@ -19,7 +19,7 @@ erDiagram
     integer exclude_previous_winners
     text landing_config "JSON — LandingConfig"
     text participant_column_types "JSON — { col: ColumnType }"
-    text participant_duplicate_columns "JSON string[]"
+    text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
     text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
   }
   PARTICIPANTS {
