@@ -867,7 +867,6 @@ export interface DrawSequenceActions {
   candidate: import("@/types").DrawCandidate | null;
   isPending: boolean; // đã pick nhưng chưa confirm — Draw bị khoá, Confirm/Redo mở
   busy: boolean; // đang có 1 lời gọi IPC dở dang — khoá cả 3 nút tránh bấm chồng
-  error: string | null;
   // Trả Promise thật (không phải void) — Button action "draw" cần await để bắt lỗi (hết
   // participant/prize, lỗi IPC...) mà không làm crash handler click (xem ButtonView.tsx).
   pick: () => Promise<void>;

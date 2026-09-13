@@ -53,6 +53,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 }
 
+// Lỗi ném từ 1 ipcMain handler (vd drawEngine.ts's pickWinner: "No participants available to draw")
+// tới renderer bị Electron TỰ Ý bọc thêm 1 lớp kỹ thuật: message thật trở thành
+// `Error invoking remote method 'draw:pick': Error: No participants available to draw` — bóc lớp bọc
+// đó ra, chỉ giữ câu message gốc do nghiệp vụ viết, để hiện lên popup (showInfoPrompt) cho người vận
+// hành đọc được thay vì trông như 1 dòng lỗi code/crash.
+function cleanErrorMessage(e: any, fallback: string): string {
+  const raw = typeof e?.message === "string" && e.message ? e.message : fallback;
+  return raw.replace(/^Error invoking remote method '[^']*':\s*/, "").replace(/^Error:\s*/, "") || fallback;
+}
+
 // Nhịp nghỉ MẶC ĐỊNH giữa mỗi người trong Multiple Draw (SAU khi 1 người đã Confirm xong, TRƯỚC khi
 // pick người tiếp theo) — CHỈ dùng khi Button không có `multipleDrawPaceMs` riêng (landing cũ lưu
 // trước khi có field này, xem ButtonProps.multipleDrawPaceMs trong types.ts). Bình thường
@@ -89,7 +99,6 @@ export function useDrawSequence(
   const [candidate, setCandidate] = useState<DrawCandidate | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [scoreboardVisible, setScoreboardVisible] = useState(false);
   const [confirmPrompt, setConfirmPrompt] = useState<{ message: string } | null>(null);
   const pendingConfirmActionRef = useRef<(() => void) | null>(null);
@@ -155,7 +164,6 @@ export function useDrawSequence(
     }
     setQuickDrawResult(null);
     setBusy(true);
-    setError(null);
     try {
       const next = await withTimeout(
         window.api.draw.pick({ sessionId, lockedPrizeId: selectedPrizeId ?? undefined }),
@@ -167,9 +175,10 @@ export function useDrawSequence(
       lockedPrizeIdRef.current = next.prizeId;
       startSpinLock();
     } catch (e: any) {
-      setError(e?.message ?? "Draw failed");
-      // Bắn lại lỗi (khác confirm()/redo()) — ButtonView.tsx bắt lỗi này để không làm gì thêm,
-      // sequence.error đã đủ để hiện ra cho người vận hành thấy.
+      // Popup thông báo — KHÔNG phải lỗi code, mà 1 điều kiện nghiệp vụ bình thường (hết participant,
+      // hết giải, giải đã khoá không còn hàng...). Bắn lại lỗi (khác confirm()/redo()) — ButtonView.tsx
+      // bắt lỗi này để không làm gì thêm, popup đã đủ để hiện ra cho người vận hành thấy.
+      showInfoPrompt(cleanErrorMessage(e, "Draw failed"));
       throw e;
     } finally {
       setBusy(false);
@@ -186,14 +195,13 @@ export function useDrawSequence(
       return;
     }
     setBusy(true);
-    setError(null);
     try {
       await withTimeout(window.api.draw.commit({ candidate, sessionId }), "Confirm");
       setConfirmed(true);
       // Confirm vừa trừ prizes.remaining thật trong DB — nạp lại NGAY, xem doc-comment refreshData ở trên.
       await withTimeout(refreshData(), "Refresh");
     } catch (e: any) {
-      setError(e?.message ?? "Confirm failed");
+      showInfoPrompt(cleanErrorMessage(e, "Confirm failed"));
     } finally {
       setBusy(false);
     }
@@ -203,7 +211,6 @@ export function useDrawSequence(
     if (!sessionId || busy || spinning || !candidate || confirmed) return;
     setQuickDrawResult(null);
     setBusy(true);
-    setError(null);
     const nextExcludes = [...excludeIdsRef.current, candidate.participantId];
     try {
       const next = await withTimeout(
@@ -218,7 +225,7 @@ export function useDrawSequence(
       excludeIdsRef.current = nextExcludes;
       startSpinLock();
     } catch (e: any) {
-      setError(e?.message ?? "Redo failed");
+      showInfoPrompt(cleanErrorMessage(e, "Redo failed"));
     } finally {
       setBusy(false);
     }
@@ -228,7 +235,6 @@ export function useDrawSequence(
     if (!sessionId || busy || spinning) return;
     setQuickDrawResult(null);
     setBusy(true);
-    setError(null);
     try {
       await withTimeout(window.api.draw.resetSession(sessionId), "Reset");
       // Nạp lại data TRƯỚC khi xoá candidate (thứ tự CỐ Ý, đảo lại so với bản cũ) — xem doc-comment
@@ -246,7 +252,7 @@ export function useDrawSequence(
       excludeIdsRef.current = [];
       lockedPrizeIdRef.current = null;
     } catch (e: any) {
-      setError(e?.message ?? "Reset failed");
+      showInfoPrompt(cleanErrorMessage(e, "Reset failed"));
     } finally {
       setBusy(false);
     }
@@ -287,7 +293,6 @@ export function useDrawSequence(
     }
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
     setQuickDrawResult(null);
-    setError(null);
     setSpinning(true);
     for (let i = 0; i < count; i++) {
       setBatchProgress({ mode: "multiple", current: i + 1, total: count });
@@ -296,7 +301,7 @@ export function useDrawSequence(
       try {
         next = await withTimeout(window.api.draw.pick({ sessionId, lockedPrizeId: prize.id }), "Draw");
       } catch (e: any) {
-        setError(e?.message ?? "Draw failed");
+        showInfoPrompt(cleanErrorMessage(e, "Draw failed"));
         setBusy(false);
         break;
       }
@@ -312,7 +317,7 @@ export function useDrawSequence(
         setConfirmed(true);
         await withTimeout(refreshData(), "Refresh");
       } catch (e: any) {
-        setError(e?.message ?? "Confirm failed");
+        showInfoPrompt(cleanErrorMessage(e, "Confirm failed"));
         setBusy(false);
         break;
       }
@@ -363,7 +368,7 @@ export function useDrawSequence(
   // bấm Draw, hoặc đổi sang giải khác) — không hợp lệ thì tự báo popup, không chạy gì. "single" giữ
   // NGUYÊN hành vi cũ: đang có candidate CHỜ CONFIRM (isPending) thì "quay lại" (redo), chưa có gì
   // chờ thì pick() 1 candidate mới — pick() có thể throw (hết participant/prize, lỗi IPC...), tự bắt
-  // ở đây (sequence.error đã đủ để hiện ra, không cần ném tiếp ra ButtonView.tsx nữa).
+  // ở đây (đã tự showInfoPrompt bên trong pick(), không cần ném tiếp ra ButtonView.tsx nữa).
   // `multipleDrawPaceMs` — ButtonView.tsx truyền thẳng component.props.multipleDrawPaceMs, CHỈ dùng
   // khi drawMode === "multiple" (Quick Draw luôn chạy không nghỉ, bỏ qua tham số này hoàn toàn).
   async function runDraw(multipleDrawPaceMs?: number) {
@@ -382,7 +387,7 @@ export function useDrawSequence(
     try {
       await pick();
     } catch {
-      // Lỗi đã tự setError bên trong pick() — không cần làm gì thêm ở đây.
+      // Lỗi đã tự showInfoPrompt bên trong pick() — không cần làm gì thêm ở đây.
     }
   }
 
@@ -400,7 +405,6 @@ export function useDrawSequence(
     const total = count;
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
     setQuickDrawResult(null);
-    setError(null);
     setSpinning(true);
     let confirmedCount = 0;
     for (let i = 0; i < total; i++) {
@@ -410,14 +414,14 @@ export function useDrawSequence(
       try {
         next = await withTimeout(window.api.draw.pick({ sessionId, lockedPrizeId: prize.id }), "Draw");
       } catch (e: any) {
-        setError(e?.message ?? "Draw failed");
+        showInfoPrompt(cleanErrorMessage(e, "Draw failed"));
         setBusy(false);
         break;
       }
       try {
         await withTimeout(window.api.draw.commit({ candidate: next, sessionId }), "Confirm");
       } catch (e: any) {
-        setError(e?.message ?? "Confirm failed");
+        showInfoPrompt(cleanErrorMessage(e, "Confirm failed"));
         setBusy(false);
         break;
       }
@@ -527,7 +531,6 @@ export function useDrawSequence(
     candidate,
     isPending,
     busy,
-    error,
     pick,
     confirm,
     redo,
