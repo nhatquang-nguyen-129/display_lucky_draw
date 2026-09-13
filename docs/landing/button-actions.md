@@ -91,3 +91,18 @@ người trúng — Quick Draw ra nhiều người cùng lúc nên không có 1 
 ## Bug đã sửa: "Button nhìn trong suốt" trong Builder
 
 `ButtonView.tsx` ban đầu dùng `disabled:opacity-40` — vì `disabled` LUÔN true trong Builder (không có `sequence`, xem [present-mode.md](./present-mode.md)), Button luôn hiện mờ 40%, trông như trong suốt. Sửa bằng cách TÁCH 2 khái niệm: "không bấm được vì đang ở Builder" (vẫn hiện FULL độ đậm) khác với "tạm thời không bấm được ở Present Mode thật vì sai phase/busy" (mới thật sự làm mờ) — qua 1 cờ riêng `showFaded = !!sequence && disabled`, không gắn opacity trực tiếp vào thuộc tính HTML `disabled`.
+
+## Bug đã sửa: lỗi Draw/Confirm/Redo/Reset hiện như 1 dòng lỗi code
+
+Khi `pickWinner()` (`electron/drawEngine.ts`) throw 1 lỗi nghiệp vụ bình thường — hết participant,
+hết giải, giải đã khoá hết hàng... — Electron IPC tự bọc thêm 1 lớp kỹ thuật lên `Error.message`:
+`Error invoking remote method 'draw:pick': Error: No participants available to draw`. Trước đây
+`useDrawSequence.ts` hiện thẳng chuỗi đã bị bọc này qua `sequence.error`, vẽ thành 1 thanh chữ đỏ cố
+định ở đáy `PresentMode.tsx` — trông như crash code, khác hẳn popup thân thiện "Please select a
+prize first!" (`sequence.infoPrompt`).
+
+Sửa bằng `cleanErrorMessage(e, fallback)` (`useDrawSequence.ts`) — bóc lớp bọc IPC, chỉ giữ câu
+message nghiệp vụ gốc — rồi hiện qua **cùng 1 popup** `showInfoPrompt()` thay vì `setError`. Áp dụng
+cho mọi catch trong `pick()`/`confirm()`/`redo()`/`resetSession()`/`runMultipleDrawInternal()`/
+`runQuickDrawInternal()`. Đã bỏ hẳn state `error`/field `DrawSequenceActions.error` và thanh chữ đỏ ở
+`PresentMode.tsx` — không còn ai đọc.

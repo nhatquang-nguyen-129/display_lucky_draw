@@ -20,6 +20,7 @@ erDiagram
     text landing_config "JSON — LandingConfig"
     text participant_column_types "JSON — { col: ColumnType }"
     text participant_duplicate_columns "JSON string[]"
+    text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
   }
   PARTICIPANTS {
     text id PK
@@ -30,7 +31,7 @@ erDiagram
     text email
     text extra_data "JSON — cột optional tự thêm"
     integer sort_order
-    text status "active | ..."
+    text status "active | removed (soft-delete)"
   }
   PRIZES {
     text id PK

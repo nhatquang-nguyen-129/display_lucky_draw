@@ -57,3 +57,27 @@ src/
     dataEditor/          # Kiểu dữ liệu + logic thuần (không JSX) của Data Editor — xem docs/participants/data-editor.md
       types.ts, commands.ts, validate.ts, transforms.ts, history.ts
 ```
+
+## Tính năng: Dashboard
+
+`src/pages/Dashboard.tsx` — không có tiêu đề lớn/mô tả riêng (trùng nhãn sidebar là dư thừa), chỉ 3
+khối chỉ số theo session đang active, dựng bằng `StatSection`/`Stat` (`src/components/StatSection.tsx`):
+1 tiêu đề nhóm nhỏ + 1 lưới **cố định 4 cột** (2 cột ở màn hẹp), các ô ngăn nhau bằng khe `gap-px` lộ
+nền container thành đường kẻ mảnh (không dùng viền/`divide-*` — tránh kẻ lệch khi số ô không chia hết
+cho số cột), hover đổi màu nhẹ.
+
+| Section | Ô | Nguồn |
+|---|---|---|
+| Participants | Imported · Removed · Removed % · Active | `participants:stats` IPC (`electron/main.ts`) — `{ original, current, removed }` tính từ `status` |
+| Prizes | Total · Types · Awarded · Remaining | `prizes.list` (Σ `quantity`/`remaining`) |
+| Draw results | Winners · Not won yet · Avg / winner · Total draws | `sessions.results` (distinct `participant_id`, tổng bản ghi) |
+
+Mỗi section PHẢI giữ đúng bội số 4 ô — nếu lệch, ô trống cuối hàng sẽ lộ mảng nền kẻ (không có filler
+tự động).
+
+Soft-delete participants (`status: "active" | "removed"`, xem
+[database-schema.md](./database-schema.md) và [participants/schema.md](../participants/schema.md))
+là nền tảng cho bộ Imported/Removed/Active này — xoá 1 dòng trong Data Editor giờ chỉ đánh dấu
+`removed`, không `DELETE` thật, nên Dashboard vẫn đếm lại được số liệu gốc. **Hệ quả**: dữ liệu xoá
+TRƯỚC khi cơ chế soft-delete tồn tại không tính vào "Imported" — con số chỉ đúng từ lúc thêm cơ chế
+này trở đi.

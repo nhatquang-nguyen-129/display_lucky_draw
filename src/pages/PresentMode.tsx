@@ -74,13 +74,12 @@ export default function PresentMode() {
       style={{ backgroundColor: config.canvas.background.color }}
     >
       <div style={{ width: config.canvas.width * scale, height: config.canvas.height * scale }}>
+        {/* Lỗi Draw/Confirm/Redo/Reset (hết participant, hết giải, timeout IPC...) hiện qua popup
+            sequence.infoPrompt bên trong LandingRenderer — cùng chỗ với "Please select a prize
+            first!" — không còn thanh chữ đỏ riêng ở đây (trông như lỗi code thay vì 1 thông báo
+            nghiệp vụ bình thường). */}
         <LandingRenderer config={config} data={sequence.effectiveData} scale={scale} interactive sequence={sequence} />
       </div>
-      {sequence.error && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg border border-danger-500/40 bg-base-950/90 px-4 py-2 text-sm text-danger-500 shadow-2xl">
-          {sequence.error}
-        </div>
-      )}
     </div>
   );
 }
