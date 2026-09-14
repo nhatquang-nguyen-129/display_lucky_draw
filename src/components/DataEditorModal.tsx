@@ -259,6 +259,17 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sessionId]);
 
+  // `Modal.tsx` không tự focus con khi mở — thiếu bước này thì Ctrl/Cmd+Z/Y/S và mọi phím tắt khác
+  // trong handleKeyDown() im lặng không chạy gì cho tới khi người dùng tự bấm chuột vào trong bảng
+  // trước (bug đã gặp thật: mở Data Editor lên bấm Ctrl+Z ngay không có phản ứng gì). Container chỉ
+  // thật sự mount khi `!loading` (xem ternary Loading.../bảng bên dưới) nên focus phải đợi đúng lúc đó
+  // — `load()` cũng chạy lại sau mỗi lần Save, container remount lại, focus lại là chủ đích (giữ phím
+  // tắt luôn "nóng" ngay sau khi tải/lưu xong, không có ô nào đang edit dở để tranh giành focus lúc đó
+  // vì handleKeyDown đã tự chặn hết khi `editingCell` còn set).
+  useEffect(() => {
+    if (open && !loading) containerRef.current?.focus();
+  }, [open, loading]);
+
   useEffect(() => {
     window.api.editor.reportDirty(open && history.dirty);
   }, [open, history.dirty]);
