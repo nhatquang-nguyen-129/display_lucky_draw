@@ -6,7 +6,6 @@ import { CORE_FIELDS, EditorRow, EditorState, getCell, isCoreField } from "@/lib
 import { useCommandHistory } from "@/lib/dataEditor/history";
 import {
   batchTransformCommand,
-  combineColumnsCommand,
   combineCommands,
   deleteRowsCommand,
   displayPhoneCommand,
@@ -141,16 +140,13 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   // đã GỘP LÀM 1 kind "number" duy nhất — Prefix rỗng = Running Number cũ, có Prefix = Generate ID cũ.
   // Random đã bỏ hẳn (không gian ký tự-số cố định 6 ký tự khó cho tuỳ chỉnh độ dài mà không thêm 1
   // field riêng, không đáng so với lợi ích).
-  const [genAction, setGenAction] = useState<"number" | "displayPhone" | "combine" | null>(null);
+  const [genAction, setGenAction] = useState<"number" | "displayPhone" | null>(null);
   // Mặc định "code" — giữ đúng hành vi Generate ID cũ (cột lõi Code) nếu không đổi gì.
   const [genNumberCol, setGenNumberCol] = useState("code");
   const [genNumberMode, setGenNumberMode] = useState<"plain" | "padded">("padded");
-  const [genNumberStart, setGenNumberStart] = useState(1);
   const [genNumberPrefix, setGenNumberPrefix] = useState("");
   const [displayPhoneCol, setDisplayPhoneCol] = useState("display_phone");
   const [displayPhonePattern, setDisplayPhonePattern] = useState<"last3" | "maskLast3" | "maskMost">("maskMost");
-  const [combineCol, setCombineCol] = useState("combined");
-  const [combineSeparator, setCombineSeparator] = useState(" - ");
 
   const [issueFilter, setIssueFilter] = useState<string | null>(null); // null = không lọc, "__any__" = mọi lỗi, hoặc đúng message 1 loại lỗi
   const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
@@ -541,6 +537,17 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     setOpenMenu(null);
   }
 
+  // Normalize phone/name không thao tác trên targetColumns (cột đang chọn tuỳ ý trên bảng) mà LUÔN
+  // áp thẳng vào cột đã được gán Data Type tương ứng (nameCol/phoneCol, xem resolveColumnForType) —
+  // đây là preset theo cấu hình, không phải lệnh format tự do như applyClean.
+  function applyNormalizeColumn(col: string | undefined, label: string, transform: (v: string) => string) {
+    if (!col) return;
+    const cmd = batchTransformCommand(history.state, label, col, transform);
+    if (cmd) history.run(cmd);
+    else setToast("No cells needed changes.");
+    setOpenMenu(null);
+  }
+
   function applyFindReplace() {
     if (!findText) return;
     if (targetColumns.length === 0) {
@@ -625,19 +632,11 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     if (genAction === "number") {
       const col = genNumberCol.trim();
       if (!col) return;
-      history.run(generateNumberCommand(history.state, col, genNumberStart, genNumberMode, genNumberPrefix.trim()));
+      history.run(generateNumberCommand(history.state, col, genNumberMode, genNumberPrefix.trim()));
     } else if (genAction === "displayPhone") {
       const col = displayPhoneCol.trim();
       if (!col) return;
       history.run(displayPhoneCommand(history.state, col, displayPhonePattern));
-    } else if (genAction === "combine") {
-      const col = combineCol.trim();
-      // Nguồn để ghép = cột đang chọn trên bảng (theo đúng thứ tự hiển thị).
-      if (!col || targetColumns.length === 0) {
-        setToast("Select the source columns (click their headers) first.");
-        return;
-      }
-      history.run(combineColumnsCommand(history.state, col, targetColumns, combineSeparator));
     }
   }
 
@@ -810,6 +809,29 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
                   {g.key === "edit" && openMenu === "edit" && (
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className={menuItem}
+                        disabled={!history.canUndo}
+                        title="Undo (Ctrl+Z)"
+                        onClick={() => {
+                          history.undo();
+                          setOpenMenu(null);
+                        }}
+                      >
+                        Undo
+                      </button>
+                      <button
+                        className={menuItem}
+                        disabled={!history.canRedo}
+                        title="Redo (Ctrl+Shift+Z)"
+                        onClick={() => {
+                          history.redo();
+                          setOpenMenu(null);
+                        }}
+                      >
+                        Redo
+                      </button>
+                      <div className="my-1 h-px bg-base-800" />
                       {renderSubmenu(
                         "edit-add",
                         "Add",
@@ -909,19 +931,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                       <button className={menuItem} disabled={targetColumns.length === 0} onClick={() => applyClean("Trim Space", trimSpace)}>
                         Trim whitespace
                       </button>
-                      {renderSubmenu(
-                        "format-normalize",
-                        "Normalize",
-                        targetColumns.length === 0,
-                        <>
-                          <button className={menuItem} onClick={() => applyClean("Normalize Phone", normalizePhoneValue)}>
-                            Normalize phone
-                          </button>
-                          <button className={menuItem} onClick={() => applyClean("Normalize Name", normalizeNameValue)}>
-                            Normalize name
-                          </button>
-                        </>
-                      )}
                     </div>
                   )}
 
@@ -972,15 +981,28 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                           >
                             Generate Display Phone&hellip;
                           </button>
+                        </>
+                      )}
+                      {renderSubmenu(
+                        "automate-normalize",
+                        "Normalize",
+                        false,
+                        <>
                           <button
                             className={menuItem}
-                            onClick={() => {
-                              setGenAction("combine");
-                              setOpenMenu(null);
-                              setOpenSubmenu(null);
-                            }}
+                            disabled={!phoneCol}
+                            title={phoneCol ? undefined : "Set a column's Data Type to Phone first."}
+                            onClick={() => applyNormalizeColumn(phoneCol, "Normalize Phone", normalizePhoneValue)}
                           >
-                            Combine Columns&hellip;
+                            Normalize Phone
+                          </button>
+                          <button
+                            className={menuItem}
+                            disabled={!nameCol}
+                            title={nameCol ? undefined : "Set a column's Data Type to Name first."}
+                            onClick={() => applyNormalizeColumn(nameCol, "Normalize Name", normalizeNameValue)}
+                          >
+                            Normalize Name
                           </button>
                         </>
                       )}
@@ -1107,7 +1129,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         <p className="mb-3 text-sm font-medium text-base-100">
                           {genAction === "number" && "Generate Number"}
                           {genAction === "displayPhone" && "Generate Display Phone"}
-                          {genAction === "combine" && "Combine Columns"}
                         </p>
 
                         {genAction === "number" && (
@@ -1134,15 +1155,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               </select>
                             )}
                             {renderPopupField(
-                              "Start",
-                              <input
-                                type="number"
-                                value={genNumberStart}
-                                onChange={(e) => setGenNumberStart(Number(e.target.value))}
-                                className={popupRowInput}
-                              />
-                            )}
-                            {renderPopupField(
                               "Prefix",
                               <input
                                 value={genNumberPrefix}
@@ -1167,40 +1179,16 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               />
                             )}
                             {renderPopupField(
-                              "Pattern",
+                              "Type",
                               <select
                                 value={displayPhonePattern}
                                 onChange={(e) => setDisplayPhonePattern(e.target.value as typeof displayPhonePattern)}
                                 className={popupRowInput}
                               >
-                                <option value="maskMost">0912xxx783 (keep start + last 3 digits)</option>
-                                <option value="maskLast3">xxxxxxx783 (mask all but last 3 digits)</option>
-                                <option value="last3">783 (last 3 digits only)</option>
+                                <option value="maskMost">First 4 and last 3 digits</option>
+                                <option value="maskLast3">Last 3 digits with mask</option>
+                                <option value="last3">Last 3 digits with no mask</option>
                               </select>
-                            )}
-                          </>
-                        )}
-
-                        {genAction === "combine" && (
-                          <>
-                            {renderPopupField(
-                              "Name",
-                              <input
-                                autoFocus
-                                value={combineCol}
-                                onChange={(e) => setCombineCol(e.target.value)}
-                                placeholder="e.g. combined"
-                                className={popupRowInput}
-                              />
-                            )}
-                            {renderPopupField(
-                              "Separator",
-                              <input
-                                value={combineSeparator}
-                                onChange={(e) => setCombineSeparator(e.target.value)}
-                                placeholder="e.g. -"
-                                className={popupRowInput}
-                              />
                             )}
                           </>
                         )}
@@ -1221,17 +1209,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <button className={toolbarBtn} onClick={history.undo} disabled={!history.canUndo} title="Undo (Ctrl+Z)">
-                Undo
-              </button>
-              <button
-                className={toolbarBtn}
-                onClick={history.redo}
-                disabled={!history.canRedo}
-                title="Redo (Ctrl+Shift+Z)"
-              >
-                Redo
-              </button>
               <div className="relative">
                 <button
                   className={toolbarBtn}

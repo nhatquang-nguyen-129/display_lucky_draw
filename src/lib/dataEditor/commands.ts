@@ -390,10 +390,10 @@ function setColumnValuesCommand(
 export function generateNumberCommand(
   state: EditorState,
   col: string,
-  startAt: number,
   mode: "plain" | "padded",
   prefix: string
 ): Command {
+  const startAt = 1;
   const maxValue = startAt + Math.max(0, state.rows.length - 1);
   const digitWidth = String(Math.max(1, maxValue)).length;
   return setColumnValuesCommand(state, `Generate Number → "${col}"`, col, (_row, i) => {
@@ -405,15 +405,4 @@ export function generateNumberCommand(
 
 export function displayPhoneCommand(state: EditorState, col: string, pattern: PhoneMaskPattern): Command {
   return setColumnValuesCommand(state, `Display Phone → "${col}"`, col, (row) => maskPhone(row.phone, pattern));
-}
-
-export function combineColumnsCommand(
-  state: EditorState,
-  newCol: string,
-  sourceCols: string[],
-  separator: string
-): Command {
-  return setColumnValuesCommand(state, `Combine columns → "${newCol}"`, newCol, (row) =>
-    sourceCols.map((c) => getCell(row, c)).filter(Boolean).join(separator)
-  );
 }
