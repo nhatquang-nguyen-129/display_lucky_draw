@@ -115,13 +115,16 @@ export function addColumnCommand(name: string): Command {
   };
 }
 
-/** Sinh tên cột mới không trùng cột đã có — "New Column", "New Column 2", "New Column 3"... */
+/** Sinh tên cột mới không trùng cột đã có — "Column 1", "Column 2", "Column 3"... LUÔN đánh số ngay
+ * từ cột đầu tiên (không có "Column" trơn không số) — dùng CHUNG cho mọi nơi tự sinh cột trống: right-
+ * click "Insert column", Edit > Add > Add Column..., và Add Row... lúc bàn hoàn toàn trống (xem
+ * addFirstRow/applyAddPrompt trong DataEditorModal.tsx). */
 export function nextColumnNames(existing: string[], count: number): string[] {
   const taken = new Set(existing);
   const names: string[] = [];
   let n = 1;
   while (names.length < count) {
-    const candidate = n === 1 ? "New Column" : `New Column ${n}`;
+    const candidate = `Column ${n}`;
     if (!taken.has(candidate)) {
       names.push(candidate);
       taken.add(candidate);
@@ -374,29 +377,30 @@ function setColumnValuesCommand(
   };
 }
 
-/** Số chữ số vừa đủ để đánh số 1..count không trùng — vd 478 dòng thì 3 chữ số (001-478) là đủ,
- * 99 dòng thì 2 chữ số (01-99), không cố định 4 chữ số như trước gây thừa số 0 vô nghĩa. Dùng
- * chung cho cả generateIdCommand và phần preview trên UI (xem DataEditorModal.tsx). */
-export function sequentialIdDigitWidth(rowCount: number): number {
-  return String(Math.max(1, rowCount)).length;
-}
-
-export function generateIdCommand(
+/** Generate ID (Sequential + Prefix) và Running Number (Plain/Zero-padded + Start) đã GỘP LÀM 1 —
+ * cùng bản chất "đếm tuần tự từ `startAt`, có thể đệm số 0, có thể có tiền tố". Prefix rỗng = đúng
+ * hành vi Running Number cũ; có Prefix = đúng hành vi Generate ID cũ (Random đã bỏ hẳn, xem lịch sử
+ * commit "Merge Generate ID into Generate Number" — không gian ký tự-số cũ khó customize thêm field
+ * cho vừa "độ dài mong muốn" mà không nhồi thêm 1 field riêng, không đáng, xem thảo luận trong đó).
+ *
+ * "plain" = đếm thường 1, 2, 3...10...100 (độ dài số tăng dần tự nhiên). "padded" = đệm số 0 để MỌI
+ * dòng cùng số chữ số, tính theo giá trị LỚN NHẤT thực tế sẽ xuất hiện (startAt + số dòng - 1) — vd
+ * bắt đầu từ 1, 999 dòng → giá trị lớn nhất là 999 (3 chữ số) → 001, 002...999. Prefix không tính
+ * vào độ rộng đệm — chỉ đệm phần SỐ, prefix luôn giữ nguyên trước nó (vd "KH" + "001" = "KH001"). */
+export function generateNumberCommand(
   state: EditorState,
   col: string,
-  mode: "sequential" | "random",
+  startAt: number,
+  mode: "plain" | "padded",
   prefix: string
 ): Command {
-  const digitWidth = sequentialIdDigitWidth(state.rows.length);
-  return setColumnValuesCommand(state, `Generate ID → "${col}" (${state.rows.length} rows)`, col, (_row, i) =>
-    mode === "sequential"
-      ? `${prefix}${String(i + 1).padStart(digitWidth, "0")}`
-      : `${prefix}${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-  );
-}
-
-export function runningNumberCommand(state: EditorState, col: string, startAt: number): Command {
-  return setColumnValuesCommand(state, `Running Number → "${col}"`, col, (_row, i) => String(startAt + i));
+  const maxValue = startAt + Math.max(0, state.rows.length - 1);
+  const digitWidth = String(Math.max(1, maxValue)).length;
+  return setColumnValuesCommand(state, `Generate Number → "${col}"`, col, (_row, i) => {
+    const value = startAt + i;
+    const numberPart = mode === "padded" ? String(value).padStart(digitWidth, "0") : String(value);
+    return `${prefix}${numberPart}`;
+  });
 }
 
 export function displayPhoneCommand(state: EditorState, col: string, pattern: PhoneMaskPattern): Command {

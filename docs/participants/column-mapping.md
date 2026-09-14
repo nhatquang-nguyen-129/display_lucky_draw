@@ -78,6 +78,6 @@ Chưa gán Data Type = Name cho cột nào cả → `nameCol` là `undefined` �
 
 ## Trùng lặp (duplicate) — cũng tách riêng, và LUÔN LIVE theo selection
 
-Không gắn với Data Type — cột nào xác định trùng lặp (compound key, có thể nhiều cột) lấy TRỰC TIẾP từ cột đang bôi chọn trên bảng (`targetColumns`) NGAY LÚC ĐÓ, dùng chung cho cả chip "Duplicated Rows" ở status bar lẫn preset "Automate ▸ Deduplication ▸ Remove Duplicated Rows" (xem [data-editor.md](./data-editor.md)) — 2 nơi này luôn ra CÙNG 1 con số vì cùng gọi `findDuplicateIdsToRemove`. Chưa bôi cột nào thì không có gì để tính trùng cả — chip biến mất, preset yêu cầu bôi cột trước khi chạy.
+Không gắn với Data Type — cột nào xác định trùng lặp (compound key, có thể nhiều cột) lấy TRỰC TIẾP từ cột đang bôi chọn trên bảng (`targetColumns`) NGAY LÚC ĐÓ, dùng chung cho cả chip "Duplicated Rows" ở status bar lẫn preset "Automate ▸ Deduplicate ▸ Remove Duplicated Rows" (xem [data-editor.md](./data-editor.md)) — 2 nơi này luôn ra CÙNG 1 con số vì cùng gọi `findDuplicateIdsToRemove`. Chưa bôi cột nào thì không có gì để tính trùng cả — chip biến mất, preset yêu cầu bôi cột trước khi chạy.
 
 Từng có `sessions.participant_duplicate_columns` (JSON `string[]`, lưu riêng) làm nguồn cho việc này — đã BỎ khỏi luồng app (cột DB vẫn còn trong schema cho tương thích ngược, chỉ không còn ai ghi/đọc nữa) vì gây bug: đổi selection trên bảng không tự cập nhật config đã lưu, và chỉ cần MỞ preset dedup ra xem (dù sau đó Cancel) cũng đã âm thầm ghi đè config, để lại chip đỏ sai mà bôi lại cột khác không cách nào tự hết.

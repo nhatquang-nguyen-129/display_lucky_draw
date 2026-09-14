@@ -14,7 +14,7 @@ import {
   findEmptyColumns,
   findEmptyRowIds,
   editCellCommand,
-  generateIdCommand,
+  generateNumberCommand,
   insertColumnsCommand,
   insertRowsCommand,
   nextColumnNames,
@@ -23,7 +23,6 @@ import {
   removeEmptyColumnsCommand,
   renameColumnCommand,
   reorderRowsCommand,
-  runningNumberCommand,
 } from "@/lib/dataEditor/commands";
 import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
 import {
@@ -49,12 +48,14 @@ interface DataEditorModalProps {
 // Menu = ĐỘNG TỪ thuần (giống Google Sheets). Phạm vi (cột/dòng/ô) do người dùng chọn TRỰC TIẾP trên
 // bảng — không menu nào chứa selector cột/dòng nữa (trước đây nhồi dropdown "Apply to column" +
 // checkbox list dedup nên menu dài vô hạn).
-type Group = "edit" | "format" | "automate" | "generate";
+// Generate không còn là menu cấp 1 riêng — giờ là 1 submenu ("Generate") NẰM TRONG Automate, cùng cấp
+// với "Deduplication". 4 lựa chọn cũ (Generate ID/Running Number/Display Phone/Combine Columns) không
+// còn mở flyout cấp 3 nữa — bấm 1 cái là mở thẳng popup (center + dim, xem genAction) để nhập.
+type Group = "edit" | "format" | "automate";
 const GROUPS: { key: Group; label: string }[] = [
   { key: "edit", label: "Edit" },
   { key: "format", label: "Format" },
   { key: "automate", label: "Automate" },
-  { key: "generate", label: "Generate" },
 ];
 
 const COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
@@ -124,6 +125,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
 
   const [showFindReplace, setShowFindReplace] = useState(false);
+  // Popup "Add Row.../Add Column..." (Edit > Add) — hỏi số lượng rồi Confirm/Cancel, cùng kiểu popup
+  // nổi với Find & Replace bên dưới.
+  const [addPrompt, setAddPrompt] = useState<{ kind: "row" | "column"; count: number } | null>(null);
   const [selectedColKeys, setSelectedColKeys] = useState<Set<string>>(new Set());
   const [lastSelectedCol, setLastSelectedCol] = useState<string | null>(null);
 
@@ -131,11 +135,18 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const [replaceText, setReplaceText] = useState("");
   const [findCaseSensitive, setFindCaseSensitive] = useState(false);
 
-  const [genAction, setGenAction] = useState<"id" | "running" | "displayPhone" | "combine">("id");
-  const [genIdMode, setGenIdMode] = useState<"sequential" | "random">("sequential");
-  const [genIdPrefix, setGenIdPrefix] = useState("");
-  const [runningCol, setRunningCol] = useState("stt");
-  const [runningStart, setRunningStart] = useState(1);
+  // null = không popup Generate nào đang mở. Khác null = vừa chọn 1 mục trong Automate > Generate,
+  // popup tương ứng đang hiện — cùng 1 state vừa chọn "sinh cái gì" vừa là cờ hiện/ẩn popup, không cần
+  // 2 state rời. "Generate ID" (Sequential + Prefix) và "Running Number" (Plain/Zero-padded + Start)
+  // đã GỘP LÀM 1 kind "number" duy nhất — Prefix rỗng = Running Number cũ, có Prefix = Generate ID cũ.
+  // Random đã bỏ hẳn (không gian ký tự-số cố định 6 ký tự khó cho tuỳ chỉnh độ dài mà không thêm 1
+  // field riêng, không đáng so với lợi ích).
+  const [genAction, setGenAction] = useState<"number" | "displayPhone" | "combine" | null>(null);
+  // Mặc định "code" — giữ đúng hành vi Generate ID cũ (cột lõi Code) nếu không đổi gì.
+  const [genNumberCol, setGenNumberCol] = useState("code");
+  const [genNumberMode, setGenNumberMode] = useState<"plain" | "padded">("padded");
+  const [genNumberStart, setGenNumberStart] = useState(1);
+  const [genNumberPrefix, setGenNumberPrefix] = useState("");
   const [displayPhoneCol, setDisplayPhoneCol] = useState("display_phone");
   const [displayPhonePattern, setDisplayPhonePattern] = useState<"last3" | "maskLast3" | "maskMost">("maskMost");
   const [combineCol, setCombineCol] = useState("combined");
@@ -465,12 +476,15 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
   // Bàn hoàn toàn trống (chưa import, chưa nhập tay lần nào) → không có cột nào để gõ vào cả, vì
   // core field bị ẩn tới khi có dữ liệu (xem activeCoreFields) và cũng chưa có cột phụ nào. "+ Add
-  // first row" lúc này tự thêm kèm 2 cột phụ gợi ý ("Name"/"Phone", KHÔNG phải core field — người
-  // dùng đổi tên/xoá/gán Data Type tuỳ ý) để không rơi vào bảng trắng hoàn toàn không gõ được gì.
+  // first row" lúc này tự thêm kèm 1 cột phụ trống ("Column 1", CÙNG cơ chế sinh tên với Add Column/
+  // Insert Column — xem nextColumnNames — KHÔNG còn gợi ý "Name"/"Phone" như trước, vì đó là NHÃN Ý
+  // NGHĨA nên để người dùng tự gán qua Data Type, không đoán hộ) để không rơi vào bảng trắng hoàn
+  // toàn không gõ được gì.
   function addFirstRow() {
     const isBlankSlate = history.state.columns.length === 0 && activeCoreFields.length === 0;
     if (isBlankSlate) {
-      const cmd = combineCommands("Add first row", [insertColumnsCommand(["Name", "Phone"]), insertRowsCommand(0, 1)]);
+      const names = nextColumnNames([...CORE_FIELDS, ...history.state.columns], 1);
+      const cmd = combineCommands("Add first row", [insertColumnsCommand(names), insertRowsCommand(0, 1)]);
       if (cmd) history.run(cmd);
     } else {
       history.run(insertRowsCommand(0, 1));
@@ -489,6 +503,27 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       next.splice(atIndex, 0, ...names);
       return next;
     });
+  }
+
+  // Xác nhận popup "Edit > Add > Add Row.../Add Column..." — luôn chèn ở CUỐI (không có 1 dòng/cột
+  // tham chiếu nào như right-click, vì mở từ menu chứ không phải từ 1 vị trí cụ thể trên bảng).
+  function applyAddPrompt() {
+    if (!addPrompt) return;
+    const count = Math.max(1, Math.floor(addPrompt.count) || 1);
+    if (addPrompt.kind === "row") {
+      if (history.state.columns.length === 0 && activeCoreFields.length === 0) {
+        // Bàn hoàn toàn trống — thêm kèm 1 cột trống "Column 1" (giống nút "+ Add first row"), rồi
+        // mới chèn đủ N dòng, để không rơi vào bảng trắng không gõ được gì.
+        const names = nextColumnNames([...CORE_FIELDS, ...history.state.columns], 1);
+        const cmd = combineCommands("Add rows", [insertColumnsCommand(names), insertRowsCommand(0, count)]);
+        if (cmd) history.run(cmd);
+      } else {
+        history.run(insertRowsCommand(history.state.rows.length, count));
+      }
+    } else {
+      insertColumnsAt(columnOrder.length, count);
+    }
+    setAddPrompt(null);
   }
 
   // Áp transform lên MỌI cột đang chọn (targetColumns). >1 cột → gộp thành 1 bước Undo.
@@ -586,12 +621,11 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   }
 
   function applyGenerate() {
-    if (genAction === "id") {
-      history.run(generateIdCommand(history.state, "code", genIdMode, genIdPrefix));
-    } else if (genAction === "running") {
-      const col = runningCol.trim();
+    if (!genAction) return;
+    if (genAction === "number") {
+      const col = genNumberCol.trim();
       if (!col) return;
-      history.run(runningNumberCommand(history.state, col, runningStart));
+      history.run(generateNumberCommand(history.state, col, genNumberStart, genNumberMode, genNumberPrefix.trim()));
     } else if (genAction === "displayPhone") {
       const col = displayPhoneCol.trim();
       if (!col) return;
@@ -697,6 +731,19 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     "absolute left-0 z-30 mt-1 w-56 rounded-lg border border-base-700 bg-base-900 p-1.5 text-left shadow-2xl";
   const menuItem =
     "block w-full rounded px-2 py-1.5 text-left text-xs text-base-200 hover:bg-base-800 disabled:cursor-not-allowed disabled:opacity-40";
+  // Popup "Automate > Generate > ...": mỗi field là 1 HÀNG 2 CỘT — nhãn cố định bề rộng bên trái,
+  // control (input/select) chiếm hết phần còn lại bên phải — thay cho kiểu label-trên/control-dưới
+  // trước đây. Field ĐẦU TIÊN luôn là "Name" (tên cột mới, mọi popup đều tạo 1 cột hoàn toàn mới).
+  const popupRowLabel = "w-16 shrink-0 text-[11px] font-medium text-base-400";
+  const popupRowInput = "min-w-0 flex-1 rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100";
+  function renderPopupField(label: string, control: React.ReactNode) {
+    return (
+      <div className="mb-2 flex items-center gap-3 text-left">
+        <span className={popupRowLabel}>{label}</span>
+        {control}
+      </div>
+    );
+  }
   const selectedColsInView = Array.from(selectedColKeys).filter((c) => columnOrder.includes(c));
 
   // Submenu 2 cấp kiểu Google Sheets (Format > Text Capitalization > UPPER CASE...): hover 1 mục cấp 1
@@ -750,6 +797,8 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                       setOpenMenu((m) => (m === g.key ? null : g.key));
                       setOpenSubmenu(null);
                       setShowFindReplace(false);
+                      setAddPrompt(null);
+                      setGenAction(null);
                     }}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium ${
                       openMenu === g.key ? "bg-gold-500 text-base-950" : "text-base-300 hover:bg-base-800"
@@ -761,6 +810,32 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
                   {g.key === "edit" && openMenu === "edit" && (
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
+                      {renderSubmenu(
+                        "edit-add",
+                        "Add",
+                        false,
+                        <>
+                          <button
+                            className={menuItem}
+                            onClick={() => {
+                              setAddPrompt({ kind: "row", count: 1 });
+                              setOpenMenu(null);
+                            }}
+                          >
+                            Add Row&hellip;
+                          </button>
+                          <button
+                            className={menuItem}
+                            onClick={() => {
+                              setAddPrompt({ kind: "column", count: 1 });
+                              setOpenMenu(null);
+                            }}
+                          >
+                            Add Column&hellip;
+                          </button>
+                        </>
+                      )}
+                      <div className="my-1 h-px bg-base-800" />
                       {renderSubmenu(
                         "edit-delete",
                         "Delete",
@@ -774,7 +849,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               setOpenMenu(null);
                             }}
                           >
-                            Rows{selectedRowIds.size > 0 ? ` (${selectedRowIds.size})` : ""}
+                            Delete Rows{selectedRowIds.size > 0 ? ` (${selectedRowIds.size})` : ""}
                           </button>
                           <button
                             className={`${menuItem} text-danger-500`}
@@ -795,7 +870,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               setOpenMenu(null);
                             }}
                           >
-                            Columns{selectedColsInView.length > 0 ? ` (${selectedColsInView.length})` : ""}
+                            Delete Columns{selectedColsInView.length > 0 ? ` (${selectedColsInView.length})` : ""}
                           </button>
                         </>
                       )}
@@ -817,7 +892,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
                       {renderSubmenu(
                         "format-case",
-                        "Text Capitalization",
+                        "Change Case",
                         targetColumns.length === 0,
                         <>
                           <button className={menuItem} onClick={() => applyClean("Upper Case", toUpperCase)}>
@@ -854,7 +929,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                     <div className={menuBox} onClick={(e) => e.stopPropagation()}>
                       {renderSubmenu(
                         "automate-dedup",
-                        "Deduplication",
+                        "Deduplicate",
                         false,
                         <>
                           <button className={menuItem} onClick={applyRemoveEmptyRows}>
@@ -872,181 +947,274 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                           </button>
                         </>
                       )}
+                      {renderSubmenu(
+                        "automate-generate",
+                        "Generate",
+                        false,
+                        <>
+                          <button
+                            className={menuItem}
+                            onClick={() => {
+                              setGenAction("number");
+                              setOpenMenu(null);
+                              setOpenSubmenu(null);
+                            }}
+                          >
+                            Generate Number&hellip;
+                          </button>
+                          <button
+                            className={menuItem}
+                            onClick={() => {
+                              setGenAction("displayPhone");
+                              setOpenMenu(null);
+                              setOpenSubmenu(null);
+                            }}
+                          >
+                            Generate Display Phone&hellip;
+                          </button>
+                          <button
+                            className={menuItem}
+                            onClick={() => {
+                              setGenAction("combine");
+                              setOpenMenu(null);
+                              setOpenSubmenu(null);
+                            }}
+                          >
+                            Combine Columns&hellip;
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
 
                   {g.key === "edit" && showFindReplace && (
                     <div
-                      className="fixed left-1/2 top-24 z-40 w-72 -translate-x-1/2 rounded-lg border border-base-700 bg-base-900 p-3 shadow-2xl"
-                      onClick={(e) => e.stopPropagation()}
+                      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+                      onClick={() => setShowFindReplace(false)}
                     >
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-medium text-base-200">Find &amp; Replace</span>
+                      <div
+                        className="relative w-full max-w-xs rounded-lg border border-base-700 bg-base-900 p-4 text-center shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <button
-                          className="text-base-500 hover:text-base-200"
+                          className="absolute right-3 top-3 text-base-500 hover:text-base-200"
                           onClick={() => setShowFindReplace(false)}
+                          aria-label="Close"
                         >
                           ✕
                         </button>
-                      </div>
-                      <input
-                        autoFocus
-                        value={findText}
-                        onChange={(e) => setFindText(e.target.value)}
-                        placeholder="Find"
-                        className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                      />
-                      <input
-                        value={replaceText}
-                        onChange={(e) => setReplaceText(e.target.value)}
-                        placeholder="Replace with"
-                        className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                      />
-                      <label className="mb-2 flex items-center gap-1 text-[11px] text-base-400">
+                        <p className="mb-3 text-sm font-medium text-base-100">Find &amp; Replace</p>
                         <input
-                          type="checkbox"
-                          checked={findCaseSensitive}
-                          onChange={(e) => setFindCaseSensitive(e.target.checked)}
-                          className="accent-gold-500"
+                          autoFocus
+                          value={findText}
+                          onChange={(e) => setFindText(e.target.value)}
+                          placeholder="Find"
+                          className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-center text-xs text-base-100"
                         />
-                        Case sensitive
-                      </label>
-                      <Button
-                        onClick={() => {
-                          applyFindReplace();
-                          setShowFindReplace(false);
-                        }}
-                        className="w-full text-xs"
-                      >
-                        Apply
-                      </Button>
+                        <input
+                          value={replaceText}
+                          onChange={(e) => setReplaceText(e.target.value)}
+                          placeholder="Replace with"
+                          className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-center text-xs text-base-100"
+                        />
+                        <label className="mb-3 flex items-center justify-center gap-1 text-[11px] text-base-400">
+                          <input
+                            type="checkbox"
+                            checked={findCaseSensitive}
+                            onChange={(e) => setFindCaseSensitive(e.target.checked)}
+                            className="accent-gold-500"
+                          />
+                          Case sensitive
+                        </label>
+                        <Button
+                          onClick={() => {
+                            applyFindReplace();
+                            setShowFindReplace(false);
+                          }}
+                          className="w-full text-xs"
+                        >
+                          Apply
+                        </Button>
+                      </div>
                     </div>
                   )}
 
-                  {g.key === "generate" && openMenu === "generate" && (
-                    <div className={menuBox} onClick={(e) => e.stopPropagation()}>
-                      {renderSubmenu(
-                        "gen-id",
-                        "Generate ID",
-                        false,
-                        <>
-                          <p className="mb-1 px-1 text-[10px] text-base-500">Writes to the Code column</p>
-                          <select
-                            value={genIdMode}
-                            onChange={(e) => setGenIdMode(e.target.value as typeof genIdMode)}
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
+                  {g.key === "edit" && addPrompt && (
+                    <div
+                      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+                      onClick={() => setAddPrompt(null)}
+                    >
+                      <div
+                        className="relative w-full max-w-xs rounded-lg border border-base-700 bg-base-900 p-4 text-center shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className="absolute right-3 top-3 text-base-500 hover:text-base-200"
+                          onClick={() => setAddPrompt(null)}
+                          aria-label="Close"
+                        >
+                          ✕
+                        </button>
+                        <p className="mb-3 text-sm font-medium text-base-100">
+                          Add {addPrompt.kind === "row" ? "Rows" : "Columns"}
+                        </p>
+                        <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">
+                          Number of {addPrompt.kind === "row" ? "rows" : "columns"}
+                        </label>
+                        <input
+                          autoFocus
+                          type="number"
+                          min={1}
+                          value={addPrompt.count}
+                          onChange={(e) => {
+                            const n = Math.max(1, Math.floor(Number(e.target.value)) || 1);
+                            setAddPrompt((p) => (p ? { ...p, count: n } : p));
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && applyAddPrompt()}
+                          className="mb-3 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-center text-xs text-base-100"
+                        />
+                        <div className="flex justify-center gap-2">
+                          <button
+                            className="flex-1 rounded-md border border-base-700 px-2 py-1.5 text-xs text-base-300 hover:bg-base-800"
+                            onClick={() => setAddPrompt(null)}
                           >
-                            <option value="sequential">Sequential (auto-padded digits)</option>
-                            <option value="random">Random</option>
-                          </select>
-                          <input
-                            value={genIdPrefix}
-                            onChange={(e) => setGenIdPrefix(e.target.value)}
-                            placeholder="Prefix (e.g. KH)"
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          />
-                          <Button
-                            onClick={() => {
-                              applyGenerate();
-                              setOpenMenu(null);
-                            }}
-                            className="w-full text-xs"
-                          >
-                            Apply
+                            Cancel
+                          </button>
+                          <Button onClick={applyAddPrompt} className="flex-1 text-xs">
+                            Confirm
                           </Button>
-                        </>,
-                        () => setGenAction("id")
-                      )}
-                      {renderSubmenu(
-                        "gen-running",
-                        "Running Number",
-                        false,
-                        <>
-                          <input
-                            value={runningCol}
-                            onChange={(e) => setRunningCol(e.target.value)}
-                            placeholder="Column name (e.g. stt)"
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          />
-                          <input
-                            type="number"
-                            value={runningStart}
-                            onChange={(e) => setRunningStart(Number(e.target.value))}
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          />
-                          <Button
-                            onClick={() => {
-                              applyGenerate();
-                              setOpenMenu(null);
-                            }}
-                            className="w-full text-xs"
-                          >
-                            Apply
-                          </Button>
-                        </>,
-                        () => setGenAction("running")
-                      )}
-                      {renderSubmenu(
-                        "gen-displayPhone",
-                        "Display Phone",
-                        false,
-                        <>
-                          <input
-                            value={displayPhoneCol}
-                            onChange={(e) => setDisplayPhoneCol(e.target.value)}
-                            placeholder="New column name"
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          />
-                          <select
-                            value={displayPhonePattern}
-                            onChange={(e) => setDisplayPhonePattern(e.target.value as typeof displayPhonePattern)}
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          >
-                            <option value="maskMost">0912xxx783 (keep start + last 3 digits)</option>
-                            <option value="maskLast3">xxxxxxx783 (mask all but last 3 digits)</option>
-                            <option value="last3">783 (last 3 digits only)</option>
-                          </select>
-                          <Button
-                            onClick={() => {
-                              applyGenerate();
-                              setOpenMenu(null);
-                            }}
-                            className="w-full text-xs"
-                          >
-                            Apply
-                          </Button>
-                        </>,
-                        () => setGenAction("displayPhone")
-                      )}
-                      {renderSubmenu(
-                        "gen-combine",
-                        "Combine Columns",
-                        false,
-                        <>
-                          <input
-                            value={combineCol}
-                            onChange={(e) => setCombineCol(e.target.value)}
-                            placeholder="New column name"
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          />
-                          <input
-                            value={combineSeparator}
-                            onChange={(e) => setCombineSeparator(e.target.value)}
-                            placeholder="Join with"
-                            className="mb-2 w-full rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100"
-                          />
-                          <Button
-                            onClick={() => {
-                              applyGenerate();
-                              setOpenMenu(null);
-                            }}
-                            className="w-full text-xs"
-                          >
-                            Apply
-                          </Button>
-                        </>,
-                        () => setGenAction("combine")
-                      )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {g.key === "automate" && genAction && (
+                    <div
+                      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+                      onClick={() => setGenAction(null)}
+                    >
+                      <div
+                        className="relative w-full max-w-xs rounded-lg border border-base-700 bg-base-900 p-4 text-center shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className="absolute right-3 top-3 text-base-500 hover:text-base-200"
+                          onClick={() => setGenAction(null)}
+                          aria-label="Close"
+                        >
+                          ✕
+                        </button>
+                        <p className="mb-3 text-sm font-medium text-base-100">
+                          {genAction === "number" && "Generate Number"}
+                          {genAction === "displayPhone" && "Generate Display Phone"}
+                          {genAction === "combine" && "Combine Columns"}
+                        </p>
+
+                        {genAction === "number" && (
+                          <>
+                            {renderPopupField(
+                              "Name",
+                              <input
+                                autoFocus
+                                value={genNumberCol}
+                                onChange={(e) => setGenNumberCol(e.target.value)}
+                                placeholder="e.g. code"
+                                className={popupRowInput}
+                              />
+                            )}
+                            {renderPopupField(
+                              "Type",
+                              <select
+                                value={genNumberMode}
+                                onChange={(e) => setGenNumberMode(e.target.value as typeof genNumberMode)}
+                                className={popupRowInput}
+                              >
+                                <option value="plain">Sequential with Plain Number (1, 2, 3...)</option>
+                                <option value="padded">Sequential with Zero-padded Number (001, 002...)</option>
+                              </select>
+                            )}
+                            {renderPopupField(
+                              "Start",
+                              <input
+                                type="number"
+                                value={genNumberStart}
+                                onChange={(e) => setGenNumberStart(Number(e.target.value))}
+                                className={popupRowInput}
+                              />
+                            )}
+                            {renderPopupField(
+                              "Prefix",
+                              <input
+                                value={genNumberPrefix}
+                                onChange={(e) => setGenNumberPrefix(e.target.value)}
+                                placeholder="Optional, e.g. KH"
+                                className={popupRowInput}
+                              />
+                            )}
+                          </>
+                        )}
+
+                        {genAction === "displayPhone" && (
+                          <>
+                            {renderPopupField(
+                              "Name",
+                              <input
+                                autoFocus
+                                value={displayPhoneCol}
+                                onChange={(e) => setDisplayPhoneCol(e.target.value)}
+                                placeholder="e.g. display_phone"
+                                className={popupRowInput}
+                              />
+                            )}
+                            {renderPopupField(
+                              "Pattern",
+                              <select
+                                value={displayPhonePattern}
+                                onChange={(e) => setDisplayPhonePattern(e.target.value as typeof displayPhonePattern)}
+                                className={popupRowInput}
+                              >
+                                <option value="maskMost">0912xxx783 (keep start + last 3 digits)</option>
+                                <option value="maskLast3">xxxxxxx783 (mask all but last 3 digits)</option>
+                                <option value="last3">783 (last 3 digits only)</option>
+                              </select>
+                            )}
+                          </>
+                        )}
+
+                        {genAction === "combine" && (
+                          <>
+                            {renderPopupField(
+                              "Name",
+                              <input
+                                autoFocus
+                                value={combineCol}
+                                onChange={(e) => setCombineCol(e.target.value)}
+                                placeholder="e.g. combined"
+                                className={popupRowInput}
+                              />
+                            )}
+                            {renderPopupField(
+                              "Separator",
+                              <input
+                                value={combineSeparator}
+                                onChange={(e) => setCombineSeparator(e.target.value)}
+                                placeholder="e.g. -"
+                                className={popupRowInput}
+                              />
+                            )}
+                          </>
+                        )}
+
+                        <Button
+                          onClick={() => {
+                            applyGenerate();
+                            setGenAction(null);
+                          }}
+                          className="mt-1 w-full text-xs"
+                        >
+                          Apply
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1371,23 +1539,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                 </tr>
               </thead>
               <tbody className="divide-y divide-base-800 bg-base-950">
-                {visibleRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={columnOrder.length + 1} className="px-4 py-8 text-center text-base-500">
-                      {history.state.rows.length === 0 ? (
-                        <>
-                          No rows yet.{" "}
-                          <button className="text-gold-400 underline hover:text-gold-300" onClick={addFirstRow}>
-                            + Add first row
-                          </button>
-                        </>
-                      ) : (
-                        "No rows to display."
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  visibleRows.map((row) => {
+                {visibleRows.map((row) => {
                     const trueIndex = history.state.rows.findIndex((r) => r.id === row.id);
                     const rowIssues = issuesByRow.get(row.id) ?? [];
                     const isDuplicate = duplicateRowIds.has(row.id);
@@ -1466,10 +1618,28 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         })}
                       </tr>
                     );
-                  })
-                )}
+                  })}
               </tbody>
             </table>
+            {/* Nằm NGOÀI <table> (không phải <td colSpan>) CỐ Ý — colSpan chỉ rộng bằng tổng các cột
+                nó span qua; bàn trống (columnOrder.length === 0, core field ẩn tới khi có dữ liệu +
+                chưa có cột phụ nào) từng khiến colSpan={1} chỉ rộng đúng 32px (cột checkbox), làm chữ
+                bên trong vỡ dọc từng ký tự (bug đã gặp thật). Render như 1 block thường thì luôn rộng
+                theo container, không lệ thuộc số cột hiện có. */}
+            {visibleRows.length === 0 && (
+              <div className="px-4 py-8 text-center text-sm text-base-500">
+                {history.state.rows.length === 0 ? (
+                  <>
+                    No rows yet.{" "}
+                    <button className="text-gold-400 underline hover:text-gold-300" onClick={addFirstRow}>
+                      + Add first row
+                    </button>
+                  </>
+                ) : (
+                  "No rows to display."
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1584,21 +1754,19 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
           onClick={() => setAutomatePopup(null)}
         >
           <div
-            className="w-full max-w-xs rounded-lg border border-base-700 bg-base-900 p-4 shadow-2xl"
+            className="relative w-full max-w-xs rounded-lg border border-base-700 bg-base-900 p-4 text-center shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <p className="text-sm text-base-100">{automatePopup.message}</p>
-              <button
-                onClick={() => setAutomatePopup(null)}
-                className="shrink-0 text-base-400 hover:text-base-100"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
+            <button
+              onClick={() => setAutomatePopup(null)}
+              className="absolute right-3 top-3 text-base-400 hover:text-base-100"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <p className="mb-3 text-sm text-base-100">{automatePopup.message}</p>
             {automatePopup.onConfirm && (
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-center gap-2">
                 <button className={toolbarBtn} onClick={() => setAutomatePopup(null)}>
                   Cancel
                 </button>
