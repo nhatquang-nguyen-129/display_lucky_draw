@@ -11,7 +11,7 @@ export interface CellIssue {
 export type ColumnType = "text" | "name" | "phone" | "email" | "code" | "url";
 
 export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
-  text: "Text (no validation)",
+  text: "None",
   name: "Name",
   phone: "Phone",
   email: "Email",
