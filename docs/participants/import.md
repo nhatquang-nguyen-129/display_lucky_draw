@@ -31,7 +31,7 @@ sequenceDiagram
   BulkImport->>DB: INSERT OR IGNORE (transaction)
   DB-->>BulkImport: số dòng thực sự insert
   BulkImport-->>Participants.tsx: inserted
-  Participants.tsx-->>User: "Imported X/Y rows. Columns detected: ... Open Data Editor..."
+  Participants.tsx-->>User: refresh() — bảng preview cập nhật ngay, không có banner báo kết quả
 ```
 
 ### Đọc file — vì sao không dùng `fetch("file://...")`
@@ -87,11 +87,6 @@ if (!hasAnyData) continue;
 
 ## Sau khi import xong
 
-Message hiển thị cho người dùng liệt kê tên cột đã phát hiện được trong file và nhắc mở Data Editor để gán nhãn:
-
-```
-Imported 555/555 rows. Columns detected: Họ tên, SĐT, Email, Ghi chú.
-Open Data Editor and set "Data type" on each column header to label Name/Phone/Code/Email.
-```
+`Participants.tsx` chỉ `refresh()` lại danh sách rồi hiện ngay trong bảng preview — KHÔNG còn banner text báo "Imported X/Y rows. Columns detected: ..." như bản trước (đã bỏ vì quá dài, chiếm chỗ UI). Người dùng tự thấy cột nào vừa import qua chính bảng preview (header = tên cột gốc trong file), rồi tự mở Data Editor để gán "Data type" khi cần.
 
 Chưa gán Data Type nào cả thì Data Editor sẽ KHÔNG báo "Missing Name"/"Missing Phone" (chưa có gì để coi là thiếu) — chỉ khi người dùng gán 1 cột thành Data Type = Name/Phone, validate mới bắt đầu chạy đúng trên cột đó (xem [column-mapping.md](./column-mapping.md)).

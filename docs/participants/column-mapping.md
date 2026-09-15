@@ -76,6 +76,14 @@ Chưa gán Data Type = Name cho cột nào cả → `nameCol` là `undefined` �
 
 `sessions.participant_column_labels` (`{ [tênCột]: "Nhãn hiển thị" }`) chỉ đổi **tên hiển thị** của core field trong Data Editor (vd đổi header "Phone" thành "Số điện thoại") — không liên quan gì tới việc gán ý nghĩa dữ liệu (Data Type). Đừng nhầm 2 khái niệm này.
 
+## Bug đã sửa: gán Data Type xong, đóng/mở lại Data Editor thì mất
+
+`updateColumnType`/`setColumnLabel` (`DataEditorModal.tsx`) ghi thẳng `sessions.participant_column_types`/`participant_column_labels` xuống DB ngay lúc đổi (không qua nút Save chính) — nhưng prop `session` truyền vào modal đến từ `SessionContext.tsx`, và context đó **chỉ `refresh()` lại khi add/rename/close tab**, không hề biết 2 API này vừa ghi gì xuống DB.
+
+Data Editor lại `load()` (nạp lại `columnTypes`/`columnLabels` từ đúng prop `session` đó) mỗi lần modal mở (`useEffect` theo `open`/`sessionId`) — nên Data Type nào gán SAU LẦN CUỐI context refresh sẽ "biến mất" khi đóng/mở lại editor: không mất thật trong DB, chỉ là UI đọc nhầm bản session cũ còn trong bộ nhớ React.
+
+Sửa bằng cách gọi `useSession().refresh()` ngay sau khi `updateColumnTypes`/`updateColumnLabels` lưu xong (`.then(refreshSessions)`) — context luôn có bản session mới nhất, lần mở editor kế tiếp đọc đúng.
+
 ## Trùng lặp (duplicate) — cũng tách riêng, và LUÔN LIVE theo selection
 
 Không gắn với Data Type — cột nào xác định trùng lặp (compound key, có thể nhiều cột) lấy TRỰC TIẾP từ cột đang bôi chọn trên bảng (`targetColumns`) NGAY LÚC ĐÓ, dùng chung cho cả chip "Duplicated Rows" ở status bar lẫn preset "Data ▸ Deduplicate ▸ Remove Duplicated Rows" (xem [data-editor.md](./data-editor.md)) — 2 nơi này luôn ra CÙNG 1 con số vì cùng gọi `findDuplicateIdsToRemove` (chip) / `findDuplicateGroups` (preset — bản đầy đủ nhóm, dùng cho popup chọn dòng giữ lại thủ công, xem data-editor.md). Chưa bôi cột nào thì không có gì để tính trùng cả — chip biến mất, preset yêu cầu bôi cột trước khi chạy.

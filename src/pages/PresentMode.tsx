@@ -23,6 +23,7 @@ export default function PresentMode() {
   const [config, setConfig] = useState<LandingConfig | null>(null);
   const [participantColumnTypesJson, setParticipantColumnTypesJson] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const data = useLandingData(sessionId ?? null);
   // `config` có thể chưa tải xong (null) ở lần render đầu — 0/false lúc đó là an toàn (chưa biết
   // Wheel/component nào cả), tự tính lại đúng ngay khi `config` có giá trị thật.
@@ -64,6 +65,13 @@ export default function PresentMode() {
     return () => window.removeEventListener("resize", compute);
   }, []);
 
+  // Cửa sổ này mở WINDOWED để người vận hành kéo sang màn hình 2 trước, rồi tự bấm fullscreen (nút
+  // overlay hoặc F11, xem electron/main.ts openPresentWindow) — nghe cả sự kiện main process báo lại
+  // vì trạng thái có thể đổi bằng cách khác ngoài nút này (vd nút xanh lá trên macOS).
+  useEffect(() => {
+    return window.api.present.onFullscreenChange(setIsFullscreen);
+  }, []);
+
   if (!config) {
     return <div className="flex h-screen w-screen items-center justify-center bg-base-950 text-base-500">Loading...</div>;
   }
@@ -80,6 +88,25 @@ export default function PresentMode() {
             nghiệp vụ bình thường). */}
         <LandingRenderer config={config} data={sequence.effectiveData} scale={scale} interactive sequence={sequence} />
       </div>
+
+      {/* Overlay mờ, sáng lên khi hover — không nổi bật giữa màn hình trình chiếu nhưng người vận
+          hành vẫn tìm được ở góc quen thuộc. F11 làm việc tương tự (xem electron/main.ts). Bấm được
+          bất cứ lúc nào kể cả đang quay — toggle cửa sổ không đụng gì tới sequence đang chạy. */}
+      <button
+        onClick={() => window.api.present.toggleFullscreen().then(setIsFullscreen)}
+        title={isFullscreen ? "Exit fullscreen (F11)" : "Enter fullscreen (F11)"}
+        className="fixed right-3 top-3 z-50 flex h-8 w-8 items-center justify-center rounded-md bg-black/50 text-white opacity-30 transition hover:opacity-100"
+      >
+        {isFullscreen ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+            <path d="M9 4v3a2 2 0 0 1-2 2H4M20 9h-3a2 2 0 0 1-2-2V4M15 20v-3a2 2 0 0 1 2-2h3M4 15h3a2 2 0 0 1 2 2v3" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+            <path d="M4 9V6a2 2 0 0 1 2-2h3M20 9V6a2 2 0 0 1-2-2h-3M4 15v3a2 2 0 0 0 2 2h3M20 15v3a2 2 0 0 1-2 2h-3" />
+          </svg>
+        )}
+      </button>
     </div>
   );
 }

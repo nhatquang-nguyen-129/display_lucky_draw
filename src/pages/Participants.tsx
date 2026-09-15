@@ -13,7 +13,6 @@ export default function Participants() {
   const { activeSessionId, activeSession } = useSession();
   const [items, setItems] = useState<Participant[]>([]);
   const [showEditor, setShowEditor] = useState(false);
-  const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
   // Preview RAW, giống hệt cột đang hiện trong Data Editor trước khi gán nhãn — không còn ép cứng 4
@@ -45,7 +44,6 @@ export default function Participants() {
 
   useEffect(() => {
     refresh();
-    setImportMsg(null);
     setImportError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
@@ -84,7 +82,6 @@ export default function Participants() {
     // nguyên tên gốc. Việc gán cột nào đóng vai trò Name/Phone/Code/Email là thao tác thủ công của
     // người dùng, làm SAU khi đã import xong, qua dropdown "Data type" trên header cột trong Data
     // Editor (xem docs/participants/column-mapping.md). Chỉ bỏ qua dòng trắng hoàn toàn (mọi cột đều rỗng).
-    const detectedHeaders = rows.length > 0 ? Object.keys(rows[0]).map((k) => k.trim()) : [];
     const normalized = rows
       .map((r) => {
         const extra: Record<string, string> = {};
@@ -98,13 +95,8 @@ export default function Participants() {
       })
       .filter((r) => r.extra);
 
-    const inserted = await window.api.participants.bulkImport(activeSessionId, normalized);
+    await window.api.participants.bulkImport(activeSessionId, normalized);
     setImportError(null);
-    setImportMsg(
-      `Imported ${inserted}/${normalized.length} rows. Columns detected: ${
-        detectedHeaders.join(", ") || "(none)"
-      }. Open Data Editor and set "Data type" on each column header to label Name/Phone/Code/Email.`
-    );
     refresh();
   }
 
@@ -117,7 +109,6 @@ export default function Participants() {
     )
       return;
     await window.api.participants.bulkDelete(items.map((p) => p.id));
-    setImportMsg(null);
     refresh();
   }
 
@@ -152,12 +143,6 @@ export default function Participants() {
       {importError && (
         <div className="mb-4 flex-shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
           {importError}
-        </div>
-      )}
-
-      {importMsg && (
-        <div className="mb-4 flex-shrink-0 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm text-teal-400">
-          {importMsg}
         </div>
       )}
 

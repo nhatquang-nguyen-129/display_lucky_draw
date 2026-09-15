@@ -84,6 +84,14 @@ const api = {
   },
   present: {
     open: (sessionId: string) => ipcRenderer.invoke("present:open", sessionId),
+    toggleFullscreen: () => ipcRenderer.invoke("present:toggleFullscreen") as Promise<boolean>,
+    // Main process báo lại khi trạng thái fullscreen đổi (kể cả đổi bằng cách khác ngoài nút toggle,
+    // vd nút xanh lá trên macOS) — trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+    onFullscreenChange: (cb: (isFullscreen: boolean) => void) => {
+      const listener = (_e: unknown, value: boolean) => cb(value);
+      ipcRenderer.on("present:fullscreen-changed", listener);
+      return () => ipcRenderer.removeListener("present:fullscreen-changed", listener);
+    },
   },
   landingBuilder: {
     open: (sessionId: string) => ipcRenderer.invoke("landingBuilder:open", sessionId),
