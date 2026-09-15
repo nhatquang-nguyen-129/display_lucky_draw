@@ -122,8 +122,8 @@ export default function Participants() {
   }
 
   return (
-    <div>
-      <header className="mb-6 flex items-center justify-between">
+    <div className="flex h-full flex-col">
+      <header className="mb-6 flex flex-shrink-0 items-center justify-between">
         <p className="text-sm text-base-400">
           {items.length} participants in session "{activeSession.name}" — quick view here, all edits happen in
           the Data Editor.
@@ -142,18 +142,20 @@ export default function Participants() {
       </header>
 
       {importMsg && (
-        <div className="mb-4 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm text-teal-400">
+        <div className="mb-4 flex-shrink-0 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm text-teal-400">
           {importMsg}
         </div>
       )}
 
       {/* Bảng preview — chỉ để xem nhanh, không có thao tác sửa/xoá từng dòng. Cột hiện RAW y hệt
-          Data Editor (không ép cứng Name/Code/Phone/Email) — overflow-x-auto vì file import có thể
-          có rất nhiều cột (vd Google Form). Mọi chỉnh sửa (kể cả thêm thủ công, gán Data Type) đều
-          thực hiện trong Data Editor để tránh 2 nơi thao tác cùng dữ liệu. */}
-      <div className="overflow-x-auto rounded-xl border border-base-800">
+          Data Editor (không ép cứng Name/Code/Phone/Email) — overflow-auto (dọc lẫn ngang) vì file
+          import có thể có rất nhiều cột (vd Google Form) và nhiều dòng; đây là vùng scroll DUY NHẤT
+          của trang, phần header phía trên (Data Editor/Import/Delete all) đứng yên (xem Layout.tsx,
+          isFullHeight). Mọi chỉnh sửa (kể cả thêm thủ công, gán Data Type) đều thực hiện trong Data
+          Editor để tránh 2 nơi thao tác cùng dữ liệu. */}
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-base-800">
         <table className="w-full text-left text-sm">
-          <thead className="bg-base-900 text-xs uppercase tracking-wide text-base-400">
+          <thead className="sticky top-0 z-10 bg-base-900 text-xs uppercase tracking-wide text-base-400">
             <tr>
               {previewColumns.map((col) => (
                 <th key={col} className="whitespace-nowrap px-4 py-3 font-medium">

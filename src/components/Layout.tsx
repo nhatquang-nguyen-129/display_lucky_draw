@@ -7,6 +7,9 @@ export default function Layout() {
   // Landing Page Builder cần toàn bộ chiều rộng/cao cho canvas 3 cột — không dùng khung
   // max-w-6xl/padding như các trang form/bảng còn lại.
   const isFullBleed = useMatch("/landing");
+  // Participants cần freeze thanh header (Data Editor/Import/Delete all) — trang tự chiếm đủ chiều
+  // cao còn lại của main, chỉ bảng preview bên trong mới scroll (dọc lẫn ngang).
+  const isFullHeight = useMatch("/participants");
 
   return (
     <SessionProvider>
@@ -17,6 +20,10 @@ export default function Layout() {
           <main className="flex-1 overflow-y-auto bg-base-950">
             {isFullBleed ? (
               <div className="h-full px-4 py-4">
+                <Outlet />
+              </div>
+            ) : isFullHeight ? (
+              <div className="mx-auto flex h-full max-w-6xl flex-col px-8 py-8">
                 <Outlet />
               </div>
             ) : (

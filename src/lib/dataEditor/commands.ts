@@ -280,6 +280,37 @@ export function batchTransformCommand(
   };
 }
 
+/**
+ * Áp 1 danh sách before/after ĐÃ TÍNH SẴN (vd popup preview Normalize sau khi người dùng tick chọn
+ * dòng nào muốn áp) — khác batchTransformCommand ở chỗ không tự tính lại transform, chỉ ghi thẳng
+ * đúng những dòng được truyền vào.
+ */
+export function applyChangesCommand(
+  label: string,
+  col: string,
+  changes: { rowId: string; before: string; after: string }[]
+): Command | null {
+  if (changes.length === 0) return null;
+  const changeMap = new Map(changes.map((c) => [c.rowId, c]));
+  return {
+    label: `${label} (${changes.length} row(s))`,
+    execute: (s) => ({
+      ...s,
+      rows: s.rows.map((r) => {
+        const c = changeMap.get(r.id);
+        return c ? withCell(r, col, c.after) : r;
+      }),
+    }),
+    undo: (s) => ({
+      ...s,
+      rows: s.rows.map((r) => {
+        const c = changeMap.get(r.id);
+        return c ? withCell(r, col, c.before) : r;
+      }),
+    }),
+  };
+}
+
 export function findEmptyRowIds(state: EditorState): string[] {
   return state.rows
     .filter(
@@ -325,22 +356,29 @@ export function removeEmptyColumnsCommand(state: EditorState): Command | null {
   };
 }
 
+export interface DuplicateGroup {
+  rows: EditorRow[];
+  /** Dòng "đầy đủ thông tin nhất" trong nhóm, tick sẵn cho popup chọn dòng giữ lại — người dùng
+   * vẫn có thể tự chọn dòng khác trước khi Confirm. */
+  defaultKeepId: string;
+}
+
 /**
- * Giữ dòng "đầy đủ thông tin nhất" mỗi nhóm trùng theo compound key trên duplicateColumns
- * (cấu hình ở tab Overview), xoá phần còn lại — tái dùng deleteRowsCommand. Không cột nào
- * được chọn thì không có gì để xoá.
+ * Nhóm các dòng trùng theo compound key trên duplicateColumns (cột người dùng đang chọn trên
+ * bảng). Mỗi nhóm kèm sẵn defaultKeepId (dòng đầy đủ thông tin nhất) để popup Remove Duplicated
+ * Rows tick sẵn — người dùng vẫn tự chọn dòng khác muốn giữ lại trước khi Confirm.
  */
-export function findDuplicateIdsToRemove(state: EditorState, duplicateColumns: string[]): string[] {
+export function findDuplicateGroups(state: EditorState, duplicateColumns: string[]): DuplicateGroup[] {
   if (duplicateColumns.length === 0) return [];
   const groups = new Map<string, EditorRow[]>();
   state.rows.forEach((r) => {
     const values = duplicateColumns.map((col) => getCell(r, col).trim());
     if (values.every((v) => !v)) return;
-    const key = values.join("");
+    const key = values.join("\u0001");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(r);
   });
-  const toRemove: string[] = [];
+  const result: DuplicateGroup[] = [];
   groups.forEach((rows) => {
     if (rows.length < 2) return;
     const scored = rows.map((row) => ({
@@ -349,9 +387,17 @@ export function findDuplicateIdsToRemove(state: EditorState, duplicateColumns: s
         .length,
     }));
     scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.row.created_at.localeCompare(b.row.created_at)));
-    scored.slice(1).forEach((s) => toRemove.push(s.row.id));
+    result.push({ rows, defaultKeepId: scored[0].row.id });
   });
-  return toRemove;
+  return result;
+}
+
+/** Dùng cho status bar/issue count (validate.ts) — không cần chọn thủ công, luôn lấy theo
+ * defaultKeepId (dòng đầy đủ thông tin nhất). */
+export function findDuplicateIdsToRemove(state: EditorState, duplicateColumns: string[]): string[] {
+  return findDuplicateGroups(state, duplicateColumns).flatMap((g) =>
+    g.rows.filter((r) => r.id !== g.defaultKeepId).map((r) => r.id)
+  );
 }
 
 /* GENERATE */

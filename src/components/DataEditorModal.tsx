@@ -5,10 +5,13 @@ import { Participant, Session } from "@/types";
 import { CORE_FIELDS, EditorRow, EditorState, getCell, isCoreField } from "@/lib/dataEditor/types";
 import { useCommandHistory } from "@/lib/dataEditor/history";
 import {
+  applyChangesCommand,
   batchTransformCommand,
   combineCommands,
   deleteRowsCommand,
   displayPhoneCommand,
+  DuplicateGroup,
+  findDuplicateGroups,
   findDuplicateIdsToRemove,
   findEmptyColumns,
   findEmptyRowIds,
@@ -23,7 +26,7 @@ import {
   renameColumnCommand,
   reorderRowsCommand,
 } from "@/lib/dataEditor/commands";
-import { findReplaceTransform, normalizeNameValue, normalizePhoneValue, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
+import { findReplaceTransform, normalizeNameResult, normalizePhoneResult, toLowerCase, toTitleCase, toUpperCase, trimSpace } from "@/lib/dataEditor/transforms";
 import {
   ColumnType,
   COLUMN_TYPE_LABELS,
@@ -54,7 +57,7 @@ type Group = "edit" | "format" | "automate";
 const GROUPS: { key: Group; label: string }[] = [
   { key: "edit", label: "Edit" },
   { key: "format", label: "Format" },
-  { key: "automate", label: "Automate" },
+  { key: "automate", label: "Data" },
 ];
 
 const COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
@@ -100,10 +103,27 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const [saving, setSaving] = useState(false);
   const [originalRows, setOriginalRows] = useState<EditorRow[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  // Hiện dòng "Last saved at ..." bên trái nút History — thay cho chip Saved/Unsaved cũ, cập nhật mỗi
+  // lần save thành công (kể cả auto-save âm thầm), không cần phân biệt manual/silent.
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   // Popup riêng cho menu Automate — KHÔNG dùng chung `toast` (status bar chỉ để báo tình trạng dữ
   // liệu theo Data Type, không phải nơi hỏi/báo kết quả của 1 hành động vừa bấm). `onConfirm` vắng
   // mặt = popup thông tin thuần (chỉ có nút X để đóng); có `onConfirm` = popup hỏi Confirm/Cancel.
   const [automatePopup, setAutomatePopup] = useState<{ message: string; onConfirm?: () => void } | null>(null);
+  // Preview lớn riêng cho Data > Normalize — khác automatePopup (popup nhỏ chỉ hỏi Yes/No) vì cần
+  // hiện DANH SÁCH so sánh Hiện tại/Đề xuất để người dùng tự cuộn xem trước khi Confirm, không chỉ
+  // đếm số lượng như Remove Empty Rows/Columns/Duplicated Rows. `selected` = tick bên trái mỗi dòng
+  // (mặc định bật) — Confirm chỉ áp cho dòng đang tick, KHÔNG áp cho dòng `unresolved` dù có tick.
+  const [normalizePreview, setNormalizePreview] = useState<{
+    label: string;
+    col: string;
+    transform: (v: string) => string | null;
+    changes: { rowId: string; before: string; after: string; unresolved: boolean; selected: boolean }[];
+  } | null>(null);
+  // Preview lớn riêng cho Data > Deduplicate > Remove Duplicated Rows — mỗi nhóm trùng hiện các dòng
+  // kèm radio, người dùng tick chọn ĐÚNG 1 dòng muốn giữ (mặc định là dòng đầy đủ thông tin nhất,
+  // xem findDuplicateGroups), Confirm mới xoá phần còn lại của từng nhóm.
+  const [dedupPreview, setDedupPreview] = useState<{ groups: DuplicateGroup[]; keepIds: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const history = useCommandHistory({ columns: [], rows: [] } as EditorState);
@@ -200,7 +220,13 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
-  const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
+  // Lưu kèm toạ độ (không chỉ tên cột) để render dropdown này ở NGOÀI vùng scroll của bảng (`fixed`,
+  // cùng kiểu với `contextMenu`) — trước đây dropdown nằm `absolute` NGAY TRONG <th>, tức là con của
+  // <thead sticky>; Chromium có bug lâu năm: nội dung tràn ra khỏi 1 phần tử `position: sticky` bị
+  // clip/vẽ sai lớp so với <tbody> đang cuộn CÙNG vùng scroll đó (dữ liệu dòng bên dưới "lộ" xuyên
+  // qua dropdown dù z-index/background đều đúng) — xem báo cáo kèm ảnh khi vừa Normalize xong rồi mở
+  // menu cột. Fix: đưa hẳn dropdown ra khỏi cây <thead>/<tbody>, định vị bằng toạ độ thật của nút bấm.
+  const [openColumnMenu, setOpenColumnMenu] = useState<{ col: string; left: number; top: number } | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -539,13 +565,34 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
 
   // Normalize phone/name không thao tác trên targetColumns (cột đang chọn tuỳ ý trên bảng) mà LUÔN
   // áp thẳng vào cột đã được gán Data Type tương ứng (nameCol/phoneCol, xem resolveColumnForType) —
-  // đây là preset theo cấu hình, không phải lệnh format tự do như applyClean.
-  function applyNormalizeColumn(col: string | undefined, label: string, transform: (v: string) => string) {
-    if (!col) return;
-    const cmd = batchTransformCommand(history.state, label, col, transform);
-    if (cmd) history.run(cmd);
-    else setToast("No cells needed changes.");
+  // đây là preset theo cấu hình, không phải lệnh format tự do như applyClean. `transform` trả `null`
+  // cho ô KHÔNG tự tin xử lý được (vd 2 số điện thoại dính nhau, tên dính link/ghi chú) — popup sẽ
+  // báo "Unable to resolve" và luôn loại các ô này khỏi phần được áp dụng, dù có tick hay không.
+  //
+  // Trước khi Normalize có hiệu lực: tính trước danh sách ô sẽ đổi để hiện popup preview lớn cho
+  // người dùng tự cuộn xem VÀ tick chọn dòng nào muốn áp (mặc định tick hết các dòng resolve được),
+  // KHÔNG áp dụng ngay. Chỉ khi bấm Confirm trên popup mới thật sự ghi vào state (applyChangesCommand
+  // với đúng các dòng đang tick).
+  function openNormalizePreview(col: string | undefined, label: string, transform: (v: string) => string | null) {
     setOpenMenu(null);
+    if (!col) return;
+    const changes = history.state.rows
+      .map((r) => {
+        const before = getCell(r, col);
+        const after = transform(before);
+        if (after === null) return { rowId: r.id, before, after: "", unresolved: true, selected: false };
+        if (after === before) return null;
+        return { rowId: r.id, before, after, unresolved: false, selected: true };
+      })
+      .filter(
+        (c): c is { rowId: string; before: string; after: string; unresolved: boolean; selected: boolean } =>
+          c !== null
+      );
+    if (changes.length === 0) {
+      setAutomatePopup({ message: `Found 0 row(s) needing ${label}.` });
+      return;
+    }
+    setNormalizePreview({ label, col, transform, changes });
   }
 
   function applyFindReplace() {
@@ -606,25 +653,31 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   // lưu riêng nữa (đã bỏ sessions.participant_duplicate_columns khỏi luồng này, xem validate.ts) nên
   // không có gì để "âm thầm đổi" khi chỉ xem thử/Cancel; status bar cũng đọc thẳng targetColumns nên
   // luôn khớp 100% với con số ở đây. Chọn nhiều cột → phải trùng TẤT CẢ các cột đó cùng lúc mới tính
-  // là 1 nhóm trùng (compound key, xem findDuplicateIdsToRemove).
+  // là 1 nhóm trùng (compound key, xem findDuplicateGroups). Mở popup lớn cho từng nhóm — không tự
+  // xoá theo "đầy đủ thông tin nhất" ngầm nữa, người dùng tick chọn dòng muốn giữ trong mỗi nhóm.
   function applyRemoveDuplicates() {
     setOpenMenu(null);
     if (targetColumns.length === 0) {
       setAutomatePopup({ message: "Select at least 1 column header first to define what counts as a duplicate." });
       return;
     }
-    const ids = findDuplicateIdsToRemove(history.state, targetColumns);
-    if (ids.length === 0) {
+    const groups = findDuplicateGroups(history.state, targetColumns);
+    if (groups.length === 0) {
       setAutomatePopup({ message: `Found 0 duplicate row(s) on: ${targetColumnLabel}.` });
       return;
     }
-    setAutomatePopup({
-      message: `Found ${ids.length} duplicate row(s) on: ${targetColumnLabel}. The most complete row in each group is kept. Are you sure you want to delete the rest?`,
-      onConfirm: () => {
-        const cmd = deleteRowsCommand(history.state, ids);
-        if (cmd) history.run(cmd);
-      },
-    });
+    setDedupPreview({ groups, keepIds: groups.map((g) => g.defaultKeepId) });
+  }
+
+  // Tóm tắt 1 dòng trong popup Remove Duplicated Rows để phân biệt các dòng trùng nhau — hiện mọi
+  // cột đang có dữ liệu, theo đúng thứ tự cột trên bảng (columnOrder), không chỉ riêng cột dùng để
+  // xác định trùng (targetColumns) vì đó là phần GIỐNG NHAU giữa các dòng trong cùng 1 nhóm.
+  function summarizeDedupRow(row: EditorRow): string {
+    const parts = columnOrder
+      .map((col) => ({ label: labelFor(col), value: getCell(row, col) }))
+      .filter((p) => p.value.trim())
+      .map((p) => `${p.label}: ${p.value}`);
+    return parts.join(" · ") || "(empty row)";
   }
 
   function applyGenerate() {
@@ -672,6 +725,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       await window.api.participants.reorder(finalOrderIds);
 
       await load();
+      setLastSavedAt(new Date());
       setToast(silent ? `Auto-saved at ${new Date().toLocaleTimeString("en-US")}.` : "Changes saved.");
       onSaved();
     } catch {
@@ -734,7 +788,10 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   // control (input/select) chiếm hết phần còn lại bên phải — thay cho kiểu label-trên/control-dưới
   // trước đây. Field ĐẦU TIÊN luôn là "Name" (tên cột mới, mọi popup đều tạo 1 cột hoàn toàn mới).
   const popupRowLabel = "w-16 shrink-0 text-[11px] font-medium text-base-400";
-  const popupRowInput = "min-w-0 flex-1 rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100";
+  // truncate: tên option dài hơn bề rộng ô (vd "Sequential with Zero-padded Number (001, 002...)")
+  // thì cắt bớt kèm "…" thay vì tràn/vỡ layout popup nhỏ max-w-xs.
+  const popupRowInput =
+    "min-w-0 flex-1 truncate rounded border border-base-700 bg-base-800 px-2 py-1.5 text-xs text-base-100";
   function renderPopupField(label: string, control: React.ReactNode) {
     return (
       <div className="mb-2 flex items-center gap-3 text-left">
@@ -775,7 +832,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   }
 
   return (
-    <Modal open={open} title="Data Editor — Participants" onClose={requestClose} maxWidth="max-w-[95vw]">
+    <Modal open={open} title="" onClose={requestClose} maxWidth="max-w-[95vw]">
       {loading ? (
         <div className="py-12 text-center text-sm text-base-400">Loading data...</div>
       ) : (
@@ -992,7 +1049,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             className={menuItem}
                             disabled={!phoneCol}
                             title={phoneCol ? undefined : "Set a column's Data Type to Phone first."}
-                            onClick={() => applyNormalizeColumn(phoneCol, "Normalize Phone", normalizePhoneValue)}
+                            onClick={() => openNormalizePreview(phoneCol, "Normalize Phone", normalizePhoneResult)}
                           >
                             Normalize Phone
                           </button>
@@ -1000,7 +1057,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             className={menuItem}
                             disabled={!nameCol}
                             title={nameCol ? undefined : "Set a column's Data Type to Name first."}
-                            onClick={() => applyNormalizeColumn(nameCol, "Normalize Name", normalizeNameValue)}
+                            onClick={() => openNormalizePreview(nameCol, "Normalize Name", normalizeNameResult)}
                           >
                             Normalize Name
                           </button>
@@ -1185,7 +1242,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                                 onChange={(e) => setDisplayPhonePattern(e.target.value as typeof displayPhonePattern)}
                                 className={popupRowInput}
                               >
-                                <option value="maskMost">First 4 and last 3 digits</option>
+                                <option value="maskMost">First 4 and last 3 digits with mask</option>
                                 <option value="maskLast3">Last 3 digits with mask</option>
                                 <option value="last3">Last 3 digits with no mask</option>
                               </select>
@@ -1209,6 +1266,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
               ))}
             </div>
             <div className="flex items-center gap-2">
+              {lastSavedAt && (
+                <span className="text-xs text-base-500">Last saved at {lastSavedAt.toLocaleTimeString("en-US")}</span>
+              )}
               <div className="relative">
                 <button
                   className={toolbarBtn}
@@ -1259,15 +1319,8 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   Filter/Sort active ✕
                 </button>
               )}
-              <span className="text-xs text-base-500">
-                {history.dirty ? (
-                  <span className="text-highlight-500">Unsaved</span>
-                ) : (
-                  <span className="text-teal-400">Saved</span>
-                )}
-              </span>
               <Button onClick={() => handleSave()} disabled={!history.dirty || saving} className="text-xs">
-                {saving ? "Saving..." : "Save (Ctrl+S)"}
+                {saving ? "Saving..." : "Save"}
               </Button>
             </div>
           </div>
@@ -1424,7 +1477,12 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setOpenColumnMenu(openColumnMenu === col ? null : col);
+                            if (openColumnMenu?.col === col) {
+                              setOpenColumnMenu(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setOpenColumnMenu({ col, left: rect.left, top: rect.bottom + 4 });
+                            }
                           }}
                           className={`ml-auto shrink-0 rounded px-1 text-[10px] hover:text-base-200 ${
                             columnFilters[col]?.trim() || sortColumn === col ? "text-gold-400" : "text-base-600"
@@ -1441,76 +1499,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-gold-500/50"
                         title="Drag to resize column"
                       />
-                      {openColumnMenu === col && (
-                        <div
-                          className="absolute left-0 z-40 mt-1 w-48 rounded-lg border border-base-700 bg-base-900 p-2 text-left normal-case shadow-2xl"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
-                            onClick={() => {
-                              setSortColumn(col);
-                              setSortDirection("asc");
-                            }}
-                          >
-                            Sort A → Z
-                          </button>
-                          <button
-                            className="block w-full rounded px-2 py-1 text-left text-xs text-base-200 hover:bg-base-800"
-                            onClick={() => {
-                              setSortColumn(col);
-                              setSortDirection("desc");
-                            }}
-                          >
-                            Sort Z → A
-                          </button>
-                          {sortColumn === col && (
-                            <button
-                              className="block w-full rounded px-2 py-1 text-left text-xs text-base-500 hover:bg-base-800"
-                              onClick={() => setSortColumn(null)}
-                            >
-                              Clear sort
-                            </button>
-                          )}
-                          <div className="my-1.5 h-px bg-base-800" />
-                          <input
-                            autoFocus
-                            value={columnFilters[col] ?? ""}
-                            onChange={(e) => setColumnFilters((prev) => ({ ...prev, [col]: e.target.value }))}
-                            placeholder="Search in column..."
-                            className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                          />
-                          {!!columnFilters[col]?.trim() && (
-                            <button
-                              className="mt-1 block w-full rounded px-2 py-1 text-left text-xs text-base-500 hover:bg-base-800"
-                              onClick={() =>
-                                setColumnFilters((prev) => {
-                                  const next = { ...prev };
-                                  delete next[col];
-                                  return next;
-                                })
-                              }
-                            >
-                              Clear filter
-                            </button>
-                          )}
-                          <div className="my-1.5 h-px bg-base-800" />
-                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">
-                            Data type
-                          </label>
-                          <select
-                            value={columnTypes[col] ?? defaultColumnType(col)}
-                            onChange={(e) => updateColumnType(col, e.target.value as ColumnType)}
-                            className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                          >
-                            {(Object.keys(COLUMN_TYPE_LABELS) as ColumnType[]).map((t) => (
-                              <option key={t} value={t}>
-                                {COLUMN_TYPE_LABELS[t]}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                     </th>
                   ))}
                 </tr>
@@ -1618,6 +1606,83 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {openColumnMenu && (
+        <div
+          className="fixed z-50 w-48 rounded-lg border border-base-700 bg-base-900 p-2 text-left text-xs shadow-2xl"
+          style={{ left: openColumnMenu.left, top: openColumnMenu.top }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(() => {
+            const col = openColumnMenu.col;
+            return (
+              <>
+                <button
+                  className="block w-full rounded px-2 py-1 text-left text-base-200 hover:bg-base-800"
+                  onClick={() => {
+                    setSortColumn(col);
+                    setSortDirection("asc");
+                  }}
+                >
+                  Sort A → Z
+                </button>
+                <button
+                  className="block w-full rounded px-2 py-1 text-left text-base-200 hover:bg-base-800"
+                  onClick={() => {
+                    setSortColumn(col);
+                    setSortDirection("desc");
+                  }}
+                >
+                  Sort Z → A
+                </button>
+                {sortColumn === col && (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-base-500 hover:bg-base-800"
+                    onClick={() => setSortColumn(null)}
+                  >
+                    Clear sort
+                  </button>
+                )}
+                <div className="my-1.5 h-px bg-base-800" />
+                <input
+                  autoFocus
+                  value={columnFilters[col] ?? ""}
+                  onChange={(e) => setColumnFilters((prev) => ({ ...prev, [col]: e.target.value }))}
+                  placeholder="Search in column..."
+                  className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-base-100 outline-none focus:border-gold-500"
+                />
+                {!!columnFilters[col]?.trim() && (
+                  <button
+                    className="mt-1 block w-full rounded px-2 py-1 text-left text-base-500 hover:bg-base-800"
+                    onClick={() =>
+                      setColumnFilters((prev) => {
+                        const next = { ...prev };
+                        delete next[col];
+                        return next;
+                      })
+                    }
+                  >
+                    Clear filter
+                  </button>
+                )}
+                <div className="my-1.5 h-px bg-base-800" />
+                <label className="mb-1 block text-[10px] uppercase tracking-wide text-base-500">Data type</label>
+                <select
+                  value={columnTypes[col] ?? defaultColumnType(col)}
+                  onChange={(e) => updateColumnType(col, e.target.value as ColumnType)}
+                  className="w-full truncate rounded border border-base-700 bg-base-800 px-2 py-1 text-base-100 outline-none focus:border-gold-500"
+                >
+                  {(Object.keys(COLUMN_TYPE_LABELS) as ColumnType[]).map((t) => (
+                    <option key={t} value={t}>
+                      {COLUMN_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -1758,6 +1823,185 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                 </Button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {normalizePreview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setNormalizePreview(null)}
+        >
+          <div
+            className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-lg border border-base-700 bg-base-900 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setNormalizePreview(null)}
+              className="absolute right-4 top-4 text-base-400 hover:text-base-100"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <h3 className="mb-1 pr-6 text-sm font-medium text-base-100">{normalizePreview.label}</h3>
+            <p className="mb-3 text-xs text-base-400">
+              {(() => {
+                const unresolvedCount = normalizePreview.changes.filter((c) => c.unresolved).length;
+                const selectedCount = normalizePreview.changes.filter((c) => !c.unresolved && c.selected).length;
+                return (
+                  <>
+                    {selectedCount} row(s) selected to change
+                    {unresolvedCount > 0 ? `, ${unresolvedCount} unable to resolve (always left unchanged)` : ""}.
+                    Untick any row to keep it as-is, then Confirm to apply.
+                  </>
+                );
+              })()}
+            </p>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded border border-base-800">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-base-800 text-[11px] uppercase tracking-wide text-base-400">
+                  <tr>
+                    <th className="w-8 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all"
+                        checked={normalizePreview.changes.every((c) => c.unresolved || c.selected)}
+                        onChange={(e) =>
+                          setNormalizePreview((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  changes: p.changes.map((c) => (c.unresolved ? c : { ...c, selected: e.target.checked })),
+                                }
+                              : p
+                          )
+                        }
+                      />
+                    </th>
+                    <th className="px-3 py-2 font-medium">Current value</th>
+                    <th className="px-3 py-2 font-medium">Proposed value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-base-800">
+                  {normalizePreview.changes.map((c) => (
+                    <tr key={c.rowId} className={c.unresolved ? "opacity-60" : undefined}>
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="checkbox"
+                          disabled={c.unresolved}
+                          checked={c.selected}
+                          onChange={(e) =>
+                            setNormalizePreview((p) =>
+                              p
+                                ? {
+                                    ...p,
+                                    changes: p.changes.map((row) =>
+                                      row.rowId === c.rowId ? { ...row, selected: e.target.checked } : row
+                                    ),
+                                  }
+                                : p
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-danger-500">{c.before || "—"}</td>
+                      <td className={`px-3 py-1.5 ${c.unresolved ? "italic text-base-500" : "text-base-200"}`}>
+                        {c.unresolved ? "Unable to resolve" : c.after || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className={toolbarBtn} onClick={() => setNormalizePreview(null)}>
+                Cancel
+              </button>
+              <Button
+                onClick={() => {
+                  const selected = normalizePreview.changes.filter((c) => !c.unresolved && c.selected);
+                  const cmd = applyChangesCommand(normalizePreview.label, normalizePreview.col, selected);
+                  if (cmd) history.run(cmd);
+                  setNormalizePreview(null);
+                }}
+                className="text-xs"
+              >
+                Confirm
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dedupPreview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setDedupPreview(null)}
+        >
+          <div
+            className="relative flex max-h-[85vh] w-full max-w-3xl flex-col rounded-lg border border-base-700 bg-base-900 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setDedupPreview(null)}
+              className="absolute right-4 top-4 text-base-400 hover:text-base-100"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <h3 className="mb-1 pr-6 text-sm font-medium text-base-100">Remove Duplicated Rows</h3>
+            <p className="mb-3 text-xs text-base-400">
+              {dedupPreview.groups.length} duplicate group(s) on: {targetColumnLabel}. Pick which row to keep in
+              each group, then Confirm to delete the rest.
+            </p>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded border border-base-800 p-3">
+              {dedupPreview.groups.map((g, i) => (
+                <div key={i} className="rounded border border-base-800">
+                  <div className="border-b border-base-800 bg-base-800 px-3 py-1.5 text-[11px] uppercase tracking-wide text-base-400">
+                    Group {i + 1} · {g.rows.length} rows
+                  </div>
+                  <div className="divide-y divide-base-800">
+                    {g.rows.map((row) => (
+                      <label
+                        key={row.id}
+                        className="flex cursor-pointer items-start gap-2 px-3 py-2 hover:bg-base-800/60"
+                      >
+                        <input
+                          type="radio"
+                          name={`dedup-group-${i}`}
+                          className="mt-0.5"
+                          checked={dedupPreview.keepIds[i] === row.id}
+                          onChange={() =>
+                            setDedupPreview((p) =>
+                              p ? { ...p, keepIds: p.keepIds.map((id, idx) => (idx === i ? row.id : id)) } : p
+                            )
+                          }
+                        />
+                        <span className="text-xs text-base-200">{summarizeDedupRow(row)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className={toolbarBtn} onClick={() => setDedupPreview(null)}>
+                Cancel
+              </button>
+              <Button
+                onClick={() => {
+                  const idsToRemove = dedupPreview.groups.flatMap((g, i) =>
+                    g.rows.filter((r) => r.id !== dedupPreview.keepIds[i]).map((r) => r.id)
+                  );
+                  const cmd = deleteRowsCommand(history.state, idsToRemove);
+                  if (cmd) history.run(cmd);
+                  setDedupPreview(null);
+                }}
+                className="text-xs"
+              >
+                Confirm
+              </Button>
+            </div>
           </div>
         </div>
       )}

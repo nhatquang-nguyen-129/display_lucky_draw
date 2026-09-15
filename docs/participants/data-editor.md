@@ -48,41 +48,56 @@ Danh sách command hiện có (`commands.ts`):
 | Nhóm | Command | Ghi chú |
 |---|---|---|
 | Edit | `editCellCommand`, `insertRowCommand`/`insertRowsCommand`, `deleteRowsCommand`, `addColumnCommand`/`insertColumnsCommand`, `removeColumnCommand`, `renameColumnCommand`, `pasteBlockCommand`, `reorderRowsCommand` | Cột lõi không xoá được hẳn — "xoá cột lõi" = clear giá trị (`removeColumnCommand`) |
-| Format/Clean | `batchTransformCommand` (khung dùng chung) | Transform cụ thể (upper/lower/title case, trim, normalize) nằm ở `transforms.ts` |
-| Automate | `findEmptyRowIds`, `findEmptyColumns`, `removeEmptyColumnsCommand`, `findDuplicateIdsToRemove` | Preset xoá hàng loạt theo tiêu chí tự động — xem mục "Automate menu" bên dưới |
-| Automate ▸ Generate | `generateNumberCommand`, `displayPhoneCommand`, `combineColumnsCommand` | Dùng chung helper `setColumnValuesCommand`; `Generate` là 1 submenu NẰM TRONG `Automate`, không còn là menu cấp cao nhất riêng — xem "Automate ▸ Generate" bên dưới |
-| Meta | `combineCommands` | Gộp nhiều Command thành 1 bước Undo duy nhất |
+| Format/Clean | `batchTransformCommand` (khung dùng chung) | Transform cụ thể (upper/lower/title case, trim) nằm ở `transforms.ts` |
+| Data | `findEmptyRowIds`, `findEmptyColumns`, `removeEmptyColumnsCommand`, `findDuplicateGroups`/`findDuplicateIdsToRemove` | Preset xoá/normalize hàng loạt — xem mục "Data menu" bên dưới |
+| Data ▸ Normalize | `normalizePhoneResult`, `normalizeNameResult` (`transforms.ts`) + `applyChangesCommand` (`commands.ts`) | Trả `null` cho ô "không tự tin xử lý được" thay vì áp sai — xem "Data ▸ Normalize" bên dưới |
+| Data ▸ Generate | `generateNumberCommand`, `displayPhoneCommand`, `combineColumnsCommand` | Dùng chung helper `setColumnValuesCommand`; `Generate` là 1 submenu NẰM TRONG `Data`, không còn là menu cấp cao nhất riêng — xem "Data ▸ Generate" bên dưới |
+| Meta | `combineCommands`, `applyChangesCommand` | `combineCommands` gộp nhiều Command thành 1 bước Undo; `applyChangesCommand` áp thẳng 1 danh sách before/after ĐÃ TÍNH SẴN (không tự tính lại transform) — dùng khi popup preview để người dùng tick chọn dòng trước khi Confirm (Normalize) |
 
 ## Toolbar — "động từ thuần", phạm vi lấy từ selection
 
-3 nhóm menu cấp cao nhất — `Edit`/`Format`/`Automate` — không chứa dropdown chọn cột/dòng bên trong — phạm vi tác động luôn lấy từ selection người dùng đã bôi trực tiếp trên bảng (`targetColumns` = cột đang bôi ở header, hoặc cột chứa ô đang chọn). Quyết định thiết kế này để tránh menu phình to với "Apply to column" + checkbox list (từng có, đã bỏ — xem lịch sử commit "Rework the Data Editor menus into pure actions").
+3 nhóm menu cấp cao nhất — `Edit`/`Format`/`Data` (đổi tên từ `Automate` — vẫn cùng 1 menu, chỉ đổi nhãn hiển thị cho gọn) — không chứa dropdown chọn cột/dòng bên trong — phạm vi tác động luôn lấy từ selection người dùng đã bôi trực tiếp trên bảng (`targetColumns` = cột đang bôi ở header, hoặc cột chứa ô đang chọn). Quyết định thiết kế này để tránh menu phình to với "Apply to column" + checkbox list (từng có, đã bỏ — xem lịch sử commit "Rework the Data Editor menus into pure actions").
 
-Mỗi menu là 1 dropdown 2 cấp kiểu Google Sheets (`renderSubmenu` trong `DataEditorModal.tsx`): mục cấp 1 nào gom nhiều hành động cùng nhóm (vd `Format ▸ Change Case`, `Automate ▸ Deduplicate`, `Automate ▸ Generate`) thì hover mở flyout cấp 2 bên phải chứa các hành động cụ thể. Tên MỌI mục trong menu đều ở dạng động từ/câu hành động (`Add`, `Delete`, `Change Case`, `Deduplicate`, `Generate Number...` — không còn danh từ trần như `Deduplication`/`Text Capitalization` cũ). Không menu nào hiển thị lại tên cột/dòng đang chọn bằng text — màu highlight ngay trên bảng đã đủ. `Edit`/`Format` vẫn `disabled` nút nào không dùng được (chưa chọn cột/dòng); riêng `Automate` thì KHÔNG — xem lý do ở mục "Automate menu" ngay bên dưới.
+Mỗi menu là 1 dropdown 2 cấp kiểu Google Sheets (`renderSubmenu` trong `DataEditorModal.tsx`): mục cấp 1 nào gom nhiều hành động cùng nhóm (vd `Format ▸ Change Case`, `Data ▸ Deduplicate`, `Data ▸ Generate`, `Data ▸ Normalize`) thì hover mở flyout cấp 2 bên phải chứa các hành động cụ thể. Tên MỌI mục trong menu đều ở dạng động từ/câu hành động (`Add`, `Delete`, `Change Case`, `Deduplicate`, `Generate Number...` — không còn danh từ trần như `Deduplication`/`Text Capitalization` cũ). Không menu nào hiển thị lại tên cột/dòng đang chọn bằng text — màu highlight ngay trên bảng đã đủ. `Edit`/`Format` vẫn `disabled` nút nào không dùng được (chưa chọn cột/dòng); riêng `Data` thì KHÔNG — xem lý do ở mục "Data menu" ngay bên dưới.
 
-`Edit ▸ Add` (Add Row.../Add Column...) và mỗi mục trong `Automate ▸ Generate` đều mở 1 **popup riêng** (center màn hình + dim nền, click ra ngoài/nút ✕ để đóng — KHÁC hẳn flyout cấp 2 thường bám theo vị trí hover) để nhập số lượng/tuỳ chọn rồi Confirm/Cancel hoặc Apply. Field bên trong popup luôn theo đúng 1 khuôn: nhãn cố định bên trái, control (input/select) bên phải cùng hàng (`renderPopupField(label, control)`), field ĐẦU TIÊN của mọi popup Generate luôn là **Name** (tên cột mới — mọi popup Generate đều tạo 1 cột hoàn toàn mới, không ghi đè cột có sẵn).
+`Edit ▸ Add` (Add Row.../Add Column...) và mỗi mục trong `Data ▸ Generate` đều mở 1 **popup nhỏ** (center màn hình + dim nền, click ra ngoài/nút ✕ để đóng — KHÁC hẳn flyout cấp 2 thường bám theo vị trí hover) để nhập số lượng/tuỳ chọn rồi Confirm/Cancel hoặc Apply. Field bên trong popup luôn theo đúng 1 khuôn: nhãn cố định bên trái, control (input/select) bên phải cùng hàng (`renderPopupField(label, control)`), field ĐẦU TIÊN của mọi popup Generate luôn là **Name** (tên cột mới — mọi popup Generate đều tạo 1 cột hoàn toàn mới, không ghi đè cột có sẵn). Control (`popupRowInput`) có `truncate` — option/giá trị dài hơn bề rộng popup (`max-w-xs`) bị cắt kèm `…` thay vì tràn vỡ layout.
 
-## Automate menu — preset xoá hàng loạt, luôn hỏi qua popup riêng trước khi chạy
+`Data ▸ Deduplicate ▸ Remove Duplicated Rows` và cả 2 mục trong `Data ▸ Normalize` lại mở 1 **popup preview lớn** khác hẳn (`max-w-2xl`/`max-w-3xl`, có bảng cuộn dọc bên trong) — xem 2 mục riêng bên dưới, đừng nhầm với popup nhỏ ở trên.
 
-`Edit`/`Format` giữ tinh thần generic (chạy đúng lệnh người dùng chọn trên đúng selection họ bôi, không tự suy luận gì thêm). `Automate` khác hẳn: mỗi mục trong `Automate ▸ Deduplicate` là 1 **preset tự động** tự quét toàn bảng theo 1 tiêu chí cố định (rỗng/trùng) rồi xoá hàng loạt. Cả 3 mục (Remove Empty Rows / Remove Empty Columns / Remove Duplicated Rows) đều **luôn available** — không có mục nào bị `disabled` theo số lượng tìm thấy hay theo cột đang chọn. Bấm vào là đếm ngay lúc đó rồi hiện `automatePopup` (state riêng trong `DataEditorModal.tsx`, KHÔNG dùng chung `toast`/status bar — status bar chỉ dành báo tình trạng dữ liệu theo Data Type, xem "Validate & Issues" bên dưới):
+## Data menu — preset xoá/normalize hàng loạt, luôn cho xem trước trong popup riêng trước khi chạy
 
-- **0 kết quả** → popup thông tin thuần, chỉ có nút ✕ để đóng (vd "Found 0 empty row."), không có Confirm/Cancel vì không có gì để làm.
-- **≥ 1 kết quả** → popup "Found N ..." kèm 2 nút **Confirm**/**Cancel**, chỉ thật sự xoá khi bấm Confirm.
+`Edit`/`Format` giữ tinh thần generic (chạy đúng lệnh người dùng chọn trên đúng selection họ bôi, không tự suy luận gì thêm). `Data` khác hẳn: mỗi mục là 1 **preset tự động** tự quét toàn bảng theo 1 tiêu chí cố định (rỗng/trùng/định dạng) rồi xử lý hàng loạt. Mọi mục đều **luôn available** — không có mục nào bị `disabled` theo số lượng tìm thấy hay theo cột đang chọn. Bấm vào là tính ngay lúc đó rồi hiện popup xem trước (KHÔNG dùng chung `toast`/status bar — status bar chỉ dành báo tình trạng dữ liệu theo Data Type, xem "Validate & Issues" bên dưới); 2 loại popup:
 
-Riêng **Remove Duplicated Rows** khi chưa bôi cột nào trên bảng cũng đi qua đúng `automatePopup` này (popup thông tin thuần, yêu cầu bôi cột trước) thay vì bị khoá bằng `disabled` — nhất quán với "luôn available", không có mục nào trong menu bị mờ sẵn từ trước khi bấm.
+- **Popup nhỏ** (`automatePopup`, dùng cho Remove Empty Rows/Columns) — 0 kết quả → chỉ có nút ✕ để đóng (vd "Found 0 empty row."); ≥ 1 kết quả → "Found N ..." kèm 2 nút **Confirm**/**Cancel**, chỉ thật sự xoá khi bấm Confirm.
+- **Popup preview lớn** (`dedupPreview`/`normalizePreview`, dùng cho Remove Duplicated Rows và Normalize) — hiện DANH SÁCH đầy đủ để người dùng tự cuộn xem/chọn trước khi Confirm, xem 2 mục ngay bên dưới.
 
-`Automate ▸ Deduplicate`:
+`Data ▸ Deduplicate`, chưa bôi cột nào trên bảng thì cả `Remove Empty Rows`/`Remove Empty Columns`/`Remove Duplicated Rows` đều đi qua đúng popup nhỏ ở trên (nếu cần, vd "Select at least 1 column header first...") thay vì bị khoá bằng `disabled` — nhất quán với "luôn available", không có mục nào trong menu bị mờ sẵn từ trước khi bấm.
 
 | Mục | Tiêu chí | Ghi chú |
 |---|---|---|
 | Remove Empty Rows | `findEmptyRowIds` — dòng rỗng cả 4 core field lẫn mọi cột `extra` | Label hiện kèm số lượng hiện tại nếu > 0 (`emptyRowCount`, tính lại bằng `useMemo` mỗi khi state đổi) |
 | Remove Empty Columns | `findEmptyColumns` — cột `extra` rỗng ở mọi dòng | Tương tự, `emptyColumnCount` |
-| Remove Duplicated Rows | `findDuplicateIdsToRemove` trên đúng các cột đang bôi ở header (`targetColumns`) — bôi > 1 cột thì phải trùng **TẤT CẢ** các cột đó cùng lúc mới tính là 1 nhóm trùng (compound key), giữ lại dòng có nhiều field điền nhất trong mỗi nhóm | `duplicateRowCount` = 0 khi chưa bôi cột nào (không tính được, không phải "không có trùng") |
+| Remove Duplicated Rows | `findDuplicateGroups` trên đúng các cột đang bôi ở header (`targetColumns`) — bôi > 1 cột thì phải trùng **TẤT CẢ** các cột đó cùng lúc mới tính là 1 nhóm trùng (compound key) | Xem "Remove Duplicated Rows — popup chọn dòng giữ lại" bên dưới. `duplicateRowCount` (status bar) vẫn dùng `findDuplicateIdsToRemove` = 0 khi chưa bôi cột nào |
 
-Từng có preset "Quick Clean" (Trim + Normalize cố định trên 2 cột SQL `name`/`phone`) — đã BỎ HẲN vì hardcode literal `"name"`/`"phone"` thay vì resolve qua Data Type (`resolveColumnForType`), dễ vỡ khi luồng generic import (xem [column-mapping.md](./column-mapping.md)) để trống 2 cột này và dữ liệu Name/Phone thật nằm ở cột `extra` khác.
+Từng có preset "Quick Clean" (Trim + Normalize cố định trên 2 cột SQL `name`/`phone`) — đã BỎ HẲN vì hardcode literal `"name"`/`"phone"` thay vì resolve qua Data Type (`resolveColumnForType`), dễ vỡ khi luồng generic import (xem [column-mapping.md](./column-mapping.md)) để trống 2 cột này và dữ liệu Name/Phone thật nằm ở cột `extra` khác. `Data ▸ Normalize` (Phone/Name, xem bên dưới) là bản thay thế ĐÚNG kiểu resolve theo Data Type.
 
-## Automate ▸ Generate — 3 mục, mỗi mục 1 popup, luôn tạo cột MỚI
+### Remove Duplicated Rows — popup chọn dòng giữ lại
 
-`Automate ▸ Generate` (KHÔNG phải menu cấp cao nhất riêng — trước đây từng là, đã dời vào trong `Automate` cho gọn thanh toolbar) có 3 mục, mỗi mục mở 1 popup riêng (xem quy ước popup ở mục "Toolbar" phía trên):
+Khác thiết kế cũ (tự động giữ dòng "đầy đủ thông tin nhất", xoá thẳng phần còn lại sau khi bấm Confirm trên popup đếm số lượng), giờ đây bấm mục này mở popup preview lớn (`dedupPreview`) liệt kê TỪNG NHÓM trùng, mỗi dòng trong nhóm có 1 **radio button** (chỉ chọn được đúng 1 dòng/nhóm) kèm tóm tắt mọi cột đang có dữ liệu của dòng đó (`summarizeDedupRow`, theo đúng thứ tự cột trên bảng — `columnOrder`) để phân biệt. Mặc định tick sẵn dòng "đầy đủ thông tin nhất" (`defaultKeepId`, tính bởi `findDuplicateGroups`, cùng thuật toán cũ) nhưng người dùng có thể tự đổi sang dòng khác trong nhóm trước khi Confirm. Bấm Confirm mới `deleteRowsCommand` các dòng KHÔNG được chọn trong mỗi nhóm.
+
+## Data ▸ Normalize — popup preview + tick chọn dòng, báo "Unable to resolve" khi không tự tin xử lý
+
+2 mục **Normalize Phone**/**Normalize Name** LUÔN áp vào đúng cột đã được gán Data Type tương ứng (`phoneCol`/`nameCol`, xem `resolveColumnForType` — [column-mapping.md](./column-mapping.md)), KHÔNG phải cột đang bôi tuỳ ý (`targetColumns`) như `Format`. Bấm vào (`openNormalizePreview`) tính trước toàn bộ before/after rồi mở popup preview lớn (`normalizePreview`, `max-w-2xl`) — KHÔNG áp dụng ngay:
+
+- Bảng 2 cột **Current value**/**Proposed value**, mỗi dòng có **checkbox** bên trái (mặc định tick sẵn cho dòng resolve được, kèm checkbox "chọn tất cả" ở header) — Confirm chỉ áp cho dòng đang tick, dùng `applyChangesCommand` (áp thẳng danh sách before/after đã tính sẵn trong popup, KHÔNG tính lại transform).
+- Ô nào transform trả về `null` (`normalizePhoneResult`/`normalizeNameResult`, `transforms.ts`) được đánh dấu `unresolved: true` — hiện **"Unable to resolve"** (chữ nghiêng, mờ) ở cột Proposed value, checkbox bị disable, và LUÔN bị loại khỏi phần áp dụng dù trạng thái tick là gì.
+  - `normalizePhoneResult`: trả `null` khi ô chứa ≥ 2 số điện thoại dính nhau qua dấu phân cách (`/ , ; |`), mỗi phần đều đủ dài (≥ 7 chữ số) để tự nó là 1 số — ép về 1 chuỗi số dài sẽ ra kết quả sai.
+  - `normalizeNameResult`: trả `null` khi ô chứa dấu câu bất thường với 1 cái tên (`( ) [ ] { } < > , . : ; " ' \` ~ @ # $ % ^ & * _ + = | \ /` — vd ô bị dán kèm link/ghi chú), vì Title Case sẽ cho ra kết quả vô nghĩa lên cả phần không phải tên.
+- 0 dòng cần đổi (kể cả unresolved) → popup nhỏ thông tin thuần "Found 0 row(s) needing ...", không mở popup preview lớn.
+
+## Data ▸ Generate — 3 mục, mỗi mục 1 popup nhỏ, luôn tạo cột MỚI
+
+`Data ▸ Generate` (KHÔNG phải menu cấp cao nhất riêng — trước đây từng là, đã dời vào trong `Data` cho gọn thanh toolbar) có 3 mục, mỗi mục mở 1 popup nhỏ (xem quy ước popup ở mục "Toolbar" phía trên):
 
 | Mục | Field (theo đúng thứ tự trên popup) | Command |
 |---|---|---|
@@ -101,6 +116,14 @@ Từng có preset "Quick Clean" (Trim + Normalize cố định trên 2 cột SQL
 `Ctrl/Cmd+Z` (Undo), `Ctrl/Cmd+Y` hoặc `Ctrl/Cmd+Shift+Z` (Redo), `Ctrl/Cmd+S` (Save), `Delete` (xoá dòng đang chọn) — xử lý trong `handleKeyDown()`, tự bỏ qua khi `editingCell` đang set (để trình duyệt xử lý undo/redo NGAY TRONG ô đang gõ, không đụng lịch sử của cả bảng).
 
 `Modal.tsx` không tự focus nội dung khi mở, nên container bắt phím (`containerRef`, `tabIndex={0}`) phải tự `.focus()` ngay khi `open && !loading` (container chỉ THẬT SỰ mount lúc đó — trước đó vẫn đang hiện "Loading data..."). Thiếu bước này thì mở Data Editor lên bấm Ctrl+Z ngay không có phản ứng gì, phải click chuột vào bảng trước mới bắt đầu nhận phím tắt (bug đã gặp thật). Effect này chạy lại sau mỗi lần Save (`load()` khiến `loading` bật/tắt lại) — chủ đích, giữ phím tắt luôn sẵn sàng ngay sau khi tải/lưu xong.
+
+`Modal` mở KHÔNG có tiêu đề (`title=""` — `Modal.tsx` bỏ hẳn `<h2>` khi `title` rỗng, chỉ còn nút ✕) để đỡ tốn 1 dòng cho 1 cái tên đã hiển nhiên (đang mở từ nút "Data Editor"). Góc phải toolbar: dòng chữ nhỏ **"Last saved at HH:MM:SS"** (`lastSavedAt`, set lại sau MỌI lần save thành công — kể cả auto-save âm thầm) đứng cạnh **History (N)** rồi tới nút **Save** (chỉ còn chữ "Save", bỏ hint phím tắt "(Ctrl+S)" cho gọn — phím tắt vẫn hoạt động bình thường) — không còn chip trạng thái "Saved"/"Unsaved" riêng như thiết kế cũ.
+
+## Dropdown filter/sort cột — `fixed` theo toạ độ thật, KHÔNG `absolute` lồng trong `<th>`
+
+Dropdown "Sort A→Z/Z→A / Search in column / Data type" mở từ nút `▾` trên mỗi header cột (`openColumnMenu`) render ở **top-level** của component (`fixed`, đặt cạnh khối `contextMenu`), định vị bằng toạ độ thật của nút bấm (`getBoundingClientRect()`, lưu vào state `{ col, left, top }`) — **KHÔNG** render `absolute` ngay bên trong `<th>` như bản đầu.
+
+Lý do: `<thead>` của bảng này là `position: sticky` (để đứng yên khi cuộn dọc), và `<tbody>` cuộn NGAY BÊN DƯỚI trong CÙNG 1 vùng scroll (`overflow-auto`). Chromium có bug lâu năm: nội dung tràn ra khỏi 1 phần tử `position: sticky` (ở đây là dropdown, tràn xuống dưới hàng header) bị vẽ/clip sai lớp so với nội dung khác đang cuộn trong cùng container đó — dù z-index và background đều đúng, dữ liệu dòng `tbody` bên dưới vẫn "lộ" xuyên qua dropdown (dễ thấy nhất ngay sau 1 thao tác đổi hàng loạt như Normalize, buộc trình duyệt vẽ lại nhiều). Menu chuột phải (`contextMenu`) không dính lỗi này vì nó vốn đã `fixed` ở ngoài vùng scroll ngay từ đầu — nên khi thêm dropdown mới tương tự trong tương lai, LUÔN theo pattern `fixed` + toạ độ thật này, đừng đặt `absolute` lồng trong `<th>`/`<td>` của bảng đang cuộn.
 
 ## Validate & Issues
 
@@ -123,7 +146,7 @@ Toàn bộ message hiện có (rút gọn cố ý, không kèm giải thích dà
 Khác mọi chip khác trong bảng trên (chỉ phụ thuộc `state`), chip `Duplicated Rows` còn phụ thuộc **cột đang bôi chọn trên bảng NGAY LÚC ĐÓ** (`targetColumns`), KHÔNG phải 1 config đã lưu (`sessions.participant_duplicate_columns` — cột DB này vẫn còn trong schema nhưng không còn ai ghi/đọc nữa, xem [column-mapping.md](./column-mapping.md)):
 
 - **Chưa bôi cột nào** → `targetColumns = []` → `findDuplicateIssues` trả `[]` ngay từ đầu → chip biến mất hoàn toàn khỏi status bar, không phải "chip hiện 0".
-- **Đã bôi ≥ 1 cột** → chip hiện đúng bằng số dòng `findDuplicateIdsToRemove` (`commands.ts`) trả về trên chính bộ cột đó — hàm DÙNG CHUNG với preset `Automate ▸ Deduplicate ▸ Remove Duplicated Rows`, nên 2 con số LUÔN khớp nhau tuyệt đối, không có 2 công thức đếm khác nhau. Số này chỉ tính dòng THỪA sẽ bị xoá (dòng "giữ lại" — hoàn chỉnh nhất trong mỗi nhóm trùng — không bị tính là issue).
+- **Đã bôi ≥ 1 cột** → chip hiện đúng bằng số dòng `findDuplicateIdsToRemove` (`commands.ts`, wrapper mỏng của `findDuplicateGroups` — luôn tính theo `defaultKeepId` của mỗi nhóm) trên chính bộ cột đó — DÙNG CHUNG nền tảng với preset `Data ▸ Deduplicate ▸ Remove Duplicated Rows`, nên 2 con số này khớp nhau **nếu** người dùng không tự đổi dòng giữ lại trên popup preview (xem "Remove Duplicated Rows — popup chọn dòng giữ lại"). Số này chỉ tính dòng THỪA sẽ bị xoá theo mặc định (dòng "giữ lại" — hoàn chỉnh nhất trong mỗi nhóm trùng — không bị tính là issue).
 - Đổi selection (bôi cột khác, hoặc bỏ chọn) → chip tự cập nhật ngay lập tức theo `useMemo`, không cần chạy lại bất kỳ hành động nào.
 
 Thiết kế trước dùng `sessions.participant_duplicate_columns` (lưu riêng, độc lập selection) — đã bỏ vì gây bug: đổi/bỏ selection trên bảng không tự cập nhật con số đã lưu, và chỉ cần MỞ preset dedup ra xem (dù sau đó bấm Cancel) cũng âm thầm ghi đè config, để lại chip sai không cách nào tự hết ngoài việc chạy lại preset với 1 bộ cột khác.

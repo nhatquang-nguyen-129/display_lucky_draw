@@ -4,15 +4,41 @@ export const toLowerCase = (v: string) => v.toLowerCase();
 export const toTitleCase = (v: string) =>
   v.toLowerCase().replace(/(^|\s)\p{L}/gu, (m) => m.toUpperCase());
 
-/** Chuẩn hoá số điện thoại VN về dạng 0xxxxxxxxx — xử lý +84/84 ở đầu, khoảng trắng, dấu gạch. */
-export function normalizePhoneValue(v: string): string {
+/**
+ * Chuẩn hoá số điện thoại VN về dạng 0xxxxxxxxx — xử lý +84/84 ở đầu, khoảng trắng, dấu gạch.
+ * Trả `null` khi ô chứa RÕ RÀNG từ 2 số điện thoại trở lên dính nhau qua dấu phân cách (vd
+ * "0963762449/0338989340") — trường hợp này không có cách tự động tách đúng, ép về 1 chuỗi số dài
+ * sẽ ra kết quả sai; gọi nơi cần biết "không tự tin xử lý được" để báo người dùng thay vì áp sai.
+ */
+export function normalizePhoneResult(v: string): string | null {
+  const parts = v
+    .split(/[/,;|]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length >= 2 && parts.filter((p) => p.replace(/\D/g, "").length >= 7).length >= 2) {
+    return null;
+  }
   let digits = v.replace(/\D/g, "");
   if (digits.startsWith("84") && digits.length > 9) digits = "0" + digits.slice(2);
   if (digits.length > 0 && !digits.startsWith("0")) digits = "0" + digits;
   return digits;
 }
 
+/** Bản luôn trả string — nơi nào chưa cần phân biệt "không xử lý được" thì giữ nguyên giá trị gốc. */
+export const normalizePhoneValue = (v: string): string => normalizePhoneResult(v) ?? v;
+
 export const normalizeNameValue = (v: string) => toTitleCase(trimSpace(v));
+
+/** Dấu câu không thuộc về 1 cái tên (vd ô bị dán kèm link/ghi chú) — có ký tự này thì Title Case sẽ
+ * cho ra kết quả vô nghĩa (vd "(link Mới Này Mới Đúng A)"), nên không tự tin xử lý. */
+const NAME_SUSPICIOUS_CHARS_RE = /[()[\]{}<>,.:;"'`~@#$%^&*_+=|\\/]/;
+
+/** Giống `normalizePhoneResult`: trả `null` khi ô chứa dấu câu bất thường ((), ",", ".", ":", "\"...)
+ * thay vì Title Case bừa lên toàn bộ chuỗi (kể cả phần không phải tên). */
+export function normalizeNameResult(v: string): string | null {
+  if (NAME_SUSPICIOUS_CHARS_RE.test(v)) return null;
+  return normalizeNameValue(v);
+}
 
 export function isValidVietnamesePhone(v: string): boolean {
   const digits = v.replace(/\D/g, "");
