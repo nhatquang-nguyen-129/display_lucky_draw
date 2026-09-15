@@ -2,14 +2,21 @@
 
 File `electron/drawEngine.ts` — phần **nhạy cảm nhất về tính công bằng**, không tự ý đổi thuật toán nếu không được yêu cầu rõ (xem `CLAUDE.md` mục "Việc cần hỏi lại trước khi làm").
 
-Tách làm 3 hàm, tách để phục vụ luồng Button Draw/Confirm/Redo trên Landing Page (xem
+Tách làm 4 hàm, tách để phục vụ luồng Button Draw/Confirm/Redo trên Landing Page (xem
 [`docs/landing/button-actions.md`](../landing/button-actions.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
 
 ```ts
-pickWinner(opts): DrawCandidate   // CHỌN, KHÔNG ghi DB
-commitDraw(candidate, sessionId)   // ghi DB thật (INSERT draw_results + UPDATE prizes.remaining)
-drawOne(opts) { return commitDraw(pickWinner(opts), opts.sessionId); }  // hành vi CŨ, không đổi
+pickWinner(opts): DrawCandidate           // CHỌN, KHÔNG ghi DB
+recordPendingDraw(candidate, sessionId)   // ghi NGAY confirmed = 0 — gọi trong IPC draw:pick, chỉ để lại lịch sử
+commitDraw(candidate, sessionId)          // UPDATE confirmed = 1 trên đúng row rng_seed (fallback INSERT nếu không thấy) + trừ prizes.remaining
+drawOne(opts) { return commitDraw(pickWinner(opts), opts.sessionId); }  // hành vi CŨ, không đổi — không có bước pending vì không qua preview
 ```
+
+### `confirmed` — lịch sử cho Dashboard, KHÔNG ảnh hưởng thuật toán chọn
+
+Trước đây `draw_results` CHỈ chứa lượt đã Confirm — 1 candidate bị Redo (xem trang Landing, nút Redo) không để lại dấu vết gì trong DB. Giờ IPC `draw:pick` gọi `recordPendingDraw` NGAY khi có candidate (trước khi người vận hành kịp Confirm/Redo), ghi 1 row `confirmed = 0`; `commitDraw` (Confirm) chỉ UPDATE đúng row đó (khớp theo `rng_seed`, sinh mới mỗi lần pick nên đủ để nhận diện 1 lượt) lên `confirmed = 1` và mới trừ `prizes.remaining` lúc này — Redo bỏ dở thì row đó giữ mãi `confirmed = 0`, không bao giờ bị sửa lại.
+
+**Mọi truy vấn trong `pickWinner` dùng `draw_results` để loại trừ (đã trúng giải nào, `exclude_previous_winners`, `allow_duplicate_with_*`) đều lọc `confirmed = 1`** — lượt Redo/bỏ dở KHÔNG được tính là "đã trúng", không loại participant khỏi vòng quay sau. `sessions:results` (nguồn dữ liệu SỐNG cho Present Mode — Scoreboard/Winner Name, xem `useLandingData.ts`) cũng CHỈ trả `confirmed = 1`, giữ đúng hành vi cũ. Lịch sử ĐẦY ĐỦ (kể cả `confirmed = 0`) dùng IPC riêng `sessions:drawHistory`, chỉ Dashboard đọc — xem [`docs/architecture/database-schema.md`](database-schema.md).
 
 Thuật toán `pickWinner`, theo đúng thứ tự:
 

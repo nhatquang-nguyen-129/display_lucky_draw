@@ -60,20 +60,28 @@ src/
 
 ## Tính năng: Dashboard
 
-`src/pages/Dashboard.tsx` — không có tiêu đề lớn/mô tả riêng (trùng nhãn sidebar là dư thừa), chỉ 3
-khối chỉ số theo session đang active, dựng bằng `StatSection`/`Stat` (`src/components/StatSection.tsx`):
-1 tiêu đề nhóm nhỏ + 1 lưới **cố định 4 cột** (2 cột ở màn hẹp), các ô ngăn nhau bằng khe `gap-px` lộ
-nền container thành đường kẻ mảnh (không dùng viền/`divide-*` — tránh kẻ lệch khi số ô không chia hết
-cho số cột), hover đổi màu nhẹ.
+`src/pages/Dashboard.tsx` — không có tiêu đề lớn/mô tả riêng (trùng nhãn sidebar là dư thừa). CHỈ 1
+thanh chỉ số duy nhất ("Overall") theo session đang active, dựng bằng `StatSection`/`Stat`
+(`src/components/StatSection.tsx`): 1 tiêu đề nhỏ + 1 lưới **cố định 6 cột** (2 cột màn hẹp, 3 cột màn
+vừa, 6 cột màn rộng — dàn thành đúng 1 hàng), các ô ngăn nhau bằng khe `gap-px` lộ nền container thành
+đường kẻ mảnh (không dùng viền/`divide-*` — tránh kẻ lệch khi số ô không chia hết cho số cột), hover
+đổi màu nhẹ.
 
 | Section | Ô | Nguồn |
 |---|---|---|
-| Participants | Imported · Removed · Removed % · Active | `participants:stats` IPC (`electron/main.ts`) — `{ original, current, removed }` tính từ `status` |
-| Prizes | Total · Types · Awarded · Remaining | `prizes.list` (Σ `quantity`/`remaining`) |
-| Draw results | Winners · Not won yet · Avg / winner · Total draws | `sessions.results` (distinct `participant_id`, tổng bản ghi) |
+| Overall | Participants (original) · Participants (current) · Total prizes · Awarded prizes · Total draws · Confirmed draws | `participants:stats`/`participants.list`/`prizes.list`/`sessions.drawHistory` |
 
-Mỗi section PHẢI giữ đúng bội số 4 ô — nếu lệch, ô trống cuối hàng sẽ lộ mảng nền kẻ (không có filler
-tự động).
+Mỗi section PHẢI giữ đúng bội số cột ở MỌI breakpoint (2/3/6) — nếu lệch, ô trống cuối hàng sẽ lộ mảng
+nền kẻ (không có filler tự động). Trước đây có 3 section riêng (Participants/Prizes/Draw, 4 ô/section)
+— đã gộp thành 1 thanh "Overall" duy nhất theo yêu cầu rút gọn.
+
+Bên dưới thanh "Overall" là **1 bảng duy nhất** — **Draw ▸ History** — đọc `sessions.drawHistory` (IPC
+riêng, KHÁC `sessions.results` — xem [draw-engine.md](./draw-engine.md) mục "`confirmed`"): log đầy đủ
+từng lượt quay thực tế (mới nhất trước, `ORDER BY drawn_at DESC` từ `main.ts`) — Time/Prize/
+Participant/Status, kể cả lượt bị Redo (`confirmed = 0`, chip xám "Not confirmed") mà
+`sessions.results` (nguồn Present Mode) không bao giờ trả về. Đây là nguồn dữ liệu chi tiết DUY NHẤT
+của phần Draw — không có bảng tổng hợp phụ nào khác; "Total draws"/"Confirmed draws" ở thanh "Overall"
+đều suy ra từ chính bảng này.
 
 Soft-delete participants (`status: "active" | "removed"`, xem
 [database-schema.md](./database-schema.md) và [participants/schema.md](../participants/schema.md))
