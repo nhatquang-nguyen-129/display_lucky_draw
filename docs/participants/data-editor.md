@@ -77,7 +77,7 @@ Mỗi menu là 1 dropdown 2 cấp kiểu Google Sheets (`renderSubmenu` trong `D
 |---|---|---|
 | Remove Empty Rows | `findEmptyRowIds` — dòng rỗng cả 4 core field lẫn mọi cột `extra` | Label hiện kèm số lượng hiện tại nếu > 0 (`emptyRowCount`, tính lại bằng `useMemo` mỗi khi state đổi) |
 | Remove Empty Columns | `findEmptyColumns` — cột `extra` rỗng ở mọi dòng | Tương tự, `emptyColumnCount` |
-| Remove Duplicated Rows | `findDuplicateGroups` trên đúng các cột đang bôi ở header (`targetColumns`) — bôi > 1 cột thì phải trùng **TẤT CẢ** các cột đó cùng lúc mới tính là 1 nhóm trùng (compound key) | Xem "Remove Duplicated Rows — popup chọn dòng giữ lại" bên dưới. `duplicateRowCount` (status bar) vẫn dùng `findDuplicateIdsToRemove` = 0 khi chưa bôi cột nào |
+| Remove Duplicated Rows | `findDuplicateGroups` trên đúng các cột đang bôi ở header (`duplicateColumns`) — bôi > 1 cột thì phải trùng **TẤT CẢ** các cột đó cùng lúc mới tính là 1 nhóm trùng (compound key) | Xem "Remove Duplicated Rows — popup chọn dòng giữ lại" bên dưới. `duplicateRowCount` (status bar) vẫn dùng `findDuplicateIdsToRemove` = 0 khi chưa bôi cột nào |
 
 Từng có preset "Quick Clean" (Trim + Normalize cố định trên 2 cột SQL `name`/`phone`) — đã BỎ HẲN vì hardcode literal `"name"`/`"phone"` thay vì resolve qua Data Type (`resolveColumnForType`), dễ vỡ khi luồng generic import (xem [column-mapping.md](./column-mapping.md)) để trống 2 cột này và dữ liệu Name/Phone thật nằm ở cột `extra` khác. `Data ▸ Normalize` (Phone/Name, xem bên dưới) là bản thay thế ĐÚNG kiểu resolve theo Data Type.
 
@@ -127,7 +127,7 @@ Lý do: `<thead>` của bảng này là `position: sticky` (để đứng yên k
 
 ## Validate & Issues
 
-`validateState(state, columnTypes, targetColumns)` (`validate.ts`) chạy lại mỗi khi state HOẶC selection đổi, trả `CellIssue[]` hiển thị dạng chip ở status bar (bấm chip để lọc bảng theo đúng loại lỗi đó — `groupIssuesByMessage` gom theo đúng text `message`, đếm số dòng distinct, sort giảm dần theo count). Chip "All issues (N)" là tổng, không phải 1 message riêng. Tham số thứ 3 tên là `duplicateColumns` trong chữ ký hàm nhưng giá trị TRUYỀN VÀO chính là `targetColumns` (cột đang bôi trên bảng) — xem chip `Duplicated Rows` bên dưới.
+`validateState(state, columnTypes, duplicateColumns)` (`validate.ts`) chạy lại mỗi khi state HOẶC selection đổi, trả `CellIssue[]` hiển thị dạng chip ở status bar (bấm chip để lọc bảng theo đúng loại lỗi đó — `groupIssuesByMessage` gom theo đúng text `message`, đếm số dòng distinct, sort giảm dần theo count). Chip "All issues (N)" là tổng, không phải 1 message riêng. Tham số thứ 3 TRUYỀN VÀO là biến `duplicateColumns` trong `DataEditorModal.tsx` — CHỈ tính từ cột đang bôi Ở HEADER (`selectedColKeys`), KHÔNG dùng chung `targetColumns` (biến dùng cho Format/Clean, có fallback về cột chứa ô con trỏ đang chọn) — xem chip `Duplicated Rows` bên dưới.
 
 Toàn bộ message hiện có (rút gọn cố ý, không kèm giải thích dài trong chip — chi tiết rule đầy đủ theo `ColumnType` xem [column-mapping.md](./column-mapping.md)):
 
@@ -140,13 +140,13 @@ Toàn bộ message hiện có (rút gọn cố ý, không kèm giải thích dà
 | `Invalid URL Format` | URL | `isValidUrl` fail |
 | `Name Contains Number` | Name | Giá trị khớp `/\d/` (có ít nhất 1 chữ số) — bắt được cả trường hợp gán NHẦM 1 cột không phải Name (SĐT, mã số...) làm Data Type = Name, thứ mà `Capitalization Inconsistent` không phát hiện được (chuỗi toàn số không có chữ cái nào để so kiểu viết hoa) |
 | `Capitalization Inconsistent` | Name | Xem thuật toán bên dưới |
-| `Duplicated Rows on N selected column(s)` (`DUPLICATE_ISSUE_PREFIX`) | Không gắn Data Type nào — LIVE theo cột đang bôi chọn (`targetColumns`), không phải config đã lưu | Xem mục "Chip trùng lặp LIVE theo selection" ngay bên dưới |
+| `Duplicated Rows on N selected column(s)` (`DUPLICATE_ISSUE_PREFIX`) | Không gắn Data Type nào — LIVE theo cột đang bôi Ở HEADER (`duplicateColumns`), không phải config đã lưu | Xem mục "Chip trùng lặp LIVE theo selection" ngay bên dưới |
 
 ### Chip trùng lặp LIVE theo selection
 
-Khác mọi chip khác trong bảng trên (chỉ phụ thuộc `state`), chip `Duplicated Rows` còn phụ thuộc **cột đang bôi chọn trên bảng NGAY LÚC ĐÓ** (`targetColumns`), KHÔNG phải 1 config đã lưu (`sessions.participant_duplicate_columns` — cột DB này vẫn còn trong schema nhưng không còn ai ghi/đọc nữa, xem [column-mapping.md](./column-mapping.md)):
+Khác mọi chip khác trong bảng trên (chỉ phụ thuộc `state`), chip `Duplicated Rows` còn phụ thuộc **cột đang bôi Ở HEADER NGAY LÚC ĐÓ** (`duplicateColumns`), KHÔNG phải 1 config đã lưu (`sessions.participant_duplicate_columns` — cột DB này vẫn còn trong schema nhưng không còn ai ghi/đọc nữa, xem [column-mapping.md](./column-mapping.md)). **Cố ý KHÔNG dùng chung `targetColumns`** (biến dùng cho mọi action Format/Data khác, fallback về cột chứa ô con trỏ đang chọn khi chưa bôi header nào) — click 1 ô bất kỳ để sửa/xem dữ liệu là thao tác xảy ra liên tục, không phải ý định "kiểm tra trùng lặp trên cột này"; dùng chung sẽ khiến chip tự bật ngầm chỉ vì vừa click sửa 1 ô (bug đã gặp thật).
 
-- **Chưa bôi cột nào** → `targetColumns = []` → `findDuplicateIssues` trả `[]` ngay từ đầu → chip biến mất hoàn toàn khỏi status bar, không phải "chip hiện 0".
+- **Chưa bôi cột nào Ở HEADER** → `duplicateColumns = []` → `findDuplicateIssues` trả `[]` ngay từ đầu → chip biến mất hoàn toàn khỏi status bar, không phải "chip hiện 0" — kể cả khi đang có 1 ô đơn lẻ được chọn (con trỏ) ở bất kỳ đâu trên bảng.
 - **Đã bôi ≥ 1 cột** → chip hiện đúng bằng số dòng `findDuplicateIdsToRemove` (`commands.ts`, wrapper mỏng của `findDuplicateGroups` — luôn tính theo `defaultKeepId` của mỗi nhóm) trên chính bộ cột đó — DÙNG CHUNG nền tảng với preset `Data ▸ Deduplicate ▸ Remove Duplicated Rows`, nên 2 con số này khớp nhau **nếu** người dùng không tự đổi dòng giữ lại trên popup preview (xem "Remove Duplicated Rows — popup chọn dòng giữ lại"). Số này chỉ tính dòng THỪA sẽ bị xoá theo mặc định (dòng "giữ lại" — hoàn chỉnh nhất trong mỗi nhóm trùng — không bị tính là issue).
 - Đổi selection (bôi cột khác, hoặc bỏ chọn) → chip tự cập nhật ngay lập tức theo `useMemo`, không cần chạy lại bất kỳ hành động nào.
 
