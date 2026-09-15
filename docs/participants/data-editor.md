@@ -138,6 +138,7 @@ Toàn bộ message hiện có (rút gọn cố ý, không kèm giải thích dà
 | `Invalid Phone Format` | Phone | `isValidVietnamesePhone` fail — không bắt đầu bằng `0`, hoặc không đủ 10-11 chữ số |
 | `Invalid Email Format` | Email | Không khớp regex email cơ bản (`user@domain.tld`) |
 | `Invalid URL Format` | URL | `isValidUrl` fail |
+| `Name Contains Number` | Name | Giá trị khớp `/\d/` (có ít nhất 1 chữ số) — bắt được cả trường hợp gán NHẦM 1 cột không phải Name (SĐT, mã số...) làm Data Type = Name, thứ mà `Capitalization Inconsistent` không phát hiện được (chuỗi toàn số không có chữ cái nào để so kiểu viết hoa) |
 | `Capitalization Inconsistent` | Name | Xem thuật toán bên dưới |
 | `Duplicated Rows on N selected column(s)` (`DUPLICATE_ISSUE_PREFIX`) | Không gắn Data Type nào — LIVE theo cột đang bôi chọn (`targetColumns`), không phải config đã lưu | Xem mục "Chip trùng lặp LIVE theo selection" ngay bên dưới |
 
