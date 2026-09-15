@@ -53,11 +53,6 @@ const icons: Record<string, JSX.Element> = {
 export default function Sidebar() {
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-base-800 bg-base-900 px-4 py-6">
-      <div className="mb-8 px-2">
-        <p className="font-display text-lg font-medium text-base-100">Lucky Draw</p>
-        <p className="text-xs text-base-400">Event management studio</p>
-      </div>
-
       <nav className="flex flex-1 flex-col gap-1">
         {navItems.map((item) => (
           <NavLink
