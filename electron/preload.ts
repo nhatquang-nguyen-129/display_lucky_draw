@@ -73,6 +73,7 @@ const api = {
       ipcRenderer.invoke("sessions:updateLandingConfig", data),
     delete: (id: string) => ipcRenderer.invoke("sessions:delete", id),
     results: (sessionId: string) => ipcRenderer.invoke("sessions:results", sessionId),
+    drawHistory: (sessionId: string) => ipcRenderer.invoke("sessions:drawHistory", sessionId),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

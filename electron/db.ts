@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS draw_results (
   participant_id TEXT NOT NULL,
   prize_id TEXT NOT NULL,
   drawn_at TEXT DEFAULT (datetime('now')),
-  rng_seed TEXT
+  rng_seed TEXT,
+  confirmed INTEGER NOT NULL DEFAULT 1
 );
 `);
 
@@ -238,3 +239,20 @@ function migrateSessionColumnLabels() {
 }
 
 migrateSessionColumnLabels();
+
+/**
+ * Migration: thêm confirmed vào draw_results — trước đây bảng này CHỈ chứa lượt đã Confirm (ghi lúc
+ * commitDraw), lượt bị Redo bỏ qua không để lại dấu vết gì. Giờ mỗi lần pickWinner() cho Landing Page
+ * (draw:pick) đều ghi ngay 1 dòng confirmed = 0, rồi commitDraw() chỉ UPDATE lên confirmed = 1 — nhờ
+ * vậy Dashboard có đủ lịch sử "đã quay nhưng không Confirm" (xem drawEngine.ts, docs/architecture/
+ * draw-engine.md). DEFAULT 1 cho dữ liệu cũ vì mọi dòng có sẵn trước migration này chắc chắn đã từng
+ * đi qua commitDraw (luồng cũ không có cách nào ghi dòng chưa confirm).
+ */
+function migrateDrawResultsConfirmed() {
+  const cols = (db.prepare(`PRAGMA table_info(draw_results)`).all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("confirmed")) {
+    db.exec(`ALTER TABLE draw_results ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1`);
+  }
+}
+
+migrateDrawResultsConfirmed();

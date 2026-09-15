@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { commitDraw, DrawCandidate, drawOne, pickWinner, resetSession } from "./drawEngine";
+import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 
@@ -503,7 +503,21 @@ ipcMain.handle("sessions:delete", (_e, id: string) => {
   tx();
 });
 
+// Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,
+// xem useLandingData.ts), phải luôn khớp đúng "ai đã thật sự trúng" như hành vi trước khi có cột
+// confirmed. Lịch sử ĐẦY ĐỦ (kể cả lượt Redo chưa Confirm) dùng riêng sessions:drawHistory bên dưới,
+// chỉ Dashboard đọc.
 ipcMain.handle("sessions:results", (_e, sessionId: string) => {
+  return resolveDrawRows(sessionId, `AND dr.confirmed = 1`);
+});
+
+// Toàn bộ lịch sử quay (kể cả confirmed = 0 — đã pick nhưng bị Redo/bỏ dở) cho Dashboard — xem
+// docs/architecture/draw-engine.md.
+ipcMain.handle("sessions:drawHistory", (_e, sessionId: string) => {
+  return resolveDrawRows(sessionId, ``);
+});
+
+function resolveDrawRows(sessionId: string, extraWhere: string): any[] {
   const rows = db
     .prepare(
       `SELECT dr.*,
@@ -513,7 +527,7 @@ ipcMain.handle("sessions:results", (_e, sessionId: string) => {
        FROM draw_results dr
        JOIN participants p ON p.id = dr.participant_id
        JOIN prizes pr ON pr.id = dr.prize_id
-       WHERE dr.session_id = ?
+       WHERE dr.session_id = ? ${extraWhere}
        ORDER BY dr.drawn_at DESC`
     )
     .all(sessionId) as any[];
@@ -548,7 +562,7 @@ ipcMain.handle("sessions:results", (_e, sessionId: string) => {
       participant_email: resolveParticipantField(participant, columnTypesJson, "email", activeCoreFields) || r.participant_email,
     };
   });
-});
+}
 
 ipcMain.handle("draw:one", (_e, sessionId: string) => {
   return drawOne({ sessionId });
@@ -559,7 +573,11 @@ ipcMain.handle("draw:one", (_e, sessionId: string) => {
 ipcMain.handle(
   "draw:pick",
   (_e, data: { sessionId: string; excludeParticipantIds?: string[]; lockedPrizeId?: string }) => {
-    return pickWinner(data);
+    const candidate = pickWinner(data);
+    // Ghi ngay ở trạng thái chưa Confirm — để lại lịch sử kể cả khi candidate này bị Redo bỏ dở
+    // (xem doc-comment recordPendingDraw trong drawEngine.ts, dùng cho Dashboard).
+    recordPendingDraw(candidate, data.sessionId);
+    return candidate;
   }
 );
 

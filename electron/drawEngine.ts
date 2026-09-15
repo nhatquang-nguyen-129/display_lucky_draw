@@ -72,7 +72,9 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
   let baseQuery = `SELECT * FROM participants WHERE session_id = ? AND status = 'active'`;
   const baseParams: any[] = [sessionId];
   if (session.exclude_previous_winners) {
-    baseQuery += ` AND id NOT IN (SELECT participant_id FROM draw_results WHERE session_id = ?)`;
+    // confirmed = 1 — lượt Redo (chưa Confirm) không tính là "đã trúng", không được loại participant
+    // khỏi vòng quay sau (xem migrateDrawResultsConfirmed trong db.ts).
+    baseQuery += ` AND id NOT IN (SELECT participant_id FROM draw_results WHERE session_id = ? AND confirmed = 1)`;
     baseParams.push(sessionId);
   }
   let baseParticipants = db.prepare(baseQuery).all(...baseParams) as any[];
@@ -85,10 +87,11 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
     throw new Error("No participants available to draw");
   }
 
-  // Lịch sử trúng thưởng trong session — dùng để áp quy tắc trùng lặp cấp giải
+  // Lịch sử trúng thưởng trong session — dùng để áp quy tắc trùng lặp cấp giải. Chỉ tính dòng
+  // confirmed = 1 (đã Confirm thật), lượt Redo bỏ dở không tính vào bất kỳ giới hạn nào.
   const winRows = db
     .prepare(
-      `SELECT participant_id, prize_id, COUNT(*) as cnt FROM draw_results WHERE session_id = ? GROUP BY participant_id, prize_id`
+      `SELECT participant_id, prize_id, COUNT(*) as cnt FROM draw_results WHERE session_id = ? AND confirmed = 1 GROUP BY participant_id, prize_id`
     )
     .all(sessionId) as { participant_id: string; prize_id: string; cnt: number }[];
   const winCountMap = new Map<string, number>();
@@ -96,7 +99,9 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
 
   const anyWinParticipants = new Set(
     (
-      db.prepare(`SELECT DISTINCT participant_id FROM draw_results WHERE session_id = ?`).all(sessionId) as {
+      db
+        .prepare(`SELECT DISTINCT participant_id FROM draw_results WHERE session_id = ? AND confirmed = 1`)
+        .all(sessionId) as {
         participant_id: string;
       }[]
     ).map((r) => r.participant_id)
@@ -175,13 +180,33 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
   };
 }
 
-/** Ghi nhận chính thức 1 candidate đã pickWinner() vào DB — đúng phần transaction mà drawOne() cũ
- * vẫn làm. Tách riêng để Button "Confirm" trên Landing Page gọi sau khi đã xem trước ứng viên. */
+/** Ghi ngay 1 candidate VỪA pickWinner() vào DB ở trạng thái CHƯA xác nhận (confirmed = 0) — dùng cho
+ * Button "Draw" trên Landing Page, ngay khi candidate hiện lên màn hình chờ Confirm/Redo. Mục đích
+ * DUY NHẤT là để lại dấu vết cho Dashboard (xem docs/architecture/draw-engine.md): 1 candidate bị Redo
+ * bỏ dở vẫn còn lịch sử "đã quay ra ai, lúc nào, cho giải gì, nhưng không Confirm". KHÔNG trừ
+ * prizes.remaining (chỉ trừ lúc commitDraw) và KHÔNG tính vào bất kỳ quy tắc loại trừ nào trong
+ * pickWinner() (mọi query ở đó đều lọc confirmed = 1). */
+export function recordPendingDraw(candidate: DrawCandidate, sessionId: string): void {
+  db.prepare(
+    `INSERT INTO draw_results (id, session_id, participant_id, prize_id, rng_seed, confirmed) VALUES (?, ?, ?, ?, ?, 0)`
+  ).run(randomUUID(), sessionId, candidate.participantId, candidate.prizeId, candidate.seed);
+}
+
+/** Ghi nhận chính thức 1 candidate đã pickWinner() — dùng cho Button "Confirm" trên Landing Page.
+ * Thường chỉ cần UPDATE đúng dòng recordPendingDraw() đã ghi lúc pick() (khớp theo rng_seed, seed
+ * random mỗi lần pick nên đủ để nhận diện đúng 1 lượt) lên confirmed = 1. Nếu không tìm thấy dòng nào
+ * (đường đi cũ drawOne() — quay xong ăn ngay, không qua bước xem trước/recordPendingDraw) thì tự
+ * insert thẳng 1 dòng confirmed = 1 — không bao giờ để mất 1 lượt đã Confirm thật. */
 export function commitDraw(candidate: DrawCandidate, sessionId: string): void {
   const tx = db.transaction(() => {
-    db.prepare(
-      `INSERT INTO draw_results (id, session_id, participant_id, prize_id, rng_seed) VALUES (?, ?, ?, ?, ?)`
-    ).run(randomUUID(), sessionId, candidate.participantId, candidate.prizeId, candidate.seed);
+    const updated = db
+      .prepare(`UPDATE draw_results SET confirmed = 1 WHERE session_id = ? AND rng_seed = ? AND confirmed = 0`)
+      .run(sessionId, candidate.seed);
+    if (updated.changes === 0) {
+      db.prepare(
+        `INSERT INTO draw_results (id, session_id, participant_id, prize_id, rng_seed, confirmed) VALUES (?, ?, ?, ?, ?, 1)`
+      ).run(randomUUID(), sessionId, candidate.participantId, candidate.prizeId, candidate.seed);
+    }
     db.prepare(`UPDATE prizes SET remaining = remaining - 1 WHERE id = ?`).run(candidate.prizeId);
   });
   tx();

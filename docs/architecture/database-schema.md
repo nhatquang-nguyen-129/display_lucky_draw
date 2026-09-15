@@ -51,6 +51,7 @@ erDiagram
     text participant_id FK
     text prize_id FK
     text rng_seed
+    integer confirmed "1 = đã Confirm thật; 0 = đã pick nhưng bị Redo/bỏ dở, chỉ để Dashboard xem lịch sử"
   }
 ```
 

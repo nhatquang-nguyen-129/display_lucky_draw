@@ -61,6 +61,14 @@ export interface DrawResultRow {
   rng_seed: string;
 }
 
+// Toàn bộ lịch sử quay (kể cả confirmed = 0 — đã pick nhưng bị Redo/bỏ dở, không commit) — CHỈ dùng
+// cho Dashboard (sessions:drawHistory). Khác DrawResultRow thường (sessions:results) là nguồn dữ liệu
+// SỐNG cho Present Mode, luôn lọc sẵn confirmed = 1 ở phía main process — xem docs/architecture/
+// draw-engine.md.
+export interface DrawHistoryRow extends DrawResultRow {
+  confirmed: 0 | 1;
+}
+
 // Ứng viên đã pickWinner() nhưng CHƯA commitDraw() — dùng cho luồng Button Draw/Confirm/Redo trên
 // Landing Page (xem electron/drawEngine.ts:DrawCandidate, cùng shape, khai báo riêng cho renderer).
 export interface DrawCandidate {
@@ -146,6 +154,7 @@ declare global {
         updateLandingConfig: (data: { id: string; landingConfig: LandingConfig }) => Promise<void>;
         delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
+        drawHistory: (sessionId: string) => Promise<DrawHistoryRow[]>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;
