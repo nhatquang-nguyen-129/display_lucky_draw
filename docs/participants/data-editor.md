@@ -83,7 +83,9 @@ Từng có preset "Quick Clean" (Trim + Normalize cố định trên 2 cột SQL
 
 ### Remove Duplicated Rows — popup chọn dòng giữ lại
 
-Khác thiết kế cũ (tự động giữ dòng "đầy đủ thông tin nhất", xoá thẳng phần còn lại sau khi bấm Confirm trên popup đếm số lượng), giờ đây bấm mục này mở popup preview lớn (`dedupPreview`) liệt kê TỪNG NHÓM trùng, mỗi dòng trong nhóm có 1 **radio button** (chỉ chọn được đúng 1 dòng/nhóm) kèm tóm tắt mọi cột đang có dữ liệu của dòng đó (`summarizeDedupRow`, theo đúng thứ tự cột trên bảng — `columnOrder`) để phân biệt. Mặc định tick sẵn dòng "đầy đủ thông tin nhất" (`defaultKeepId`, tính bởi `findDuplicateGroups`, cùng thuật toán cũ) nhưng người dùng có thể tự đổi sang dòng khác trong nhóm trước khi Confirm. Bấm Confirm mới `deleteRowsCommand` các dòng KHÔNG được chọn trong mỗi nhóm.
+Khác thiết kế cũ (tự động giữ dòng "đầy đủ thông tin nhất", xoá thẳng phần còn lại sau khi bấm Confirm trên popup đếm số lượng), giờ đây bấm mục này mở popup preview lớn (`dedupPreview`, `max-w-5xl`) liệt kê TỪNG NHÓM trùng dưới dạng **1 bảng chung** (không phải text tóm tắt nối chuỗi 1 dòng như bản trước) — mỗi cột dữ liệu là 1 cột bảng (theo đúng `columnOrder`), giá trị dài bị crop bằng `truncate`, hover vào ô hiện tooltip đầy đủ nội dung; cột nào dạng URL (`isUrlValue`) thì gạch chân + Ctrl/Cmd+Click mở thẳng bằng trình duyệt ngoài (dùng lại IPC `shell:openExternal`, xem `openIfCtrlClickedUrl`). Mỗi dòng trong nhóm có 1 **radio button** (chỉ chọn được đúng 1 dòng/nhóm); dòng đang được chọn giữ tô nền `bg-gold-500/10` để dễ nhận ra giữa các dòng còn lại trong nhóm. Mặc định tick sẵn dòng "đầy đủ thông tin nhất" (`defaultKeepId`, tính bởi `findDuplicateGroups`, cùng thuật toán cũ) nhưng người dùng có thể tự đổi sang dòng khác trong nhóm trước khi Confirm. Bấm Confirm mới `deleteRowsCommand` các dòng KHÔNG được chọn trong mỗi nhóm.
+
+Cùng cơ chế Ctrl+Click-mở-URL này cũng áp dụng cho ô dữ liệu trong bảng chính của Data Editor (không chỉ riêng popup dedup) — xem `isUrlValue`/`openIfCtrlClickedUrl` ở đầu `DataEditorModal.tsx`.
 
 ## Data ▸ Normalize — popup preview + tick chọn dòng, báo "Unable to resolve" khi không tự tin xử lý
 

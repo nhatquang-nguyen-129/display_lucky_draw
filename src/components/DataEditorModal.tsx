@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
+import { useSession } from "@/context/SessionContext";
 import { Participant, Session } from "@/types";
 import { CORE_FIELDS, EditorRow, EditorState, getCell, isCoreField } from "@/lib/dataEditor/types";
 import { useCommandHistory } from "@/lib/dataEditor/history";
@@ -62,6 +63,23 @@ const GROUPS: { key: Group; label: string }[] = [
 
 const COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
 const AUTOSAVE_DELAY_MS = 20000;
+
+// Ctrl/Cmd+Click trên ô có giá trị dạng URL (http/https) để mở bằng trình duyệt ngoài, dùng chung
+// IPC "shell:openExternal" đã có sẵn cho action Open link của Landing Page — chỉ nhận http/https,
+// khớp đúng whitelist scheme main process đã chặn (xem electron/main.ts).
+const URL_RE = /^https?:\/\/\S+$/i;
+function isUrlValue(value: string): boolean {
+  return URL_RE.test(value.trim());
+}
+function openIfCtrlClickedUrl(e: ReactMouseEvent, value: string): boolean {
+  if (!(e.ctrlKey || e.metaKey)) return false;
+  const trimmed = value.trim();
+  if (!isUrlValue(trimmed)) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  window.api.shell.openExternal(trimmed);
+  return true;
+}
 const CHECKBOX_COL_WIDTH = 32;
 const DEFAULT_COLUMN_WIDTH = 160;
 const MIN_COLUMN_WIDTH = 60;
@@ -99,6 +117,12 @@ function sameRow(a: EditorRow, b: EditorRow): boolean {
 }
 
 export default function DataEditorModal({ open, sessionId, session, onClose, onSaved }: DataEditorModalProps) {
+  // `session` là prop tới từ SessionContext — context đó chỉ refresh() khi add/rename/close tab, KHÔNG
+  // tự cập nhật khi đổi Data Type/nhãn cột (2 API lưu thẳng xuống DB ngay, không qua nút Save chính).
+  // Thiếu refresh() sau khi lưu thì lần load() kế tiếp (mỗi khi mở lại modal, xem effect bên dưới) sẽ
+  // đọc lại đúng bản session CŨ trong context — làm mất Data Type vừa gán (bug đã gặp thật: gán "Name"
+  // xong đóng/mở lại editor thì mất, trong khi Phone/URL gán từ trước đó, lúc context còn mới, thì vẫn còn).
+  const { refresh: refreshSessions } = useSession();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [originalRows, setOriginalRows] = useState<EditorRow[]>([]);
@@ -270,7 +294,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   function updateColumnType(col: string, type: ColumnType) {
     setColumnTypes((prev) => {
       const next = { ...prev, [col]: type };
-      window.api.sessions.updateColumnTypes({ id: sessionId, columnTypes: next });
+      window.api.sessions.updateColumnTypes({ id: sessionId, columnTypes: next }).then(refreshSessions);
       return next;
     });
   }
@@ -282,7 +306,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       const next = { ...prev };
       if (!label.trim() || label.trim() === (COLUMN_LABELS[col] ?? col)) delete next[col];
       else next[col] = label.trim();
-      window.api.sessions.updateColumnLabels({ id: sessionId, columnLabels: next });
+      window.api.sessions.updateColumnLabels({ id: sessionId, columnLabels: next }).then(refreshSessions);
       return next;
     });
   }
@@ -678,17 +702,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       return;
     }
     setDedupPreview({ groups, keepIds: groups.map((g) => g.defaultKeepId) });
-  }
-
-  // Tóm tắt 1 dòng trong popup Remove Duplicated Rows để phân biệt các dòng trùng nhau — hiện mọi
-  // cột đang có dữ liệu, theo đúng thứ tự cột trên bảng (columnOrder), không chỉ riêng cột dùng để
-  // xác định trùng (targetColumns) vì đó là phần GIỐNG NHAU giữa các dòng trong cùng 1 nhóm.
-  function summarizeDedupRow(row: EditorRow): string {
-    const parts = columnOrder
-      .map((col) => ({ label: labelFor(col), value: getCell(row, col) }))
-      .filter((p) => p.value.trim())
-      .map((p) => `${p.label}: ${p.value}`);
-    return parts.join(" · ") || "(empty row)";
   }
 
   function applyGenerate() {
@@ -1547,17 +1560,19 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                           const isSelected = selectedCell?.rowId === row.id && selectedCell?.col === col;
                           const cellIssues = rowIssues.filter((i) => i.col === col);
                           const value = getCell(row, col);
+                          const isUrl = !isEditing && isUrlValue(value);
                           return (
                             <td
                               key={col}
-                              onClick={() => {
+                              onClick={(e) => {
+                                if (openIfCtrlClickedUrl(e, value)) return;
                                 setSelectedCell({ rowId: row.id, col });
                                 setSelectedColKeys(new Set());
                               }}
                               onDoubleClick={() => startEdit(row.id, col)}
                               className={`relative px-1 py-1 ${isSelected ? "ring-1 ring-inset ring-gold-500" : ""} ${
                                 cellIssues.length > 0 ? "bg-danger-500/10" : selectedColKeys.has(col) ? "bg-gold-500/5" : ""
-                              }`}
+                              } ${isUrl ? "cursor-pointer" : ""}`}
                             >
                               {isEditing ? (
                                 <input
@@ -1574,8 +1589,10 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               ) : (
                                 <div className="group/cell relative">
                                   <div
-                                    title={value || undefined}
-                                    className={`truncate px-1 py-1 text-sm ${cellIssues.length > 0 ? "text-danger-500" : "text-base-100"}`}
+                                    title={value ? (isUrl ? `${value} — Ctrl+Click to open` : value) : undefined}
+                                    className={`truncate px-1 py-1 text-sm ${
+                                      cellIssues.length > 0 ? "text-danger-500" : isUrl ? "text-teal-400 underline" : "text-base-100"
+                                    }`}
                                   >
                                     {value || <span className="text-base-600">—</span>}
                                   </div>
@@ -1950,7 +1967,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
           onClick={() => setDedupPreview(null)}
         >
           <div
-            className="relative flex max-h-[85vh] w-full max-w-3xl flex-col rounded-lg border border-base-700 bg-base-900 p-5 shadow-2xl"
+            className="relative flex max-h-[85vh] w-full max-w-5xl flex-col rounded-lg border border-base-700 bg-base-900 p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -1965,35 +1982,76 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
               {dedupPreview.groups.length} duplicate group(s) on: {duplicateColumnLabel}. Pick which row to keep in
               each group, then Confirm to delete the rest.
             </p>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded border border-base-800 p-3">
-              {dedupPreview.groups.map((g, i) => (
-                <div key={i} className="rounded border border-base-800">
-                  <div className="border-b border-base-800 bg-base-800 px-3 py-1.5 text-[11px] uppercase tracking-wide text-base-400">
-                    Group {i + 1} · {g.rows.length} rows
-                  </div>
-                  <div className="divide-y divide-base-800">
-                    {g.rows.map((row) => (
-                      <label
-                        key={row.id}
-                        className="flex cursor-pointer items-start gap-2 px-3 py-2 hover:bg-base-800/60"
+            {/* Bảng gọn thay vì mỗi dòng 1 câu text tràn xuống — mỗi cột dữ liệu là 1 cột bảng, giá
+                trị dài bị crop bằng truncate, xem đủ nội dung qua title (tooltip khi hover). */}
+            <div className="min-h-0 flex-1 overflow-auto rounded border border-base-800">
+              <table className="w-max min-w-full text-left text-xs">
+                <thead className="sticky top-0 z-10 bg-base-800 text-[11px] uppercase tracking-wide text-base-400">
+                  <tr>
+                    <th className="w-8 px-2 py-1.5"></th>
+                    {columnOrder.map((col) => (
+                      <th
+                        key={col}
+                        title={labelFor(col)}
+                        className="max-w-[180px] truncate px-3 py-1.5 font-medium"
                       >
-                        <input
-                          type="radio"
-                          name={`dedup-group-${i}`}
-                          className="mt-0.5"
-                          checked={dedupPreview.keepIds[i] === row.id}
-                          onChange={() =>
-                            setDedupPreview((p) =>
-                              p ? { ...p, keepIds: p.keepIds.map((id, idx) => (idx === i ? row.id : id)) } : p
-                            )
-                          }
-                        />
-                        <span className="text-xs text-base-200">{summarizeDedupRow(row)}</span>
-                      </label>
+                        {labelFor(col)}
+                      </th>
                     ))}
-                  </div>
-                </div>
-              ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dedupPreview.groups.map((g, i) => (
+                    <Fragment key={i}>
+                      <tr>
+                        <td
+                          colSpan={columnOrder.length + 1}
+                          className="border-t border-base-800 bg-base-800/60 px-3 py-1 text-[11px] uppercase tracking-wide text-base-400"
+                        >
+                          Group {i + 1} · {g.rows.length} rows
+                        </td>
+                      </tr>
+                      {g.rows.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={`border-t border-base-800 ${
+                            dedupPreview.keepIds[i] === row.id ? "bg-gold-500/10" : "hover:bg-base-800/40"
+                          }`}
+                        >
+                          <td className="px-2 py-1.5">
+                            <input
+                              type="radio"
+                              name={`dedup-group-${i}`}
+                              checked={dedupPreview.keepIds[i] === row.id}
+                              onChange={() =>
+                                setDedupPreview((p) =>
+                                  p ? { ...p, keepIds: p.keepIds.map((id, idx) => (idx === i ? row.id : id)) } : p
+                                )
+                              }
+                            />
+                          </td>
+                          {columnOrder.map((col) => {
+                            const value = getCell(row, col);
+                            const isUrl = isUrlValue(value);
+                            return (
+                              <td
+                                key={col}
+                                title={value ? (isUrl ? `${value} — Ctrl+Click to open` : value) : undefined}
+                                onClick={(e) => openIfCtrlClickedUrl(e, value)}
+                                className={`max-w-[180px] truncate px-3 py-1.5 ${
+                                  isUrl ? "cursor-pointer text-teal-400 underline" : "text-base-200"
+                                }`}
+                              >
+                                {value || "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button className={toolbarBtn} onClick={() => setDedupPreview(null)}>

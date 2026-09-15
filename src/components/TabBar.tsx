@@ -77,27 +77,27 @@ export default function TabBar() {
             </div>
           );
         })}
-      </div>
 
-      {adding ? (
-        <input
-          autoFocus
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onBlur={handleAddTab}
-          onKeyDown={(e) => e.key === "Enter" && handleAddTab()}
-          placeholder="New session name..."
-          className="mb-1 w-40 rounded-md border border-gold-500/50 bg-base-950 px-2 py-1.5 text-sm text-base-100 outline-none"
-        />
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          title="Add new session"
-          className="mb-1 shrink-0 rounded-md px-3 py-1.5 text-base-400 hover:bg-base-800 hover:text-base-100"
-        >
-          + Add tab
-        </button>
-      )}
+        {adding ? (
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onBlur={handleAddTab}
+            onKeyDown={(e) => e.key === "Enter" && handleAddTab()}
+            placeholder="New session name..."
+            className="mb-1 w-40 shrink-0 rounded-md border border-gold-500/50 bg-base-950 px-2 py-1.5 text-sm text-base-100 outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            title="Add new session"
+            className="mb-1 flex shrink-0 h-7 w-7 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
+          >
+            +
+          </button>
+        )}
+      </div>
     </div>
   );
 }

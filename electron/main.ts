@@ -74,7 +74,10 @@ function createMainWindow() {
   });
 }
 
-// Cửa sổ "Present mode" riêng biệt để trình chiếu, có thể kéo sang màn hình 2
+// Cửa sổ "Present mode" riêng biệt để trình chiếu, có thể kéo sang màn hình 2. Mở WINDOWED (không
+// fullscreen ngay) để người vận hành kéo cửa sổ sang đúng màn hình muốn trình chiếu trước, rồi mới
+// bấm fullscreen (nút overlay trong PresentMode.tsx hoặc phím F11) — nếu tự fullscreen ngay khi mở
+// thì mặc định luôn dính màn hình chính, phải thoát fullscreen mới kéo được, bất tiện hơn.
 function openPresentWindow(sessionId: string) {
   if (presentWindow) {
     presentWindow.focus();
@@ -91,6 +94,31 @@ function openPresentWindow(sessionId: string) {
       nodeIntegration: false,
     },
   });
+
+  // Ẩn menu bar File/Edit/View/Window/Help — cửa sổ trình chiếu cho người xem tại sự kiện thấy, không
+  // phải màn hình làm việc. removeMenu() chỉ có tác dụng Windows/Linux (menu trong khung cửa sổ);
+  // macOS dùng menu bar toàn cục trên cùng của OS nên không ảnh hưởng, không cần xử lý riêng.
+  presentWindow.removeMenu();
+
+  // Toggle fullscreen bằng F11 — tự bắt phím ở main process (KHÔNG dựa vào accelerator của menu mặc
+  // định vì đã removeMenu() ở trên, và để hành vi giống nhau trên cả Windows lẫn macOS thay vì lệ
+  // thuộc phím tắt fullscreen mặc định khác nhau của từng OS). CỐ Ý không dùng Esc: cửa sổ Present
+  // dùng Esc dày đặc cho việc khác (EscapeKeyHandler — ẩn Scoreboard, huỷ popup Confirm/Draw Mode/
+  // info..., xem LandingRenderer.tsx). before-input-event không preventDefault() nên phím vẫn lọt
+  // xuống renderer — nếu Esc cũng thoát fullscreen ở đây thì 1 lần bấm Esc lúc đang mở popup sẽ vừa
+  // đóng popup vừa thoát fullscreen cùng lúc, gây khó hiểu (bug đã cân nhắc, bỏ Esc để tránh hẳn).
+  // F11 an toàn vì không nơi nào khác trong app dùng phím này. Toggle không đụng gì tới sequence
+  // (Draw/Confirm/spinning...) nên bấm bất cứ lúc nào, kể cả đang quay, cũng không làm gián đoạn gì.
+  presentWindow.webContents.on("before-input-event", (_e, input) => {
+    if (input.type === "keyDown" && input.key === "F11" && presentWindow) {
+      presentWindow.setFullScreen(!presentWindow.isFullScreen());
+    }
+  });
+
+  // Báo cho renderer biết trạng thái fullscreen hiện tại (để đổi icon nút toggle, kể cả khi người
+  // dùng thoát fullscreen bằng cách khác — vd nút xanh lá trên macOS — không chỉ qua IPC toggle).
+  presentWindow.on("enter-full-screen", () => presentWindow?.webContents.send("present:fullscreen-changed", true));
+  presentWindow.on("leave-full-screen", () => presentWindow?.webContents.send("present:fullscreen-changed", false));
 
   const hash = `#/present/${sessionId}`;
   if (IS_DEV) {
@@ -594,6 +622,18 @@ ipcMain.handle("draw:resetSession", (_e, sessionId: string) => {
 
 ipcMain.handle("present:open", (_e, sessionId: string) => {
   openPresentWindow(sessionId);
+});
+
+// `event.sender` scope đúng theo cửa sổ Present đang gọi (không cần biết sessionId nào) — trả lại
+// trạng thái fullscreen MỚI để renderer cập nhật icon nút toggle ngay, không cần đợi round-trip
+// qua sự kiện enter-full-screen/leave-full-screen. Không cần khoá gì theo sequence.spinning — toggle
+// cửa sổ chỉ đổi kích thước hiển thị, không đụng gì tới tiến trình quay đang chạy trong renderer.
+ipcMain.handle("present:toggleFullscreen", (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (!win) return false;
+  const next = !win.isFullScreen();
+  win.setFullScreen(next);
+  return next;
 });
 
 ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {

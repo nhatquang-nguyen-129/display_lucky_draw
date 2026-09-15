@@ -34,7 +34,19 @@ Lưu ý runtime: sau khi sửa `electron/*.ts`, **phải tắt bật lại `npm 
 | Cửa sổ | Route | Đặc điểm |
 |---|---|---|
 | Cửa sổ chính | `/`, `/participants`, `/prizes`, `/landing`, `/settings` | Có `<Layout>` (sidebar + `TabBar`), theo tab đang active qua `SessionContext` |
-| Present Mode | `/present/:sessionId` | Không sidebar, full-screen, `LandingRenderer interactive=true` — nơi khán giả xem |
-| Landing Builder | `/landing-builder/:sessionId` | Không sidebar, full-screen, canvas kéo-thả — nơi người tổ chức THIẾT KẾ (không tương tác thật) |
+| Present Mode | `/present/:sessionId` | Không sidebar, không menu bar (`removeMenu()`), mở WINDOWED — `LandingRenderer interactive=true`, nơi khán giả xem |
+| Landing Builder | `/landing-builder/:sessionId` | Không sidebar, còn menu bar mặc định, windowed 1440×900, canvas kéo-thả — nơi người tổ chức THIẾT KẾ (không tương tác thật) |
 
 Cả 2 cửa sổ phụ tự fetch session/participants/prizes riêng qua `window.api` (không dùng `SessionContext`, vì đó là 1 cửa sổ độc lập với Context Provider riêng của React — mỗi `BrowserWindow` là 1 renderer process/React tree hoàn toàn tách biệt). Chi tiết cách 2 cửa sổ Landing dùng chung 1 nguồn dữ liệu: [`docs/landing/README.md`](../landing/README.md) mục 1.
+
+### Present Mode: mở windowed, tự bấm fullscreen (không dùng Esc)
+
+`openPresentWindow` (`electron/main.ts`) mở cửa sổ Present ở kích thước cửa sổ thường (1280×720, `removeMenu()` để ẩn File/Edit/View/Window/Help) — CỐ Ý không tự fullscreen ngay, để người vận hành kéo cửa sổ sang màn hình 2 (nếu trình chiếu 2 màn) trước khi vào fullscreen; tự fullscreen ngay từ đầu thì luôn dính màn hình chính, phải thoát ra mới kéo được.
+
+Vào/thoát fullscreen thật (`BrowserWindow.setFullScreen`) qua 2 đường, cả 2 đều dùng chung 1 state (`isFullscreen`, đồng bộ qua sự kiện `enter-full-screen`/`leave-full-screen` main → renderer):
+- Phím **F11** — bắt bằng `webContents.on("before-input-event", ...)` ở main process (không dựa vào accelerator của menu mặc định, vì `removeMenu()` đã gỡ nó, và để hành vi giống nhau trên Windows lẫn macOS).
+- Nút overlay góc trên-phải trong `PresentMode.tsx` (mờ, sáng khi hover) — gọi IPC `present:toggleFullscreen`.
+
+**CỐ Ý không dùng Esc để thoát fullscreen** — cửa sổ này dùng Esc dày đặc cho việc khác (`EscapeKeyHandler` trong `LandingRenderer.tsx`: ẩn Scoreboard, huỷ popup Confirm/Draw Mode/Info...). `before-input-event` không gọi `preventDefault()` nên phím vẫn lọt xuống renderer — nếu Esc cũng thoát fullscreen ở main process thì 1 lần bấm Esc lúc đang mở popup sẽ vừa đóng popup vừa thoát fullscreen cùng lúc, gây khó hiểu. Đã cân nhắc và bỏ hẳn Esc vì lý do này (xem thêm [`docs/landing/present-mode.md`](../landing/present-mode.md)).
+
+Toggle fullscreen không đụng gì tới `useDrawSequence.ts` (Draw/Confirm/`spinning`...) — chỉ đổi kích thước hiển thị của cửa sổ, nên bấm được bất cứ lúc nào, kể cả đang quay số, không cần khoá gì thêm.

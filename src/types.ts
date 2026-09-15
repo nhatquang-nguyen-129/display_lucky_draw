@@ -168,6 +168,8 @@ declare global {
       };
       present: {
         open: (sessionId: string) => Promise<void>;
+        toggleFullscreen: () => Promise<boolean>;
+        onFullscreenChange: (cb: (isFullscreen: boolean) => void) => () => void;
       };
       landingBuilder: {
         open: (sessionId: string) => Promise<void>;
