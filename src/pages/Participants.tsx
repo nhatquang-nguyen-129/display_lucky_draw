@@ -14,6 +14,7 @@ export default function Participants() {
   const [items, setItems] = useState<Participant[]>([]);
   const [showEditor, setShowEditor] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Preview RAW, giống hệt cột đang hiện trong Data Editor trước khi gán nhãn — không còn ép cứng 4
   // cột Name/Code/Phone/Email (import generic để trống chúng cho tới khi được gán Data Type, xem
@@ -45,6 +46,7 @@ export default function Participants() {
   useEffect(() => {
     refresh();
     setImportMsg(null);
+    setImportError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
@@ -52,6 +54,11 @@ export default function Participants() {
     if (!activeSessionId) return;
     const result = await window.api.dialog.openAndReadFile();
     if (!result) return;
+    if (result.error) {
+      setImportError(result.error);
+      return;
+    }
+    setImportError(null);
 
     let rows: any[] = [];
     if (result.ext === "csv") {
@@ -92,6 +99,7 @@ export default function Participants() {
       .filter((r) => r.extra);
 
     const inserted = await window.api.participants.bulkImport(activeSessionId, normalized);
+    setImportError(null);
     setImportMsg(
       `Imported ${inserted}/${normalized.length} rows. Columns detected: ${
         detectedHeaders.join(", ") || "(none)"
@@ -130,16 +138,22 @@ export default function Participants() {
         </p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowEditor(true)}>
-            Data Editor
+            Edit
           </Button>
           <Button variant="secondary" onClick={handleImportFile}>
-            Import CSV/Excel file
+            Import
           </Button>
           <Button variant="danger" onClick={handleClearAll} disabled={items.length === 0}>
-            Delete all
+            Delete
           </Button>
         </div>
       </header>
+
+      {importError && (
+        <div className="mb-4 flex-shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          {importError}
+        </div>
+      )}
 
       {importMsg && (
         <div className="mb-4 flex-shrink-0 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm text-teal-400">

@@ -165,7 +165,7 @@ declare global {
         reportDirty: (dirty: boolean) => void;
       };
       dialog: {
-        openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string } | null>;
+        openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
       };
       shell: {
         openExternal: (url: string) => Promise<void>;

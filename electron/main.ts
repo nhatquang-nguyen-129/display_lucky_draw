@@ -603,6 +603,12 @@ ipcMain.handle("dialog:openAndReadFile", async () => {
   const filePath = result.filePaths[0];
   const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 
+  // Dialog filter chỉ giới hạn hiển thị — vẫn có thể bị lách (gõ thẳng tên file, một số Linux
+  // file manager không tôn trọng filter), nên chặn lại tường minh ở đây trước khi đọc/parse.
+  if (ext !== "csv" && ext !== "xlsx" && ext !== "xls") {
+    return { ext, error: `Unsupported file type ".${ext}". Only .csv, .xlsx and .xls files are supported.` };
+  }
+
   if (ext === "csv") {
     const text = fs.readFileSync(filePath, "utf-8");
     return { ext, text };
