@@ -22,7 +22,7 @@ export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
 /** Hint shown under the "Data type" dropdown — explains the validation rule applied to the selected type. */
 export const COLUMN_TYPE_HINTS: Record<ColumnType, string> = {
   text: "No format validation.",
-  name: "Flags rows whose capitalization differs from the most common style in the column (does not force Title Case).",
+  name: "Flags values containing digits, and rows whose capitalization differs from the most common style in the column (does not force Title Case).",
   phone: "Applies Vietnamese phone rules: starts with 0, 10-11 digits. Select this column on the table header to check for duplicates (Automate ▸ Deduplication).",
   email: "Must be a valid email format with a domain (e.g. name@example.com).",
   code: "No format validation.",
@@ -170,10 +170,21 @@ export function validateState(
       });
     }
 
-    // Không ép theo 1 quy tắc case cố định (vd Title Case) — chỉ báo dòng nào LỆCH so với
-    // kiểu viết hoa phổ biến nhất đang có trong chính cột đó. Cột toàn bộ cùng 1 kiểu (kể cả
-    // toàn chữ HOA) thì không có gì để cảnh báo.
     if (type === "name") {
+      // "Name Contains Number" — Name không được chứa ký tự số, bắt được ngay cả khi gán nhầm 1 cột
+      // không phải Name (vd SĐT, mã số) làm Name, thứ mà check "Capitalization Inconsistent" bên dưới
+      // không phát hiện được (chuỗi toàn số không có chữ cái nào để so kiểu viết hoa — caseShapeOf trả
+      // về null, bị lọc khỏi `shaped`, không tạo ra issue nào cả).
+      state.rows.forEach((r) => {
+        const value = getCell(r, col);
+        if (/\d/.test(value)) {
+          issues.push({ rowId: r.id, col, message: "Name Contains Number" });
+        }
+      });
+
+      // Không ép theo 1 quy tắc case cố định (vd Title Case) — chỉ báo dòng nào LỆCH so với
+      // kiểu viết hoa phổ biến nhất đang có trong chính cột đó. Cột toàn bộ cùng 1 kiểu (kể cả
+      // toàn chữ HOA) thì không có gì để cảnh báo.
       const shaped = state.rows
         .map((r) => ({ id: r.id, shape: caseShapeOf(getCell(r, col)) }))
         .filter((s): s is { id: string; shape: CaseShape } => s.shape !== null);
