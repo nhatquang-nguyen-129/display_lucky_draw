@@ -339,24 +339,34 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   }, [selectedColKeys, selectedCell, columnOrder]);
   const targetColumnLabel = targetColumns.map((c) => labelFor(c)).join(", ");
 
-  // duplicateColumns của validateState = targetColumns (cột đang bôi trên bảng NGAY LÚC NÀY) — không
-  // phải config đã lưu. Chưa bôi cột nào → mảng rỗng → chip "Duplicated Rows" tự biến mất khỏi status
-  // bar, không cần chọn cột nào để "tắt" nó (xem findDuplicateIssues trong validate.ts).
+  // Cột xác định trùng lặp CHỈ tính từ cột đang bôi Ở HEADER (selectedColKeys) — KHÔNG dùng chung
+  // targetColumns ở trên (vốn fallback về cột chứa ô con trỏ, selectedCell). Click vào 1 ô bất kỳ để
+  // sửa/xem dữ liệu là thao tác XẢY RA LIÊN TỤC, không phải ý định "kiểm tra trùng lặp trên cột này" —
+  // nếu dùng chung targetColumns thì chỉ cần click sửa 1 ô Phone là chip "Duplicated Rows" tự bật NGẦM
+  // dựa trên cột đó dù người dùng chưa hề chủ động bôi chọn gì (bug đã gặp thật). Chưa bôi header nào →
+  // mảng rỗng → chip tự biến mất khỏi status bar, đúng tinh thần message "Select at least 1 column
+  // header first" trong applyRemoveDuplicates bên dưới.
+  const duplicateColumns = useMemo(
+    () => columnOrder.filter((c) => selectedColKeys.has(c)),
+    [selectedColKeys, columnOrder]
+  );
+  const duplicateColumnLabel = duplicateColumns.map((c) => labelFor(c)).join(", ");
+
   const issues = useMemo(
-    () => validateState(history.state, columnTypes, targetColumns),
-    [history.state, columnTypes, targetColumns]
+    () => validateState(history.state, columnTypes, duplicateColumns),
+    [history.state, columnTypes, duplicateColumns]
   );
 
   // Đếm trước (không phải lúc bấm) để menu Automate tự vô hiệu hoá mục nào không có gì để làm —
   // "chỉ available khi có đủ điều kiện" thay vì bấm xong mới báo "No empty rows."
   const emptyRowCount = useMemo(() => findEmptyRowIds(history.state).length, [history.state]);
   const emptyColumnCount = useMemo(() => findEmptyColumns(history.state).length, [history.state]);
-  // Duplicate PHỤ THUỘC cột đang bôi (targetColumns) — khác 2 cái trên (luôn tính được, không cần chọn
-  // gì). Chưa bôi cột nào thì không tính (0), nhưng nút KHÔNG bị disable vì lý do "chưa chọn" — bấm
-  // vào sẽ tự báo yêu cầu chọn cột (xem applyRemoveDuplicates).
+  // Duplicate PHỤ THUỘC cột đang bôi Ở HEADER (duplicateColumns) — khác 2 cái trên (luôn tính được,
+  // không cần chọn gì). Chưa bôi cột nào thì không tính (0), nhưng nút KHÔNG bị disable vì lý do "chưa
+  // chọn" — bấm vào sẽ tự báo yêu cầu chọn cột (xem applyRemoveDuplicates).
   const duplicateRowCount = useMemo(
-    () => (targetColumns.length > 0 ? findDuplicateIdsToRemove(history.state, targetColumns).length : 0),
-    [history.state, targetColumns]
+    () => (duplicateColumns.length > 0 ? findDuplicateIdsToRemove(history.state, duplicateColumns).length : 0),
+    [history.state, duplicateColumns]
   );
   const nameCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "name"), [history.state, columnTypes]);
   const phoneCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "phone"), [history.state, columnTypes]);
@@ -649,21 +659,22 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     });
   }
 
-  // Cột xác định trùng = cột đang chọn trên bảng NGAY LÚC NÀY (targetColumns) — không còn config nào
-  // lưu riêng nữa (đã bỏ sessions.participant_duplicate_columns khỏi luồng này, xem validate.ts) nên
-  // không có gì để "âm thầm đổi" khi chỉ xem thử/Cancel; status bar cũng đọc thẳng targetColumns nên
-  // luôn khớp 100% với con số ở đây. Chọn nhiều cột → phải trùng TẤT CẢ các cột đó cùng lúc mới tính
-  // là 1 nhóm trùng (compound key, xem findDuplicateGroups). Mở popup lớn cho từng nhóm — không tự
-  // xoá theo "đầy đủ thông tin nhất" ngầm nữa, người dùng tick chọn dòng muốn giữ trong mỗi nhóm.
+  // Cột xác định trùng = cột đang bôi Ở HEADER NGAY LÚC NÀY (duplicateColumns, KHÔNG fallback về ô
+  // con trỏ — xem doc-comment ở chỗ khai báo) — không còn config nào lưu riêng nữa (đã bỏ
+  // sessions.participant_duplicate_columns khỏi luồng này, xem validate.ts) nên không có gì để "âm
+  // thầm đổi" khi chỉ xem thử/Cancel; status bar cũng đọc thẳng duplicateColumns nên luôn khớp 100%
+  // với con số ở đây. Chọn nhiều cột → phải trùng TẤT CẢ các cột đó cùng lúc mới tính là 1 nhóm trùng
+  // (compound key, xem findDuplicateGroups). Mở popup lớn cho từng nhóm — không tự xoá theo "đầy đủ
+  // thông tin nhất" ngầm nữa, người dùng tick chọn dòng muốn giữ trong mỗi nhóm.
   function applyRemoveDuplicates() {
     setOpenMenu(null);
-    if (targetColumns.length === 0) {
+    if (duplicateColumns.length === 0) {
       setAutomatePopup({ message: "Select at least 1 column header first to define what counts as a duplicate." });
       return;
     }
-    const groups = findDuplicateGroups(history.state, targetColumns);
+    const groups = findDuplicateGroups(history.state, duplicateColumns);
     if (groups.length === 0) {
-      setAutomatePopup({ message: `Found 0 duplicate row(s) on: ${targetColumnLabel}.` });
+      setAutomatePopup({ message: `Found 0 duplicate row(s) on: ${duplicateColumnLabel}.` });
       return;
     }
     setDedupPreview({ groups, keepIds: groups.map((g) => g.defaultKeepId) });
@@ -1951,7 +1962,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
             </button>
             <h3 className="mb-1 pr-6 text-sm font-medium text-base-100">Remove Duplicated Rows</h3>
             <p className="mb-3 text-xs text-base-400">
-              {dedupPreview.groups.length} duplicate group(s) on: {targetColumnLabel}. Pick which row to keep in
+              {dedupPreview.groups.length} duplicate group(s) on: {duplicateColumnLabel}. Pick which row to keep in
               each group, then Confirm to delete the rest.
             </p>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded border border-base-800 p-3">
