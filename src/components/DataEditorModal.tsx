@@ -246,6 +246,10 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   }, [history.state.columns, activeCoreFieldsKey]);
 
   const [dragColKey, setDragColKey] = useState<string | null>(null);
+  // Cột đang được RÊ QUA lúc kéo cột khác (khác dragColKey — đó là cột NGUỒN đang bị kéo) — dùng để vẽ
+  // vạch chèn (xem chỗ render <th>), báo trước "nhả chuột ở đây thì cột kéo sẽ chèn vào NGAY TRƯỚC cột
+  // này", đúng hành vi thật của handleColumnDrop bên dưới.
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
   // Độ rộng cột — chỉ là view state như columnOrder, không cần lưu DB/Undo.
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
@@ -477,6 +481,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   }
 
   function handleColumnDrop(targetCol: string) {
+    setDragOverCol(null);
     if (!dragColKey || dragColKey === targetCol) {
       setDragColKey(null);
       return;
@@ -1453,7 +1458,15 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                       key={col}
                       draggable
                       onDragStart={() => setDragColKey(col)}
-                      onDragOver={(e) => e.preventDefault()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (dragColKey && dragColKey !== col) setDragOverCol(col);
+                      }}
+                      onDragLeave={() => setDragOverCol((c) => (c === col ? null : c))}
+                      onDragEnd={() => {
+                        setDragColKey(null);
+                        setDragOverCol(null);
+                      }}
                       onDrop={() => handleColumnDrop(col)}
                       onClick={(e) => {
                         if (e.shiftKey && lastSelectedCol && columnOrder.includes(lastSelectedCol)) {
@@ -1485,6 +1498,11 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         setContextMenu({ x: e.clientX, y: e.clientY, type: "column", col });
                       }}
                     >
+                      {/* Vạch chèn — báo trước nhả chuột ở cột này thì cột đang kéo sẽ nằm NGAY TRƯỚC
+                          nó (đúng hành vi handleColumnDrop, luôn chèn trước targetCol). */}
+                      {dragOverCol === col && dragColKey && dragColKey !== col && (
+                        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-1 bg-gold-500" />
+                      )}
                       <div className="flex min-w-0 items-center gap-1">
                         <span className="shrink-0 text-base-600" title="Drag to reorder column">
                           ⋮⋮
@@ -1499,8 +1517,14 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               if (isCoreField(col)) {
                                 // Cột lõi: chỉ đổi NHÃN, dữ liệu vẫn ở cột SQL name/phone/...
                                 setColumnLabel(col, next);
-                              } else if (next && next !== col && !columnOrder.includes(next)) {
-                                history.run(renameColumnCommand(col, next));
+                              } else if (next && next !== col) {
+                                // Rule: không cho phép 2 cột trùng tên (trùng key thật sẽ ghi đè dữ liệu
+                                // lẫn nhau) — trước đây âm thầm bỏ qua không rename, giờ báo rõ lý do.
+                                if (columnOrder.includes(next)) {
+                                  setToast(`Column "${next}" already exists — choose a different name.`);
+                                } else {
+                                  history.run(renameColumnCommand(col, next));
+                                }
                               }
                               setRenamingColumn(null);
                             }}
