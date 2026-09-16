@@ -80,6 +80,28 @@ function openIfCtrlClickedUrl(e: ReactMouseEvent, value: string): boolean {
   window.api.shell.openExternal(trimmed);
   return true;
 }
+/** Trong 1 duplicate group (popup Remove Duplicated Rows), gom các dòng GIỐNG Y HỆT NHAU ở MỌI cột
+ * (không chỉ riêng cột dùng để xác định trùng) đứng CẠNH NHAU, mỗi cụm giống hệt nhau được đánh 1
+ * `clusterIndex` tăng dần theo thứ tự xuất hiện — dùng để tô nền xen kẽ đậm/nhạt giữa các cụm liền kề
+ * (xem chỗ gọi), giúp thấy ngay trong 1 nhóm trùng có bao nhiêu "biến thể" dữ liệu thật sự khác nhau
+ * mà không cần dò từng ô. Không đổi thứ tự dùng để xoá (`g.rows` gốc), chỉ dùng để HIỂN THỊ. */
+function clusterIdenticalRows(rows: EditorRow[], columnOrder: string[]): { row: EditorRow; clusterIndex: number }[] {
+  const order: string[] = [];
+  const buckets = new Map<string, EditorRow[]>();
+  rows.forEach((r) => {
+    // Nối bằng 1 ký tự điều khiển hiếm gặp (\u0001), KHÔNG nối trực tiếp — nối trực tiếp có thể đụng
+    // hàng: cột A="AB"+cột B="C" và cột A="A"+cột B="BC" đều ra chung 1 chuỗi "ABC", bị coi nhầm là
+    // 2 dòng giống hệt nhau dù dữ liệu thật khác nhau.
+    const signature = columnOrder.map((c) => getCell(r, c)).join("");
+    if (!buckets.has(signature)) {
+      buckets.set(signature, []);
+      order.push(signature);
+    }
+    buckets.get(signature)!.push(r);
+  });
+  return order.flatMap((signature, clusterIndex) => buckets.get(signature)!.map((row) => ({ row, clusterIndex })));
+}
+
 const CHECKBOX_COL_WIDTH = 32;
 const DEFAULT_COLUMN_WIDTH = 160;
 const MIN_COLUMN_WIDTH = 60;
@@ -1591,7 +1613,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                                   <div
                                     title={value ? (isUrl ? `${value} — Ctrl+Click to open` : value) : undefined}
                                     className={`truncate px-1 py-1 text-sm ${
-                                      cellIssues.length > 0 ? "text-danger-500" : isUrl ? "text-teal-400 underline" : "text-base-100"
+                                      cellIssues.length > 0 ? "text-danger-500" : isUrl ? "text-teal-600 underline" : "text-base-100"
                                     }`}
                                   >
                                     {value || <span className="text-base-600">—</span>}
@@ -1984,8 +2006,8 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
             </p>
             {/* Bảng gọn thay vì mỗi dòng 1 câu text tràn xuống — mỗi cột dữ liệu là 1 cột bảng, giá
                 trị dài bị crop bằng truncate, xem đủ nội dung qua title (tooltip khi hover). */}
-            <div className="min-h-0 flex-1 overflow-auto rounded border border-base-800">
-              <table className="w-max min-w-full text-left text-xs">
+            <div className="min-h-0 flex-1 overflow-auto rounded">
+              <table className="w-max min-w-full border-separate border-spacing-0 text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-base-800 text-[11px] uppercase tracking-wide text-base-400">
                   <tr>
                     <th className="w-8 px-2 py-1.5"></th>
@@ -2001,53 +2023,89 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Mỗi group là 1 "khối" viền riêng (border-l/r trên ô đầu-cuối mỗi hàng, border-t/b
+                      ở hàng đầu/cuối, bo góc ở 4 góc) — KHÔNG dùng 1 border bao ngoài cả bảng như
+                      trước (khiến các group nhìn dính liền thành 1 khối dù có hàng đệm trắng ở giữa,
+                      vì viền ngoài đó chạy xuyên suốt không đứt đoạn). Hàng đệm giữa 2 group vì vậy
+                      cũng KHÔNG có viền gì, tạo đúng cảm giác 2 khối tách rời. */}
                   {dedupPreview.groups.map((g, i) => (
                     <Fragment key={i}>
+                      {i > 0 && (
+                        <tr aria-hidden="true">
+                          <td colSpan={columnOrder.length + 1} className="h-3 border-0 bg-base-900 p-0"></td>
+                        </tr>
+                      )}
                       <tr>
                         <td
                           colSpan={columnOrder.length + 1}
-                          className="border-t border-base-800 bg-base-800/60 px-3 py-1 text-[11px] uppercase tracking-wide text-base-400"
+                          className="rounded-t-md border-x border-t border-base-800 bg-base-800/60 px-3 py-1 text-[11px] uppercase tracking-wide text-base-400"
                         >
                           Group {i + 1} · {g.rows.length} rows
                         </td>
                       </tr>
-                      {g.rows.map((row) => (
-                        <tr
-                          key={row.id}
-                          className={`border-t border-base-800 ${
-                            dedupPreview.keepIds[i] === row.id ? "bg-gold-500/10" : "hover:bg-base-800/40"
-                          }`}
-                        >
-                          <td className="px-2 py-1.5">
-                            <input
-                              type="radio"
-                              name={`dedup-group-${i}`}
-                              checked={dedupPreview.keepIds[i] === row.id}
-                              onChange={() =>
-                                setDedupPreview((p) =>
-                                  p ? { ...p, keepIds: p.keepIds.map((id, idx) => (idx === i ? row.id : id)) } : p
-                                )
-                              }
-                            />
-                          </td>
-                          {columnOrder.map((col) => {
-                            const value = getCell(row, col);
-                            const isUrl = isUrlValue(value);
-                            return (
+                      {(() => {
+                        // Sắp các dòng giống hệt nhau CẠNH NHAU (chỉ để hiển thị — không đụng g.rows
+                        // gốc, vẫn dùng để xoá) — xem doc-comment clusterIdenticalRows.
+                        const displayRows = clusterIdenticalRows(g.rows, columnOrder);
+                        return displayRows.map(({ row, clusterIndex }, rowIdx) => {
+                          const isLastRow = rowIdx === displayRows.length - 1;
+                          const isKept = dedupPreview.keepIds[i] === row.id;
+                          // Xen kẽ đậm/nhạt theo TỪNG CỤM dòng giống hệt nhau (không phải theo từng
+                          // dòng riêng lẻ) — 2 dòng thuộc cùng 1 cụm luôn chung 1 màu, cụm liền kề đổi
+                          // sang mức còn lại để phân biệt. "Kept" (dòng đang chọn giữ) KHÔNG đổi màu nền
+                          // nữa — trước đây tô nền riêng khiến 2 dòng giống hệt nhau nhìn "khác nhau" chỉ
+                          // vì 1 dòng đang được chọn; giờ chỉ viền lại bằng màu gold, nền giữ nguyên theo
+                          // cụm để phản ánh đúng DỮ LIỆU, không lẫn với trạng thái UI.
+                          // 2 HUE khác nhau (gold navy đậm / teal cyan nhạt — 2 màu thương hiệu sẵn có)
+                          // thay vì 2 mức alpha cùng 1 màu teal — cùng hue chỉ khác alpha rất khó phân
+                          // biệt trên nền gần trắng, nhất là khi chữ đã chiếm phần lớn diện tích ô.
+                          const clusterBg = clusterIndex % 2 === 0 ? "bg-gold-500/10" : "bg-teal-500/20";
+                          // Viền đứt (border-dashed) riêng cho dòng đang "kept" — solid trùng kiểu viền
+                          // khối group ở trên, dễ lẫn với đường phân cách thường; đứt nét mới thật sự nổi
+                          // bật kể cả khi màu nền cụm đang đậm.
+                          const borderColor = isKept ? "border-dashed border-gold-500" : "border-base-800";
+                          const needsBottomBorder = isLastRow || isKept;
+                          return (
+                            <tr key={row.id} className={`${clusterBg} hover:brightness-95`}>
                               <td
-                                key={col}
-                                title={value ? (isUrl ? `${value} — Ctrl+Click to open` : value) : undefined}
-                                onClick={(e) => openIfCtrlClickedUrl(e, value)}
-                                className={`max-w-[180px] truncate px-3 py-1.5 ${
-                                  isUrl ? "cursor-pointer text-teal-400 underline" : "text-base-200"
-                                }`}
+                                className={`border-l border-t px-2 py-1.5 ${borderColor} ${
+                                  needsBottomBorder ? "border-b" : ""
+                                } ${isLastRow ? "rounded-bl-md" : ""}`}
                               >
-                                {value || "—"}
+                                <input
+                                  type="radio"
+                                  name={`dedup-group-${i}`}
+                                  checked={isKept}
+                                  onChange={() =>
+                                    setDedupPreview((p) =>
+                                      p ? { ...p, keepIds: p.keepIds.map((id, idx) => (idx === i ? row.id : id)) } : p
+                                    )
+                                  }
+                                />
                               </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
+                              {columnOrder.map((col, colIdx) => {
+                                const value = getCell(row, col);
+                                const isUrl = isUrlValue(value);
+                                const isLastCol = colIdx === columnOrder.length - 1;
+                                return (
+                                  <td
+                                    key={col}
+                                    title={value ? (isUrl ? `${value} — Ctrl+Click to open` : value) : undefined}
+                                    onClick={(e) => openIfCtrlClickedUrl(e, value)}
+                                    className={`max-w-[180px] truncate border-t px-3 py-1.5 ${borderColor} ${
+                                      isUrl ? "cursor-pointer text-teal-600 underline" : "text-base-200"
+                                    } ${isLastCol ? "border-r" : ""} ${needsBottomBorder ? "border-b" : ""} ${
+                                      isLastRow && isLastCol ? "rounded-br-md" : ""
+                                    }`}
+                                  >
+                                    {value || "—"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        });
+                      })()}
                     </Fragment>
                   ))}
                 </tbody>
