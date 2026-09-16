@@ -95,6 +95,20 @@ export default function Participants() {
       })
       .filter((r) => r.extra);
 
+    // Đã có sẵn dữ liệu (nút hiện là "Replace" thay vì "Import", xem header bên dưới) — file mới
+    // XOÁ HẲN dữ liệu cũ rồi mới nạp, không cộng dồn. Hỏi xác nhận SAU KHI đã chọn xong file (không
+    // hỏi trước khi mở dialog) — huỷ dialog chọn file thì không cần hỏi gì cả; từ chối xác nhận thì
+    // giữ nguyên dữ liệu cũ, không xoá gì.
+    if (items.length > 0) {
+      if (
+        !confirm(
+          `Replace all ${items.length} existing participants in session "${activeSession?.name}" with ${normalized.length} rows from this file? This cannot be undone.`
+        )
+      )
+        return;
+      await window.api.participants.bulkDelete(items.map((p) => p.id));
+    }
+
     await window.api.participants.bulkImport(activeSessionId, normalized);
     setImportError(null);
     refresh();
@@ -132,7 +146,7 @@ export default function Participants() {
             Edit
           </Button>
           <Button variant="secondary" onClick={handleImportFile}>
-            Import
+            {items.length === 0 ? "Import" : "Replace"}
           </Button>
           <Button variant="danger" onClick={handleClearAll} disabled={items.length === 0}>
             Delete
