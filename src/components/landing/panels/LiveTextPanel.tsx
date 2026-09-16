@@ -1,8 +1,23 @@
-import { useState } from "react";
-import { LiveTextProps, WINNER_TRANSITION_EFFECTS, WinnerTransitionEffect } from "@/lib/landing/types";
+import { useMemo, useState } from "react";
+import {
+  computeActiveParticipantCoreFields,
+  getParticipantField,
+  listParticipantColumnsForType,
+  LiveTextProps,
+  WINNER_TRANSITION_EFFECTS,
+  WinnerTransitionEffect,
+} from "@/lib/landing/types";
+import { Participant } from "@/types";
 
 interface LiveTextPanelProps {
-  props: LiveTextProps & { appearEffect?: WinnerTransitionEffect; disappearEffect?: WinnerTransitionEffect; quickDrawText?: string };
+  props: LiveTextProps & {
+    appearEffect?: WinnerTransitionEffect;
+    disappearEffect?: WinnerTransitionEffect;
+    quickDrawText?: string;
+    nameSourceColumn?: string;
+  };
+  participants: Participant[];
+  columnTypesJson: string | null;
   onChange: (patch: Record<string, any>) => void;
 }
 
@@ -22,10 +37,21 @@ const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.
 //   - "When Idle" (Disappear effect — đúng khoảnh khắc quay lại rỗng, Reset hoặc 1 lượt Draw mới vừa
 //     bắt đầu)
 //   - "When Quick Draw" (Quick Draw text — hiện thay tên khi 1 Quick Draw vừa chạy xong)
-export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
+export default function LiveTextPanel({ props, participants, columnTypesJson, onChange }: LiveTextPanelProps) {
   const [revealedOpen, setRevealedOpen] = useState(true);
   const [idleOpen, setIdleOpen] = useState(true);
   const [quickDrawOpen, setQuickDrawOpen] = useState(true);
+
+  // Mọi cột đang gán Data Type = Name VÀ còn dữ liệu thật trong Participants hiện tại — LỌC THÊM lớp
+  // "có dữ liệu thật" (giống hasDataForField trong LuckyWheelPanel.tsx) vì `columnTypesJson` (session.
+  // participant_column_types) là 1 config CỘNG DỒN, KHÔNG tự dọn khi cột biến mất khỏi dữ liệu thật
+  // (vd sau khi Replace import bằng file header khác) — thiếu bước lọc này, cột đã bị Replace từ lâu
+  // (0/N participant hiện tại còn cột đó) vẫn hiện ra như 1 lựa chọn hợp lệ (bug đã gặp thật).
+  const nameColumns = useMemo(() => {
+    const activeCoreFields = computeActiveParticipantCoreFields(participants);
+    const configured = listParticipantColumnsForType(columnTypesJson, activeCoreFields, "name");
+    return configured.filter((col) => participants.some((p) => getParticipantField(p, col).trim()));
+  }, [participants, columnTypesJson]);
 
   return (
     <div className="space-y-4">
@@ -73,6 +99,26 @@ export default function LiveTextPanel({ props, onChange }: LiveTextPanelProps) {
               <option value="right">Right</option>
             </select>
           </div>
+        </div>
+        <div>
+          <label className={labelClass}>Source</label>
+          {nameColumns.length > 0 ? (
+            <select
+              className={fieldClass}
+              value={props.nameSourceColumn ?? nameColumns[0]}
+              onChange={(e) => onChange({ nameSourceColumn: e.target.value })}
+            >
+              {nameColumns.map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select disabled className={`${fieldClass} text-base-500`}>
+              <option>Set a column's Data Type to Name first.</option>
+            </select>
+          )}
         </div>
       </div>
 

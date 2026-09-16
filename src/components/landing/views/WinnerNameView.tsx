@@ -1,4 +1,4 @@
-import { isLiveDrawResultId, LandingData, WinnerNameComponent } from "@/lib/landing/types";
+import { getParticipantField, isLiveDrawResultId, LandingData, WinnerNameComponent } from "@/lib/landing/types";
 import { APPEAR_CLASS, DISAPPEAR_CLASS, useRevealed, useRevealTransition } from "./drawRevealHooks";
 
 // CHỈ trong canvas kéo-thả của Landing Builder (xem `builderPreview` — bắt nguồn từ `clip={false}`,
@@ -28,7 +28,8 @@ export default function WinnerNameView({
   // builderPreview mới ghi đè được nó, xem `text` bên dưới).
   quickDrawActive?: boolean;
 }) {
-  const { fontSize, color, fontWeight, align, appearEffect, disappearEffect, quickDrawText } = component.props;
+  const { fontSize, color, fontWeight, align, appearEffect, disappearEffect, quickDrawText, nameSourceColumn } =
+    component.props;
   const latest = data?.results[0];
   // CHỈ coi là "có winner để hiện" khi results[0] là dòng LIVE (id "pending-*" — 1 lượt Draw đang diễn
   // ra trong phiên Present này). Kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở KHÔNG kích hoạt
@@ -37,7 +38,20 @@ export default function WinnerNameView({
 
   const revealed = useRevealed(liveResultId, revealDelayMs);
   const isRevealed = !builderPreview && revealed;
-  const text = builderPreview ? BUILDER_PLACEHOLDER : quickDrawActive ? quickDrawText : isRevealed ? latest!.participant_name : "";
+  // `nameSourceColumn` (đặt qua Properties Panel — xem WinnerNameProps trong types.ts) ghi đè cột Name
+  // "chính thức" (`latest.participant_name`, đã resolve sẵn ở server) — chỉ cần khi session có NHIỀU
+  // HƠN 1 cột Data Type = Name và muốn khung Winner Name này hiện đúng cột cụ thể đó. Không tìm thấy
+  // participant/cột/giá trị rỗng thì fallback về `participant_name` như hành vi mặc định cũ.
+  const winnerName = (() => {
+    if (!latest) return "";
+    if (nameSourceColumn) {
+      const participant = data?.participants.find((p) => p.id === latest.participant_id);
+      const value = participant ? getParticipantField(participant, nameSourceColumn) : "";
+      if (value) return value;
+    }
+    return latest.participant_name;
+  })();
+  const text = builderPreview ? BUILDER_PLACEHOLDER : quickDrawActive ? quickDrawText : isRevealed ? winnerName : "";
 
   const { current, previous } = useRevealTransition(text, appearEffect ?? "none", disappearEffect ?? "none");
 

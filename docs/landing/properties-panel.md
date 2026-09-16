@@ -15,7 +15,7 @@ bounce khi component xuất hiện), nút **Delete component**.
 | `TextPanel.tsx` | Text |
 | `ImagePanel.tsx` | Image |
 | `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) |
-| `LiveTextPanel.tsx` | Winner |
+| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Lọc thêm lớp "còn dữ liệu thật" vì `session.participant_column_types` không tự dọn cột cũ sau khi Replace import (giống `hasDataForField` trong `LuckyWheelPanel.tsx`) |
 | `LiveImagePanel.tsx` | Prize |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
