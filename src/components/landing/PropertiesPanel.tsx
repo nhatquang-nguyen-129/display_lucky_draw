@@ -23,6 +23,9 @@ interface PropertiesPanelProps {
   selectedCount: number;
   prizes: Prize[];
   participants: Participant[];
+  // JSON session.participant_column_types — chỉ LiveTextPanel.tsx (Winner Name) cần, để liệt kê mọi
+  // cột đang gán Data Type = Name cho dropdown "Source" (xem WinnerNameProps.nameSourceColumn).
+  columnTypesJson: string | null;
   onChangeBackground: (patch: Partial<BackgroundConfig>) => void;
   onChangeComponent: (patch: Partial<LandingComponent>) => void;
   onChangeProps: (patch: Record<string, any>) => void;
@@ -44,6 +47,7 @@ export default function PropertiesPanel({
   selectedCount,
   prizes,
   participants,
+  columnTypesJson,
   onChangeBackground,
   onChangeComponent,
   onChangeProps,
@@ -80,7 +84,14 @@ export default function PropertiesPanel({
       {selected.type === "luckyWheel" && (
         <LuckyWheelPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
-      {selected.type === "winnerName" && <LiveTextPanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "winnerName" && (
+        <LiveTextPanel
+          props={selected.props}
+          participants={participants}
+          columnTypesJson={columnTypesJson}
+          onChange={onChangeProps}
+        />
+      )}
       {selected.type === "prizeImage" && (
         <LiveImagePanel
           props={selected.props}

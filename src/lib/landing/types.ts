@@ -182,6 +182,13 @@ export interface WinnerNameProps extends LiveTextProps {
   // người trúng cùng lúc nên không có 1 cái tên "đúng" nào để hiện, dùng 1 câu chung thay thế. Chỉ
   // Winner Name có field này.
   quickDrawText: string;
+  // Cột cụ thể (trong số các cột đang gán Data Type = Name) mà Ô WINNER NAME NÀY đọc — chỉ cần thiết
+  // khi 1 session có NHIỀU HƠN 1 cột Name (vd "Tên người chơi" và "Tên người thân"), muốn 2 khung
+  // Winner Name khác nhau hiện 2 cột khác nhau. undefined/rỗng = hành vi mặc định (đọc theo cột Name
+  // "chính thức" duy nhất, đã resolve sẵn ở server — `results[0].participant_name`, xem
+  // WinnerNameView.tsx). KHÔNG bắt buộc phải là cột đang gán Name (nếu Data Type đổi sau khi đã chọn,
+  // WinnerNameView vẫn đọc đúng cột đó — chỉ dropdown lọc theo Name lúc CHỌN để tránh chọn nhầm).
+  nameSourceColumn?: string;
 }
 
 // Hệ hiệu ứng CHUNG cho ảnh giải (Prize Image/Prize Gallery) — 1 danh mục DUY NHẤT dùng ở cả 4 giai
@@ -803,6 +810,34 @@ export function resolveParticipantDisplayField(
   }
   if (type === "name" || type === "phone" || type === "code" || type === "email") return getParticipantField(p, type);
   return "";
+}
+
+/** Liệt kê MỌI tên cột (core lẫn extra) đang gán đúng 1 `type` — dùng cho dropdown "Source" (vd
+ * WinnerNameProps.nameSourceColumn) khi 1 session có nhiều hơn 1 cột cùng type (vd 2 cột Name). Core
+ * field đứng trước (chỉ tính nếu đang active — có dữ liệu thật), rồi tới cột extra theo đúng thứ tự
+ * xuất hiện trong `columnTypesJson`. Khác `resolveParticipantDisplayField` (trả 1 giá trị ĐÃ RESOLVE
+ * của 1 participant) — hàm này trả DANH SÁCH TÊN CỘT, không đụng tới dữ liệu participant nào cả. */
+export function listParticipantColumnsForType(
+  columnTypesJson: string | null | undefined,
+  activeCoreFields: ReadonlySet<string>,
+  type: ParticipantColumnType
+): string[] {
+  let columnTypes: Record<string, ParticipantColumnType> = {};
+  if (columnTypesJson) {
+    try {
+      columnTypes = JSON.parse(columnTypesJson);
+    } catch {
+      columnTypes = {};
+    }
+  }
+  const cols: string[] = [];
+  for (const col of RESOLVABLE_CORE_FIELDS) {
+    if (activeCoreFields.has(col) && (columnTypes[col] ?? defaultParticipantColumnType(col)) === type) cols.push(col);
+  }
+  for (const [col, t] of Object.entries(columnTypes)) {
+    if (t === type && !(RESOLVABLE_CORE_FIELDS as readonly string[]).includes(col)) cols.push(col);
+  }
+  return cols;
 }
 
 // Gói dữ liệu sống (participants/prizes/kết quả quay) — 1 nơi fetch/poll duy nhất

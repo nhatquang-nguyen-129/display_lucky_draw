@@ -821,6 +821,7 @@ export default function LandingBuilderWindow() {
                 selectedCount={selectedIds.length}
                 prizes={prizes}
                 participants={participants}
+                columnTypesJson={session.participant_column_types}
                 onChangeBackground={handleChangeBackground}
                 onChangeComponent={(patch) => selected && handleUpdateComponent(selected.id, patch)}
                 onChangeProps={handleUpdateProps}
