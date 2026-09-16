@@ -449,6 +449,10 @@ export function generateNumberCommand(
   });
 }
 
-export function displayPhoneCommand(state: EditorState, col: string, pattern: PhoneMaskPattern): Command {
-  return setColumnValuesCommand(state, `Display Phone → "${col}"`, col, (row) => maskPhone(row.phone, pattern));
+/** `sourceCol` đọc theo cột nào đang được Data Editor gán Data Type = Phone (xem
+ * DataEditorModal.tsx's phoneColumns/displayPhoneSourceCol) — KHÔNG đọc cứng `row.phone` như trước
+ * (vi phạm nguyên tắc "không có field cố định", xem CLAUDE.md), vì 1 session có thể có nhiều hơn 1
+ * cột kiểu Phone và/hoặc cột Phone thật nằm ở `extra` chứ không phải cột SQL `phone`. */
+export function displayPhoneCommand(state: EditorState, col: string, sourceCol: string, pattern: PhoneMaskPattern): Command {
+  return setColumnValuesCommand(state, `Display Phone → "${col}"`, col, (row) => maskPhone(getCell(row, sourceCol), pattern));
 }

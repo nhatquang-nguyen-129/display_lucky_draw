@@ -212,6 +212,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   const [genNumberMode, setGenNumberMode] = useState<"plain" | "padded">("padded");
   const [genNumberPrefix, setGenNumberPrefix] = useState("");
   const [displayPhoneCol, setDisplayPhoneCol] = useState("display_phone");
+  // Cột nguồn đọc số điện thoại — chỉ cần chọn khi có > 1 cột Data Type = Phone (xem phoneColumns),
+  // đặt lại đúng lúc mở popup (xem chỗ setGenAction("displayPhone")) theo phoneCol mặc định.
+  const [displayPhoneSourceCol, setDisplayPhoneSourceCol] = useState("");
   const [displayPhonePattern, setDisplayPhonePattern] = useState<"last3" | "maskLast3" | "maskMost">("maskMost");
 
   const [issueFilter, setIssueFilter] = useState<string | null>(null); // null = không lọc, "__any__" = mọi lỗi, hoặc đúng message 1 loại lỗi
@@ -420,6 +423,13 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   );
   const nameCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "name"), [history.state, columnTypes]);
   const phoneCol = useMemo(() => resolveColumnForType(history.state, columnTypes, "phone"), [history.state, columnTypes]);
+  // Mọi cột đang gán Data Type = Phone (không chỉ 1 cột "chính thức" như phoneCol ở trên) — dùng cho
+  // dropdown "Source" trong popup Generate Display Phone, vì 1 session có thể có nhiều hơn 1 cột kiểu
+  // Phone (vd cả "SĐT chính" lẫn "SĐT người thân" đều gán Phone).
+  const phoneColumns = useMemo(
+    () => columnOrder.filter((col) => (columnTypes[col] ?? defaultColumnType(col)) === "phone"),
+    [columnOrder, columnTypes]
+  );
   const issuesByRow = useMemo(() => groupIssuesByRow(issues), [issues]);
   const issueGroups = useMemo(() => groupIssuesByMessage(issues), [issues]);
   const duplicateRowIds = useMemo(
@@ -739,8 +749,9 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       history.run(generateNumberCommand(history.state, col, genNumberMode, genNumberPrefix.trim()));
     } else if (genAction === "displayPhone") {
       const col = displayPhoneCol.trim();
-      if (!col) return;
-      history.run(displayPhoneCommand(history.state, col, displayPhonePattern));
+      const sourceCol = displayPhoneSourceCol || phoneCol;
+      if (!col || !sourceCol) return;
+      history.run(displayPhoneCommand(history.state, col, sourceCol, displayPhonePattern));
     }
   }
 
@@ -1083,6 +1094,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                             className={menuItem}
                             onClick={() => {
                               setGenAction("displayPhone");
+                              setDisplayPhoneSourceCol(phoneCol ?? phoneColumns[0] ?? "");
                               setOpenMenu(null);
                               setOpenSubmenu(null);
                             }}
@@ -1285,6 +1297,29 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                                 placeholder="e.g. display_phone"
                                 className={popupRowInput}
                               />
+                            )}
+                            {/* Luôn hiện (kể cả chỉ có đúng 1 lựa chọn) — dễ thấy/kiểm chứng đang đọc
+                                từ cột nào, thay vì ẩn đi rồi phải đoán. Rỗng hẳn (chưa gán Data Type =
+                                Phone cho cột nào) thì disable + báo lý do, giống nút Normalize Phone. */}
+                            {renderPopupField(
+                              "Source",
+                              phoneColumns.length > 0 ? (
+                                <select
+                                  value={displayPhoneSourceCol}
+                                  onChange={(e) => setDisplayPhoneSourceCol(e.target.value)}
+                                  className={popupRowInput}
+                                >
+                                  {phoneColumns.map((col) => (
+                                    <option key={col} value={col}>
+                                      {labelFor(col)}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <select disabled className={`${popupRowInput} text-base-500`}>
+                                  <option>Set a column's Data Type to Phone first.</option>
+                                </select>
+                              )
                             )}
                             {renderPopupField(
                               "Type",

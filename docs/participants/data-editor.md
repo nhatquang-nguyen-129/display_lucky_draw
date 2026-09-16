@@ -106,8 +106,10 @@ Cùng cơ chế Ctrl+Click-mở-URL này cũng áp dụng cho ô dữ liệu tro
 | Mục | Field (theo đúng thứ tự trên popup) | Command |
 |---|---|---|
 | **Generate Number...** | Name → Type (Sequential with Plain Number / Sequential with Zero-padded Number) → Start → Prefix (tuỳ chọn) | `generateNumberCommand` |
-| **Generate Display Phone...** | Name → Pattern (3 kiểu che số) | `displayPhoneCommand` |
+| **Generate Display Phone...** | Name → Source (dropdown mọi cột Data Type = Phone, LUÔN hiện kể cả chỉ có 1 lựa chọn) → Pattern (3 kiểu che số) | `displayPhoneCommand(state, col, sourceCol, pattern)` |
 | **Combine Columns...** | Name → Separator | `combineColumnsCommand`, nguồn ghép = cột đang bôi ở header (`targetColumns`) |
+
+`displayPhoneCommand` đọc số điện thoại qua `getCell(row, sourceCol)` — KHÔNG đọc cứng `row.phone` như bản cũ (vi phạm nguyên tắc "không có field cố định", xem `CLAUDE.md`). `sourceCol` mặc định là `phoneCol` (`resolveColumnForType`, cột Phone "chính thức" đầu tiên) khi mở popup; field "Source" LUÔN hiện (kể cả session chỉ có đúng 1 cột Data Type = Phone — dropdown chỉ có 1 lựa chọn, vẫn hiện để dễ kiểm chứng đang đọc đúng cột nào, không ẩn đi rồi phải đoán) — chỉ `disabled` kèm placeholder "Set a column's Data Type to Phone first." khi session CHƯA gán Data Type = Phone cho cột nào cả (`phoneColumns` rỗng, tính từ `columnOrder` + `columnTypes` trong `DataEditorModal.tsx`).
 
 **Generate Number** GỘP 2 tính năng cũ ("Generate ID" và "Generate Running Number") làm 1 — cùng bản chất "đếm tuần tự từ `Start`, có thể đệm số 0, có thể có tiền tố":
 
