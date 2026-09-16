@@ -23,8 +23,11 @@ interface PropertiesPanelProps {
   selectedCount: number;
   prizes: Prize[];
   participants: Participant[];
-  // JSON session.participant_column_types — chỉ LiveTextPanel.tsx (Winner Name) cần, để liệt kê mọi
-  // cột đang gán Data Type = Name cho dropdown "Source" (xem WinnerNameProps.nameSourceColumn).
+  // JSON session.participant_column_types — LiveTextPanel.tsx (Winner Name) dùng để liệt kê mọi cột
+  // đang gán Data Type = Name cho dropdown "Source" (xem WinnerNameProps.nameSourceColumn);
+  // LuckyWheelPanel.tsx dùng để biết field "Name/Phone/Email/Code" chung đang resolve ra cột nào
+  // (xem resolveWheelField trong lib/landing/types.ts); ButtonPanel.tsx dùng để liệt kê cột đang gán
+  // Data Type = URL cho dropdown "Source" của action "Open Link".
   columnTypesJson: string | null;
   onChangeBackground: (patch: Partial<BackgroundConfig>) => void;
   onChangeComponent: (patch: Partial<LandingComponent>) => void;
@@ -82,7 +85,12 @@ export default function PropertiesPanel({
       {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "luckyWheel" && (
-        <LuckyWheelPanel props={selected.props} participants={participants} onChange={onChangeProps} />
+        <LuckyWheelPanel
+          props={selected.props}
+          participants={participants}
+          columnTypesJson={columnTypesJson}
+          onChange={onChangeProps}
+        />
       )}
       {selected.type === "winnerName" && (
         <LiveTextPanel
@@ -110,6 +118,7 @@ export default function PropertiesPanel({
         <ButtonPanel
           props={selected.props}
           participants={participants}
+          columnTypesJson={columnTypesJson}
           // Action nào (trừ "none") đã bị 1 Button KHÁC trên trang chiếm — tối đa 1 Button/action,
           // tránh 2 nút cùng "Draw" gây nhầm lẫn vận hành. Key = action, value = tên Button đang giữ.
           usedActionOwners={Object.fromEntries(

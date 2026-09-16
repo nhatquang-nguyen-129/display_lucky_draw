@@ -174,6 +174,23 @@ Hệ quả: cột toàn bộ cùng 1 kiểu (kể cả toàn chữ HOA) sẽ KH�
 - `handleSave()`: so từng dòng với `originalRows` (snapshot lúc load) — dòng nào thật sự đổi mới gọi `participants:update`; dòng mới (`__isNew`) gọi `participants:create`; dòng bị xoá khỏi state → `participants:bulkDelete`. Cuối cùng `participants:reorder` để ghi lại `sort_order` hiện tại (kể cả khi không kéo-thả gì, để không bị lệch thứ tự sau khi reload).
 - Đóng modal khi đang dirty → `confirm()` hỏi có muốn bỏ thay đổi chưa lưu không.
 
+## Bug đã sửa: double-click sửa ô / rename cột thi thoảng không hiện con trỏ gõ chữ
+
+Cả `<tr>` (mỗi dòng, kéo-thả sắp xếp lại thứ tự) và `<th>` (mỗi header cột, kéo-thả đổi thứ tự cột)
+đều đặt `draggable`. `<input>` render bên trong lúc đang sửa (ô dữ liệu — `editingCell`, hoặc rename
+cột — `renamingColumn`) KHÔNG tự động thoát khỏi vùng draggable của cha chỉ vì nó là 1 `<input>` —
+phải tự khai báo `draggable={false}` (đã làm cho tay kéo resize cột từ trước, xem
+`handleColumnResizeStart`'s div, dòng `draggable={false}` cạnh `onMouseDown`) nhưng bị bỏ sót ở 2
+input này lúc mới thêm. Hệ quả: double-click sửa ô/mở rename cột có 1 chút xê dịch chuột nhỏ giữa 2
+lần click (rất hay xảy ra khi thao tác thật) khiến trình duyệt/Electron nhận nhầm thành bắt đầu kéo
+dòng/cột — `<input>` vẫn nhận `autoFocus` nhưng không hiện con trỏ nhấp nháy, đúng kiểu lỗi "thi
+thoảng" (chỉ xảy ra khi có di chuyển chuột, không phải mọi lần).
+
+Sửa bằng cách thêm `draggable={false}` vào chính 2 `<input>` đó (không phải vào `<tr>`/`<th>` cha —
+2 phần tử này VẪN CẦN draggable để kéo-thả sắp xếp hoạt động, chỉ input con mới cần khai báo thoát
+riêng). Bất kỳ `<input>`/`<textarea>` MỚI thêm sau này lồng trong 1 phần tử `draggable` (dòng/cột/
+card kéo-thả được) đều PHẢI tự thêm `draggable={false}`, không dựa vào default.
+
 ## Cột lõi vs cột phụ trong UI
 
 - Cột lõi (`name`/`phone`/`code`/`email`) **chỉ hiện khi đang có dữ liệu thật** (`isCoreFieldActive`, xem [column-mapping.md](./column-mapping.md)) — không còn hiện sẵn 4 cột trống mặc định như thiết kế cũ. Cột nào đang được coi là "Name"/"Phone" (đánh dấu `*` ở header) được tính bằng `resolveColumnForType`, KHÔNG cố định là literal cột `name`/`phone`. "Xoá cột" trên core field chỉ clear giá trị (không drop được cột), và vì hiển thị giờ phụ thuộc dữ liệu, clear hết giá trị sẽ tự ẩn cột đó ngay sau đó — không cần state "đã xoá" riêng để theo dõi.

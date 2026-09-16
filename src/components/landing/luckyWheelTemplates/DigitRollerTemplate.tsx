@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { getParticipantField, isLiveDrawResultId, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  computeActiveParticipantCoreFields,
+  isLiveDrawResultId,
+  LandingData,
+  LuckyWheelComponent,
+  resolveWheelField,
+} from "@/lib/landing/types";
 import "./digitRollerEffects.css";
 
 // Tốc độ nhấp nháy ký tự lúc "đang quay" (rollStyle "flicker") — chạy từ nhanh (MIN_DELAY) tới chậm
@@ -129,6 +135,10 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
   const count = Math.max(1, Math.floor(digitCount || 3));
   const participants = data?.participants ?? [];
   const results = data?.results ?? [];
+  const columnTypesJson = data?.columnTypesJson ?? null;
+  // Cột Name/Phone/Email/Code nào đang thực sự có dữ liệu — dùng để resolve đúng cột đã gán Data
+  // Type tương ứng (xem resolveWheelField), không đọc cứng participant.name/.phone/....
+  const activeCoreFields = useMemo(() => computeActiveParticipantCoreFields(participants), [participants]);
 
   // Placeholder ban đầu (chưa có lượt quay nào) là ký tự NGẪU NHIÊN, không phải "-" — trông giống
   // 1 ô số thật đang chờ hơn là 1 ô rỗng/lỗi.
@@ -174,7 +184,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
 
     // Hiển thị NGUYÊN VẸN giá trị thật — không lọc ký tự, không cắt prefix. slice/padStart chỉ là
     // lưới an toàn cho trường hợp hiếm dữ liệu lệch độ dài so với lúc validate ở panel.
-    const rawValue = getParticipantField(winner, winnerDisplayField);
+    const rawValue = resolveWheelField(winner, winnerDisplayField, columnTypesJson, activeCoreFields);
     const targetChars = rawValue.slice(-count).padStart(count, " ").split("");
 
     // Thời điểm CHỐT của từng ô — "together": tất cả chốt cùng lúc, lúc spinDurationMs. "sequential":

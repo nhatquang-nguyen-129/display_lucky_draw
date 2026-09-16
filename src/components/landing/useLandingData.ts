@@ -17,17 +17,22 @@ export function useLandingData(sessionId: string | null): LandingData & { refres
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [results, setResults] = useState<DrawResultRow[]>([]);
+  // session.participant_column_types — Lucky Wheel cần để resolve đúng cột Name/Phone/Email/Code
+  // (xem resolveWheelField trong lib/landing/types.ts), không đọc cứng participant.name/.phone/....
+  const [columnTypesJson, setColumnTypesJson] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!sessionId) return;
-    const [p, pr, r] = await Promise.all([
+    const [p, pr, r, s] = await Promise.all([
       window.api.participants.list(sessionId),
       window.api.prizes.list(sessionId),
       window.api.sessions.results(sessionId),
+      window.api.sessions.get(sessionId),
     ]);
     setParticipants(p);
     setPrizes(pr);
     setResults(r);
+    setColumnTypesJson(s?.participant_column_types ?? null);
   }, [sessionId]);
 
   useEffect(() => {
@@ -35,6 +40,7 @@ export function useLandingData(sessionId: string | null): LandingData & { refres
       setParticipants([]);
       setPrizes([]);
       setResults([]);
+      setColumnTypesJson(null);
       return;
     }
     refresh();
@@ -42,5 +48,5 @@ export function useLandingData(sessionId: string | null): LandingData & { refres
     return () => clearInterval(interval);
   }, [sessionId, refresh]);
 
-  return { participants, prizes, results, refresh };
+  return { participants, prizes, results, columnTypesJson, refresh };
 }

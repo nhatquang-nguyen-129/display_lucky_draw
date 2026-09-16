@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  computeActiveParticipantCoreFields,
   getParticipantExtraField,
-  getParticipantField,
   LuckyWheelProps,
   LuckyWheelTemplate,
   ParticipantDisplayField,
   ParticipantKeyField,
+  resolveWheelField,
 } from "@/lib/landing/types";
 import { Participant } from "@/types";
 
@@ -16,6 +17,11 @@ interface LuckyWheelPanelProps {
   // bên dưới và getFieldOptions). Cũng dùng để liệt kê MỌI cột optional (extra_data) đang thực sự
   // tồn tại trong session, không chỉ 4 field cố định — xem extraColumns bên dưới.
   participants: Participant[];
+  // session.participant_column_types — để biết "Name"/"Phone"/"Email"/"Code" (label chung) đang
+  // thực sự resolve ra cột nào (xem resolveWheelField) — KHÔNG còn giả định chúng luôn là cột SQL
+  // participant.name/.phone/.... (đã bỏ ghi từ khi Participant đổi sang mô hình Data Type, xem
+  // CLAUDE.md mục Participant).
+  columnTypesJson: string | null;
   onChange: (patch: Partial<LuckyWheelProps>) => void;
 }
 
@@ -25,8 +31,8 @@ const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500
 const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
 const TEMPLATE_OPTIONS: { value: LuckyWheelTemplate; label: string }[] = [
-  { value: "wheel", label: "Wheel (circular)" },
-  { value: "digitRoller", label: "Digit Roller (slot-machine numbers)" },
+  { value: "wheel", label: "Wheel" },
+  { value: "digitRoller", label: "Digit Roller" },
 ];
 
 const KEY_FIELD_OPTIONS: { value: ParticipantKeyField; label: string }[] = [
@@ -44,7 +50,7 @@ const DISPLAY_FIELD_OPTIONS: { value: ParticipantDisplayField; label: string }[]
 ];
 
 const FONT_OPTIONS = [
-  { value: "Inter, ui-sans-serif, sans-serif", label: "Sans (default)" },
+  { value: "Inter, ui-sans-serif, sans-serif", label: "Sans" },
   { value: "Georgia, serif", label: "Serif" },
   { value: "'Courier New', monospace", label: "Monospace" },
 ];
@@ -67,7 +73,7 @@ const FONT_OPTIONS = [
 // Mỗi nhóm gồm ĐÚNG 1 <details> con — mở sẵn mặc định (`useState(true)`, không phải `open` tĩnh —
 // tránh React ép mở lại mỗi lần re-render, xem revealOpen/spinOpen) vì đây là cấu hình CỐT LÕI, khác
 // PrizeEffectPicker.tsx (effect tuỳ chọn thêm, mặc định đóng trừ khi đã cấu hình).
-export default function LuckyWheelPanel({ props, participants, onChange }: LuckyWheelPanelProps) {
+export default function LuckyWheelPanel({ props, participants, columnTypesJson, onChange }: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
   // Mở sẵn mặc định — khác PrizeEffectPicker.tsx (chỉ mở nếu ĐÃ cấu hình gì đó, vì hiệu ứng ở đó là
@@ -97,38 +103,69 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
   const allKeyFieldOptions = [...KEY_FIELD_OPTIONS, ...extraColumns.map((k) => ({ value: k, label: k }))];
   const allDisplayFieldOptions = [...DISPLAY_FIELD_OPTIONS, ...extraColumns.map((k) => ({ value: k, label: k }))];
 
-  // "name" luôn có dữ liệu (bắt buộc nhập) — phone/email/code/cột optional thì tuỳ session, có thể
-  // bỏ trống toàn bộ (vd session này không thu thập email). Chọn field rỗng làm drawField sẽ làm
-  // segment biến mất hết (getParticipantField trả về "", bị coi là trùng/loại), displayField/
-  // winnerDisplayField rỗng thì hiện chữ trống — cả 2 đều trông như "quay không ra kết quả gì".
-  // Chỉ cho chọn field đang thực sự có ít nhất 1 giá trị trong session hiện tại.
-  const hasPhone = participants.some((p) => p.phone?.trim());
-  const hasEmail = participants.some((p) => p.email?.trim());
-  const hasCode = participants.some((p) => p.code?.trim());
+  // Cột SQL name/phone/code/email nào đang THỰC SỰ có dữ liệu — dùng chung với isCoreFieldActive
+  // của Data Editor (xem computeActiveParticipantCoreFields), KHÔNG hardcode "name" = true như
+  // trước nữa: từ khi import flow đưa toàn bộ dữ liệu vào extra_data (xem CLAUDE.md mục
+  // Participant), cột SQL participant.name gần như luôn RỖNG — "name" hardcode true khiến label
+  // chung "Name" luôn hiện trong dropdown dù participant không có field đó, chọn vào sẽ ra chữ rỗng
+  // (bug đã gặp thật). Cột thật (vd "HÃY CHO BIẾT TÊN CỦA BẠN" đã gán Data Type = Name) vẫn hiện
+  // riêng qua `extraColumns` bên dưới, không cần dựa vào field cố định này.
+  const activeCoreFields = useMemo(() => computeActiveParticipantCoreFields(participants), [participants]);
+  // Chọn field rỗng làm drawField sẽ làm segment biến mất hết (resolveWheelField trả về "", bị coi
+  // là trùng/loại), displayField/winnerDisplayField rỗng thì hiện chữ trống — cả 2 đều trông như
+  // "quay không ra kết quả gì". Chỉ cho chọn field đang thực sự có ít nhất 1 giá trị trong session.
   function hasDataForField(field: string): boolean {
     switch (field) {
       case "participantId":
-      case "name":
         return true;
+      case "name":
       case "phone":
-        return hasPhone;
       case "email":
-        return hasEmail;
       case "code":
-        return hasCode;
+        return activeCoreFields.has(field);
       default:
         return participants.some((p) => getParticipantExtraField(p, field));
     }
   }
-  // Vẫn giữ field ĐANG được chọn trong danh sách dù nó không còn dữ liệu (vd session vừa xoá hết
-  // số điện thoại sau khi đã chọn Phone) — chỉ ẩn các lựa chọn rỗng NGOÀI field đang chọn, tránh
-  // <select> hiện trắng/không khớp value nào.
+  // "name"/"phone"/"email"/"code" KHÔNG phải cột thật — là label chung, chỉ hợp lệ khi cột SQL cùng
+  // tên đó thực sự có dữ liệu (activeCoreFields). Khác cột optional (extra_data): 1 cột optional hết
+  // dữ liệu vẫn là 1 cột THẬT (vd session vừa xoá hết số điện thoại ở 1 cột đã có từ trước) nên vẫn
+  // đáng giữ lại nếu đang được chọn, tránh <select> hiện trắng. 4 label ảo thì KHÔNG áp dụng ngoại lệ
+  // này — giữ 1 label ảo chỉ vì nó "đang được chọn" chính là bug đã gặp thật (field không tồn tại
+  // vẫn nằm lại trong dropdown mãi vì chưa ai đổi lựa chọn khác đi).
+  function isPhantomGenericField(field: string): boolean {
+    return (field === "name" || field === "phone" || field === "email" || field === "code") && !activeCoreFields.has(field);
+  }
   function availableOptions<T extends { value: string; label: string }>(options: T[], current: string): T[] {
-    return options.filter((o) => o.value === current || hasDataForField(o.value));
+    return options.filter((o) => {
+      if (isPhantomGenericField(o.value)) return false;
+      return o.value === current || hasDataForField(o.value);
+    });
   }
   const keyFieldOptions = availableOptions(allKeyFieldOptions, props.drawField);
   const displayFieldOptions = availableOptions(allDisplayFieldOptions, props.displayField);
   const winnerFieldOptions = availableOptions(allDisplayFieldOptions, props.winnerDisplayField);
+
+  // Tự chuyển field đang lưu sang 1 cột THẬT ngay khi nó đang trỏ vào 1 label ảo (vd landing cũ lưu
+  // "phone" từ trước khi có bản sửa isPhantomGenericField, hoặc mở lại 1 session vừa xoá hết cột
+  // Data Type Phone) — khác đứt khoát với cách availableOptions xử lý cột optional hết dữ liệu (vẫn
+  // giữ nguyên lựa chọn, không tự đổi): label ảo không phải 1 cột đang "tạm hết dữ liệu", mà là 1
+  // field KHÔNG TỒN TẠI, để nó nằm im trong props sẽ khiến dropdown mãi hiện lại 1 field ảo bất cứ
+  // khi nào nó tình cờ trùng "current" (bug đã gặp thật, xem isPhantomGenericField).
+  useEffect(() => {
+    const patch: Partial<LuckyWheelProps> = {};
+    if (isPhantomGenericField(props.drawField) && keyFieldOptions[0]) {
+      patch.drawField = keyFieldOptions[0].value as ParticipantKeyField;
+    }
+    if (isPhantomGenericField(props.displayField) && displayFieldOptions[0]) {
+      patch.displayField = displayFieldOptions[0].value;
+    }
+    if (isPhantomGenericField(props.winnerDisplayField) && winnerFieldOptions[0]) {
+      patch.winnerDisplayField = winnerFieldOptions[0].value;
+    }
+    if (Object.keys(patch).length > 0) onChange(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.drawField, props.displayField, props.winnerDisplayField, activeCoreFields]);
 
   // ĐỊNH NGHĨA: Digit Roll = quy ước về SỐ LƯỢNG Ô KÝ TỰ (character slots) hiển thị trên màn hình —
   // KHÔNG phải kiểm tra nội dung có phải toàn số hay không. "ENFA0001" (8 ký tự) hợp lệ cho 1
@@ -137,7 +174,7 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
   // dung (không bỏ prefix, không chỉ lấy phần số). Điều kiện DUY NHẤT: 100% participant phải có
   // giá trị dài ĐÚNG BẰNG digitCount — ngắn/dài hơn đều không đạt, không có ngưỡng châm chước.
   function rawValueOf(p: Participant, field: ParticipantDisplayField): string {
-    return getParticipantField(p, field).trim();
+    return resolveWheelField(p, field, columnTypesJson, activeCoreFields).trim();
   }
   interface FieldEvaluation {
     enabled: boolean;
@@ -159,7 +196,13 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
     }
     return { enabled: reasons.length === 0 && missingCount === 0 && distinctLengths.length === 1, reasons };
   }
-  const digitFieldOptions = allDisplayFieldOptions.map((o) => {
+  // Digit Roller không đòi hỏi field phải thuộc 1 Data Type cụ thể — chỉ cần ĐÚNG số ký tự — nên
+  // "available" ở đây nghĩa là "cột này thực sự tồn tại trong Participant" (lọc qua
+  // availableOptions/hasDataForField, giống displayFieldOptions/winnerFieldOptions phía trên,
+  // KHÔNG map thẳng lên allDisplayFieldOptions như trước — đó là lý do Name/Phone/Email/Code ảo
+  // vẫn lọt vào dropdown dù participant không có field đó). "Eligible" là lớp lọc THỨ HAI, riêng
+  // của Digit Roller, chỉ đúng số ký tự mới đạt.
+  const digitFieldOptions = availableOptions(allDisplayFieldOptions, props.winnerDisplayField).map((o) => {
     const evaluation = evaluateField(o.value, props.digitCount);
     return { ...o, ...evaluation };
   });
@@ -171,10 +214,13 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
     // cả cột optional) thực sự khớp đúng digitCount đang cấu hình, fallback về "phone" nếu không
     // field nào đạt (người dùng sẽ thấy nó bị xám kèm lý do, tự điều chỉnh Digit count hoặc field).
     if (nextTemplate === "digitRoller" && props.winnerDisplayField === "name") {
-      const candidate = allDisplayFieldOptions.find(
+      // Chỉ tìm trong các cột THỰC SỰ tồn tại (giống digitFieldOptions phía trên) — không xét
+      // Phone/Email/Code ảo nếu participant không có field đó.
+      const available = availableOptions(allDisplayFieldOptions, props.winnerDisplayField);
+      const candidate = available.find(
         (o) => o.value !== "name" && evaluateField(o.value, props.digitCount).enabled
       );
-      patch.winnerDisplayField = candidate?.value ?? "phone";
+      patch.winnerDisplayField = candidate?.value ?? available.find((o) => o.value !== "name")?.value ?? "phone";
     }
     onChange(patch);
   }
@@ -375,7 +421,7 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
                 value={props.spinEasing}
                 onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
               >
-                <option value="linear">Linear (constant speed)</option>
+                <option value="linear">Linear</option>
                 <option value="easeOut">Fast start, slow stop</option>
                 <option value="easeInOut">Smooth start and stop</option>
               </select>
@@ -405,8 +451,8 @@ export default function LuckyWheelPanel({ props, participants, onChange }: Lucky
                     value={props.rollStyle ?? "flicker"}
                     onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
                   >
-                    <option value="flicker">Flicker (random characters)</option>
-                    <option value="reel">Reel (spinning scroll)</option>
+                    <option value="flicker">Flicker</option>
+                    <option value="reel">Reel</option>
                   </select>
                 </div>
 

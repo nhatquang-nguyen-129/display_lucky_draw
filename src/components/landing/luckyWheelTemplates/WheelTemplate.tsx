@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Participant } from "@/types";
-import { getParticipantField, isLiveDrawResultId, LandingData, LuckyWheelComponent } from "@/lib/landing/types";
+import {
+  computeActiveParticipantCoreFields,
+  isLiveDrawResultId,
+  LandingData,
+  LuckyWheelComponent,
+  resolveWheelField,
+} from "@/lib/landing/types";
 import { displayValue } from "./displayValue";
 
 const FULL_TURNS = 5;
@@ -19,13 +25,17 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
     component.props;
   const participants = data?.participants ?? [];
   const results = data?.results ?? [];
+  const columnTypesJson = data?.columnTypesJson ?? null;
+  // Cột Name/Phone/Email/Code nào đang thực sự có dữ liệu — dùng để resolve đúng cột đã gán Data
+  // Type tương ứng (xem resolveWheelField), không đọc cứng participant.name/.phone/....
+  const activeCoreFields = useMemo(() => computeActiveParticipantCoreFields(participants), [participants]);
 
   // Khử trùng segment theo drawField — 2 participant cùng giá trị field này gộp thành 1 segment
   // trên vòng quay (vd drawField = "phone" thì 2 dòng trùng SĐT chỉ hiện 1 lần).
   const segments: Participant[] = [];
   const seenKeys = new Set<string>();
   participants.forEach((p) => {
-    const key = getParticipantField(p, drawField);
+    const key = resolveWheelField(p, drawField, columnTypesJson, activeCoreFields);
     if (!key || seenKeys.has(key)) return;
     seenKeys.add(key);
     segments.push(p);
@@ -110,7 +120,7 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
                   fontSize,
                 }}
               >
-                {displayValue(p, displayField, maskSensitiveData)}
+                {displayValue(p, displayField, maskSensitiveData, columnTypesJson, activeCoreFields)}
               </div>
             ))
           )}
@@ -124,7 +134,7 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
           className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-base-950/80 px-4 py-1.5 text-center"
           style={{ color: fontColor, fontSize: Math.round(fontSize * 0.8) }}
         >
-          🎉 {displayValue(winner, winnerDisplayField, maskSensitiveData)}
+          🎉 {displayValue(winner, winnerDisplayField, maskSensitiveData, columnTypesJson, activeCoreFields)}
         </div>
       )}
     </div>

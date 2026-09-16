@@ -72,6 +72,15 @@ Chưa gán Data Type = Name cho cột nào cả → `nameCol` là `undefined` �
 
 Đổi logic resolve (vd thêm ưu tiên khác) phải sửa cả 3 nơi — mỗi file đều có comment trỏ chéo sang 2 file còn lại.
 
+## Dropdown "Source" chọn cột ở Landing Builder — quy tắc riêng, xem properties-panel.md
+
+`listParticipantColumnsForType`/`resolveParticipantDisplayField` ở trên còn được dùng để dựng các
+dropdown "Source"/field-chọn-cột trong Properties Panel (Winner Name, Button Open Link, Lucky Wheel)
+— nhưng KHÔNG phải panel nào cũng lọc theo Data Type giống nhau. Quy tắc đầy đủ (2 nhánh: field bắt
+buộc đúng Data Type vs. field nào cũng dùng được) nằm ở
+[`docs/landing/properties-panel.md`](../landing/properties-panel.md), đọc trước khi thêm 1 dropdown
+chọn cột mới.
+
 ## Column Label — khái niệm KHÁC, KHÔNG liên quan
 
 `sessions.participant_column_labels` (`{ [tênCột]: "Nhãn hiển thị" }`) chỉ đổi **tên hiển thị** của core field trong Data Editor (vd đổi header "Phone" thành "Số điện thoại") — không liên quan gì tới việc gán ý nghĩa dữ liệu (Data Type). Đừng nhầm 2 khái niệm này.
