@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { ButtonAction, ButtonProps, getParticipantExtraField } from "@/lib/landing/types";
+import {
+  BUTTON_ACTION_LABELS,
+  ButtonAction,
+  ButtonProps,
+  computeActiveParticipantCoreFields,
+  getParticipantField,
+  listParticipantColumnsForType,
+} from "@/lib/landing/types";
 import { Participant } from "@/types";
 
 interface ButtonPanelProps {
   props: ButtonProps;
-  // Dùng để liệt kê MỌI cột optional (extra_data) đang thực sự có dữ liệu trong session này, cho
-  // picker "URL field" khi action = "openLink" — cùng cách LuckyWheelPanel.tsx làm với
-  // drawField/displayField, tránh cho chọn 1 field rỗng khiến nút không bao giờ mở được gì.
+  // Dùng để lọc cột nào đang gán Data Type = URL VÀ thực sự có dữ liệu, cho picker "Source" khi
+  // action = "openLink" — xem urlColumns bên dưới, cùng cách LiveTextPanel.tsx làm với "Source" của
+  // Winner Name (Data Type = Name), tránh cho chọn 1 field rỗng khiến nút không bao giờ mở được gì.
   participants: Participant[];
+  // session.participant_column_types — để biết cột nào đang gán Data Type = URL (xem
+  // listParticipantColumnsForType trong lib/landing/types.ts).
+  columnTypesJson: string | null;
   // Action nào (trừ "none") đã bị 1 Button KHÁC trên trang chiếm rồi (tính sẵn ở PropertiesPanel.tsx
   // vì nó cần đọc config.components, panel này không có) — key = action, value = tên Button đang
   // giữ nó, dùng để disable option đó + hiện lý do khi hover.
@@ -23,32 +33,24 @@ const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-
 // Tên ngắn thuần, không kèm giải thích — giữ nguyên value nội bộ ("reset", "toggleScoreboard",
 // "openLink"...) trong ButtonAction/ButtonView.tsx, chỉ đổi CHỮ HIỂN THỊ ở đây. Không còn action
 // "Discard" riêng — đã gộp vào "Draw" (bấm Draw lúc đang có candidate chờ Confirm tự quay lại, xem
-// ButtonView.tsx's runAction).
+// ButtonView.tsx's runAction). "confirm"/"reset"/"toggleScoreboard"/"openLink" lấy CHUNG từ
+// BUTTON_ACTION_LABELS (lib/landing/types.ts) — đúng y chữ sẽ tự hiện lên nút ở ButtonView.tsx, vì đã
+// bỏ ô Label thủ công (xem ghi chú cạnh field Label cũ, giờ chỉ còn dùng lúc action = "none").
 const ACTION_LABELS: Record<ButtonAction, string> = {
   none: "None",
   draw: "Draw",
-  confirm: "Confirm",
-  reset: "Reset",
-  toggleScoreboard: "Scoreboard",
-  openLink: "Open Link",
-};
+  ...BUTTON_ACTION_LABELS,
+} as Record<ButtonAction, string>;
 
 const ACTION_ORDER: ButtonAction[] = ["none", "draw", "confirm", "reset", "toggleScoreboard", "openLink"];
 
-const FIXED_FIELD_OPTIONS = [
-  { value: "code", label: "Code" },
-  { value: "phone", label: "Phone" },
-  { value: "email", label: "Email" },
-  { value: "name", label: "Name" },
-];
-
 // Button chạy đúng 1 action CỐ ĐỊNH khi bấm (xem ButtonView.tsx) — panel này chỉ chọn action đó +
-// styling thị giác. "openLink" cần thêm picker URL field, y hệt LinkOpenerPanel.tsx (đã gộp vào
+// styling thị giác. "openLink" cần thêm picker Source (URL), y hệt LinkOpenerPanel.tsx (đã gộp vào
 // đây từ lúc bỏ Trigger Graph — không còn 1 component "Link Opener" riêng nữa). 1 nhóm "Basic
 // options" phẳng DUY NHẤT — cùng khuôn đã dùng cho các panel khác. Button KHÔNG có nhóm "Self
 // Interactions"/"Interactions with Draw" — action chạy NGAY lúc bấm, không có giai đoạn/trạng thái
 // nào khác để cấu hình riêng.
-export default function ButtonPanel({ props, participants, usedActionOwners, onChange }: ButtonPanelProps) {
+export default function ButtonPanel({ props, participants, columnTypesJson, usedActionOwners, onChange }: ButtonPanelProps) {
   // Dropdown Action tự dựng (không dùng <select> gốc) — <select> native không cho chèn tooltip
   // riêng vào từng option (đóng khung bởi OS, không style/nội dung tuỳ ý được), mà yêu cầu là phải
   // hiện được lý do 1 action bị khoá ngay khi hover, nên phải tự vẽ danh sách bằng div/button.
@@ -60,45 +62,33 @@ export default function ButtonPanel({ props, participants, usedActionOwners, onC
     return () => window.removeEventListener("click", close);
   }, [actionMenuOpen]);
 
-  const extraColumns = useMemo(() => {
-    const keys = new Set<string>();
-    participants.forEach((p) => {
-      if (!p.extra_data) return;
-      try {
-        const extra = JSON.parse(p.extra_data) as Record<string, string>;
-        Object.keys(extra).forEach((k) => keys.add(k));
-      } catch {
-        // extra_data hỏng ở dòng này — bỏ qua, không chặn cả danh sách field
-      }
-    });
-    return Array.from(keys).sort();
-  }, [participants]);
+  // Cột nào đang gán Data Type = URL VÀ thực sự có dữ liệu — CHỈ những cột này mới hợp lý cho 1 nút
+  // "Open Link" (khác Lucky Wheel, nơi field nào cũng dùng được làm identifier/chữ hiển thị). Lọc
+  // thêm lớp "có dữ liệu thật" giống LiveTextPanel.tsx's nameColumns — participant_column_types là
+  // config CỘNG DỒN, không tự dọn khi cột biến mất khỏi dữ liệu thật.
+  const activeCoreFields = useMemo(() => computeActiveParticipantCoreFields(participants), [participants]);
+  const urlColumns = useMemo(() => {
+    const configured = listParticipantColumnsForType(columnTypesJson, activeCoreFields, "url");
+    return configured.filter((col) => participants.some((p) => getParticipantField(p, col).trim()));
+  }, [participants, columnTypesJson, activeCoreFields]);
 
-  function hasDataForField(field: string): boolean {
-    switch (field) {
-      case "name":
-        return true;
-      case "phone":
-        return participants.some((p) => p.phone?.trim());
-      case "email":
-        return participants.some((p) => p.email?.trim());
-      case "code":
-        return participants.some((p) => p.code?.trim());
-      default:
-        return participants.some((p) => getParticipantExtraField(p, field));
-    }
-  }
-
-  const allFieldOptions = [...FIXED_FIELD_OPTIONS, ...extraColumns.map((k) => ({ value: k, label: k }))];
-  // Vẫn giữ field ĐANG được chọn trong danh sách dù nó không còn dữ liệu, chỉ ẩn các lựa chọn rỗng
-  // KHÁC — tránh <select> hiện trắng/không khớp value nào.
-  const fieldOptions = allFieldOptions.filter((o) => o.value === props.urlField || hasDataForField(o.value));
+  // Tự chuyển urlField đang lưu sang cột URL thật đầu tiên ngay khi nó đang trỏ vào 1 cột không còn
+  // gán Data Type = URL (vd landing cũ lưu field cố định "name"/"phone"/"code"/"email" từ trước khi
+  // Source đổi sang lọc theo Data Type, hoặc cột đã bị đổi Data Type/xoá ở Data Editor) — tránh
+  // <select> kẹt lại 1 giá trị không còn khớp option nào (cùng cách LuckyWheelPanel.tsx tự sửa
+  // drawField/displayField/winnerDisplayField phantom).
+  useEffect(() => {
+    if (props.action !== "openLink") return;
+    if (!props.urlField || urlColumns.includes(props.urlField)) return;
+    if (urlColumns[0]) onChange({ urlField: urlColumns[0] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.action, props.urlField, urlColumns]);
 
   return (
     <div className="space-y-3">
       <span className={groupLabelClass}>Basic options</span>
       <div className="relative" onClick={(e) => e.stopPropagation()}>
-        <label className={labelClass}>Action (on click)</label>
+        <label className={labelClass}>Action</label>
         <button
           type="button"
           onClick={() => setActionMenuOpen((v) => !v)}
@@ -150,19 +140,24 @@ export default function ButtonPanel({ props, participants, usedActionOwners, onC
 
       {props.action === "openLink" && (
         <div>
-          <label className={labelClass}>URL field</label>
-          <select
-            className={fieldClass}
-            value={props.urlField ?? ""}
-            onChange={(e) => onChange({ urlField: e.target.value })}
-          >
-            <option value="">— none selected —</option>
-            {fieldOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <label className={labelClass}>Source</label>
+          {urlColumns.length > 0 ? (
+            <select
+              className={fieldClass}
+              value={props.urlField && urlColumns.includes(props.urlField) ? props.urlField : urlColumns[0]}
+              onChange={(e) => onChange({ urlField: e.target.value })}
+            >
+              {urlColumns.map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select disabled className={`${fieldClass} text-base-500`}>
+              <option>Set a column's Data Type to URL first.</option>
+            </select>
+          )}
         </div>
       )}
 
@@ -177,17 +172,6 @@ export default function ButtonPanel({ props, participants, usedActionOwners, onC
             value={props.multipleDrawPaceMs ?? 600}
             onChange={(e) => onChange({ multipleDrawPaceMs: Math.max(0, Number(e.target.value)) })}
           />
-        </div>
-      )}
-
-      {/* Ẩn hẳn khi action = "draw" thay vì hiện kèm ghi chú "bị bỏ qua" — field này THẬT SỰ vô tác
-          dụng lúc đó (ButtonView.tsx tự sinh chữ "Single Draw"/"Multiple Draw (2/5)"/"Quick Draw (5)"
-          theo mode đã ARM, không đọc props.label), nên bỏ hẳn khỏi panel gọn hơn là giữ 1 ô nhập
-          không làm gì. */}
-      {props.action !== "draw" && (
-        <div>
-          <label className={labelClass}>Label</label>
-          <input className={fieldClass} value={props.label} onChange={(e) => onChange({ label: e.target.value })} />
         </div>
       )}
 

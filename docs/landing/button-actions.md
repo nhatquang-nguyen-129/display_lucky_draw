@@ -25,13 +25,42 @@ option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `conf
 | **Confirm** | `sequence.confirm()` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua nút Discard |
 | **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm |
 | **Scoreboard** | `sequence.toggleScoreboard()` | Không ghi gì | Bật/tắt popup Scoreboard giữa màn hình |
-| **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **URL field** — mở URL của winner GẦN NHẤT, no-op im lặng nếu chưa có winner/field rỗng |
+| **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **Source** — mở URL của winner GẦN NHẤT, no-op im lặng nếu chưa có winner/field rỗng |
 
-**Chi tiết Open Link**: URL đọc từ 1 cột optional (`extra_data`) đã gán Loại dữ liệu "url" ở Data
-Editor (xem [`docs/participants/column-mapping.md`](../participants/column-mapping.md)), của CHÍNH
-participant vừa trúng (`sequence.candidate`) — qua `getParticipantExtraField()`. Mở bằng
-`shell.openExternal()` (main process, chỉ chấp nhận `http(s)://` để tránh mở nhầm scheme lạ) — KHÔNG
-dùng `window.open` (bị chặn dưới `contextIsolation: true`).
+**Chi tiết Open Link**: **Source** (`ButtonProps.urlField`) là ví dụ nhánh 2 của quy tắc "Source
+picker" ở [`docs/landing/properties-panel.md`](./properties-panel.md) — CHỈ liệt kê cột đã gán Data
+Type = "url" ở Data Editor (`listParticipantColumnsForType`, xem
+[`docs/participants/column-mapping.md`](../participants/column-mapping.md)) VÀ còn dữ liệu thật,
+KHÁC hẳn Draw/Display field của Lucky Wheel (nhánh 1, field nào cũng dùng được). Chưa có cột nào gán
+Data Type URL → hiện `<select disabled>` placeholder "Set a column's Data Type to URL first.", không
+dropdown rỗng hay cho chọn nhầm 1 cột Name/Phone làm URL (chọn nhầm sẽ luôn no-op, không rõ vì sao).
+`urlField` đang lưu trỏ vào 1 cột không còn hợp lệ (đổi Data Type/xoá cột, hoặc landing cũ lưu tên
+field cố định "name"/"phone"/"code"/"email" từ trước khi Source đổi sang lọc theo Data Type) tự
+chuyển sang cột URL thật đầu tiên (`useEffect` trong `ButtonPanel.tsx`). URL đọc của CHÍNH participant
+vừa trúng (`sequence.candidate`) qua `getParticipantExtraField()`. Mở bằng `shell.openExternal()`
+(main process, chỉ chấp nhận `http(s)://` để tránh mở nhầm scheme lạ) — KHÔNG dùng `window.open` (bị
+chặn dưới `contextIsolation: true`).
+
+## Chữ hiển thị trên nút — không còn sửa tay được, tự theo action
+
+`ButtonPanel.tsx` KHÔNG còn ô "Label" — chữ hiện trên nút (`ButtonView.tsx`'s `displayLabel`) tự sinh
+theo `action` đã chọn, không ai gõ tay nữa:
+
+- **Draw** → `drawButtonLabel(sequence)`, động theo mode/tiến trình ("Single Draw"/"Multiple Draw
+  (2/5)"/"Quick Draw (5)").
+- **Confirm/Reset/Scoreboard/Open Link** → chữ CỐ ĐỊNH lấy từ `BUTTON_ACTION_LABELS`
+  (`lib/landing/types.ts`, dùng CHUNG với chữ trong dropdown Action của `ButtonPanel.tsx` — 1 bảng
+  tra DUY NHẤT, sửa ở đây là đổi cả 2 nơi).
+- **None** (chưa gán action) → đọc `ButtonProps.label` — CHỈ còn ý nghĩa ở trạng thái này, tự sinh
+  **"Button 1"/"Button 2"/"Button 3"...** ngay lúc thêm Button mới (`LandingBuilderWindow.tsx`'s
+  `handleDropNewComponent`, đánh số từ 1 giống quy ước "Column 1, Column 2..." của Data Editor —
+  `nextColumnNames` trong `dataEditor/commands.ts`), để phân biệt nhiều Button chưa cấu hình gì trên
+  cùng 1 trang. Đây KHÁC `component.name` (tên trong LayersPanel, đánh số từ "Button"/"Button 2"
+  không có "Button 1" — 2 quy ước đánh số khác nhau, cố ý không gộp chung).
+
+Lý do bỏ ô Label: sửa chữ 1 nút CHƯA gán action là vô nghĩa (không ai biết nút sẽ làm gì để đặt tên
+phù hợp), còn nút ĐÃ gán action thì chữ hiện đúng tên action luôn rõ nghĩa hơn 1 chữ tự đặt tuỳ ý —
+bỏ hẳn field thừa này thay vì giữ 1 ô nhập ít ai cần sửa.
 
 > **⚠️ Quan trọng — Confirm và Reset là 2 action DUY NHẤT ghi dữ liệu THẬT, VĨNH VIỄN, ngoài phạm vi
 > `landing_config`.**

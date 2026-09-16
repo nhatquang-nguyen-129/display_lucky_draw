@@ -148,8 +148,8 @@ export default function LandingBuilderWindow() {
   // Name/Text (Sync with Draw) vẫn tự hiện placeholder/nội dung thật đúng như khi chưa có data, nhờ
   // `builderPreview` (xem `clip={false}` trong LandingCanvas.tsx).
   const landingData: LandingData = useMemo(
-    () => ({ participants, prizes, results: [] }),
-    [participants, prizes]
+    () => ({ participants, prizes, results: [], columnTypesJson: session?.participant_column_types ?? null }),
+    [participants, prizes, session]
   );
 
   const dirty = !!config && JSON.stringify(config) !== savedConfigRef.current;
@@ -488,10 +488,28 @@ export default function LandingBuilderWindow() {
       );
       let name = "Button";
       for (let n = 2; usedNames.has(name); n++) name = `Button ${n}`;
+      // Chữ hiển thị TRÊN nút (props.label) — đánh số từ 1 ("Button 1", "Button 2"...), cùng quy ước
+      // "Column 1, Column 2..." của Data Editor (xem nextColumnNames trong dataEditor/commands.ts).
+      // Khác `name` ở trên (tên trong LayersPanel, không số ở lần đầu) vì đây là chữ NGƯỜI XEM
+      // TRÌNH CHIẾU thấy được — chỉ dùng làm mặc định lúc action còn "none" (ButtonPanel.tsx ẩn hẳn ô
+      // Label lúc đó, coi như thừa với 1 nút chưa gán tính năng), người vận hành đổi tay ngay khi gán
+      // action thật nếu cần.
+      const usedLabels = new Set(
+        (config?.components ?? [])
+          .filter((c): c is ButtonComponent => c.type === "button")
+          .map((c) => c.props.label?.trim())
+      );
+      let labelN = 1;
+      let label = `Button ${labelN}`;
+      while (usedLabels.has(label)) {
+        labelN++;
+        label = `Button ${labelN}`;
+      }
       updateConfig(
         (prev) => {
           const component = createComponentAt(type, x, y, prev.components.length) as ButtonComponent;
           component.name = name;
+          component.props.label = label;
           setSelectedIds([component.id]);
           setShowPanel(true);
           return { ...prev, components: [...prev.components, component] };

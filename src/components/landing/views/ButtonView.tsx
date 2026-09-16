@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ButtonAction, ButtonComponent, DrawMode, DrawSequenceActions, getParticipantField, LandingData } from "@/lib/landing/types";
+import {
+  BUTTON_ACTION_LABELS,
+  ButtonAction,
+  ButtonComponent,
+  DrawMode,
+  DrawSequenceActions,
+  getParticipantField,
+  LandingData,
+} from "@/lib/landing/types";
 
 // 2 action ghi dữ liệu THẬT, VĨNH VIỄN (xem docs/landing/button-actions.md) — bắt buộc xác nhận qua
 // popup (sequence.requestConfirm(), vẽ ở LandingRenderer.tsx) trước khi thật sự chạy, tránh bấm
@@ -207,12 +215,16 @@ export default function ButtonView({
   const disabled = !sequence || locked;
   const showDrawMenu = action === "draw" && !!sequence;
 
-  // Nút Draw tự sinh nhãn theo mode/tiến trình (drawButtonLabel ở trên) — THAY HẲN label cấu hình,
+  // Nút Draw tự sinh nhãn theo mode/tiến trình (drawButtonLabel ở trên) — THAY HẲN chữ cấu hình,
   // đọc `sequence.batchProgress`/`drawMode` là state DÙNG CHUNG cho cả trang (không riêng theo Button
   // nào) nên PHẢI kèm `action === "draw"`, nếu không MỌI Button khác (Confirm/Reset/Scoreboard/Open
   // Link) cũng bị đổi nhầm theo dù chúng chỉ đang bị khoá lây (locked = true suốt batch), không hề
-  // chạy gì cả — bug đã gặp thật (screenshot: cả 5 nút cùng hiện "Drawing… (1/5)").
-  const displayLabel = action === "draw" ? drawButtonLabel(sequence) : label;
+  // chạy gì cả — bug đã gặp thật (screenshot: cả 5 nút cùng hiện "Drawing… (1/5)"). Action thật khác
+  // (confirm/reset/toggleScoreboard/openLink) tự hiện chữ CỐ ĐỊNH theo BUTTON_ACTION_LABELS — không
+  // còn sửa tay được (đã bỏ ô Label khỏi ButtonPanel.tsx). "none" vẫn đọc `label` — chữ "Button 1"/
+  // "Button 2"... tự sinh lúc tạo mới (xem LandingBuilderWindow.tsx), CHỈ dùng để phân biệt nhiều
+  // Button chưa gán action, không có chữ cố định nào hợp lý hơn cho action rỗng.
+  const displayLabel = action === "draw" ? drawButtonLabel(sequence) : BUTTON_ACTION_LABELS[action] ?? label;
 
   function handleClick() {
     if (!sequence || locked) return;

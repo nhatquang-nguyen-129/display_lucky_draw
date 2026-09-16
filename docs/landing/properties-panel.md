@@ -1,5 +1,43 @@
 # Properties Panel & nhóm component
 
+## Kiến trúc chốt: dropdown "Source" chọn cột Participant
+
+Nhiều panel cho chọn 1 cột Participant làm nguồn dữ liệu (Lucky Wheel's Draw/Display/Winner display
+field, Winner Name's Source, Button Open Link's Source...). Tất cả đi theo ĐÚNG 1 trong 2 nhánh sau —
+KHÔNG có nhánh thứ 3, và KHÔNG panel nào được tự sáng tác cách riêng:
+
+| Field có yêu cầu Data Type cụ thể? | Cách liệt kê | Ví dụ |
+|---|---|---|
+| **KHÔNG** — field nào cũng dùng được (chỉ cần đúng 1 tiêu chí phụ khác, hoặc không tiêu chí gì) | Liệt kê **TOÀN BỘ cột đang thực sự tồn tại** (core field còn dữ liệu thật + mọi cột `extra_data`) — KHÔNG lọc theo Data Type. Nếu có tiêu chí phụ (vd đúng số ký tự), đánh dấu **Eligible/not eligible** ngay trên từng option (`<option disabled title="lý do">`), không ẩn hẳn option không đạt | Lucky Wheel's Draw/Display field (không tiêu chí) và Digit Roller's Source field (tiêu chí: đúng `digitCount` ký tự) — `LuckyWheelPanel.tsx` |
+| **CÓ** — field bắt buộc phải cùng ý nghĩa (Name/Phone/Email/URL...) mới dùng được, sai ý nghĩa là hỏng chức năng | Liệt kê ĐÚNG các cột đang gán Data Type đó (`listParticipantColumnsForType`, đã lọc thêm lớp "còn dữ liệu thật"). Rỗng → **KHÔNG hiện dropdown rỗng/option sai** — hiện `<select disabled>` với placeholder `"Set a column's Data Type to <Type> first."` | Winner Name's Source (Name) — `LiveTextPanel.tsx`; Button Open Link's Source (URL) — `ButtonPanel.tsx` |
+
+**Vì sao 2 nhánh khác nhau**: 1 dropdown "field nào cũng dùng được" mà lọc theo Data Type sẽ SAI —
+Digit Roller vốn không quan tâm cột đó "nghĩa là gì" (Name/Phone/Code đều chấp nhận được, miễn đúng
+số ký tự), lọc theo type sẽ vô cớ loại bỏ những cột hợp lệ. Ngược lại, 1 dropdown "bắt buộc đúng ý
+nghĩa" (Open Link cần 1 URL thật để mở, không phải 1 cái tên) mà liệt kê MỌI cột sẽ cho chọn nhầm 1
+cột Name/Phone làm URL, khiến action luôn no-op mà không rõ vì sao.
+
+**Bẫy đã gặp thật (đã sửa) — đừng lặp lại**: `LuckyWheelPanel.tsx` từng hardcode `hasDataForField("name")
+=> true` vô điều kiện — 4 label chung "Name/Phone/Email/Code" (không phải cột thật, chỉ là bí danh
+cho cột SQL lõi `participant.name/.phone/.email/.code`) vẫn hiện trong dropdown dù participant không
+hề có field đó (từ khi import flow chuyển hẳn qua `extra_data`, xem
+[`docs/participants/column-mapping.md`](../participants/column-mapping.md), 4 cột SQL lõi này gần
+như luôn rỗng). Sửa bằng `computeActiveParticipantCoreFields` (đúng hàm Data Editor dùng cho
+`isCoreFieldActive`) + `isPhantomGenericField` — 1 label chung CHỈ hợp lệ khi cột SQL lõi cùng tên
+thật sự có dữ liệu, và KHÔNG áp dụng ngoại lệ "giữ nguyên lựa chọn đang chọn" cho riêng 4 label này
+(khác cột `extra_data` thật tạm hết dữ liệu — trường hợp đó vẫn giữ nguyên lựa chọn, xem
+`availableOptions`). Khi phát hiện field đang lưu là 1 label ảo, tự chuyển sang cột thật đầu tiên
+(`useEffect` trong `LuckyWheelPanel.tsx`) — KHÔNG để nó nằm im chờ người dùng tự nhận ra.
+
+Mọi dropdown "Source"/field-chọn-cột MỚI thêm sau này phải xếp vào ĐÚNG 1 trong 2 nhánh trên ngay từ
+đầu — không hardcode danh sách field cố định, không tự đặt luật lọc riêng.
+
+**Gốc của nhánh 2** (đã đúng từ trước, không phải sửa gì): dropdown "Source" trong popup Generate ▸
+Display Phone của Data Editor (`DataEditorModal.tsx`'s `phoneColumns`, xem
+[`docs/participants/data-editor.md`](../participants/data-editor.md)) — liệt kê mọi cột đang gán
+Data Type = Phone, rỗng thì `<select disabled>` placeholder "Set a column's Data Type to Phone
+first." Winner Name/Button Open Link ở trên đi theo ĐÚNG mẫu này.
+
 ## Properties Panel
 
 `PropertiesPanel.tsx` là 1 switch thuần: chưa chọn gì → `BackgroundPanel` (nền trang); có chọn → 1
@@ -14,13 +52,13 @@ bounce khi component xuất hiện), nút **Delete component**.
 | `BackgroundPanel.tsx` | Nền trang (khi chưa chọn component nào) |
 | `TextPanel.tsx` | Text |
 | `ImagePanel.tsx` | Image |
-| `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) |
-| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Lọc thêm lớp "còn dữ liệu thật" vì `session.participant_column_types` không tự dọn cột cũ sau khi Replace import (giống `hasDataForField` trong `LuckyWheelPanel.tsx`) |
+| `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) — Draw/Display/Winner display field KHÔNG yêu cầu Data Type cụ thể, liệt kê MỌI cột thật; Digit Roller's Source field thêm tiêu chí phụ "đúng `digitCount` ký tự" (đánh dấu Eligible/not eligible, không ẩn hẳn) — xem nhánh 1 ở mục kiến trúc phía trên |
+| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng |
 | `LiveImagePanel.tsx` | Prize |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
-| `ButtonPanel.tsx` | Button (chọn action + styling, xem [button-actions.md](./button-actions.md)) |
-| `ScoreboardPanel.tsx` | Scoreboard |
+| `ButtonPanel.tsx` | Button (chọn action + styling, xem [button-actions.md](./button-actions.md)) — action "Open Link" có thêm **Source**, cùng nhánh 2 (Data Type = URL) như Winner Name's Source |
+| `ScoreboardPanel.tsx` | Scoreboard — "Columns" là bản multi-select của nhánh 1 (liệt kê MỌI cột thật, không lọc Data Type) nhưng KHÔNG có tiêu chí phụ nào (bảng hiện được bất kỳ cột nào), nên không có khái niệm Eligible/not eligible ở đây — mọi checkbox luôn bật được |
 | `FireworkPanel.tsx` | Firework |
 
 ## Nhóm component (`ComponentPalette.tsx`)

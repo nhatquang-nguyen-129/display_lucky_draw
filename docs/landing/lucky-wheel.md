@@ -22,12 +22,28 @@ Kích thước ô luôn tính từ khung kéo-thả trên canvas (`component.wid
 
 ## Field validation trong LuckyWheelPanel — "field nào dùng được cho Digit Roll"
 
-`evaluateField(field, count)` trong `LuckyWheelPanel.tsx` — field hợp lệ khi VÀ CHỈ KHI **100% participant** có giá trị dài đúng bằng `count`. Sinh ra tối đa 3 lý do độc lập (không loại trừ nhau, có thể cùng xảy ra), hiện qua `title` (tooltip HTML, hỗ trợ xuống dòng bằng `\n`) trên `<option disabled>`:
+Draw/Display/Winner display field của Lucky Wheel là ví dụ nhánh 1 của quy tắc "Source picker" ở
+[`docs/landing/properties-panel.md`](./properties-panel.md) — KHÔNG field nào bị lọc theo Data Type
+(Name/Phone/Code/URL đều dùng được như nhau, kể cả trộn lẫn), vì Draw Engine chỉ cần 1 chuỗi bất kỳ
+để làm khoá gom nhóm/hiển thị, không quan tâm chuỗi đó "nghĩa là gì". Danh sách field để chọn hợp
+nhất **mọi cột SQL lõi (name/phone/code/email) đang THỰC SỰ có dữ liệu** (`computeActiveParticipantCoreFields`
+— 4 label chung này KHÔNG hiện nếu cột SQL cùng tên rỗng, dù cột `extra_data` khác có gán Data Type
+tương ứng; xem cảnh báo "bẫy đã gặp thật" ở properties-panel.md) với **mọi cột optional (`extra_data`)
+đang thực sự xuất hiện ở participant** (`extraColumns`). Giá trị thật của mỗi field đọc qua
+`resolveWheelField()` (`lib/landing/types.ts`) — tự resolve 4 label chung qua Data Type mapping
+(`resolveParticipantDisplayField`) thay vì đọc cứng `participant.name/.phone/...`, cột optional đọc
+thẳng `extra_data`.
+
+`evaluateField(field, count)` trong `LuckyWheelPanel.tsx` — CHỈ áp dụng riêng cho **Source field của
+Digit Roller** (tiêu chí phụ, không phải Data Type): field hợp lệ khi VÀ CHỈ KHI **100% participant**
+có giá trị dài đúng bằng `count`. Sinh ra tối đa 3 lý do độc lập (không loại trừ nhau, có thể cùng
+xảy ra), hiện qua `title` (tooltip HTML, hỗ trợ xuống dòng bằng `\n`) trên `<option disabled>`:
 
 - Thiếu dữ liệu (`N participants have no value...`)
 - Độ dài không đồng nhất giữa các participant (`Length is inconsistent...`)
 - Độ dài không khớp `digitCount` đang chọn (`Values have X characters — need exactly N`)
 
-Danh sách field để chọn KHÔNG giới hạn 4 field cố định (Name/Phone/Email/Code) — hợp nhất thêm mọi cột optional (`extra_data`) đang thực sự xuất hiện ở participant (`extraColumns`, gom qua `JSON.parse(p.extra_data)`), qua đúng `getParticipantField()` đã được mở rộng để tự fallback sang `getParticipantExtraField()` khi field không khớp 5 tên cố định. Xem thêm mô hình 2 tầng field (core/extra) ở [`docs/participants/schema.md`](../participants/schema.md).
+Field không đạt vẫn HIỆN trong dropdown (chỉ `disabled` kèm lý do) — khác nhánh 2 (Data Type cụ thể),
+nơi field sai hẳn ý nghĩa bị ẨN HOÀN TOÀN, không chỉ mờ đi.
 
 Lucky Wheel không cần Button ra lệnh — cách nó tự phát hiện có candidate mới để bắt đầu quay được giải thích ở [button-actions.md](./button-actions.md).

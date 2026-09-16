@@ -566,6 +566,18 @@ export interface ParticipantCountComponent extends BaseComponent {
 // CHỜ CONFIRM (sequence.isPending) tự chạy sequence.redo() thay vì pick() mới, xem ButtonView.tsx.
 export type ButtonAction = "none" | "draw" | "confirm" | "reset" | "toggleScoreboard" | "openLink";
 
+// Chữ hiển thị trên nút — KHÔNG còn sửa tay được (đã bỏ ô "Label" khỏi ButtonPanel.tsx): mỗi action
+// THẬT có đúng 1 chữ cố định, dùng CHUNG bởi ButtonPanel.tsx (chữ trong dropdown) và ButtonView.tsx
+// (chữ render lên nút, xem ButtonProps.label bên dưới). "none"/"draw" không nằm ở đây — "none" đọc
+// thẳng `label` (chữ "Button 1"/"Button 2"... tự sinh lúc tạo, xem LandingBuilderWindow.tsx),
+// "draw" tự sinh động theo mode/tiến trình (drawButtonLabel trong ButtonView.tsx), không dùng map này.
+export const BUTTON_ACTION_LABELS: Partial<Record<ButtonAction, string>> = {
+  confirm: "Confirm",
+  reset: "Reset",
+  toggleScoreboard: "Scoreboard",
+  openLink: "Open Link",
+};
+
 export interface ButtonProps {
   action: ButtonAction;
   urlField?: string; // chỉ dùng khi action = "openLink"
@@ -575,6 +587,11 @@ export interface ButtonProps {
   // "draw" — đọc trực tiếp từ component.props ngay lúc bấm Draw (không cần "arm" cùng lúc chọn mode
   // trong dropdown), nên đổi số ở Properties Panel có hiệu lực ngay từ lượt Multiple Draw kế tiếp.
   multipleDrawPaceMs?: number;
+  // CHỈ còn ý nghĩa lúc action = "none" (chữ "Button 1"/"Button 2"... tự sinh lúc tạo mới, xem
+  // LandingBuilderWindow.tsx) — mọi action thật khác đều tự hiện chữ cố định theo action
+  // (BUTTON_ACTION_LABELS ở trên, hoặc drawButtonLabel động riêng cho "draw"), KHÔNG đọc field này
+  // nữa. Vẫn giữ trong props (không xoá field) để landing đã lưu từ trước không lỗi type, và để
+  // ButtonView.tsx còn chữ dùng lúc action = "none".
   label: string;
   fontSize: number;
   color: string;
@@ -812,6 +829,25 @@ export function resolveParticipantDisplayField(
   return "";
 }
 
+/** Đọc giá trị 1 field của Lucky Wheel (drawField/displayField/winnerDisplayField) — CHUNG cho cả
+ * 2 dạng field mà LuckyWheelPanel.tsx cho chọn: "name"/"phone"/"email"/"code" (label chung, phải
+ * resolve qua Data Type — xem resolveParticipantDisplayField, KHÔNG đọc cứng participant.name/...)
+ * và tên cột optional cụ thể do người dùng tự chọn thẳng từ extra_data (đọc thẳng qua
+ * getParticipantField, không cần resolve gì thêm) hoặc "participantId". Dùng ở WheelTemplate.tsx/
+ * DigitRollerTemplate.tsx/displayValue.ts thay cho getParticipantField trực tiếp — xem
+ * docs/architecture/draw-engine.md ("không đọc cứng p.name"). */
+export function resolveWheelField(
+  p: import("@/types").Participant,
+  field: string,
+  columnTypesJson: string | null | undefined,
+  activeCoreFields: ReadonlySet<string>
+): string {
+  if (field === "name" || field === "phone" || field === "email" || field === "code") {
+    return resolveParticipantDisplayField(p, columnTypesJson, activeCoreFields, field);
+  }
+  return getParticipantField(p, field as ParticipantKeyField);
+}
+
 /** Liệt kê MỌI tên cột (core lẫn extra) đang gán đúng 1 `type` — dùng cho dropdown "Source" (vd
  * WinnerNameProps.nameSourceColumn) khi 1 session có nhiều hơn 1 cột cùng type (vd 2 cột Name). Core
  * field đứng trước (chỉ tính nếu đang active — có dữ liệu thật), rồi tới cột extra theo đúng thứ tự
@@ -848,6 +884,9 @@ export interface LandingData {
   participants: import("@/types").Participant[];
   prizes: import("@/types").Prize[];
   results: import("@/types").DrawResultRow[];
+  // session.participant_column_types — cần cho Lucky Wheel resolve đúng cột nào đang gán Data Type
+  // Name/Phone/Email/Code (xem resolveWheelField bên dưới), không đọc cứng participant.name/.phone/....
+  columnTypesJson: string | null;
 }
 
 // 4 field cố định của Participant — luôn tồn tại kể cả khi bảng rỗng.

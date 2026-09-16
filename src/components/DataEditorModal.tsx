@@ -1545,6 +1545,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                         {renamingColumn === col ? (
                           <input
                             autoFocus
+                            draggable={false}
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
                             onBlur={() => {
@@ -1658,6 +1659,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
                               {isEditing ? (
                                 <input
                                   autoFocus
+                                  draggable={false}
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
                                   onBlur={commitEdit}
