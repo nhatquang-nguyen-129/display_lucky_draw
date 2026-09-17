@@ -910,7 +910,13 @@ export function availableParticipantColumns(participants: import("@/types").Part
 /** Các cột Participant mà 1 component đang bind tới NHƯNG không còn tồn tại (xem
  * availableParticipantColumns). Rỗng = ổn. Chỉ xét các loại component thật sự bind cột:
  * Lucky Wheel (drawField/displayField/winnerDisplayField), Scoreboard (columns), Button openLink
- * (urlField). "participantId" là khoá nội bộ, luôn hợp lệ. */
+ * (urlField). "participantId" là khoá nội bộ, luôn hợp lệ — cũng như 6 field CỐ ĐỊNH của Scoreboard
+ * (`SCOREBOARD_FIELDS`: participantName/participantCode/participantPhone/participantEmail/prizeName/
+ * prizeCategory) KHÔNG phải tên cột Participant thật, mà là khoá resolve thẳng từ DrawResultRow/Prize
+ * (xem valueOf trong TableTemplate.tsx) — kiểm chúng bằng availableParticipantColumns SAI HOÀN TOÀN
+ * (2 hệ tên khác nhau: "participantName" không bao giờ trùng "name"), sẽ luôn báo "not found" oan cho
+ * MỌI Scoreboard bật cột mặc định (bug đã gặp thật). Chỉ cột optional (extra_data) người dùng tự
+ * chọn thêm SAU 6 field cố định mới cần kiểm tra còn tồn tại hay không. */
 export function missingColumnBindings(component: LandingComponent, available: Set<string>): string[] {
   const check = (f: unknown): f is string =>
     typeof f === "string" && f !== "" && f !== "participantId" && !available.has(f);
@@ -920,7 +926,10 @@ export function missingColumnBindings(component: LandingComponent, available: Se
       if (check(f)) out.add(f);
     }
   } else if (component.type === "scoreboard") {
-    for (const f of component.props.columns) if (check(f)) out.add(f);
+    for (const f of component.props.columns) {
+      if ((SCOREBOARD_FIELDS as string[]).includes(f)) continue;
+      if (check(f)) out.add(f);
+    }
   } else if (component.type === "button" && component.props.action === "openLink") {
     if (check(component.props.urlField)) out.add(component.props.urlField as string);
   }
