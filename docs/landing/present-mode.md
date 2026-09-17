@@ -45,6 +45,18 @@ Wheel (`drawField`/`displayField`/`winnerDisplayField`), Scoreboard (`columns`),
 `LandingRenderer.tsx` chỉ tính + hiện badge đỏ "⚠ Column not found: x" này khi `builderPreview`
 (canvas Builder) — KHÔNG hiện ở Present Mode thật, để không làm rối buổi quay đang chạy.
 
+**Bug đã sửa: Scoreboard luôn báo oan "Column not found" cho 6 field mặc định** — `Scoreboard.columns`
+trộn lẫn 2 hệ tên khác hẳn nhau: 6 field CỐ ĐỊNH (`SCOREBOARD_FIELDS` — `participantName`/
+`participantCode`/`participantPhone`/`participantEmail`/`prizeName`/`prizeCategory`) không phải tên
+cột Participant thật, mà là khoá resolve THẲNG từ `DrawResultRow`/`Prize` (xem `valueOf` trong
+`TableTemplate.tsx` — vd `participantName` → `r.participant_name`, `prizeCategory` → tra
+`data.prizes`), và cột optional (`extra_data`) người dùng tự thêm SAU 6 field đó. `missingColumnBindings`
+trước đây đối chiếu CẢ 6 field cố định này với `availableParticipantColumns` (tập tên cột Participant
+thật) — sai hoàn toàn vì 2 hệ tên không bao giờ trùng nhau (`"participantName"` không phải
+`"name"`), khiến MỌI Scoreboard bật cột mặc định (kể cả session dữ liệu hoàn toàn bình thường) đều bị
+báo đỏ oan. Sửa bằng cách loại 6 field trong `SCOREBOARD_FIELDS` khỏi việc kiểm tra tồn tại — chỉ còn
+cột optional thật sự cần đối chiếu.
+
 ## Bug đã sửa: mở lại 1 phiên đã quay dở thì tự nhảy hiện winner cũ
 
 Mở Present Mode/`LandingPage.tsx` cho 1 session đã có `draw_results` từ trước: `effectiveData` lúc
