@@ -77,15 +77,36 @@ Landing/Present luôn về màn hình Idle; ai muốn xem lịch sử trúng th�
 mở lại 1 phiên" — dù kỹ thuật khả thi (winner đã Confirm nằm sẵn trong `draw_results`), đã cân nhắc
 và từ chối vì Scoreboard đã đủ để xem lại lịch sử trúng thưởng.
 
-## Bug đã sửa: Winner Name flash tên người trúng MỚI khi Redraw
+## Winner Name / Text (syncWithDraw) — 3 trạng thái Idle/Revealed/Disappear
 
-Bấm Draw lại lúc đang có 1 candidate chờ Confirm (`redo()`, single-draw): `setCandidate(next)` đổi
-`results[0]` sang candidate mới NGAY LẬP TỨC, nhưng `useRevealed` (`drawRevealHooks.ts`) trước đây
-chỉ đặt lại `revealed = false` trong 1 `useEffect` — tức là SAU render + paint. Có đúng 1 khung hình
-`revealed` vẫn `true` (từ lượt trước) trong khi `results[0].participant_name` đã là tên MỚI →
-`useRevealTransition` chạy appear animation lộ tên người trúng mới ra trước khi Wheel kịp quay.
+`useRevealed` (`drawRevealHooks.ts`, dùng chung bởi `WinnerNameView.tsx` và `TextView.tsx` khi
+`syncWithDraw`) luôn ở đúng 1 trong 3 trạng thái, **hoàn toàn tự quản lý qua 2 field của CHÍNH
+component đó** (`appearDelayMs`/`disappearDelayMs`, đặt ở Properties Panel — xem
+`WinnerNameProps`/`TextProps` trong `types.ts`), KHÔNG còn phụ thuộc thời lượng quay của Lucky Wheel
+trên trang (model cũ dùng `computeWheelRevealDelayMs` đã bỏ hẳn — công thức đó không tính đúng tuyệt
+đối cho mọi hiệu ứng quay, đặc biệt Reel/Flicker của Digit Roller):
 
-Sửa bằng cách reset `revealed` **trong lúc render** khi `resultId` đổi (setState-trong-render có
-điều kiện, so khác giá trị qua 1 `ref` — pattern React chính thức cho "điều chỉnh state khi 1 prop
-đổi"): React huỷ ngay output của render đang lộ tên mới và render lại trước khi paint, nên khung hình
-đó không bao giờ hiển thị ra màn hình.
+1. **Idle** (chưa Draw lần nào / vừa Reset): không hiện gì, không delay nào áp dụng.
+2. **Draw lần đầu**: giữ "" cho tới đúng `appearDelayMs` tính từ lúc bấm Draw (`resultId` đổi), rồi
+   `appearEffect` chạy để hiện tên/nội dung.
+3. **Draw lần tiếp theo** (đang hiện của lượt trước): chuỗi CŨ đứng yên tại chỗ cho tới đúng
+   `disappearDelayMs` (tính từ CÙNG mốc bấm Draw) thì `disappearEffect` mới chạy để nó biến mất —
+   ĐỘC LẬP, không xếp hàng chờ, chuỗi MỚI cũng hiện sau đúng `appearDelayMs` tính từ mốc đó.
+
+`value` (winnerName/content) chỉ được đọc vào ĐÚNG lúc mỗi timer chạy (qua closure của effect) —
+không hiện ngay dù giá trị nguồn đã đổi tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ"
+trước khi Disappear kịp chạy (bản chất chính là bug "flash tên mới khi Redraw" đã từng gặp ở bản cũ,
+nay được giải quyết TRIỆT ĐỂ hơn — không chỉ reset `revealed` trong render mà còn tách hẳn timing
+Appear/Disappear thành 2 field độc lập).
+
+**Reset ép về Idle NGAY LẬP TỨC, không suy luận qua `resultId`**: `DrawSequenceActions.resetSeq`
+(`useDrawSequence.ts`) tăng thêm 1 mỗi lần `resetSession()` chạy xong thật sự — `useRevealed` đổi giá
+trị này thì ép `displayed` về `""` NGAY trong render + huỷ mọi timer Appear/Disappear đang chờ, KHÔNG
+đợi `results[0].id` đổi (vốn phải chờ đúng nhịp `data` refresh xong, dễ lệch nhịp nếu 1 request
+refresh CŨ hơn lại resolve SAU — xem `useLandingData.ts`). Tín hiệu tường minh này bảo đảm Winner
+Name/Text luôn về đúng trạng thái mới-vào-landing sau Reset, bất kể đang Idle/Revealed/Disappear lúc
+bấm.
+
+Properties Panel của Winner Name (`LiveTextPanel.tsx`) tổ chức 2 mục "When Revealed"/"When Disappear"
+— mỗi mục CHỈ gồm đúng **Effect** + **Delay (ms)** — xem thêm
+[properties-panel.md](./properties-panel.md).

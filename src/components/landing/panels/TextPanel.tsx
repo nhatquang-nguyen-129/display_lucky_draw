@@ -22,7 +22,7 @@ const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.
 // Appear/Disappear effect với Winner Name.
 export default function TextPanel({ props, onChange }: TextPanelProps) {
   const [revealedOpen, setRevealedOpen] = useState(true);
-  const [idleOpen, setIdleOpen] = useState(true);
+  const [disappearOpen, setDisappearOpen] = useState(true);
 
   return (
     <div className="space-y-4">
@@ -113,10 +113,24 @@ export default function TextPanel({ props, onChange }: TextPanelProps) {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className={labelClass}>Delay (ms)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    placeholder="0"
+                    className={fieldClass}
+                    value={props.appearDelayMs ?? ""}
+                    onChange={(e) =>
+                      onChange({ appearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
+                    }
+                  />
+                </div>
               </div>
             </details>
-            <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
-              <summary className={summaryClass}>When Idle</summary>
+            <details open={disappearOpen} onToggle={(e) => setDisappearOpen(e.currentTarget.open)} className={detailsClass}>
+              <summary className={summaryClass}>When Disappear</summary>
               <div className={detailsBodyClass}>
                 <div>
                   <label className={labelClass}>Disappear effect</label>
@@ -131,6 +145,20 @@ export default function TextPanel({ props, onChange }: TextPanelProps) {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Delay (ms)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    placeholder="0"
+                    className={fieldClass}
+                    value={props.disappearDelayMs ?? ""}
+                    onChange={(e) =>
+                      onChange({ disappearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
+                    }
+                  />
                 </div>
               </div>
             </details>

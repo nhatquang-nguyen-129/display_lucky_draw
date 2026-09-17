@@ -4,6 +4,14 @@ interface SharedFieldsProps {
   component: LandingComponent;
   onChange: (patch: Partial<LandingComponent>) => void;
   onDelete: () => void;
+  // "winnerName" tự gộp Position vào "Basic options" của LiveTextPanel.tsx (đưa lên trên cùng luôn,
+  // theo yêu cầu) và không dùng hiệu ứng entrance chung này — nó không remount theo lượt Draw (xem
+  // REMOUNT_ON_RESULT_TYPES trong LandingRenderer.tsx) nên field Effect chung chỉ chạy ĐÚNG 1 LẦN lúc
+  // cửa sổ Present Mode vừa mở, không có ý nghĩa thực tế gì cho riêng loại component này — ẩn hẳn
+  // luôn cho đỡ rối, chỉ còn nút Delete. Mặc định false cho MỌI loại component khác, giữ NGUYÊN hành
+  // vi cũ.
+  hidePosition?: boolean;
+  hideEffect?: boolean;
 }
 
 const fieldClass =
@@ -12,68 +20,72 @@ const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500
 
 // Các field dùng chung cho MỌI loại component (vị trí/kích thước/hiệu ứng) — panel riêng của từng
 // loại chỉ cần render thêm phần đặc thù của nó, không cần lặp lại phần này.
-export default function SharedFields({ component, onChange, onDelete }: SharedFieldsProps) {
+export default function SharedFields({ component, onChange, onDelete, hidePosition, hideEffect }: SharedFieldsProps) {
   // Digit Roller tự tính height từ width + Digit count (xem fitDigitRollerHeight trong
   // LandingBuilderWindow.tsx) — nhập tay vào đây sẽ bị ghi đè lại ngay, nên khoá hẳn field này thay
   // vì để nó trông như nhập được nhưng lại tự đổi ngược, dễ gây khó hiểu.
   const heightLocked = component.type === "luckyWheel" && component.props.template === "digitRoller";
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className={labelClass}>X</label>
-          <input
-            type="number"
-            className={fieldClass}
-            value={Math.round(component.x)}
-            onChange={(e) => onChange({ x: Number(e.target.value) })}
-          />
+      {!hidePosition && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={labelClass}>X</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(component.x)}
+              onChange={(e) => onChange({ x: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Y</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(component.y)}
+              onChange={(e) => onChange({ y: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Width</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(component.width)}
+              onChange={(e) => onChange({ width: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Height{heightLocked ? " (auto)" : ""}</label>
+            <input
+              type="number"
+              disabled={heightLocked}
+              title={heightLocked ? "Digit Roller always auto-fits height to width + Digit count" : undefined}
+              className={`${fieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
+              value={Math.round(component.height)}
+              onChange={(e) => onChange({ height: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
         </div>
-        <div>
-          <label className={labelClass}>Y</label>
-          <input
-            type="number"
-            className={fieldClass}
-            value={Math.round(component.y)}
-            onChange={(e) => onChange({ y: Number(e.target.value) })}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Width</label>
-          <input
-            type="number"
-            className={fieldClass}
-            value={Math.round(component.width)}
-            onChange={(e) => onChange({ width: Math.max(1, Number(e.target.value)) })}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Height{heightLocked ? " (auto)" : ""}</label>
-          <input
-            type="number"
-            disabled={heightLocked}
-            title={heightLocked ? "Digit Roller always auto-fits height to width + Digit count" : undefined}
-            className={`${fieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
-            value={Math.round(component.height)}
-            onChange={(e) => onChange({ height: Math.max(1, Number(e.target.value)) })}
-          />
-        </div>
-      </div>
+      )}
 
-      <div>
-        <label className={labelClass}>Effect</label>
-        <select
-          className={fieldClass}
-          value={component.effect}
-          onChange={(e) => onChange({ effect: e.target.value as EffectName })}
-        >
-          {EFFECT_NAMES.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {!hideEffect && (
+        <div>
+          <label className={labelClass}>Effect</label>
+          <select
+            className={fieldClass}
+            value={component.effect}
+            onChange={(e) => onChange({ effect: e.target.value as EffectName })}
+          >
+            {EFFECT_NAMES.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <button
         onClick={onDelete}

@@ -5,9 +5,10 @@ import { BackgroundConfig, isLiveDrawResultId, LandingData } from "@/lib/landing
 // LandingRenderer.tsx, trước {sorted.map(...)}) — "spotlight" cho nội dung nổi bật hơn (Winner Name,
 // Button...) sau khi Lucky Wheel trên trang đã quay xong hẳn. 2 CHIỀU tách biệt hoàn toàn, mỗi chiều
 // tự có delay + thời gian chuyển riêng (xem BackgroundConfig trong types.ts):
-//   - "start" (dim XUỐNG) — hẹn giờ ở `winnerRevealDelayMs + dimStartDelayMs` (CÙNG 1 mốc "Wheel
-//     quay xong" mà WinnerNameView dùng, xem computeWheelRevealDelayMs) sau khi candidate hiện tại
-//     xuất hiện, rồi chuyển opacity qua CSS transition dài `dimStartDurationMs`.
+//   - "start" (dim XUỐNG) — hẹn giờ ở `winnerRevealDelayMs + dimStartDelayMs` (mốc "Wheel quay xong"
+//     tự tính riêng cho overlay này, xem computeWheelRevealDelayMs — WinnerNameView không còn dùng
+//     chung mốc này nữa, tự quản lý Delay riêng qua appearDelayMs/disappearDelayMs) sau khi candidate
+//     hiện tại xuất hiện, rồi chuyển opacity qua CSS transition dài `dimStartDurationMs`.
 //   - "end" (sáng LẠI) — hẹn giờ ở `dimEndDelayMs` sau khi có candidate MỚI (Draw/Discard lần tiếp),
 //     chuyển opacity qua CSS transition dài `dimEndDurationMs`.
 // `transitionDuration` phải đặt qua INLINE style (không phải class Tailwind cố định) vì 2 chiều có

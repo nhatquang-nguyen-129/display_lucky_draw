@@ -45,15 +45,21 @@ Panel riêng theo đúng `type` của component + `SharedFields.tsx` luôn hiệ
 
 `SharedFields.tsx` — dùng chung cho MỌI loại: **X/Y/Width/Height** (Height khoá "auto" nếu là Lucky
 Wheel dùng template Digit Roller — chiều cao tự tính theo `digitCount`), **Effect** (fade/slide/pulse/
-bounce khi component xuất hiện), nút **Delete component**.
+bounce khi component xuất hiện), nút **Delete component**. 2 ngoại lệ **Winner** và **Lucky Wheel**
+(`hidePosition`/`hideEffect` truyền từ `PropertiesPanel.tsx`) TỰ gộp Position vào cuối "Basic options"
+của panel riêng (`LiveTextPanel.tsx`/`LuckyWheelPanel.tsx`, đổi qua `onChangeComponent` — khác tầng dữ
+liệu với `onChange` vốn chỉ patch `component.props`) và ẨN HẲN Effect chung — Effect entrance đó chỉ
+chạy ĐÚNG 1 LẦN lúc cửa sổ Present Mode vừa mở (2 loại này không nằm trong `REMOUNT_ON_RESULT_TYPES`
+ở `LandingRenderer.tsx`), không có ý nghĩa thực tế gì cho riêng chúng. `SharedFields.tsx` ở cuối mọi
+panel vẫn LUÔN giữ nút Delete component dù 2 cờ trên có bật hay không.
 
 | Panel file | Dùng cho |
 |---|---|
 | `BackgroundPanel.tsx` | Nền trang (khi chưa chọn component nào) |
 | `TextPanel.tsx` | Text |
 | `ImagePanel.tsx` | Image |
-| `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) — Draw/Display/Winner display field KHÔNG yêu cầu Data Type cụ thể, liệt kê MỌI cột thật; Digit Roller's Source field thêm tiêu chí phụ "đúng `digitCount` ký tự" (đánh dấu Eligible/not eligible, không ẩn hẳn) — xem nhánh 1 ở mục kiến trúc phía trên |
-| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng |
+| `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) — Basic options có X/Y/Width/Height ở CUỐI (Height khoá "auto" nếu là Digit Roller). Draw/Display field KHÔNG yêu cầu Data Type cụ thể, liệt kê MỌI cột thật; field **Source** (winner display/digit source, gộp chung tên nhãn cho cả 2 template) thêm tiêu chí phụ ở Digit Roller "đúng `digitCount` ký tự" (đánh dấu Eligible/not eligible, không ẩn hẳn) — xem nhánh 1 ở mục kiến trúc phía trên |
+| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng. "Interactions with Draw" gồm 2 mục **When Revealed**/**When Disappear**, mỗi mục CHỈ có **Effect** + **Delay (ms)** — xem mục "3 trạng thái Idle/Revealed/Disappear" ở [present-mode.md](./present-mode.md) |
 | `LiveImagePanel.tsx` | Prize |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |

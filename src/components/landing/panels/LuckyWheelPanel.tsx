@@ -22,6 +22,15 @@ interface LuckyWheelPanelProps {
   // participant.name/.phone/.... (đã bỏ ghi từ khi Participant đổi sang mô hình Data Type, xem
   // CLAUDE.md mục Participant).
   columnTypesJson: string | null;
+  // Vị trí/kích thước thật (component.x/y/width/height) — gộp vào "Basic options" ở đây thay vì để
+  // riêng dưới SharedFields.tsx, cùng cách đã làm cho Winner Name (xem LiveTextPanel.tsx). Đổi field
+  // NÀY phải qua `onChangeComponent` (patch top-level LandingComponent), KHÁC hẳn `onChange` (patch
+  // `component.props`).
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  onChangeComponent: (patch: { x?: number; y?: number; width?: number; height?: number }) => void;
   onChange: (patch: Partial<LuckyWheelProps>) => void;
 }
 
@@ -73,9 +82,24 @@ const FONT_OPTIONS = [
 // Mỗi nhóm gồm ĐÚNG 1 <details> con — mở sẵn mặc định (`useState(true)`, không phải `open` tĩnh —
 // tránh React ép mở lại mỗi lần re-render, xem revealOpen/spinOpen) vì đây là cấu hình CỐT LÕI, khác
 // PrizeEffectPicker.tsx (effect tuỳ chọn thêm, mặc định đóng trừ khi đã cấu hình).
-export default function LuckyWheelPanel({ props, participants, columnTypesJson, onChange }: LuckyWheelPanelProps) {
+export default function LuckyWheelPanel({
+  props,
+  participants,
+  columnTypesJson,
+  x,
+  y,
+  width,
+  height,
+  onChangeComponent,
+  onChange,
+}: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
+  // Digit Roller tự tính height từ width + Digit count (xem fitDigitRollerHeight trong
+  // LandingBuilderWindow.tsx) — nhập tay vào đây sẽ bị ghi đè lại ngay, nên khoá hẳn field này thay
+  // vì để nó trông như nhập được nhưng lại tự đổi ngược, dễ gây khó hiểu (giữ NGUYÊN đúng hành vi cũ
+  // của SharedFields.tsx trước khi Position dời vào đây).
+  const heightLocked = isDigitRoller;
   // Mở sẵn mặc định — khác PrizeEffectPicker.tsx (chỉ mở nếu ĐÃ cấu hình gì đó, vì hiệu ứng ở đó là
   // tuỳ chọn thêm) — Reveal Animation/Spin Behavior là cấu hình CỐT LÕI của Wheel, hầu như ai cũng
   // cần thấy ngay. `useState` (không phải "open" tĩnh) để tôn trọng lần đóng thủ công của người dùng
@@ -298,11 +322,7 @@ export default function LuckyWheelPanel({ props, participants, columnTypesJson, 
         )}
 
         <div>
-          <label className={labelClass}>
-            {isDigitRoller
-              ? `Source field (exactly ${props.digitCount} characters)`
-              : "Winner display field (shown after landing)"}
-          </label>
+          <label className={labelClass}>Source</label>
           <select
             className={fieldClass}
             value={props.winnerDisplayField}
@@ -388,6 +408,46 @@ export default function LuckyWheelPanel({ props, participants, columnTypesJson, 
             </div>
           </div>
         )}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={labelClass}>X</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(x)}
+              onChange={(e) => onChangeComponent({ x: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Y</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(y)}
+              onChange={(e) => onChangeComponent({ y: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Width</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(width)}
+              onChange={(e) => onChangeComponent({ width: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Height{heightLocked ? " (auto)" : ""}</label>
+            <input
+              type="number"
+              disabled={heightLocked}
+              title={heightLocked ? "Digit Roller always auto-fits height to width + Digit count" : undefined}
+              className={`${fieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
+              value={Math.round(height)}
+              onChange={(e) => onChangeComponent({ height: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="h-px bg-base-800" />

@@ -46,12 +46,14 @@ export interface TextProps {
   align: "left" | "center" | "right";
   // Mặc định undefined/false = giữ NGUYÊN hành vi cũ (luôn hiện `content`, không phụ thuộc Draw) —
   // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = ẩn hẳn lúc Idle (chưa có kết
-  // quả), CHỈ hiện khi Wheel/Draw vừa tiết lộ 1 candidate (dùng lại đúng winnerRevealDelayMs mà
-  // Winner Name đã dùng — xem TextView.tsx/drawRevealHooks.ts), tự ẩn lại (disappearEffect) khi quay
-  // về Idle — cùng cơ chế/vocab hiệu ứng với WinnerNameProps.appearEffect/disappearEffect.
+  // quả), CHỈ hiện khi Draw vừa tiết lộ 1 candidate — cùng cơ chế/vocab hiệu ứng với
+  // WinnerNameProps.appearEffect/disappearEffect/appearDelayMs/disappearDelayMs (xem doc-comment ở
+  // đó, TextView.tsx dùng chung 1 hook với WinnerNameView.tsx qua drawRevealHooks.ts).
   syncWithDraw?: boolean;
   appearEffect?: WinnerTransitionEffect;
   disappearEffect?: WinnerTransitionEffect;
+  appearDelayMs?: number;
+  disappearDelayMs?: number;
 }
 
 export interface ImageProps {
@@ -169,14 +171,27 @@ export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
   "zoom",
 ];
 
-// Winner Name KHÔNG còn "Fallback text" — lúc chưa có kết quả (Idle) component ẩn hẳn (nội dung
-// rỗng), `appearEffect` chạy đúng lúc tên thật xuất hiện, `disappearEffect` chạy đúng lúc quay lại
-// Idle (Reset, hoặc 1 lượt Draw mới vừa bắt đầu — tên CŨ biến mất trước khi tên MỚI kịp hiện, xem
-// useRevealed trong drawRevealHooks.ts). 2 field ĐỘC LẬP nhau (không còn 1 field `transitionEffect`
-// dùng chung cho cả 2 chiều như trước).
+// Winner Name luôn ở đúng 1 trong 3 trạng thái (xem useRevealed trong drawRevealHooks.ts, dùng
+// chung bởi WinnerNameView.tsx và TextView.tsx khi `syncWithDraw`):
+//   1. Idle — chưa bấm Draw lần nào (hoặc vừa Reset session): ẩn hẳn, không hiện gì, không delay nào
+//      áp dụng.
+//   2. Bấm Draw LẦN ĐẦU (đang Idle → có candidate): sau đúng `appearDelayMs` tính TỪ LÚC BẤM DRAW,
+//      `appearEffect` chạy để hiện tên người trúng.
+//   3. Bấm Draw LẦN TIẾP THEO (đang hiện tên của lượt trước): tên CŨ đứng yên tại chỗ cho tới đúng
+//      `disappearDelayMs` tính TỪ LÚC BẤM DRAW đó thì `disappearEffect` mới chạy để làm nó biến mất;
+//      ĐỘC LẬP (không xếp hàng chờ nhau), tên MỚI cũng hiện ra sau đúng `appearDelayMs` tính từ CÙNG
+//      mốc bấm Draw này — cả 2 field Delay đều đo từ đúng 1 sự kiện (bấm Draw/có candidate mới,
+//      resultId đổi), không cộng dồn/không phụ thuộc gì vào thời lượng Lucky Wheel quay xong hẳn
+//      (khác model cũ — bỏ hẳn, vì công thức thật của từng hiệu ứng quay, đặc biệt Reel/Flicker của
+//      DigitRoller, không tính đúng tuyệt đối được, xem wheelRevealDurationMs) — người dùng tự canh 2
+//      mốc thời gian này bằng mắt cho khớp hiệu ứng quay thật trên trang.
+// 4 field ĐỘC LẬP nhau (không còn 1 field `transitionEffect` dùng chung cho cả 2 chiều như trước).
 export interface WinnerNameProps extends LiveTextProps {
   appearEffect: WinnerTransitionEffect;
   disappearEffect: WinnerTransitionEffect;
+  // undefined = 0 (hiện/ẩn ngay lập tức, không chờ) — xem doc-comment nhóm field phía trên.
+  appearDelayMs?: number;
+  disappearDelayMs?: number;
   // Hiện THAY CHO tên người trúng ngay sau khi 1 Quick Draw vừa chạy xong (xem
   // DrawSequenceActions.quickDrawResult/runDraw trong useDrawSequence.ts) — Quick Draw ra NHIỀU
   // người trúng cùng lúc nên không có 1 cái tên "đúng" nào để hiện, dùng 1 câu chung thay thế. Chỉ
@@ -966,14 +981,26 @@ export interface DrawSequenceActions {
   // drawEngine.ts), rồi tự xoá luôn candidate/pending đang giữ trong bộ nhớ — "quay về như ban đầu"
   // đúng nghĩa. Chỉ khoá bởi busy, không phụ thuộc isPending (khác confirm/redo).
   resetSession: () => void;
+  // Tăng thêm 1 mỗi lần resetSession() chạy xong thật sự (không tăng nếu bị chặn bởi busy/spinning
+  // hay lỗi IPC) — tín hiệu TƯỜNG MINH cho WinnerNameView.tsx/TextView.tsx tự ép về Idle ("" ngay
+  // lập tức) NGAY LÚC Reset, không đợi suy luận qua results[0].id đổi (vốn phụ thuộc đúng thời điểm
+  // `data` refresh xong, dễ lệch nhịp nếu có request refresh cũ hơn trả về sau — xem useRevealed
+  // trong drawRevealHooks.ts). Chỉ dùng để SO SÁNH đổi khác hay không (qua useRef), giá trị số không
+  // có ý nghĩa gì khác.
+  resetSeq: number;
   // Popup xác nhận chung — dùng cho action "confirm"/"reset" của Button (2 action ghi dữ liệu THẬT,
   // VĨNH VIỄN, xem docs/landing/button-actions.md), tránh bấm nhầm giữa lúc trình chiếu trực tiếp.
   // ButtonView.tsx gọi requestConfirm(message, action) THAY VÌ chạy action ngay — action thật (vd
   // sequence.confirm()) chỉ chạy SAU KHI resolveConfirmPrompt(true) từ nút "Confirm" trên popup (vẽ
   // ở LandingRenderer.tsx, đọc confirmPrompt). resolveConfirmPrompt(false) (nút Cancel/bấm ra ngoài)
   // chỉ đóng popup, không chạy gì. Thuần UI cục bộ, không liên quan IPC/busy.
-  confirmPrompt: { message: string } | null;
-  requestConfirm: (message: string, action: () => void) => void;
+  // `holdMs` (optional) — action nào phá dữ liệu NẶNG hơn hẳn "confirm 1 người" (hiện chỉ "reset":
+  // xoá SẠCH draw_results + trả prizes.remaining về gốc cho CẢ session, xem resetSession) thì bắt
+  // GIỮ nút Confirm đúng `holdMs` (không phải bấm 1 phát) mới thật sự chạy — xem HoldToConfirmButton
+  // trong LandingRenderer.tsx. undefined = giữ nguyên popup Cancel/Confirm bấm 1 phát như cũ (action
+  // "confirm" 1 người trúng).
+  confirmPrompt: { message: string; holdMs?: number } | null;
+  requestConfirm: (message: string, action: () => void, holdMs?: number) => void;
   resolveConfirmPrompt: (confirmed: boolean) => void;
   // Giải đang được CHỌN qua PrizeImageView.tsx (click 1 ảnh giải) — khác null thì pick() TRUYỀN
   // THẲNG vào lockedPrizeId đã có sẵn ở electron/drawEngine.ts, ép Draw chỉ random người TRONG đúng

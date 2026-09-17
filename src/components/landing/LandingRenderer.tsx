@@ -24,6 +24,7 @@ import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
 import FireworkView from "./views/FireworkView";
 import DrawModeCountPopup from "./views/DrawModeCountPopup";
+import HoldToConfirmButton from "./views/HoldToConfirmButton";
 
 interface LandingRendererProps {
   config: LandingConfig;
@@ -74,9 +75,9 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   const scoreboards = config.components.filter(
     (c): c is Extract<LandingComponent, { type: "scoreboard" }> => c.type === "scoreboard"
   );
-  // Khoảng WinnerNameView (xem file đó) phải CHỜ trước khi hiện tên thật — bằng đúng thời lượng Lucky
-  // Wheel trên trang quay xong hẳn, 0 nếu trang không có Wheel nào. Tính 1 lần cho cả trang (không
-  // theo riêng từng WinnerName) vì chỉ phụ thuộc cấu hình Wheel, không phụ thuộc bản thân WinnerName.
+  // CHỈ còn dùng cho BackgroundDimOverlay.tsx (dim nền sau khi Wheel quay xong hẳn) — WinnerNameView/
+  // TextView KHÔNG còn phụ thuộc giá trị này nữa, tự quản lý 3 trạng thái Idle/Revealed/Disappear qua
+  // appearDelayMs/disappearDelayMs riêng (xem doc-comment WinnerNameProps trong types.ts).
   const winnerRevealDelayMs = computeWheelRevealDelayMs(config.components);
   // `clip={false}` là tín hiệu RIÊNG LandingCanvas.tsx đã dùng sẵn để tự nhận diện "đây là canvas kéo
   // thả của Builder" (xem doc-comment `clip` trong LandingRendererProps) — dùng LẠI đúng tín hiệu này
@@ -139,7 +140,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
               pointerEvents: "none",
             }}
           >
-            {renderComponent(component, data, interactive, sequence, winnerRevealDelayMs, builderPreview)}
+            {renderComponent(component, data, interactive, sequence, builderPreview)}
             {missingCols.length > 0 && (
               <div
                 className="absolute -top-2 left-0 z-10 max-w-full truncate rounded bg-danger-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow"
@@ -180,7 +181,10 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
           docs/landing/button-actions.md) — CHỈ ở Present Mode thật, khi sequence.confirmPrompt đang
           có giá trị (ButtonView.tsx gọi sequence.requestConfirm() thay vì chạy action ngay). Click
           nền tối (ngoài thẻ) hoặc bấm Esc = Cancel, giống hành vi đóng modal thông thường. z-50 để
-          LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. */}
+          LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. `confirmPrompt.holdMs` (action
+          "reset" — xem CONFIRM_HOLD_MS trong ButtonView.tsx) đổi nút "Confirm" bấm 1 phát thành GIỮ
+          đủ số ms đó (HoldToConfirmButton.tsx) — nặng tay hơn hẳn xoá SẠCH cả session nên cần khó bấm
+          nhầm hơn "confirm" 1 người trúng. */}
       {interactive && sequence?.confirmPrompt && (
         <div
           className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -193,13 +197,27 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-base font-medium text-base-100">{sequence.confirmPrompt.message}</p>
+            {sequence.confirmPrompt.holdMs && (
+              <p className="mt-1.5 text-xs text-base-500">
+                Press and hold Confirm for {Math.round(sequence.confirmPrompt.holdMs / 1000)}s
+              </p>
+            )}
             <div className="mt-5 flex justify-center gap-3">
               <Button variant="secondary" onClick={() => sequence.resolveConfirmPrompt(false)}>
                 Cancel
               </Button>
-              <Button variant="danger" onClick={() => sequence.resolveConfirmPrompt(true)}>
-                Confirm
-              </Button>
+              {sequence.confirmPrompt.holdMs ? (
+                <HoldToConfirmButton
+                  holdMs={sequence.confirmPrompt.holdMs}
+                  onConfirm={() => sequence.resolveConfirmPrompt(true)}
+                >
+                  Confirm
+                </HoldToConfirmButton>
+              ) : (
+                <Button variant="danger" onClick={() => sequence.resolveConfirmPrompt(true)}>
+                  Confirm
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -270,12 +288,11 @@ function renderComponent(
   data?: LandingData,
   interactive?: boolean,
   sequence?: DrawSequenceActions,
-  winnerRevealDelayMs?: number,
   builderPreview?: boolean
 ) {
   switch (component.type) {
     case "text":
-      return <TextView component={component} data={data} builderPreview={builderPreview} revealDelayMs={winnerRevealDelayMs} />;
+      return <TextView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />;
     case "image":
       return <ImageView component={component} />;
     case "luckyWheel":
@@ -286,8 +303,8 @@ function renderComponent(
           component={component}
           data={data}
           builderPreview={builderPreview}
-          revealDelayMs={winnerRevealDelayMs}
           quickDrawActive={interactive && !!sequence?.quickDrawResult}
+          resetSeq={sequence?.resetSeq}
         />
       );
     case "prizeImage":
