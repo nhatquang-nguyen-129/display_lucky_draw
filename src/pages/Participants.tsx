@@ -138,8 +138,7 @@ export default function Participants() {
     <div className="flex h-full flex-col">
       <header className="mb-6 flex flex-shrink-0 items-center justify-between">
         <p className="text-sm text-base-400">
-          {items.length} participants in session "{activeSession.name}" — quick view here, all edits happen in
-          the Data Editor.
+          {items.length} participants in session "{activeSession.name}"
         </p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowEditor(true)}>
