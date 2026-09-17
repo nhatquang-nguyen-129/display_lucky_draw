@@ -31,10 +31,6 @@ export default function DrawModeCountPopup({
   const valid = !tooHigh && !tooLow;
 
   const title = mode === "multiple" ? "Multiple Draw" : "Quick Draw";
-  const helpText =
-    mode === "multiple"
-      ? "Each winner is drawn, shown, and auto-confirmed one at a time."
-      : "All winners are drawn and confirmed immediately, with no per-person reveal.";
 
   return (
     <div
@@ -47,9 +43,8 @@ export default function DrawModeCountPopup({
         className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-base font-medium text-base-100">{title} — how many winners for "{prizeName}"?</p>
-        <p className="mt-1 text-xs text-base-500">
-          {helpText} Up to {max} remaining.
+        <p className="text-base font-medium text-base-100">
+          How many winners should {title} pick for "{prizeName}"?
         </p>
         <input
           type="number"
@@ -70,7 +65,7 @@ export default function DrawModeCountPopup({
             Cancel
           </Button>
           <Button variant="primary" disabled={!valid} onClick={() => valid && onConfirm(parsed)}>
-            Set Mode
+            Confirm
           </Button>
         </div>
       </div>
