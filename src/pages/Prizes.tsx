@@ -169,16 +169,18 @@ export default function Prizes() {
     <div>
       <header className="mb-4 flex items-center justify-between">
         <p className="text-sm text-base-400">
-          Session "{activeSession.name}" — {items.length} prizes.
+          {items.length} prizes in session "{activeSession.name}"
         </p>
         <div className="flex gap-2">
+          <Button variant="secondary" onClick={openAdd}>
+            Add
+          </Button>
           <Button variant="secondary" onClick={openEditSelected} disabled={!selectedId}>
             Edit
           </Button>
           <Button variant="danger" onClick={handleDeleteSelected} disabled={!selectedId}>
             Delete
           </Button>
-          <Button onClick={openAdd}>+ Add prize</Button>
         </div>
       </header>
 
@@ -193,7 +195,7 @@ export default function Prizes() {
 
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-          No prizes yet. Click "+ Add prize" to get started.
+          No prizes yet. Click "Add" to get started.
         </p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-base-800">
