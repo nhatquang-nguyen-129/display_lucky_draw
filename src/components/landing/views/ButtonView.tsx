@@ -15,7 +15,17 @@ import {
 // toggleScoreboard/openLink không ghi gì bất thuận nghịch), hoặc đã tự no-op an toàn sẵn.
 const CONFIRM_MESSAGES: Partial<Record<ButtonAction, string>> = {
   confirm: "Are you sure you want to confirm this winner? This will be saved permanently.",
-  reset: "Are you sure you want to reset the session? All draw results will be permanently deleted.",
+  reset:
+    "Are you sure you want to reset the session? All draw results (including any pending, unconfirmed winner) and prize quantities will be permanently reset.",
+};
+
+// "reset" xoá SẠCH cả session (mọi draw_results, kể cả người đã quay nhưng CHƯA Confirm, cộng
+// prizes.remaining) — nặng tay hơn hẳn "confirm" (chỉ ghi thêm ĐÚNG 1 dòng), nên bắt GIỮ nút Confirm
+// đủ 3s trên popup thay vì bấm 1 phát, giảm rủi ro bấm nhầm phá dữ liệu cả buổi quay (xem
+// HoldToConfirmButton trong LandingRenderer.tsx). Action nào không có trong map này giữ nguyên popup
+// Cancel/Confirm bấm 1 phát như cũ.
+const CONFIRM_HOLD_MS: Partial<Record<ButtonAction, number>> = {
+  reset: 3000,
 };
 
 // Bấm là chạy đúng 1 action cố định đã chọn trong Properties Panel — gọi thẳng hàm tương ứng của
@@ -230,7 +240,7 @@ export default function ButtonView({
     if (!sequence || locked) return;
     const confirmMessage = CONFIRM_MESSAGES[component.props.action];
     if (confirmMessage) {
-      sequence.requestConfirm(confirmMessage, () => runAction(component, sequence, data));
+      sequence.requestConfirm(confirmMessage, () => runAction(component, sequence, data), CONFIRM_HOLD_MS[component.props.action]);
       return;
     }
     runAction(component, sequence, data);

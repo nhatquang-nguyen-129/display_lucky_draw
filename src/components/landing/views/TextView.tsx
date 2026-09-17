@@ -5,25 +5,28 @@ export default function TextView({
   component,
   data,
   builderPreview,
-  revealDelayMs = 0,
+  resetSeq,
 }: {
   component: TextComponent;
-  // 3 prop dưới CHỈ có tác dụng khi `props.syncWithDraw` bật — Text tĩnh (mặc định) không đọc gì từ
+  // 2 prop dưới CHỈ có tác dụng khi `props.syncWithDraw` bật — Text tĩnh (mặc định) không đọc gì từ
   // đây, giữ NGUYÊN hành vi cũ tuyệt đối cho mọi landing đã lưu trước khi có field này.
   data?: LandingData;
   builderPreview?: boolean;
-  revealDelayMs?: number;
+  // DrawSequenceActions.resetSeq — xem doc-comment ở types.ts và useRevealed trong drawRevealHooks.ts.
+  resetSeq?: number;
 }) {
-  const { content, fontSize, color, fontWeight, align, syncWithDraw, appearEffect, disappearEffect } = component.props;
+  const { content, fontSize, color, fontWeight, align, syncWithDraw, appearEffect, disappearEffect, appearDelayMs, disappearDelayMs } =
+    component.props;
   const latest = data?.results[0];
   // Chỉ 1 lượt Draw LIVE (id "pending-*") mới kích hoạt reveal — kết quả cũ từ DB khi mở lại phiên
   // không làm Text tự hiện, xem chú thích tương tự trong WinnerNameView.tsx.
   const liveResultId = isLiveDrawResultId(latest?.id) ? latest!.id : undefined;
 
   // Hook LUÔN được gọi (kể cả khi syncWithDraw tắt) — tuân thủ Rules of Hooks, chỉ giá trị TRẢ VỀ có
-  // được dùng hay không mới tuỳ nhánh bên dưới.
-  const revealed = useRevealed(liveResultId, revealDelayMs);
-  const text = !syncWithDraw || builderPreview ? content : revealed ? content : "";
+  // được dùng hay không mới tuỳ nhánh bên dưới. Cùng 3 trạng thái Idle/Revealed/Disappear với Winner
+  // Name — xem chú thích tương tự trong WinnerNameView.tsx/drawRevealHooks.ts.
+  const revealedContent = useRevealed(liveResultId, content, appearDelayMs ?? 0, disappearDelayMs ?? 0, resetSeq);
+  const text = !syncWithDraw || builderPreview ? content : revealedContent;
   const { current, previous } = useRevealTransition(text, appearEffect ?? "none", disappearEffect ?? "none");
 
   const justifyContent = align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";

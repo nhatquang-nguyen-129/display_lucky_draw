@@ -89,12 +89,22 @@ export default function PropertiesPanel({
           props={selected.props}
           participants={participants}
           columnTypesJson={columnTypesJson}
+          x={selected.x}
+          y={selected.y}
+          width={selected.width}
+          height={selected.height}
+          onChangeComponent={onChangeComponent}
           onChange={onChangeProps}
         />
       )}
       {selected.type === "winnerName" && (
         <LiveTextPanel
           props={selected.props}
+          x={selected.x}
+          y={selected.y}
+          width={selected.width}
+          height={selected.height}
+          onChangeComponent={onChangeComponent}
           participants={participants}
           columnTypesJson={columnTypesJson}
           onChange={onChangeProps}
@@ -137,7 +147,13 @@ export default function PropertiesPanel({
       )}
       {selected.type === "firework" && <FireworkPanel props={selected.props} prizes={prizes} onChange={onChangeProps} />}
       <div className="h-px bg-base-800" />
-      <SharedFields component={selected} onChange={onChangeComponent} onDelete={onDelete} />
+      <SharedFields
+        component={selected}
+        onChange={onChangeComponent}
+        onDelete={onDelete}
+        hidePosition={selected.type === "winnerName" || selected.type === "luckyWheel"}
+        hideEffect={selected.type === "winnerName" || selected.type === "luckyWheel"}
+      />
     </div>
   );
 }

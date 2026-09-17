@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LandingComponent } from "@/lib/landing/types";
+import { BUTTON_ACTION_LABELS, LandingComponent } from "@/lib/landing/types";
 import { COMPONENT_REGISTRY } from "./componentRegistry";
 
 interface LayersPanelProps {
@@ -12,7 +12,20 @@ interface LayersPanelProps {
   onReorder: (orderedIds: string[]) => void;
 }
 
+// Button: `c.name` chỉ là tên đặt 1 LẦN lúc tạo mới ("Button", "Button 2"...) rồi không đổi theo,
+// trong khi chữ THẬT hiện trên nút phụ thuộc action (xem displayLabel trong ButtonView.tsx) — đổi
+// action ở Properties Panel không cập nhật lại `name`, khiến Layer trong LayersPanel lệch hẳn với
+// chữ trên canvas (vd nút hiện "Confirm" nhưng Layer vẫn ghi "Button 3"). Tính lại y hệt logic
+// ButtonView.tsx thay vì đọc `name`, để Layer luôn khớp đúng chữ đang hiện trên Button. "draw" luôn
+// hiện "Single Draw" ở đây vì Builder canvas không có `sequence` (interactive = false ở
+// LandingRenderer.tsx) nên drawButtonLabel(undefined) luôn trả "Single Draw" — đúng y chữ thấy trên canvas.
 function labelOf(c: LandingComponent): string {
+  if (c.type === "button") {
+    const { action, label } = c.props;
+    if (action === "draw") return "Single Draw";
+    if (action !== "none") return BUTTON_ACTION_LABELS[action] ?? COMPONENT_REGISTRY[c.type].label;
+    return label?.trim() || COMPONENT_REGISTRY[c.type].label;
+  }
   return c.name?.trim() || COMPONENT_REGISTRY[c.type].label;
 }
 

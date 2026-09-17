@@ -100,7 +100,9 @@ export function useDrawSequence(
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [scoreboardVisible, setScoreboardVisible] = useState(false);
-  const [confirmPrompt, setConfirmPrompt] = useState<{ message: string } | null>(null);
+  const [confirmPrompt, setConfirmPrompt] = useState<{ message: string; holdMs?: number } | null>(null);
+  // Xem doc-comment DrawSequenceActions.resetSeq trong types.ts.
+  const [resetSeq, setResetSeq] = useState(0);
   const pendingConfirmActionRef = useRef<(() => void) | null>(null);
   const excludeIdsRef = useRef<string[]>([]);
   const lockedPrizeIdRef = useRef<string | null>(null);
@@ -251,6 +253,7 @@ export function useDrawSequence(
       setConfirmed(false);
       excludeIdsRef.current = [];
       lockedPrizeIdRef.current = null;
+      setResetSeq((n) => n + 1);
     } catch (e: any) {
       showInfoPrompt(cleanErrorMessage(e, "Reset failed"));
     } finally {
@@ -486,9 +489,9 @@ export function useDrawSequence(
 
   // Popup xác nhận chung — xem comment ở DrawSequenceActions trong types.ts. `action` giữ trong ref
   // (không phải state) vì bản thân nó là 1 closure/hàm, không cần re-render khi gán.
-  function requestConfirm(message: string, action: () => void) {
+  function requestConfirm(message: string, action: () => void, holdMs?: number) {
     pendingConfirmActionRef.current = action;
-    setConfirmPrompt({ message });
+    setConfirmPrompt({ message, holdMs });
   }
 
   function resolveConfirmPrompt(confirmed: boolean) {
@@ -538,6 +541,7 @@ export function useDrawSequence(
     toggleScoreboard,
     hideScoreboard,
     resetSession,
+    resetSeq,
     confirmPrompt,
     requestConfirm,
     resolveConfirmPrompt,

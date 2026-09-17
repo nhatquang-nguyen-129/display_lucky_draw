@@ -13,9 +13,21 @@ interface LiveTextPanelProps {
   props: LiveTextProps & {
     appearEffect?: WinnerTransitionEffect;
     disappearEffect?: WinnerTransitionEffect;
+    appearDelayMs?: number;
+    disappearDelayMs?: number;
     quickDrawText?: string;
     nameSourceColumn?: string;
   };
+  // Vị trí/kích thước thật của CHÍNH component này (component.x/y/width/height) — gộp chung vào
+  // "Basic options" ở đây thay vì để riêng dưới SharedFields.tsx như mọi loại component khác (xem
+  // PropertiesPanel.tsx: SharedFields ẩn hẳn phần Position + Effect chung cho "winnerName", chỉ giữ
+  // lại nút Delete). Đổi field NÀY phải qua `onChangeComponent` (patch top-level LandingComponent),
+  // KHÁC hẳn `onChange` (patch `component.props`) — 2 tầng dữ liệu riêng biệt trong LandingConfig.
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  onChangeComponent: (patch: { x?: number; y?: number; width?: number; height?: number }) => void;
   participants: Participant[];
   columnTypesJson: string | null;
   onChange: (patch: Record<string, any>) => void;
@@ -31,15 +43,26 @@ const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.
 
 // Cùng khuôn "Basic options" phẳng + "Interactions with Draw" đã dùng cho các panel khác — KHÔNG có
 // "Self Interactions" (Winner Name không bị click/hover/select trực tiếp, mọi thứ nó làm đều VÌ Draw
-// đã chạy). Không còn "Fallback text" — lúc Idle component ẩn hẳn (nội dung rỗng), thay bằng đúng 1
-// cặp Appear/Disappear:
-//   - "When Revealed" (Appear effect — đúng khoảnh khắc tên thật xuất hiện)
-//   - "When Idle" (Disappear effect — đúng khoảnh khắc quay lại rỗng, Reset hoặc 1 lượt Draw mới vừa
-//     bắt đầu)
+// đã chạy). Không còn "Fallback text" — lúc Idle component ẩn hẳn (nội dung rỗng). Đúng 3 trạng thái
+// (xem doc-comment WinnerNameProps trong types.ts) ứng với 2 mục, mỗi mục CHỈ gồm Effect + Delay:
+//   - "When Revealed" (Appear effect + Delay — kích hoạt bằng hành vi bấm Draw, dù đang Idle hay
+//     đang hiện tên của lượt trước, Delay luôn tính từ đúng lúc bấm Draw đó)
+//   - "When Disappear" (Disappear effect + Delay — CHỈ có ý nghĩa khi đang hiện tên của lượt trước,
+//     cũng kích hoạt bằng hành vi bấm Draw tiếp theo, ĐỘC LẬP với Delay của When Revealed)
 //   - "When Quick Draw" (Quick Draw text — hiện thay tên khi 1 Quick Draw vừa chạy xong)
-export default function LiveTextPanel({ props, participants, columnTypesJson, onChange }: LiveTextPanelProps) {
+export default function LiveTextPanel({
+  props,
+  x,
+  y,
+  width,
+  height,
+  onChangeComponent,
+  participants,
+  columnTypesJson,
+  onChange,
+}: LiveTextPanelProps) {
   const [revealedOpen, setRevealedOpen] = useState(true);
-  const [idleOpen, setIdleOpen] = useState(true);
+  const [disappearOpen, setDisappearOpen] = useState(true);
   const [quickDrawOpen, setQuickDrawOpen] = useState(true);
 
   // Mọi cột đang gán Data Type = Name VÀ còn dữ liệu thật trong Participants hiện tại — LỌC THÊM lớp
@@ -120,6 +143,44 @@ export default function LiveTextPanel({ props, participants, columnTypesJson, on
             </select>
           )}
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={labelClass}>X</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(x)}
+              onChange={(e) => onChangeComponent({ x: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Y</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(y)}
+              onChange={(e) => onChangeComponent({ y: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Width</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(width)}
+              onChange={(e) => onChangeComponent({ width: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Height</label>
+            <input
+              type="number"
+              className={fieldClass}
+              value={Math.round(height)}
+              onChange={(e) => onChangeComponent({ height: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="h-px bg-base-800" />
@@ -130,7 +191,7 @@ export default function LiveTextPanel({ props, participants, columnTypesJson, on
           <summary className={summaryClass}>When Revealed</summary>
           <div className={detailsBodyClass}>
             <div>
-              <label className={labelClass}>Appear effect</label>
+              <label className={labelClass}>Effect</label>
               <select
                 className={fieldClass}
                 value={props.appearEffect ?? "none"}
@@ -143,13 +204,27 @@ export default function LiveTextPanel({ props, participants, columnTypesJson, on
                 ))}
               </select>
             </div>
+            <div>
+              <label className={labelClass}>Delay (ms)</label>
+              <input
+                type="number"
+                min={0}
+                step={100}
+                placeholder="0"
+                className={fieldClass}
+                value={props.appearDelayMs ?? ""}
+                onChange={(e) =>
+                  onChange({ appearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
+                }
+              />
+            </div>
           </div>
         </details>
-        <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Idle</summary>
+        <details open={disappearOpen} onToggle={(e) => setDisappearOpen(e.currentTarget.open)} className={detailsClass}>
+          <summary className={summaryClass}>When Disappear</summary>
           <div className={detailsBodyClass}>
             <div>
-              <label className={labelClass}>Disappear effect</label>
+              <label className={labelClass}>Effect</label>
               <select
                 className={fieldClass}
                 value={props.disappearEffect ?? "none"}
@@ -161,6 +236,20 @@ export default function LiveTextPanel({ props, participants, columnTypesJson, on
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className={labelClass}>Delay (ms)</label>
+              <input
+                type="number"
+                min={0}
+                step={100}
+                placeholder="0"
+                className={fieldClass}
+                value={props.disappearDelayMs ?? ""}
+                onChange={(e) =>
+                  onChange({ disappearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
+                }
+              />
             </div>
           </div>
         </details>

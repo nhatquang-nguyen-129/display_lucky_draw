@@ -23,7 +23,7 @@ option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `conf
 | **None** | — | — | Mặc định, chưa cấu hình |
 | **Draw** | Đang có candidate CHỜ CONFIRM (`sequence.isPending`) → `sequence.redo()`, ngược lại → `sequence.pick()` | Không ghi DB (chỉ SELECT) | 1 nút DUY NHẤT vừa Draw vừa "Redraw/Discard" — bấm lần đầu chọn candidate mới; bấm tiếp trong lúc candidate đó CHƯA Confirm thì rút lại, chọn lại đúng giải đó cho người khác |
 | **Confirm** | `sequence.confirm()` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua nút Discard |
-| **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm |
+| **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm (kể cả candidate đang chờ Confirm, chỉ tồn tại trong bộ nhớ). Popup xác nhận bắt **giữ nút Confirm đủ 3 giây** (không phải bấm 1 phát) — xem `CONFIRM_HOLD_MS` bên dưới |
 | **Scoreboard** | `sequence.toggleScoreboard()` | Không ghi gì | Bật/tắt popup Scoreboard giữa màn hình |
 | **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **Source** — mở URL của winner GẦN NHẤT, no-op im lặng nếu chưa có winner/field rỗng |
 
@@ -86,6 +86,20 @@ bỏ hẳn field thừa này thay vì giữ 1 ô nhập ít ai cần sửa.
 >
 > `Open Link` không ghi gì vào DB, nhưng vẫn có hệ quả ngoài `landing_config`: mở 1 trình duyệt
 > ngoài thật sự trên máy đang chạy Present Mode.
+
+## Reset — popup xác nhận "giữ 3 giây", không phải bấm 1 phát
+
+`resetSession()` xoá SẠCH cả session (mọi `draw_results`, cộng `prizes.remaining`) — nặng tay hơn hẳn
+`confirm()` (chỉ ghi thêm ĐÚNG 1 dòng), nên popup xác nhận của action **Reset** dùng
+`HoldToConfirmButton.tsx` (`LandingRenderer.tsx`) thay vì nút Confirm bấm 1 phát: `ButtonView.tsx` gọi
+`sequence.requestConfirm(message, action, holdMs)` với `holdMs` lấy từ map `CONFIRM_HOLD_MS =
+{ reset: 3000 }` — action nào không có trong map này (hiện chỉ "confirm") vẫn giữ popup Cancel/Confirm
+bấm 1 phát như cũ. Thả tay ra sớm huỷ luôn thao tác, không có gì xảy ra — chỉ giữ ĐỦ 3 giây liên tục
+mới thật sự chạy `resetSession()`.
+
+Sau khi Reset chạy xong, Winner Name/Text (khi `syncWithDraw`) tự về đúng trạng thái Idle NGAY LẬP
+TỨC qua `DrawSequenceActions.resetSeq` — xem mục "3 trạng thái Idle/Revealed/Disappear" ở
+[present-mode.md](./present-mode.md).
 
 Lucky Wheel KHÔNG cần Button nào ra lệnh — nó tự phát hiện `results[0].id` vừa đổi (candidate mới,
 dù là lượt Draw đầu hay 1 lượt "quay lại" từ chính action Draw đó — xem trên) và tự bắt đầu quay (xem
