@@ -78,15 +78,15 @@ export default function LandingPage() {
       <div className="mb-3 flex shrink-0 items-center justify-between">
         <div>
           <p className="text-xs text-base-500">
-            Session "{activeSession.name}" · {config.components.length} component(s)
+            {config.components.length} components in session "{activeSession.name}"
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" onClick={() => window.api.present.open(activeSessionId!)} className="text-xs">
-            Open Present Window
+            Presentation
           </Button>
           <Button onClick={() => window.api.landingBuilder.open(activeSessionId!)} className="text-xs">
-            Landing Builder
+            Builder
           </Button>
         </div>
       </div>
