@@ -36,3 +36,16 @@ Thuật toán chọn (`pickWinner`) ở trên chỉ thao tác trên `participant
 `participantName` trên `DrawCandidate` (trả về từ `pickWinner`, dùng để hiện lên Winner Name TRƯỚC khi Confirm) và `participant_name`/`participant_phone`/`participant_code`/`participant_email` trên kết quả đã Confirm (`sessions:results` trong `main.ts`) đều KHÔNG đọc cứng cột SQL — resolve theo đúng cột nào đang được Data Editor gán Data Type tương ứng (Name/Phone/Code/Email), dù cột đó vật lý nằm ở cột SQL lõi hay trong `extra_data`. Xem [`docs/participants/column-mapping.md`](../participants/column-mapping.md) mục "3 bản sao" — bản dùng ở đây là `electron/participantFields.ts` (`resolveParticipantField`/`computeActiveCoreFields`), vì `electron/` không import được code từ `src/`.
 
 Hệ quả: import 1 file Google Form với cột "Hãy cho KidsPlaza biết đầy đủ Họ và Tên của Mẹ nha!", gán Data Type = "Name" cho đúng cột đó trong Data Editor — KHÔNG cần sửa gì ở `drawEngine.ts`/`main.ts`, Winner Name/Scoreboard tự hiện đúng giá trị. Chưa gán Data Type nào cho session đó → fallback về cột SQL `name`/`phone`/`code`/`email` (tương thích ngược với dữ liệu tạo trước khi có thiết kế này).
+
+**Bug đã sửa: Winner Name hiện tên rỗng dù participant có tên thật ở cột `extra_data`** — `pickWinner`
+(`drawEngine.ts`) và `resolveDrawRows`/`sessions:results` (`main.ts`) đều tự tính `activeCoreFields`
+(cột SQL lõi nào "đang có dữ liệu thật" trong session, xem `computeActiveCoreFields` trong
+`electron/participantFields.ts`) bằng 1 câu `SELECT ... FROM participants WHERE session_id = ?` **QUÊN
+lọc `status != 'removed'`** — khác hẳn `participants:list` (đã lọc đúng). Hệ quả: 1 session đã từng
+"Replace" import (xoá SOFT-DELETE, không xoá thật khỏi DB — xem `docs/participants/schema.md`) từ 1
+batch CŨ còn ghi thẳng cột SQL `name`/`phone`/... (trước khi đổi hẳn sang generic `extra_data`) khiến
+`activeCoreFields` tưởng nhầm cột đó "đang active" dù KHÔNG participant thật (active) nào còn dùng nó
+— `resolveParticipantField` dừng lại NGAY ở cột SQL rỗng đó (return sớm ở vòng lặp core field), không
+bao giờ tới lượt kiểm tra cột `extra_data` thật (vd `full_name`) đang chứa tên thật. Sửa bằng cách
+thêm `AND status != 'removed'` vào cả 2 câu `SELECT` trên, khớp đúng ý định gốc của comment "tính trên
+TOÀN BỘ participants của session... để khớp đúng những gì Data Editor đang hiện".

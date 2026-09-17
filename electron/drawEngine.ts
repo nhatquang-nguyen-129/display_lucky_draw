@@ -158,10 +158,14 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
   // Tên hiển thị của người trúng KHÔNG đọc cứng participant.name — Draw Engine không cần biết cột
   // SQL nào tên gì, chỉ cần biết cột nào đang được Data Editor gán Data Type = "Name" (xem
   // docs/architecture/draw-engine.md, docs/participants/column-mapping.md). activeCoreFields tính
-  // trên TOÀN BỘ participants của session (không chỉ nhóm đủ điều kiện) để khớp đúng những gì Data
-  // Editor đang hiện cho người vận hành thấy.
+  // trên TOÀN BỘ participants ĐANG ACTIVE của session (không chỉ nhóm đủ điều kiện) để khớp đúng những
+  // gì Data Editor đang hiện cho người vận hành thấy — PHẢI lọc status != 'removed' giống hệt
+  // participants:list, nếu không dòng cũ đã soft-delete (vd batch import trước khi đổi sang thiết kế
+  // generic, còn ghi thẳng cột SQL name/phone/...) khiến activeCoreFields tưởng nhầm "name" đang có dữ
+  // liệu thật trong session dù participant thật sự (active) không hề dùng cột đó — bug đã gặp thật:
+  // participantName luôn rỗng dù participant có tên thật ở cột extra_data khác.
   const allParticipants = db
-    .prepare(`SELECT name, phone, code, email, extra_data FROM participants WHERE session_id = ?`)
+    .prepare(`SELECT name, phone, code, email, extra_data FROM participants WHERE session_id = ? AND status != 'removed'`)
     .all(sessionId) as { name: string; phone: string | null; code: string | null; email: string | null; extra_data: string | null }[];
   const activeCoreFields = computeActiveCoreFields(allParticipants);
   const participantName = resolveParticipantField(

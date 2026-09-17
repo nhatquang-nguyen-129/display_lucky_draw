@@ -563,12 +563,16 @@ function resolveDrawRows(sessionId: string, extraWhere: string): any[] {
   // Kết quả hiển thị (Winner Name/Scoreboard) đọc theo cột nào đang được Data Editor gán Data Type
   // Name/Phone/Code/Email cho session này — KHÔNG đọc cứng p.name/.phone/... (xem
   // docs/architecture/draw-engine.md). participant_extra_data chỉ dùng để resolve ở đây, không trả
-  // ra ngoài (giữ đúng shape DrawResultRow cũ, tránh renderer phải đổi theo).
+  // ra ngoài (giữ đúng shape DrawResultRow cũ, tránh renderer phải đổi theo). PHẢI lọc
+  // status != 'removed' giống participants:list — thiếu lọc này thì dòng đã soft-delete (vd batch
+  // import cũ còn ghi thẳng cột SQL name/phone/...) khiến activeCoreFields tưởng nhầm cột đó đang có
+  // dữ liệu thật, participant_name/_phone/... của kết quả CONFIRMED sẽ ra rỗng dù người trúng có tên
+  // thật ở cột extra_data khác (bug đã gặp thật, cùng gốc với drawEngine.ts's pickWinner).
   const session = db.prepare(`SELECT participant_column_types FROM sessions WHERE id = ?`).get(sessionId) as
     | { participant_column_types: string | null }
     | undefined;
   const allParticipants = db
-    .prepare(`SELECT name, phone, code, email, extra_data FROM participants WHERE session_id = ?`)
+    .prepare(`SELECT name, phone, code, email, extra_data FROM participants WHERE session_id = ? AND status != 'removed'`)
     .all(sessionId) as { name: string; phone: string | null; code: string | null; email: string | null; extra_data: string | null }[];
   const activeCoreFields = computeActiveCoreFields(allParticipants);
   const columnTypesJson = session?.participant_column_types ?? null;
