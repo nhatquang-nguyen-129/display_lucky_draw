@@ -23,11 +23,11 @@ export default function Layout() {
                 <Outlet />
               </div>
             ) : isFullHeight ? (
-              <div className="mx-auto flex h-full max-w-6xl flex-col px-8 py-8">
+              <div className="mx-auto flex h-full max-w-6xl flex-col px-8 pb-8 pt-4">
                 <Outlet />
               </div>
             ) : (
-              <div className="mx-auto max-w-6xl px-8 py-8">
+              <div className="mx-auto max-w-6xl px-8 pb-8 pt-4">
                 <Outlet />
               </div>
             )}
