@@ -45,21 +45,77 @@ export interface TextProps {
   fontWeight: "normal" | "bold";
   align: "left" | "center" | "right";
   // Mặc định undefined/false = giữ NGUYÊN hành vi cũ (luôn hiện `content`, không phụ thuộc Draw) —
-  // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = ẩn hẳn lúc Idle (chưa có kết
-  // quả), CHỈ hiện khi Draw vừa tiết lộ 1 candidate — cùng cơ chế/vocab hiệu ứng với
-  // WinnerNameProps.appearEffect/disappearEffect/appearDelayMs/disappearDelayMs (xem doc-comment ở
-  // đó, TextView.tsx dùng chung 1 hook với WinnerNameView.tsx qua drawRevealHooks.ts).
+  // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = hiện/ẩn theo đúng chu trình đã
+  // cấu hình ở `drawCycle` bên dưới (xem doc-comment DrawCycleConfig ở trên) — CÙNG model với
+  // ImageProps (TextView.tsx dùng chung `useDrawCycleVisibility`, xem drawRevealHooks.ts) vì `content`
+  // là 1 chuỗi TĨNH do người dùng tự đặt, không đổi theo từng lượt quay (khác Winner Name — tên người
+  // trúng đổi theo TỪNG lượt, xem WinnerNameProps).
   syncWithDraw?: boolean;
-  appearEffect?: WinnerTransitionEffect;
-  disappearEffect?: WinnerTransitionEffect;
-  appearDelayMs?: number;
-  disappearDelayMs?: number;
+  drawCycle?: DrawCycleConfig;
 }
+
+// "Appearance" NGHỈ (lúc Idle) của 1 component đồng bộ Draw — CHỈ có 1 trong 2 giá trị, vì Idle là
+// trạng thái ban đầu/mặc định (không phải 1 "hành động" như Draw/Redraw), nên chỉ CÓ MỘT kết quả cuối
+// hợp lý, không có "none" (khác DrawPhaseAction bên dưới) — Idle LUÔN phải có 1 dáng vẻ mặc định.
+export type DrawRestState = "appear" | "disappear";
+
+// Appearance của Draw/Redraw — thêm "none" (không làm gì, giữ nguyên trạng thái đang có) so với
+// DrawRestState của Idle. Properties Panel (ImagePanel.tsx) RÀNG BUỘC lựa chọn hợp lệ theo
+// `idleState` (xem DrawCycleConfig bên dưới), vô hiệu hoá (disabled) lựa chọn không hợp lệ ngay trên
+// dropdown — không cho tự do chọn bừa (đã thử cho Idle bật ĐỘC LẬP cả 2 chiều Appear/Disappear cùng
+// lúc ở bản trước, thấy ngay vô nghĩa: 2 hiệu ứng đối lập chạy đua nhau ngay khi mới vào trang).
+export type DrawPhaseAction = "none" | DrawRestState;
+
+export interface DrawPhaseEffectConfig {
+  effect: WinnerTransitionEffect;
+  delayMs?: number;
+}
+
+// Toàn bộ chu trình hiện/ẩn theo Draw của 1 component TĨNH (dùng bởi ImageProps VÀ TextProps — cả 2
+// đều là "1 thứ cố định do người dùng tự đặt, không đổi theo từng lượt quay", khác Winner Name — tên
+// người trúng đổi theo TỪNG lượt, xem WinnerNameProps/useRevealed) — CHỈ 1 input tự do hoàn toàn
+// (`idleState`), còn `drawAction`/`redrawAction` bị RÀNG BUỘC theo nó để LUÔN giữ đúng thứ tự
+// xen kẽ hợp lý (không mốc nào TRÙNG trạng thái với mốc liền trước nó):
+//   - idleState   : trạng thái nghỉ (xem DrawRestState) — hiệu ứng đi kèm (`idleEffect`) CHẠY LÚC
+//     QUAY VỀ idleState, CHỈ xảy ra khi Reset (`resetSeq` đổi), KHÔNG BAO GIỜ chạy lúc trang vừa mở
+//     (chưa từng rời khỏi Idle thì không có gì để "quay về", xem useDrawCycleVisibility trong
+//     drawRevealHooks.ts).
+//   - drawAction  : "none" (Draw không đổi gì, giữ nguyên trạng thái đang có) HOẶC BẮT BUỘC là giá
+//     trị ĐỐI LẬP `idleState` — Panel vô hiệu hoá lựa chọn TRÙNG idleState trên dropdown. Khác "none"
+//     thì dùng `drawEffect` để chuyển sang trạng thái đó.
+//   - redrawAction: "none" (Redraw không đổi gì) HOẶC BẮT BUỘC là giá trị TRÙNG idleState (tức đối
+//     lập `drawAction`) — Panel vô hiệu hoá lựa chọn ĐỐI LẬP idleState trên dropdown. Khác "none" thì
+//     dùng `redrawEffect` để quay VỀ idleState, rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp
+//     bằng CHÍNH `drawEffect` để quay LẠI trạng thái mà Draw đưa tới, SAU KHI `redrawEffect` chạy
+//     xong HẲN (nối tiếp thật, không đo song song) — đúng ý "biến mất rồi hiện lại ngay khi ấn quay
+//     lại". Không cần field effect riêng cho bước "hiện lại" này — công bố kết quả là ĐÚNG 1 hành
+//     động dù là Draw lần đầu hay Redraw.
+export interface DrawCycleConfig {
+  idleState: DrawRestState;
+  idleEffect?: DrawPhaseEffectConfig;
+  drawAction: DrawPhaseAction;
+  drawEffect?: DrawPhaseEffectConfig;
+  redrawAction: DrawPhaseAction;
+  redrawEffect?: DrawPhaseEffectConfig;
+}
+
+// Fallback AN TOÀN khi `syncWithDraw` chưa từng bật (chưa có `drawCycle` nào lưu) — chỉ cần hợp lệ về
+// type, KHÔNG được đọc/dùng ở đâu khi `syncWithDraw` tắt (xem ImageView.tsx).
+export const DEFAULT_DRAW_CYCLE: DrawCycleConfig = { idleState: "disappear", drawAction: "none", redrawAction: "none" };
 
 export interface ImageProps {
   srcDataUrl: string | null; // base64, giống cách PrizeFormModal lưu display_image
   fit: "cover" | "contain" | "stretch";
   borderRadius: number;
+  // Mặc định undefined/false = giữ NGUYÊN hành vi cũ (ảnh luôn hiện tĩnh, không phụ thuộc Draw) —
+  // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = hiện/ẩn theo đúng chu trình đã
+  // cấu hình ở `drawCycle` bên dưới (xem doc-comment DrawCycleConfig ở trên) — dùng cho 1 ảnh PNG cần
+  // tự đồng bộ với quy trình quay (vd Podium tách khỏi Background để không bị dim theo, xem
+  // docs/landing/properties-panel.md) mà không cần tạo hẳn 1 loại component riêng. Cùng hệ hiệu ứng
+  // (WinnerTransitionEffect) với Winner Name/Text nhưng KHÁC hook (ImageView.tsx dùng
+  // useDrawCycleVisibility, không phải useRevealed — xem drawRevealHooks.ts).
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
 }
 
 export interface TextComponent extends BaseComponent {
@@ -171,10 +227,22 @@ export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
   "zoom",
 ];
 
-// Winner Name luôn ở đúng 1 trong 3 trạng thái (xem useRevealed trong drawRevealHooks.ts, dùng
-// chung bởi WinnerNameView.tsx và TextView.tsx khi `syncWithDraw`):
-//   1. Idle — chưa bấm Draw lần nào (hoặc vừa Reset session): ẩn hẳn, không hiện gì, không delay nào
-//      áp dụng.
+// Winner Name luôn ở đúng 1 trong 3 trạng thái (xem useRevealed trong drawRevealHooks.ts):
+//   1. Idle — chưa bấm Draw lần nào: ẩn hẳn, không hiện gì (chưa từng có gì để "giữ lại" cả — field
+//      `idleState` bên dưới không có tác dụng ở đây, chỉ ảnh hưởng NHÁNH 2 dưới đây). Vừa Reset
+//      session (`resetSeq` đổi) trong lúc ĐANG hiện tên của lượt trước — đây mới là lúc `idleState`
+//      (xem `DrawRestState` — cùng type với ImageProps/TextProps.drawCycle.idleState) có ý nghĩa:
+//        - "disappear" (mặc định/undefined — hành vi cũ): tên đó biến mất sau đúng `idleDelayMs`
+//          bằng `idleEffect` — 2 field NÀY RIÊNG, KHÔNG dùng chung `disappearEffect`/`disappearDelayMs`
+//          (vốn dành cho Redraw) vì Reset là 1 sự kiện khác hẳn (người vận hành CHỦ ĐỘNG quay lại
+//          Idle, không phải đang công bố kết quả mới) — mặc định undefined = ẩn NGAY LẬP TỨC không
+//          hiệu ứng.
+//        - "appear": GIỮ NGUYÊN tên đang hiện, Reset KHÔNG xoá nó (dùng khi muốn tên người trúng gần
+//          nhất tiếp tục hiển thị trang trí cho tới lượt Draw kế tiếp) — `idleEffect`/`idleDelayMs`
+//          không có tác dụng gì trong trường hợp này (không có gì đổi để mà chạy hiệu ứng). KHÔNG ảnh
+//          hưởng lúc MỞ LẠI landing (app vừa khởi động) — `useRevealed` luôn khởi tạo rỗng lúc mount,
+//          tách biệt hoàn toàn khỏi field này, giữ đúng quyết định "Landing luôn mở ở Idle, không
+//          restore winner cũ" (xem memory ghi lại quyết định này).
 //   2. Bấm Draw LẦN ĐẦU (đang Idle → có candidate): sau đúng `appearDelayMs` tính TỪ LÚC BẤM DRAW,
 //      `appearEffect` chạy để hiện tên người trúng.
 //   3. Bấm Draw LẦN TIẾP THEO (đang hiện tên của lượt trước): tên CŨ đứng yên tại chỗ cho tới đúng
@@ -192,6 +260,11 @@ export interface WinnerNameProps extends LiveTextProps {
   // undefined = 0 (hiện/ẩn ngay lập tức, không chờ) — xem doc-comment nhóm field phía trên.
   appearDelayMs?: number;
   disappearDelayMs?: number;
+  // Riêng cho lúc Reset (xem doc-comment nhóm field phía trên) — undefined = "disappear" (ẩn NGAY
+  // LẬP TỨC, không hiệu ứng — hành vi cũ trước khi có field này).
+  idleState?: DrawRestState;
+  idleEffect?: WinnerTransitionEffect;
+  idleDelayMs?: number;
   // Hiện THAY CHO tên người trúng ngay sau khi 1 Quick Draw vừa chạy xong (xem
   // DrawSequenceActions.quickDrawResult/runDraw trong useDrawSequence.ts) — Quick Draw ra NHIỀU
   // người trúng cùng lúc nên không có 1 cái tên "đúng" nào để hiện, dùng 1 câu chung thay thế. Chỉ

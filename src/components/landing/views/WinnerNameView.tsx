@@ -1,5 +1,5 @@
 import { getParticipantField, isLiveDrawResultId, LandingData, WinnerNameComponent } from "@/lib/landing/types";
-import { APPEAR_CLASS, DISAPPEAR_CLASS, useRevealed, useRevealTransition } from "./drawRevealHooks";
+import { APPEAR_CLASS, useRevealed, useRevealTransition } from "./drawRevealHooks";
 
 // CHỈ trong canvas kéo-thả của Landing Builder (xem `builderPreview` — bắt nguồn từ `clip={false}`,
 // tín hiệu riêng LandingCanvas.tsx đã dùng sẵn để tự nhận diện, xem LandingRenderer.tsx) — hiện chữ
@@ -36,6 +36,9 @@ export default function WinnerNameView({
     disappearEffect,
     appearDelayMs,
     disappearDelayMs,
+    idleState,
+    idleEffect,
+    idleDelayMs,
     quickDrawText,
     nameSourceColumn,
   } = component.props;
@@ -60,10 +63,24 @@ export default function WinnerNameView({
   // 3 trạng thái Idle/Revealed/Disappear (xem doc-comment WinnerNameProps trong types.ts và
   // useRevealed trong drawRevealHooks.ts) — hoàn toàn tự quản lý qua appearDelayMs/disappearDelayMs
   // của CHÍNH Winner Name này, không còn phụ thuộc thời lượng quay của Lucky Wheel trên trang.
-  const revealedName = useRevealed(liveResultId, winnerName, appearDelayMs ?? 0, disappearDelayMs ?? 0, resetSeq);
+  const revealedName = useRevealed(
+    liveResultId,
+    winnerName,
+    appearDelayMs ?? 0,
+    disappearDelayMs ?? 0,
+    resetSeq,
+    idleState ?? "disappear"
+  );
   const text = builderPreview ? BUILDER_PLACEHOLDER : quickDrawActive ? quickDrawText : revealedName;
 
-  const { current, previous } = useRevealTransition(text, appearEffect ?? "none", disappearEffect ?? "none");
+  const { current, previous, previousClass } = useRevealTransition(
+    text,
+    appearEffect ?? "none",
+    disappearEffect ?? "none",
+    resetSeq,
+    idleEffect,
+    idleDelayMs
+  );
 
   const justifyContent = align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";
   const transitioning = previous !== null;
@@ -80,10 +97,7 @@ export default function WinnerNameView({
       style={{ fontSize, color, fontWeight, textAlign: align, justifyContent }}
     >
       {transitioning && (
-        <span
-          className={`absolute inset-0 flex items-center ${DISAPPEAR_CLASS[disappearEffect ?? "none"]}`}
-          style={{ justifyContent }}
-        >
+        <span className={`absolute inset-0 flex items-center ${previousClass}`} style={{ justifyContent }}>
           {previous}
         </span>
       )}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   computeActiveParticipantCoreFields,
+  DrawRestState,
   getParticipantField,
   listParticipantColumnsForType,
   LiveTextProps,
@@ -8,6 +9,7 @@ import {
   WinnerTransitionEffect,
 } from "@/lib/landing/types";
 import { Participant } from "@/types";
+import ColorField from "./ColorField";
 
 interface LiveTextPanelProps {
   props: LiveTextProps & {
@@ -15,6 +17,9 @@ interface LiveTextPanelProps {
     disappearEffect?: WinnerTransitionEffect;
     appearDelayMs?: number;
     disappearDelayMs?: number;
+    idleState?: DrawRestState;
+    idleEffect?: WinnerTransitionEffect;
+    idleDelayMs?: number;
     quickDrawText?: string;
     nameSourceColumn?: string;
   };
@@ -41,14 +46,30 @@ const detailsClass = "rounded-lg border border-base-800";
 const summaryClass = "cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100";
 const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5";
 
-// Cùng khuôn "Basic options" phẳng + "Interactions with Draw" đã dùng cho các panel khác — KHÔNG có
-// "Self Interactions" (Winner Name không bị click/hover/select trực tiếp, mọi thứ nó làm đều VÌ Draw
-// đã chạy). Không còn "Fallback text" — lúc Idle component ẩn hẳn (nội dung rỗng). Đúng 3 trạng thái
-// (xem doc-comment WinnerNameProps trong types.ts) ứng với 2 mục, mỗi mục CHỈ gồm Effect + Delay:
-//   - "When Revealed" (Appear effect + Delay — kích hoạt bằng hành vi bấm Draw, dù đang Idle hay
-//     đang hiện tên của lượt trước, Delay luôn tính từ đúng lúc bấm Draw đó)
-//   - "When Disappear" (Disappear effect + Delay — CHỈ có ý nghĩa khi đang hiện tên của lượt trước,
-//     cũng kích hoạt bằng hành vi bấm Draw tiếp theo, ĐỘC LẬP với Delay của When Revealed)
+// Cùng khuôn "Basic options" phẳng + "Interactions with Draw" đã dùng cho các panel khác, và đặt tên
+// mục theo ĐÚNG thuật ngữ Idle/Draw/Redraw chung với ImagePanel.tsx/TextPanel.tsx (xem DrawCycleFields
+// .tsx) — nhưng KHÔNG dùng chung cơ chế/schema đó (`DrawCycleConfig`): Winner Name không có checkbox
+// "Trigger with Draw" (LUÔN bật — cả component chỉ tồn tại để phản ứng theo Draw). Mục "Idle" CŨNG có
+// dropdown Appearance như Image/Text (đồng bộ hình dáng UI), nhưng Ý NGHĨA khác: "Disappear" (mặc
+// định) = ẩn tên khi Reset như cũ; "Appear" = GIỮ NGUYÊN tên đang hiện, Reset không xoá gì — xem
+// doc-comment WinnerNameProps.idleState trong types.ts (KHÔNG ảnh hưởng lúc mở lại landing, vẫn luôn
+// rỗng lúc mount). Lý do khác biệt còn lại: NỘI DUNG Winner Name (tên người trúng) THẬT SỰ đổi theo
+// TỪNG lượt quay — khác Image/Text (1 thứ TĨNH do người dùng tự đặt, không đổi theo lượt) — nên vẫn
+// dùng cơ chế `useRevealed`/`useRevealTransition` riêng (xem drawRevealHooks.ts), không migrate sang
+// `useDrawCycleVisibility`. KHÔNG có "Self Interactions" (Winner Name không bị click/hover/select
+// trực tiếp, mọi thứ nó làm đều VÌ Draw đã chạy). 4 mục:
+//   - "Idle" (MỚI — Appearance + Effect + Delay riêng cho lúc Reset, xem doc-comment
+//     WinnerNameProps.idleState/idleEffect trong types.ts. Effect/Delay CHỈ có tác dụng khi Appearance
+//     = Disappear — Appear không có gì để chạy hiệu ứng, vì không đổi gì cả. Mặc định undefined =
+//     "disappear" + ẩn NGAY LẬP TỨC không hiệu ứng, giữ đúng hành vi cũ. KHÔNG dùng chung
+//     `disappearEffect`/`disappearDelayMs` — Reset là 1 sự kiện khác hẳn Redraw)
+//   - "Draw" (trước đây "When Revealed" — Appear effect + Delay — kích hoạt bằng hành vi bấm Draw, dù
+//     đang Idle hay đang hiện tên của lượt trước, Delay luôn tính từ đúng lúc bấm Draw đó)
+//   - "Redraw" (trước đây "When Disappear" — Disappear effect + Delay, xử lý nội dung CŨ đã có — CHỈ
+//     có ý nghĩa khi đang hiện tên của lượt trước; tên MỚI sau đó hiện ra dùng CHÍNH Effect của "Draw"
+//     ở trên, giống ImagePanel.tsx/TextPanel.tsx, chỉ khác: 2 mốc thời gian ĐO ĐỘC LẬP từ CÙNG 1 lúc
+//     bấm Draw — KHÔNG nối tiếp/chờ nhau như DrawCycleConfig — giữ nguyên hành vi đã có, không đổi
+//     choreography của 1 tính năng đã hoạt động ổn định)
 //   - "When Quick Draw" (Quick Draw text — hiện thay tên khi 1 Quick Draw vừa chạy xong)
 export default function LiveTextPanel({
   props,
@@ -61,6 +82,7 @@ export default function LiveTextPanel({
   columnTypesJson,
   onChange,
 }: LiveTextPanelProps) {
+  const [idleOpen, setIdleOpen] = useState(true);
   const [revealedOpen, setRevealedOpen] = useState(true);
   const [disappearOpen, setDisappearOpen] = useState(true);
   const [quickDrawOpen, setQuickDrawOpen] = useState(true);
@@ -92,12 +114,7 @@ export default function LiveTextPanel({
           </div>
           <div>
             <label className={labelClass}>Color</label>
-            <input
-              type="color"
-              className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-              value={props.color}
-              onChange={(e) => onChange({ color: e.target.value })}
-            />
+            <ColorField value={props.color} onChange={(color) => onChange({ color })} />
           </div>
           <div>
             <label className={labelClass}>Weight</label>
@@ -187,8 +204,61 @@ export default function LiveTextPanel({
 
       <div className="space-y-2">
         <span className={groupLabelClass}>Interactions with Draw</span>
+        <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
+          <summary className={summaryClass}>Idle</summary>
+          <div className={detailsBodyClass}>
+            <div>
+              <label className={labelClass}>Appearance</label>
+              <select
+                className={fieldClass}
+                value={props.idleState ?? "disappear"}
+                onChange={(e) => onChange({ idleState: e.target.value as DrawRestState })}
+              >
+                <option value="disappear">Disappear</option>
+                <option value="appear">Appear</option>
+              </select>
+            </div>
+            {(props.idleState ?? "disappear") === "disappear" ? (
+              <>
+                <div>
+                  <label className={labelClass}>Effect</label>
+                  <select
+                    className={fieldClass}
+                    value={props.idleEffect ?? "none"}
+                    onChange={(e) => onChange({ idleEffect: e.target.value as WinnerTransitionEffect })}
+                  >
+                    {WINNER_TRANSITION_EFFECTS.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Delay (ms)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    placeholder="0"
+                    className={fieldClass}
+                    value={props.idleDelayMs ?? ""}
+                    onChange={(e) =>
+                      onChange({
+                        idleDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)),
+                      })
+                    }
+                  />
+                </div>
+                <p className="text-[10px] text-base-500">Hides the name when Reset is pressed while it's showing.</p>
+              </>
+            ) : (
+              <p className="text-[10px] text-base-500">Keeps the name showing — Reset won't clear it.</p>
+            )}
+          </div>
+        </details>
         <details open={revealedOpen} onToggle={(e) => setRevealedOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Revealed</summary>
+          <summary className={summaryClass}>Draw</summary>
           <div className={detailsBodyClass}>
             <div>
               <label className={labelClass}>Effect</label>
@@ -221,7 +291,7 @@ export default function LiveTextPanel({
           </div>
         </details>
         <details open={disappearOpen} onToggle={(e) => setDisappearOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Disappear</summary>
+          <summary className={summaryClass}>Redraw</summary>
           <div className={detailsBodyClass}>
             <div>
               <label className={labelClass}>Effect</label>
@@ -251,6 +321,7 @@ export default function LiveTextPanel({
                 }
               />
             </div>
+            <p className="text-[10px] text-base-500">Then reveals the new winner using the same effect as Draw above.</p>
           </div>
         </details>
         <details open={quickDrawOpen} onToggle={(e) => setQuickDrawOpen(e.currentTarget.open)} className={detailsClass}>

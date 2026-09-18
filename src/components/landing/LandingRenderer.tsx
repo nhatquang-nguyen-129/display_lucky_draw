@@ -294,7 +294,9 @@ function renderComponent(
     case "text":
       return <TextView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />;
     case "image":
-      return <ImageView component={component} />;
+      return (
+        <ImageView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
+      );
     case "luckyWheel":
       return <LuckyWheelView component={component} data={data} />;
     case "winnerName":
