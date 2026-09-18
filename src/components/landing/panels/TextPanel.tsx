@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { TextProps, WINNER_TRANSITION_EFFECTS, WinnerTransitionEffect } from "@/lib/landing/types";
+import { TextProps } from "@/lib/landing/types";
+import ColorField from "./ColorField";
+import DrawCycleFields from "./DrawCycleFields";
 
 interface TextPanelProps {
   props: TextProps;
@@ -10,20 +11,12 @@ const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
 const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
-const detailsClass = "rounded-lg border border-base-800";
-const summaryClass = "cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100";
-const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5";
 
-// 1 nhóm "Basic options" phẳng + "Interactions with Draw" — cùng khuôn Winner Name dùng (xem
-// LiveTextPanel.tsx). KHÔNG có "Self Interactions" (Text không bị click/hover/select trực tiếp).
-// "Interactions with Draw" mặc định TẮT (checkbox "Sync with Draw") — Text vẫn TĨNH/luôn hiện như cũ
-// trừ khi người dùng CHỦ ĐỘNG bật, giữ nguyên hành vi mọi landing đã lưu trước khi có tính năng này
-// (xem TextView.tsx). Bật lên thì ẩn hẳn lúc Idle, chỉ hiện khi Draw vừa tiết lộ 1 kết quả — cùng
-// Appear/Disappear effect với Winner Name.
+// "Interactions with Draw" dùng chung DrawCycleFields.tsx với ImagePanel.tsx (xem doc-comment ở đó)
+// — `content` là 1 chuỗi TĨNH do người dùng tự đặt, không đổi theo từng lượt quay, khác Winner Name
+// (LiveTextPanel.tsx — tên người trúng đổi theo từng lượt, vẫn dùng `useRevealed` riêng). KHÔNG có
+// "Self Interactions" (Text không bị click/hover/select trực tiếp).
 export default function TextPanel({ props, onChange }: TextPanelProps) {
-  const [revealedOpen, setRevealedOpen] = useState(true);
-  const [disappearOpen, setDisappearOpen] = useState(true);
-
   return (
     <div className="space-y-4">
       <div className="space-y-3">
@@ -48,12 +41,7 @@ export default function TextPanel({ props, onChange }: TextPanelProps) {
           </div>
           <div>
             <label className={labelClass}>Color</label>
-            <input
-              type="color"
-              className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-              value={props.color}
-              onChange={(e) => onChange({ color: e.target.value })}
-            />
+            <ColorField value={props.color} onChange={(color) => onChange({ color })} />
           </div>
           <div>
             <label className={labelClass}>Weight</label>
@@ -83,88 +71,7 @@ export default function TextPanel({ props, onChange }: TextPanelProps) {
 
       <div className="h-px bg-base-800" />
 
-      <div className="space-y-2">
-        <span className={groupLabelClass}>Interactions with Draw</span>
-        <label className="flex items-center gap-1.5 text-xs text-base-200">
-          <input
-            type="checkbox"
-            checked={!!props.syncWithDraw}
-            onChange={(e) => onChange({ syncWithDraw: e.target.checked })}
-            className="accent-gold-500"
-          />
-          Sync with Draw (hidden until a winner is revealed)
-        </label>
-        {props.syncWithDraw && (
-          <>
-            <details open={revealedOpen} onToggle={(e) => setRevealedOpen(e.currentTarget.open)} className={detailsClass}>
-              <summary className={summaryClass}>When Revealed</summary>
-              <div className={detailsBodyClass}>
-                <div>
-                  <label className={labelClass}>Appear effect</label>
-                  <select
-                    className={fieldClass}
-                    value={props.appearEffect ?? "none"}
-                    onChange={(e) => onChange({ appearEffect: e.target.value as WinnerTransitionEffect })}
-                  >
-                    {WINNER_TRANSITION_EFFECTS.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Delay (ms)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={100}
-                    placeholder="0"
-                    className={fieldClass}
-                    value={props.appearDelayMs ?? ""}
-                    onChange={(e) =>
-                      onChange({ appearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
-                    }
-                  />
-                </div>
-              </div>
-            </details>
-            <details open={disappearOpen} onToggle={(e) => setDisappearOpen(e.currentTarget.open)} className={detailsClass}>
-              <summary className={summaryClass}>When Disappear</summary>
-              <div className={detailsBodyClass}>
-                <div>
-                  <label className={labelClass}>Disappear effect</label>
-                  <select
-                    className={fieldClass}
-                    value={props.disappearEffect ?? "none"}
-                    onChange={(e) => onChange({ disappearEffect: e.target.value as WinnerTransitionEffect })}
-                  >
-                    {WINNER_TRANSITION_EFFECTS.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Delay (ms)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={100}
-                    placeholder="0"
-                    className={fieldClass}
-                    value={props.disappearDelayMs ?? ""}
-                    onChange={(e) =>
-                      onChange({ disappearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
-                    }
-                  />
-                </div>
-              </div>
-            </details>
-          </>
-        )}
-      </div>
+      <DrawCycleFields props={props} onChange={onChange} />
     </div>
   );
 }

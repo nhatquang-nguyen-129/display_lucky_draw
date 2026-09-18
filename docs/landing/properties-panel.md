@@ -17,6 +17,24 @@ Participant Count/Firework/Background — kể cả `PrizeEffectPicker.tsx`) đ�
 còn dùng thẳng `<input type="color">` nữa — thêm ô màu mới ở panel nào sau này cũng phải qua
 `ColorField`, không quay lại pattern cũ.
 
+## `DrawCycleFields.tsx` — khối "Interactions with Draw" dùng chung cho component TĨNH
+
+`ImagePanel.tsx` và `TextPanel.tsx` đều render 1 component TĨNH do người dùng tự đặt (ảnh PNG/chuỗi
+chữ, không đổi theo từng lượt quay) mà muốn tự ẩn/hiện đồng bộ quy trình quay — cả 2 dùng chung ĐÚNG 1
+component `DrawCycleFields.tsx` (nhận `props: {syncWithDraw?, drawCycle?}` + `onChange`, tự SUY RA từ
+đó — không cần biết đang ở Image hay Text) thay vì lặp lại JSX. Xem doc-comment
+`DrawCycleConfig`/`DrawPhaseAction` trong `types.ts` và mục "`useDrawCycleVisibility` — model
+Idle/Draw/Redraw" ở [present-mode.md](./present-mode.md) cho cơ chế đầy đủ (checkbox **Trigger with
+Draw**, 3 mốc Idle/Draw/Redraw mỗi mốc 1 dropdown **Appearance** bị ràng buộc lẫn nhau). Thêm 1 loại
+component TĨNH mới cũng cần "Interactions with Draw" thì tái dùng THẲNG component này, không viết lại.
+
+Winner Name (`LiveTextPanel.tsx`) KHÔNG dùng `DrawCycleFields.tsx` — nội dung của nó (tên người trúng)
+THẬT SỰ đổi theo từng lượt quay, không phải 1 thứ tĩnh hiện/ẩn nhị phân, nên giữ cơ chế
+`useRevealed`/`useRevealTransition` riêng (xem `drawRevealHooks.ts`) — chỉ ĐỔI TÊN panel + bổ sung
+mục **Idle** (Effect + Delay riêng cho lúc Reset, `WinnerNameProps.idleEffect`/`idleDelayMs`) để
+ĐỒNG BỘ HÌNH DÁNG 3 mục Idle/Draw/Redraw với Image/Text, hành vi/timing của **Draw**/**Redraw** giữ
+nguyên y hệt.
+
 ## Kiến trúc chốt: dropdown "Source" chọn cột Participant
 
 Nhiều panel cho chọn 1 cột Participant làm nguồn dữ liệu (Lucky Wheel's Draw/Display/Winner display
@@ -73,10 +91,10 @@ panel vẫn LUÔN giữ nút Delete component dù 2 cờ trên có bật hay kh�
 | Panel file | Dùng cho |
 |---|---|
 | `BackgroundPanel.tsx` | Nền trang (khi chưa chọn component nào) |
-| `TextPanel.tsx` | Text |
-| `ImagePanel.tsx` | Image |
+| `TextPanel.tsx` | Text — Basic options + **"Interactions with Draw"** dùng CHUNG component `DrawCycleFields.tsx` với `ImagePanel.tsx` (xem hàng dưới) — `content` là 1 chuỗi TĨNH do người dùng tự đặt nên hợp với model chung, khác Winner Name (nội dung đổi theo lượt) |
+| `ImagePanel.tsx` | Image — Basic options + **"Interactions with Draw"** (component dùng chung `DrawCycleFields.tsx`, checkbox **Trigger with Draw**, tắt = ảnh tĩnh như cũ). Mỗi mốc **Idle/Draw/Redraw** có dropdown **Appearance** riêng, gộp CHUNG với Effect/Delay ngay trong khối mốc đó: **Idle** chỉ 2 lựa chọn `Appear`/`Disappear` (không có None); **Draw** thêm `None`, dropdown TỰ VÔ HIỆU HOÁ lựa chọn TRÙNG Idle; **Redraw** cũng thêm `None`, dropdown tự vô hiệu hoá lựa chọn ĐỐI LẬP Idle (khác None thì tự động hiện lại bằng CHÍNH Effect của Draw ngay sau đó, không cấu hình lặp) — không có ô nào cấu hình sai hướng được, đổi Appearance của Idle thì Draw/Redraw đang lưu tự sửa lại nếu không còn hợp lệ — xem mục "`useDrawCycleVisibility` — model Idle/Draw/Redraw" ở [present-mode.md](./present-mode.md). Dùng khi cần 1 ảnh PNG tự ẩn/hiện đồng bộ với quy trình quay (vd 1 ảnh trang trí như Podium cần TÁCH KHỎI Background để không bị `BackgroundDimOverlay` dim theo mỗi lượt Draw) mà không cần tạo hẳn 1 loại component riêng, xem `ImageProps`/`ImageView.tsx` |
 | `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) — Basic options có X/Y/Width/Height ở CUỐI (Height khoá "auto" nếu là Digit Roller). Draw/Display field KHÔNG yêu cầu Data Type cụ thể, liệt kê MỌI cột thật; field **Source** (winner display/digit source, gộp chung tên nhãn cho cả 2 template) thêm tiêu chí phụ ở Digit Roller "đúng `digitCount` ký tự" (đánh dấu Eligible/not eligible, không ẩn hẳn) — xem nhánh 1 ở mục kiến trúc phía trên |
-| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng. "Interactions with Draw" gồm 2 mục **When Revealed**/**When Disappear**, mỗi mục CHỈ có **Effect** + **Delay (ms)** — xem mục "3 trạng thái Idle/Revealed/Disappear" ở [present-mode.md](./present-mode.md) |
+| `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng. "Interactions with Draw" LUÔN bật (không có checkbox — cả component chỉ tồn tại để phản ứng theo Draw), gồm 3 mục **Idle**/**Draw**/**Redraw** (2 mục sau đổi tên từ "When Revealed"/"When Disappear" cho khớp thuật ngữ chung với `DrawCycleFields.tsx`). **Idle** có dropdown **Appearance** giống Image/Text (đồng bộ hình dáng), nhưng Ý NGHĨA khác hẳn: `Disappear` (mặc định) = ẩn tên khi Reset (kèm **Effect**/**Delay (ms)** riêng — `idleEffect`/`idleDelayMs`, KHÁC `disappearEffect`/`disappearDelayMs` của Redraw vì Reset là sự kiện khác hẳn); `Appear` = GIỮ NGUYÊN tên đang hiện, Reset không xoá gì (Effect/Delay ẩn đi, không có tác dụng) — KHÔNG ảnh hưởng lúc mở lại landing (luôn rỗng lúc mount). **Draw**/**Redraw** mỗi mục CHỈ có **Effect** + **Delay (ms)**, KHÔNG dùng chung schema/component `DrawCycleFields.tsx` — nội dung Winner Name đổi theo từng lượt, không phải 1 thứ tĩnh nhị phân hiện/ẩn — xem mục "Winner Name (syncWithDraw luôn bật) — 3 trạng thái Idle/Revealed/Disappear" ở [present-mode.md](./present-mode.md) |
 | `LiveImagePanel.tsx` | Prize |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |

@@ -77,36 +77,110 @@ Landing/Present luôn về màn hình Idle; ai muốn xem lịch sử trúng th�
 mở lại 1 phiên" — dù kỹ thuật khả thi (winner đã Confirm nằm sẵn trong `draw_results`), đã cân nhắc
 và từ chối vì Scoreboard đã đủ để xem lại lịch sử trúng thưởng.
 
-## Winner Name / Text (syncWithDraw) — 3 trạng thái Idle/Revealed/Disappear
+## Winner Name (syncWithDraw luôn bật) — 3 trạng thái Idle/Revealed/Disappear
 
-`useRevealed` (`drawRevealHooks.ts`, dùng chung bởi `WinnerNameView.tsx` và `TextView.tsx` khi
-`syncWithDraw`) luôn ở đúng 1 trong 3 trạng thái, **hoàn toàn tự quản lý qua 2 field của CHÍNH
-component đó** (`appearDelayMs`/`disappearDelayMs`, đặt ở Properties Panel — xem
-`WinnerNameProps`/`TextProps` trong `types.ts`), KHÔNG còn phụ thuộc thời lượng quay của Lucky Wheel
-trên trang (model cũ dùng `computeWheelRevealDelayMs` đã bỏ hẳn — công thức đó không tính đúng tuyệt
-đối cho mọi hiệu ứng quay, đặc biệt Reel/Flicker của Digit Roller):
+`useRevealed` (`drawRevealHooks.ts`, dùng bởi `WinnerNameView.tsx`) luôn ở đúng 1 trong 3 trạng thái,
+**hoàn toàn tự quản lý qua 2 field của CHÍNH component đó** (`appearDelayMs`/`disappearDelayMs`, đặt
+ở Properties Panel — xem `WinnerNameProps` trong `types.ts`), KHÔNG còn phụ thuộc thời lượng quay của
+Lucky Wheel trên trang (model cũ dùng `computeWheelRevealDelayMs` đã bỏ hẳn — công thức đó không tính
+đúng tuyệt đối cho mọi hiệu ứng quay, đặc biệt Reel/Flicker của Digit Roller):
 
-1. **Idle** (chưa Draw lần nào / vừa Reset): không hiện gì, không delay nào áp dụng.
+1. **Idle** (chưa Draw lần nào): không hiện gì, không delay nào áp dụng — chưa từng rời Idle thì
+   không có gì để "quay về" cả.
 2. **Draw lần đầu**: giữ "" cho tới đúng `appearDelayMs` tính từ lúc bấm Draw (`resultId` đổi), rồi
-   `appearEffect` chạy để hiện tên/nội dung.
+   `appearEffect` chạy để hiện tên.
 3. **Draw lần tiếp theo** (đang hiện của lượt trước): chuỗi CŨ đứng yên tại chỗ cho tới đúng
    `disappearDelayMs` (tính từ CÙNG mốc bấm Draw) thì `disappearEffect` mới chạy để nó biến mất —
    ĐỘC LẬP, không xếp hàng chờ, chuỗi MỚI cũng hiện sau đúng `appearDelayMs` tính từ mốc đó.
 
-`value` (winnerName/content) chỉ được đọc vào ĐÚNG lúc mỗi timer chạy (qua closure của effect) —
-không hiện ngay dù giá trị nguồn đã đổi tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ"
-trước khi Disappear kịp chạy (bản chất chính là bug "flash tên mới khi Redraw" đã từng gặp ở bản cũ,
-nay được giải quyết TRIỆT ĐỂ hơn — không chỉ reset `revealed` trong render mà còn tách hẳn timing
+`value` (winnerName) chỉ được đọc vào ĐÚNG lúc mỗi timer chạy (qua closure của effect) — không hiện
+ngay dù giá trị nguồn đã đổi tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ" trước khi
+Disappear kịp chạy (bản chất chính là bug "flash tên mới khi Redraw" đã từng gặp ở bản cũ, nay được
+giải quyết TRIỆT ĐỂ hơn — không chỉ reset `revealed` trong render mà còn tách hẳn timing
 Appear/Disappear thành 2 field độc lập).
 
-**Reset ép về Idle NGAY LẬP TỨC, không suy luận qua `resultId`**: `DrawSequenceActions.resetSeq`
-(`useDrawSequence.ts`) tăng thêm 1 mỗi lần `resetSession()` chạy xong thật sự — `useRevealed` đổi giá
-trị này thì ép `displayed` về `""` NGAY trong render + huỷ mọi timer Appear/Disappear đang chờ, KHÔNG
-đợi `results[0].id` đổi (vốn phải chờ đúng nhịp `data` refresh xong, dễ lệch nhịp nếu 1 request
-refresh CŨ hơn lại resolve SAU — xem `useLandingData.ts`). Tín hiệu tường minh này bảo đảm Winner
-Name/Text luôn về đúng trạng thái mới-vào-landing sau Reset, bất kể đang Idle/Revealed/Disappear lúc
-bấm.
+**Reset ép về Idle NGAY LẬP TỨC (dữ liệu), không suy luận qua `resultId`**: `DrawSequenceActions
+.resetSeq` (`useDrawSequence.ts`) tăng thêm 1 mỗi lần `resetSession()` chạy xong thật sự —
+`useRevealed` đổi giá trị này thì ép `displayed` về `""` NGAY trong render + huỷ mọi timer
+Appear/Disappear đang chờ, KHÔNG đợi `results[0].id` đổi (vốn phải chờ đúng nhịp `data` refresh xong,
+dễ lệch nhịp nếu 1 request refresh CŨ hơn lại resolve SAU — xem `useLandingData.ts`). Tín hiệu tường
+minh này bảo đảm Winner Name luôn về đúng trạng thái mới-vào-landing sau Reset VỀ MẶT DỮ LIỆU, bất kể
+đang Idle/Revealed/Disappear lúc bấm — **TRỪ KHI `idleState === "appear"`** (xem ngay dưới đây), lúc
+đó bước ép này bị BỎ QUA HOÀN TOÀN (không setDisplayed(""), không reset hadPreviousRef) để tên tiếp
+tục hiển thị nguyên vẹn qua Reset.
 
-Properties Panel của Winner Name (`LiveTextPanel.tsx`) tổ chức 2 mục "When Revealed"/"When Disappear"
-— mỗi mục CHỈ gồm đúng **Effect** + **Delay (ms)** — xem thêm
-[properties-panel.md](./properties-panel.md).
+**`idleState` (`DrawRestState` — cùng type với `ImageProps`/`TextProps.drawCycle.idleState`) — CÓ hay
+KHÔNG ẩn tên khi Reset**: mặc định/`undefined` = `"disappear"` (hành vi ở trên, không đổi gì). Đặt
+`"appear"` thì Reset (`resetSeq` đổi) hoàn toàn KHÔNG đụng tới tên đang hiện — dùng khi muốn tên người
+trúng gần nhất tiếp tục hiển thị trang trí cho tới khi có lượt Draw mới, thay vì biến mất ngay khi bấm
+Reset. Field này KHÔNG ảnh hưởng gì tới lúc MỞ LẠI landing (`useRevealed` luôn khởi tạo `useState("")`
+— rỗng ngay từ đầu, tách biệt hoàn toàn khỏi `idleState`) — giữ đúng quyết định sản phẩm "Landing luôn
+mở ở Idle, không restore winner cũ" đã chốt trước đó, `idleState="appear"` CHỈ có tác dụng cho việc
+bấm nút Reset GIỮA phiên, không phải lúc khởi động app.
+
+`idleEffect`/`idleDelayMs` (Effect + Delay riêng, KHÁC `disappearEffect`/`disappearDelayMs` của
+Redraw) CHỈ có tác dụng khi `idleState = "disappear"` — mô tả tốc độ/hiệu ứng NHÌN THẤY của lớp tên cũ
+đang fade-out lúc Reset (`useRevealTransition`, thuần cosmetic — KHÔNG đụng tới bước ép dữ liệu ở
+trên, 2 việc này tách biệt hoàn toàn: `useRevealed` xử lý ĐÚNG NGAY tính đúng đắn dữ liệu, còn
+`useRevealTransition` chỉ điều khiển tốc độ hiệu ứng của cái ĐÃ đúng đó). `idleState = "appear"` thì
+2 field này vô nghĩa (không có gì đổi để chạy hiệu ứng).
+
+**Idle CÓ Effect + Delay riêng cho phần NHÌN THẤY** (`idleEffect`/`idleDelayMs`, KHÁC
+`disappearEffect`/`disappearDelayMs` dùng cho Redraw) — TÁCH BIỆT HOÀN TOÀN với đoạn "ép về Idle NGAY
+LẬP TỨC" ở trên: cái đó là tính đúng đắn DỮ LIỆU (`useRevealed`, xử lý xong ngay trong render, không
+đổi), còn `idleEffect`/`idleDelayMs` chỉ ảnh hưởng TỐC ĐỘ HIỆU ỨNG NHÌN THẤY của lớp text CŨ đang
+fade-out (`useRevealTransition`, thuần cosmetic) — tên đang hiện có thể đứng yên thêm `idleDelayMs`
+rồi mới biến mất bằng `idleEffect` khi bấm Reset, thay vì cắt ngay lập tức (mặc định `undefined` = ẩn
+ngay, giữ đúng hành vi cũ). Không ảnh hưởng gì khi Reset lúc đang Idle (không có gì để fade).
+
+Properties Panel của Winner Name (`LiveTextPanel.tsx`) tổ chức 3 mục **Idle**/**Draw**/**Redraw**
+(2 mục sau đổi tên từ "When Revealed"/"When Disappear" cũ cho khớp thuật ngữ chung, xem mục dưới) —
+mỗi mục CHỈ gồm đúng **Effect** + **Delay (ms)** — xem thêm [properties-panel.md](./properties-panel.md).
+
+## `useDrawCycleVisibility` — model Idle/Draw/Redraw (Image, Text)
+
+`useRevealed` ở trên GẮN CỨNG "Appear = lúc có kết quả mới" và "Disappear = lúc kết quả cũ bị thay" —
+đúng cho Winner Name (nội dung THẬT SỰ đổi theo từng lượt — tên người trúng khác nhau mỗi lần, không
+có gì để hiện lúc Idle vì chưa có ai trúng cả) nhưng SAI cho 1 thứ TĨNH do người dùng tự đặt như Text
+hay 1 ảnh trang trí generic như Podium (Image): hoàn toàn có thể muốn nó hiện SẴN lúc Idle rồi ẩn đi
+lúc Draw đang diễn ra, tức là ĐẢO NGƯỢC chiều mặc định — model cũ không cấu hình được việc đó.
+
+`useDrawCycleVisibility` (`drawRevealHooks.ts`, dùng bởi `ImageView.tsx` VÀ `TextView.tsx` khi
+`syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem properties-panel.md) tách
+đúng 3 mốc THẬT của quy trình quay — **Idle** (chưa Draw lần nào / vừa vào Landing, hoặc vừa Reset),
+**Draw** (1 lượt Draw mới, đang KHÔNG hiện gì trước đó), **Redraw** (1 lượt Draw mới, ĐANG hiện kết
+quả lượt trước). Mỗi mốc có 1 dropdown **Appearance**, nhưng KHÔNG cho tự do chọn bừa (bản trước từng
+cho Idle bật cả Disappear lẫn Appear cùng lúc, tạo ra 2 hiệu ứng ĐỐI LẬP đua nhau ngay lúc mới vào
+trang — vô nghĩa, vì Idle là trạng thái NGHỈ/mặc định ban đầu, chỉ có ĐÚNG 1 kết quả cuối):
+- **Idle** (`idleState` — `DrawRestState`, CHỈ 2 giá trị `appear`/`disappear`, KHÔNG có "none" vì Idle
+  luôn phải có 1 dáng vẻ mặc định): hiệu ứng đi kèm (`idleEffect`) chạy lúc QUAY VỀ idleState — CHỈ
+  xảy ra khi Reset, KHÔNG BAO GIỜ chạy lúc trang vừa mở (chưa từng rời Idle thì không có gì để "quay
+  về" cả — lúc mới vào Landing, `idleState` chỉ quyết định DÁNG VẺ TĨNH ban đầu, không có animation).
+- **Draw** (`drawAction` — `DrawPhaseAction`, thêm giá trị `none`): dropdown vô hiệu hoá (disable)
+  ngay lựa chọn TRÙNG `idleState` — chỉ còn `none` (Draw không đổi gì) hoặc giá trị ĐỐI LẬP idleState.
+- **Redraw** (`redrawAction` — cùng type): dropdown vô hiệu hoá lựa chọn ĐỐI LẬP `idleState` — chỉ
+  còn `none` (Redraw không đổi gì) hoặc giá trị TRÙNG idleState. Khác `none` thì chạy `redrawEffect`
+  để quay VỀ idleState, rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp bằng CHÍNH `drawEffect`
+  để quay LẠI trạng thái Draw, SAU KHI `redrawEffect` chạy xong HẲN (nối tiếp thật, `delayMs` đo từ
+  lúc đó chứ không phải từ lúc bấm Redraw) — không có field effect riêng cho bước "hiện lại" này, vì
+  bản chất "công bố kết quả" là 1 hành động chung dù Draw lần đầu hay Redraw.
+
+`DrawCycleFields.tsx` tự sửa `drawAction`/`redrawAction` mỗi khi đổi `idleState` nếu giá trị đang lưu
+không còn hợp lệ (vd Draw đang `appear`, đổi Idle thành `appear` luôn thì Draw tự nhảy sang
+`disappear`) — không bao giờ để lại 1 cặp mốc liền kề TRÙNG trạng thái nhau trong dữ liệu đã lưu.
+
+Ví dụ Podium (idleState = `appear`): Idle hiện sẵn lúc đứng yên, Draw = `disappear` (ẩn đi khi bắt đầu
+quay), Redraw = `disappear` (tự ẩn lại dùng `redrawEffect`) rồi tự động hiện lại (dùng CHÍNH
+`drawEffect`) — người dùng chỉ cần chọn Appearance cho từng mốc (bị ràng buộc sẵn, không chọn sai
+được) và tuỳ chỉnh Effect/Delay, không cần cấu hình lặp phần "hiện lại".
+
+`DrawCycleFields.tsx` bật "Trigger with Draw" LẦN ĐẦU (chưa có `drawCycle` nào) tự nạp sẵn
+`idleState: "disappear"`, `drawAction: "appear"`, `redrawAction: "disappear"` + Effect crossfade —
+đúng hành vi "ẩn lúc Idle, hiện lúc Draw, ẩn rồi hiện lại lúc Redraw" quen thuộc — để bật lên là thấy
+hiệu quả ngay, đổi Appearance của Idle thì cả chu trình tự đảo ngược hoàn toàn.
+
+**Winner Name SẼ KHÔNG BAO GIỜ migrate sang model này** (không phải "chưa làm tới") — nội dung của nó
+(tên người trúng) THẬT SỰ đổi theo từng lượt quay, không phải 1 thứ tĩnh có thể "hiện/ẩn" theo nghĩa
+nhị phân — vẫn dùng `useRevealed`/`useRevealTransition` riêng, chỉ đổi TÊN panel + bổ sung mục **Idle**
+(Effect + Delay riêng cho lúc Reset, xem mục "Winner Name (syncWithDraw luôn bật)" phía trên) cho
+ĐỒNG BỘ HÌNH DÁNG 3 mục Idle/Draw/Redraw với Image/Text — cơ chế/schema bên dưới vẫn khác hẳn.
