@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BackgroundConfig } from "@/lib/landing/types";
+import ColorField from "./ColorField";
 
 interface BackgroundPanelProps {
   background: BackgroundConfig;
@@ -52,12 +53,7 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
 
         <div>
           <label className={labelClass}>{background.type === "image" ? "Letterbox color" : "Color"}</label>
-          <input
-            type="color"
-            className="h-8 w-full rounded border border-base-700 bg-base-800"
-            value={background.color}
-            onChange={(e) => onChange({ color: e.target.value })}
-          />
+          <ColorField value={background.color} onChange={(color) => onChange({ color })} className="h-8" />
         </div>
 
         {background.type === "image" && (

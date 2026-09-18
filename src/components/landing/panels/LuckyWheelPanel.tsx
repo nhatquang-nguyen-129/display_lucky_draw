@@ -9,6 +9,7 @@ import {
   resolveWheelField,
 } from "@/lib/landing/types";
 import { Participant } from "@/types";
+import ColorField from "./ColorField";
 
 interface LuckyWheelPanelProps {
   props: LuckyWheelProps;
@@ -399,12 +400,7 @@ export default function LuckyWheelPanel({
             </div>
             <div>
               <label className={labelClass}>Color</label>
-              <input
-                type="color"
-                className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-                value={props.fontColor}
-                onChange={(e) => onChange({ fontColor: e.target.value })}
-              />
+              <ColorField value={props.fontColor} onChange={(fontColor) => onChange({ fontColor })} />
             </div>
           </div>
         )}

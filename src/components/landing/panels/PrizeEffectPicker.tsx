@@ -11,6 +11,7 @@ import {
 } from "@/lib/landing/types";
 import LiftDirectionTrigger from "./LiftDirectionTrigger";
 import ScaleAnchorTrigger from "./ScaleAnchorTrigger";
+import ColorField from "./ColorField";
 
 const fieldClass =
   "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
@@ -112,12 +113,7 @@ function GroupEffectFields({
           {showColor && (
             <div>
               <label className={labelClass}>Color</label>
-              <input
-                type="color"
-                className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-                value={value.color}
-                onChange={(e) => onChange({ color: e.target.value })}
-              />
+              <ColorField value={value.color} onChange={(color) => onChange({ color })} />
             </div>
           )}
           {showSize && (

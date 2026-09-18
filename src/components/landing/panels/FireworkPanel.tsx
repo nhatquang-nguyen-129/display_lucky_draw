@@ -1,5 +1,6 @@
 import { FireworkProps } from "@/lib/landing/types";
 import { Prize } from "@/types";
+import ColorField from "./ColorField";
 
 interface FireworkPanelProps {
   props: FireworkProps;
@@ -63,21 +64,11 @@ export default function FireworkPanel({ props, prizes, onChange }: FireworkPanel
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className={labelClass}>Color 1 (trail, rays)</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={props.color1}
-            onChange={(e) => onChange({ color1: e.target.value })}
-          />
+          <ColorField value={props.color1} onChange={(color1) => onChange({ color1 })} />
         </div>
         <div>
           <label className={labelClass}>Color 2 (falling sparks)</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={props.color2}
-            onChange={(e) => onChange({ color2: e.target.value })}
-          />
+          <ColorField value={props.color2} onChange={(color2) => onChange({ color2 })} />
         </div>
       </div>
 
