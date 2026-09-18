@@ -1,4 +1,5 @@
 import { ParticipantCountProps } from "@/lib/landing/types";
+import ColorField from "./ColorField";
 
 interface ParticipantCountPanelProps {
   props: ParticipantCountProps;
@@ -101,12 +102,7 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
         </div>
         <div>
           <label className={labelClass}>Color</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={labelColor}
-            onChange={(e) => onChange({ labelColor: e.target.value })}
-          />
+          <ColorField value={labelColor} onChange={(labelColor) => onChange({ labelColor })} />
         </div>
       </div>
 
@@ -136,12 +132,7 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
         </div>
         <div>
           <label className={labelClass}>Color</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={countColor}
-            onChange={(e) => onChange({ countColor: e.target.value })}
-          />
+          <ColorField value={countColor} onChange={(countColor) => onChange({ countColor })} />
         </div>
       </div>
 
@@ -160,11 +151,10 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
       {backgroundType === "color" && (
         <div>
           <label className={labelClass}>Background color</label>
-          <input
-            type="color"
-            className="h-8 w-full rounded border border-base-700 bg-base-800"
+          <ColorField
             value={props.backgroundColor}
-            onChange={(e) => onChange({ backgroundColor: e.target.value })}
+            onChange={(backgroundColor) => onChange({ backgroundColor })}
+            className="h-8"
           />
         </div>
       )}

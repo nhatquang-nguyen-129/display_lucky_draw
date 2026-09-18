@@ -8,6 +8,7 @@ import {
   listParticipantColumnsForType,
 } from "@/lib/landing/types";
 import { Participant } from "@/types";
+import ColorField from "./ColorField";
 
 interface ButtonPanelProps {
   props: ButtonProps;
@@ -187,21 +188,11 @@ export default function ButtonPanel({ props, participants, columnTypesJson, used
         </div>
         <div>
           <label className={labelClass}>Text color</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={props.color}
-            onChange={(e) => onChange({ color: e.target.value })}
-          />
+          <ColorField value={props.color} onChange={(color) => onChange({ color })} />
         </div>
         <div>
           <label className={labelClass}>Background</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={props.backgroundColor}
-            onChange={(e) => onChange({ backgroundColor: e.target.value })}
-          />
+          <ColorField value={props.backgroundColor} onChange={(backgroundColor) => onChange({ backgroundColor })} />
         </div>
         <div>
           <label className={labelClass}>Corner radius</label>
@@ -215,12 +206,7 @@ export default function ButtonPanel({ props, participants, columnTypesJson, used
         </div>
         <div>
           <label className={labelClass}>Stroke color</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={props.strokeColor}
-            onChange={(e) => onChange({ strokeColor: e.target.value })}
-          />
+          <ColorField value={props.strokeColor} onChange={(strokeColor) => onChange({ strokeColor })} />
         </div>
         <div>
           <label className={labelClass}>Stroke width</label>

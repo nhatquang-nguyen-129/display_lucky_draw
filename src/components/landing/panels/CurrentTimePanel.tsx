@@ -1,4 +1,5 @@
 import { CurrentTimeProps } from "@/lib/landing/types";
+import ColorField from "./ColorField";
 
 interface CurrentTimePanelProps {
   props: CurrentTimeProps;
@@ -40,12 +41,7 @@ export default function CurrentTimePanel({ props, onChange }: CurrentTimePanelPr
         </div>
         <div>
           <label className={labelClass}>Color</label>
-          <input
-            type="color"
-            className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-            value={props.color}
-            onChange={(e) => onChange({ color: e.target.value })}
-          />
+          <ColorField value={props.color} onChange={(color) => onChange({ color })} />
         </div>
         <div className="col-span-2">
           <label className={labelClass}>Align</label>

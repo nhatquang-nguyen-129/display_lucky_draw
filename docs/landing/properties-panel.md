@@ -1,5 +1,22 @@
 # Properties Panel & nhóm component
 
+## `ColorField.tsx` — mọi ô chọn màu đều dùng chung component này
+
+`<input type="color">` trần tự vẽ 1 popup màu RIÊNG của Chromium (bánh xe màu + thanh hue + ô hex) —
+KHÔNG phải DOM thường của trang, nên Ctrl/Cmd+V dán hex vào ô hex bên trong popup đó không hoạt động
+(giới hạn của chính Chromium, không sửa được từ code trang web — chỉ gõ tay hoặc dùng eyedropper/bánh
+xe màu native mới ăn). `ColorField.tsx` (`panels/ColorField.tsx`) là fix DUY NHẤT cho việc này: 1
+swatch `<input type="color">` bé (vẫn giữ để chọn nhanh bằng mắt) đặt CẠNH 1 ô `<input type="text">`
+THẬT của trang — gõ/dán hex trực tiếp vào ô text đó hoạt động bình thường như mọi input khác. Text
+gõ dở (chưa đủ `#RRGGBB` hợp lệ) được giữ ở state cục bộ, chỉ `onChange` ra ngoài khi khớp
+`/^#[0-9a-fA-F]{6}$/`, và tự đồng bộ lại theo giá trị thật mỗi khi nó đổi TỪ BÊN NGOÀI (Undo/Redo,
+đổi component đang chọn).
+
+Mọi ô chọn màu trong Properties Panel (Text/Winner/Lucky Wheel/Scoreboard/Button/Current Time/
+Participant Count/Firework/Background — kể cả `PrizeEffectPicker.tsx`) đều dùng `ColorField`, KHÔNG
+còn dùng thẳng `<input type="color">` nữa — thêm ô màu mới ở panel nào sau này cũng phải qua
+`ColorField`, không quay lại pattern cũ.
+
 ## Kiến trúc chốt: dropdown "Source" chọn cột Participant
 
 Nhiều panel cho chọn 1 cột Participant làm nguồn dữ liệu (Lucky Wheel's Draw/Display/Winner display

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { getScoreboardFieldLabel, SCOREBOARD_FIELDS, ScoreboardField, ScoreboardProps } from "@/lib/landing/types";
 import { Participant } from "@/types";
+import ColorField from "./ColorField";
 
 interface ScoreboardPanelProps {
   props: ScoreboardProps;
@@ -90,21 +91,11 @@ export default function ScoreboardPanel({ props, participants, onChange }: Score
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={labelClass}>Bar color</label>
-            <input
-              type="color"
-              className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-              value={titleBarColor}
-              onChange={(e) => onChange({ titleBarColor: e.target.value })}
-            />
+            <ColorField value={titleBarColor} onChange={(titleBarColor) => onChange({ titleBarColor })} />
           </div>
           <div>
             <label className={labelClass}>Title text color</label>
-            <input
-              type="color"
-              className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-              value={props.headerColor}
-              onChange={(e) => onChange({ headerColor: e.target.value })}
-            />
+            <ColorField value={props.headerColor} onChange={(headerColor) => onChange({ headerColor })} />
           </div>
           <div>
             <label className={labelClass}>Font size</label>
@@ -117,12 +108,7 @@ export default function ScoreboardPanel({ props, participants, onChange }: Score
           </div>
           <div>
             <label className={labelClass}>Text color</label>
-            <input
-              type="color"
-              className="h-[26px] w-full rounded border border-base-700 bg-base-800"
-              value={props.color}
-              onChange={(e) => onChange({ color: e.target.value })}
-            />
+            <ColorField value={props.color} onChange={(color) => onChange({ color })} />
           </div>
         </div>
 
@@ -141,11 +127,10 @@ export default function ScoreboardPanel({ props, participants, onChange }: Score
         {backgroundType === "color" && (
           <div>
             <label className={labelClass}>Background color</label>
-            <input
-              type="color"
-              className="h-8 w-full rounded border border-base-700 bg-base-800"
+            <ColorField
               value={props.backgroundColor}
-              onChange={(e) => onChange({ backgroundColor: e.target.value })}
+              onChange={(backgroundColor) => onChange({ backgroundColor })}
+              className="h-8"
             />
           </div>
         )}
