@@ -211,6 +211,16 @@ export function useDrawSequence(
 
   async function redo() {
     if (!sessionId || busy || spinning || !candidate || confirmed) return;
+    // Cùng lớp chặn với pick() (xem doc-comment ở đó) — trang có UI chọn giải thì MỌI lượt Draw (kể cả
+    // Redraw) đều bắt buộc đang có giải được chọn, không được tự "quên" luật này chỉ vì đã có candidate
+    // đang chờ Confirm từ trước. Trước đây redo() dùng thẳng `lockedPrizeIdRef.current` mà không kiểm
+    // tra `selectedPrizeId` — người vận hành unselect giải giữa lúc đang có candidate chờ Confirm thì
+    // bấm Draw vẫn cứ quay lại (redo) cho ĐÚNG giải đã khoá từ trước, bỏ qua hoàn toàn việc vừa unselect
+    // (đã gặp thật).
+    if (requiresPrizeSelection && !selectedPrizeId) {
+      showInfoPrompt("Please select a prize first!");
+      return;
+    }
     setQuickDrawResult(null);
     setBusy(true);
     const nextExcludes = [...excludeIdsRef.current, candidate.participantId];
