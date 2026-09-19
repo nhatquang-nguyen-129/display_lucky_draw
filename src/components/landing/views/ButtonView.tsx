@@ -15,8 +15,7 @@ import {
 // toggleScoreboard/openLink không ghi gì bất thuận nghịch), hoặc đã tự no-op an toàn sẵn.
 const CONFIRM_MESSAGES: Partial<Record<ButtonAction, string>> = {
   confirm: "Are you sure you want to confirm this winner? This will be saved permanently.",
-  reset:
-    "Are you sure you want to reset the session? All draw results (including any pending, unconfirmed winner) and prize quantities will be permanently reset.",
+  reset: "Are you sure you want to reset all data in this session? If yes, press and hold this Confirm button for 3 seconds.",
 };
 
 // "reset" xoá SẠCH cả session (mọi draw_results, kể cả người đã quay nhưng CHƯA Confirm, cộng
