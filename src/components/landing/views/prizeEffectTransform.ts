@@ -65,6 +65,17 @@ export interface PrizeAnchorImageContext {
 // zoom đã cấu hình), đặt theo hướng LÊN TRÊN so với điểm neo hiện tại (không có hướng cũ nào để tái sử
 // dụng — góc không ảnh hưởng gì tới CSS thật, xem doc-comment PrizeGroupEffect), rồi kẹp lại trong
 // khung 0-100.
+// % phóng to thêm — SUY RA từ khoảng cách điểm neo (directionX/Y) tới điểm "Direction" (handleX/Y),
+// thay hẳn ô nhập số "Zoom amount" cũ, xem doc-comment PrizeGroupEffect trong types.ts. Đơn vị khoảng
+// cách CHÍNH LÀ % (cùng hệ 0-100 với toạ độ), nên dùng thẳng không cần quy đổi thêm — kéo Direction ra
+// xa gấp đôi thì zoom gấp đôi. Tách riêng khỏi `computePrizeTransform` để chỗ khác (vd Spotlight "When
+// Won" ở PrizeImageView.tsx) tái dùng ĐÚNG công thức này khi cần biết % zoom ĐANG active của Focus, mà
+// không phải tính lại toàn bộ transform CSS (transform-origin/transition) không liên quan.
+export function computeScaleFraction(config: PrizeGroupEffect): number {
+  const handle = resolveScaleHandle(config);
+  return Math.hypot(handle.x - config.directionX, handle.y - config.directionY) / 100;
+}
+
 export function resolveScaleHandle(config: PrizeGroupEffect): { x: number; y: number } {
   if (config.handleX !== undefined && config.handleY !== undefined) {
     return { x: config.handleX, y: config.handleY };
@@ -103,12 +114,7 @@ export function computePrizeTransform(
   if (!isTransformEffect(effect)) return {};
 
   if (effect === "scaleUp") {
-    // % phóng to thêm giờ SUY RA từ khoảng cách điểm neo (directionX/Y) tới điểm "Direction"
-    // (handleX/Y) — thay hẳn ô nhập số "Zoom amount" cũ, xem doc-comment PrizeGroupEffect trong
-    // types.ts. Đơn vị khoảng cách CHÍNH LÀ % (cùng hệ 0-100 với toạ độ), nên dùng thẳng không cần quy
-    // đổi thêm — kéo Direction ra xa gấp đôi thì zoom gấp đôi.
-    const handle = resolveScaleHandle(config);
-    const scaleFraction = Math.hypot(handle.x - directionX, handle.y - directionY) / 100;
+    const scaleFraction = computeScaleFraction(config);
     if (mode === "persistent") {
       // directionX/Y giờ là ĐÚNG toạ độ điểm neo (kéo-thả trực tiếp trên ảnh thật ở ScaleAnchorPicker.tsx,
       // xem doc-comment PrizeGroupEffect trong types.ts) — dùng THẲNG, không nghịch đảo. Điểm neo người

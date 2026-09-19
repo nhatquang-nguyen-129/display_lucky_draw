@@ -448,6 +448,34 @@ export interface PrizeInteractions {
   outOfStockDimAmount: number;
 }
 
+export interface WinnerNameComponent extends BaseComponent {
+  type: "winnerName";
+  props: WinnerNameProps;
+}
+
+export interface PrizeImageComponent extends BaseComponent {
+  type: "prizeImage";
+  props: LiveImageProps;
+}
+
+// Hiệu ứng TOÀN CẢNH khi ĐÚNG giải của Prize Image này vừa thắng ("When Won" — cùng mốc `justWon` với
+// `onWon`/`PrizeStageEffect` ở PrizeInteractions, xem PrizeImageView.tsx) — KHÁC HẲN 3 nhóm
+// Focus/Highlight/Motion (biến đổi CHÍNH ảnh giải: scale/glow/bounce...), đây là 1 lớp phủ RIÊNG,
+// PHONG CÁCH CỐ ĐỊNH trong code (không phơi màu/hình dạng ra Properties Panel) — chỉ chọn LOẠI hiệu
+// ứng + Delay. Từng có 1 phiên bản "Spotlight" là component ĐỨNG ĐỘC LẬP (đặt tay + tự chọn 1 prizeId
+// để gắn, y hệt cách Firework CŨ hoạt động) — bỏ hẳn vì hầu như MỌI trường hợp dùng đều muốn hiệu ứng
+// bám ĐÚNG khung ảnh của prize đó, tự tính theo x/y/width/height CÓ SẴN, không cần đặt/định vị/chọn
+// prizeId thêm 1 lần nữa — thêm 1 giải mới cần hiệu ứng này chỉ cần đổi ĐÚNG 1 dropdown trên panel của
+// chính Prize Image đó, không phải thêm 1 component mới. LƯU Ý: KHÔNG liên quan gì tới effect
+// "spotlight" đã bỏ hẳn trong `PrizeEffectName`/nhóm Highlight (xem doc-comment ở đó) — đó là 1 Ý
+// TƯỞNG KHÁC (đèn sân khấu chiếu từ trên xuống, thử và bỏ vì không ra hướng đẹp), tên trùng ngẫu
+// nhiên. "none" (mặc định) = tắt hẳn, giữ đúng hành vi mọi Prize Image đã lưu trước khi có field này.
+// "spotlight" = phủ 1 luồng sáng hình nón tĩnh từ đỉnh khung xuống đáy (CSS thuần: clip-path hình
+// thang + gradient mờ dần dọc + blur mềm 2 mép, xem PrizeImageView.tsx) — HIỆN SUỐT lúc `justWon` còn
+// đúng (tắt ngay khi Reset/lượt quay mới bắt đầu, không phải 1 hiệu ứng ngắn rồi tự tắt như
+// Focus/Highlight/Motion oneshot).
+export type PrizeWonAmbientEffect = "none" | "spotlight";
+
 // CHỈ dùng bởi PrizeImageComponent — LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (`prizeId`),
 // không đổi theo kết quả quay — dùng để đặt NHIỀU Prize Image rải rác khắp landing, mỗi cái tự do
 // vị trí/kích thước khớp đúng 1 chỗ trong ảnh nền artwork (vd 1 cái đè lên ảnh xe đẩy, 1 cái đè lên
@@ -463,47 +491,12 @@ export interface LiveImageProps extends PrizeInteractions {
   fit: "cover" | "contain" | "stretch";
   borderRadius: number;
   prizeId?: string;
-}
-
-export interface WinnerNameComponent extends BaseComponent {
-  type: "winnerName";
-  props: WinnerNameProps;
-}
-
-export interface PrizeImageComponent extends BaseComponent {
-  type: "prizeImage";
-  props: LiveImageProps;
-}
-
-// Pháo hoa gắn với ĐÚNG 1 giải (`prizeId`, giống cách chọn giải của Prize Image) — vẽ THƯA/mảnh, đúng
-// trong khung x/y/width/height CỦA CHÍNH NÓ (không phủ toàn màn hình — xem FireworkView.tsx cho toàn
-// bộ vật lý/zone-coverage). Đặt NHIỀU instance (mỗi cái gắn 1 `prizeId` khác) nếu muốn nhiều giải đều
-// kích hoạt ăn mừng riêng.
-//
-// Bắt đầu bắn sau `delayMs` kể từ lúc giải đó VỪA được công bố (justWon — không đợi Confirm, giống
-// "When Won" của Prize Image), rồi dừng theo `mode`:
-//   - "duration": bắn trong đúng `durationMs` rồi tắt hẳn.
-//   - "continuous": bắn liên tục KHÔNG GIỚI HẠN thời lượng, cho tới khi có 1 lượt quay MỚI bất kỳ bắt
-//     đầu (candidate đổi sang seed khác — dù cùng giải này thắng tiếp hay giải khác được chọn) thì mới
-//     dừng. Xem FireworkView.tsx cho cách theo dõi mốc này bằng ref (không remount lại toàn bộ engine
-//     hạt mỗi lần đổi trạng thái, tránh giật khi 1 lượt ăn mừng đang chạy dở).
-// Suốt cửa sổ đang bắn, nhịp bắn (1 quả 1 lúc, cách nhau ngẫu nhiên quanh `intervalMs`) + phủ đều khung
-// theo zone giống hệt bản trước — chỉ khác Ở CHỖ có "cửa sổ thời gian được phép bắn" thay vì bắn vô
-// thời hạn ngay từ lúc mount. Panel CHỈ phơi ra vài field chính (không có control riêng cho từng lớp
-// trail/core/rays/sparks/falling) — phần hình dạng/độ mảnh xử lý NGẦM bằng hằng số trong code.
-export interface FireworkProps {
-  prizeId?: string;
-  color1: string; // màu CHÍNH — tia phóng, tia nổ, quầng sáng
-  color2: string; // màu PHỤ — tàn pháo rơi chậm (hơi khác tông cho có chiều sâu, xem preset trong FireworkPanel.tsx)
-  intervalMs: number; // khoảng cách TRUNG BÌNH giữa 2 lần bắn trong lúc đang active (có jitter ngẫu nhiên quanh giá trị này) — số CÀNG NHỎ càng dày
-  delayMs: number; // chờ bao lâu SAU khi thắng mới bắt đầu bắn
-  mode: "duration" | "continuous";
-  durationMs: number; // CHỈ dùng khi mode "duration" — bắn trong bao lâu rồi tắt hẳn
-}
-
-export interface FireworkComponent extends BaseComponent {
-  type: "firework";
-  props: FireworkProps;
+  // "none" (mặc định/undefined) = tắt — xem doc-comment PrizeWonAmbientEffect ở trên.
+  wonAmbientEffect?: PrizeWonAmbientEffect;
+  // Chờ bao lâu (ms) SAU khi giải này vừa thắng (`justWon`) mới BẮT ĐẦU hiện hiệu ứng — undefined = 0
+  // (hiện ngay). Không có field "tắt sau bao lâu" — hiệu ứng tự tắt theo đúng lúc `justWon` hết đúng
+  // (Reset/Redraw/1 lượt quay mới), không cần cấu hình riêng.
+  wonAmbientDelayMs?: number;
 }
 
 // Thêm template mới: thêm giá trị vào union này + 1 file trong components/landing/scoreboardTemplates/
@@ -703,8 +696,7 @@ export type LandingComponent =
   | CurrentTimeComponent
   | ParticipantCountComponent
   | ButtonComponent
-  | ScoreboardComponent
-  | FireworkComponent;
+  | ScoreboardComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 

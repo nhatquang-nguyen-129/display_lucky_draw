@@ -11,7 +11,6 @@ import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
 import ScoreboardPanel from "./panels/ScoreboardPanel";
-import FireworkPanel from "./panels/FireworkPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
@@ -145,7 +144,6 @@ export default function PropertiesPanel({
       {selected.type === "scoreboard" && (
         <ScoreboardPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
-      {selected.type === "firework" && <FireworkPanel props={selected.props} prizes={prizes} onChange={onChangeProps} />}
       <div className="h-px bg-base-800" />
       <SharedFields
         component={selected}

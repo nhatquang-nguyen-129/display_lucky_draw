@@ -13,9 +13,9 @@ gõ dở (chưa đủ `#RRGGBB` hợp lệ) được giữ ở state cục bộ,
 đổi component đang chọn).
 
 Mọi ô chọn màu trong Properties Panel (Text/Winner/Lucky Wheel/Scoreboard/Button/Current Time/
-Participant Count/Firework/Background — kể cả `PrizeEffectPicker.tsx`) đều dùng `ColorField`, KHÔNG
-còn dùng thẳng `<input type="color">` nữa — thêm ô màu mới ở panel nào sau này cũng phải qua
-`ColorField`, không quay lại pattern cũ.
+Participant Count/Background — kể cả `PrizeEffectPicker.tsx`) đều dùng `ColorField`, KHÔNG còn dùng
+thẳng `<input type="color">` nữa — thêm ô màu mới ở panel nào sau này cũng phải qua `ColorField`,
+không quay lại pattern cũ.
 
 ## `DrawCycleFields.tsx` — khối "Interactions with Draw" dùng chung cho component TĨNH
 
@@ -34,6 +34,30 @@ THẬT SỰ đổi theo từng lượt quay, không phải 1 thứ tĩnh hiện/
 mục **Idle** (Effect + Delay riêng cho lúc Reset, `WinnerNameProps.idleEffect`/`idleDelayMs`) để
 ĐỒNG BỘ HÌNH DÁNG 3 mục Idle/Draw/Redraw với Image/Text, hành vi/timing của **Draw**/**Redraw** giữ
 nguyên y hệt.
+
+## `PrizeWonAmbientEffect` — Spotlight là 1 dropdown trong panel Prize, KHÔNG phải component riêng
+
+Từng thử 2 hiệu ứng "gắn với 1 giải, kích hoạt khi giải đó thắng" (Spotlight, Firework) làm component
+ĐỨNG ĐỘC LẬP — đặt tay lên canvas rồi tự chọn 1 `prizeId` để gắn, giống hệt cách Prize Image hoạt
+động. Vấn đề: gần như MỌI landing có nhiều giải đều cần hiệu ứng này cho TỪNG giải, nghĩa là phải đặt
+thêm 1 component mới + chọn lại `prizeId` cho mỗi giải — không có gì tận dụng được vị trí/kích thước
+CÓ SẴN của chính Prize Image đại diện giải đó, và khi có NHIỀU giải, Properties Panel cứ phình to theo
+số lượng component thay vì theo số lượng giải thật cần cấu hình.
+
+Hướng đúng hơn: Spotlight giờ là 1 dropdown `wonAmbientEffect` (`types.ts`) NGAY trong `LiveImagePanel
+.tsx`'s mục "When Won" (children của `PrizeEffectPicker`, cùng khuôn `outOfStockDimAmount` của "When
+Out of Stock") — tự động bám ĐÚNG khung x/y/width/height của Prize Image đó, không cần đặt/định vị/
+chọn `prizeId` thêm lần nào nữa. Phong cách (màu trắng, hình nón, độ mờ) CỐ ĐỊNH trong code
+(`PrizeImageView.tsx`) — Properties Panel CHỈ có 2 field: dropdown **Ambient effect** (None/Spotlight)
++ **Delay (ms)** (trễ bao lâu SAU khi `justWon` mới BẮT ĐẦU hiện — tắt NGAY, không delay, khi
+`justWon` hết đúng). Component `Spotlight` đứng độc lập (`SpotlightView.tsx`/`SpotlightPanel.tsx`,
+dùng model Idle/Draw/Redraw như Image/Text) đã BỊ XOÁ HẲN — landing cũ có component này tự bị lọc bỏ
+khi mở lại (cùng cơ chế `COMPONENT_REGISTRY[c.type]` filter dùng cho MỌI type đã gỡ, xem
+`LandingBuilderWindow.tsx`/`PresentMode.tsx`).
+
+Component `Firework` đứng độc lập cũng đã BỊ XOÁ HẲN cùng đợt này (chưa có kiến trúc thay thế —
+`PrizeWonAmbientEffect` hiện chỉ có `"spotlight"`, chưa có `"firework"`) — landing cũ có component này
+cũng tự bị lọc bỏ tương tự.
 
 ## Kiến trúc chốt: dropdown "Source" chọn cột Participant
 
@@ -95,12 +119,11 @@ panel vẫn LUÔN giữ nút Delete component dù 2 cờ trên có bật hay kh�
 | `ImagePanel.tsx` | Image — Basic options + **"Interactions with Draw"** (component dùng chung `DrawCycleFields.tsx`, checkbox **Trigger with Draw**, tắt = ảnh tĩnh như cũ). Mỗi mốc **Idle/Draw/Redraw** có dropdown **Appearance** riêng, gộp CHUNG với Effect/Delay ngay trong khối mốc đó: **Idle** chỉ 2 lựa chọn `Appear`/`Disappear` (không có None); **Draw** thêm `None`, dropdown TỰ VÔ HIỆU HOÁ lựa chọn TRÙNG Idle; **Redraw** cũng thêm `None`, dropdown tự vô hiệu hoá lựa chọn ĐỐI LẬP Idle (khác None thì tự động hiện lại bằng CHÍNH Effect của Draw ngay sau đó, không cấu hình lặp) — không có ô nào cấu hình sai hướng được, đổi Appearance của Idle thì Draw/Redraw đang lưu tự sửa lại nếu không còn hợp lệ — xem mục "`useDrawCycleVisibility` — model Idle/Draw/Redraw" ở [present-mode.md](./present-mode.md). Dùng khi cần 1 ảnh PNG tự ẩn/hiện đồng bộ với quy trình quay (vd 1 ảnh trang trí như Podium cần TÁCH KHỎI Background để không bị `BackgroundDimOverlay` dim theo mỗi lượt Draw) mà không cần tạo hẳn 1 loại component riêng, xem `ImageProps`/`ImageView.tsx` |
 | `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) — Basic options có X/Y/Width/Height ở CUỐI (Height khoá "auto" nếu là Digit Roller). Draw/Display field KHÔNG yêu cầu Data Type cụ thể, liệt kê MỌI cột thật; field **Source** (winner display/digit source, gộp chung tên nhãn cho cả 2 template) thêm tiêu chí phụ ở Digit Roller "đúng `digitCount` ký tự" (đánh dấu Eligible/not eligible, không ẩn hẳn) — xem nhánh 1 ở mục kiến trúc phía trên |
 | `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng. "Interactions with Draw" LUÔN bật (không có checkbox — cả component chỉ tồn tại để phản ứng theo Draw), gồm 3 mục **Idle**/**Draw**/**Redraw** (2 mục sau đổi tên từ "When Revealed"/"When Disappear" cho khớp thuật ngữ chung với `DrawCycleFields.tsx`). **Idle** có dropdown **Appearance** giống Image/Text (đồng bộ hình dáng), nhưng Ý NGHĨA khác hẳn: `Disappear` (mặc định) = ẩn tên khi Reset (kèm **Effect**/**Delay (ms)** riêng — `idleEffect`/`idleDelayMs`, KHÁC `disappearEffect`/`disappearDelayMs` của Redraw vì Reset là sự kiện khác hẳn); `Appear` = GIỮ NGUYÊN tên đang hiện, Reset không xoá gì (Effect/Delay ẩn đi, không có tác dụng) — KHÔNG ảnh hưởng lúc mở lại landing (luôn rỗng lúc mount). **Draw**/**Redraw** mỗi mục CHỈ có **Effect** + **Delay (ms)**, KHÔNG dùng chung schema/component `DrawCycleFields.tsx` — nội dung Winner Name đổi theo từng lượt, không phải 1 thứ tĩnh nhị phân hiện/ẩn — xem mục "Winner Name (syncWithDraw luôn bật) — 3 trạng thái Idle/Revealed/Disappear" ở [present-mode.md](./present-mode.md) |
-| `LiveImagePanel.tsx` | Prize |
+| `LiveImagePanel.tsx` | Prize — "When Won" (trong "Self Interactions") có thêm **Ambient effect** (None/Spotlight) + **Delay (ms)**, xem mục "`PrizeWonAmbientEffect`" phía trên |
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
 | `ButtonPanel.tsx` | Button (chọn action + styling, xem [button-actions.md](./button-actions.md)) — action "Open Link" có thêm **Source**, cùng nhánh 2 (Data Type = URL) như Winner Name's Source |
 | `ScoreboardPanel.tsx` | Scoreboard — "Columns" là bản multi-select của nhánh 1 (liệt kê MỌI cột thật, không lọc Data Type) nhưng KHÔNG có tiêu chí phụ nào (bảng hiện được bất kỳ cột nào), nên không có khái niệm Eligible/not eligible ở đây — mọi checkbox luôn bật được |
-| `FireworkPanel.tsx` | Firework |
 
 ## Nhóm component (`ComponentPalette.tsx`)
 
@@ -118,7 +141,6 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 | **Live Info** | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem [button-actions.md](./button-actions.md) |
-| **Effects** | Firework | Pháo hoa thưa/nhẹ, gắn 1 giải cụ thể — bắn trong đúng khung của nó lúc giải đó vừa được công bố |
 
 `COMPONENT_REGISTRY` (`componentRegistry.ts`) là nguồn DUY NHẤT "nối dây" 1 loại component vào cả
 Palette lẫn Canvas (tạo instance mặc định khi thả) — xem checklist thêm component mới ở

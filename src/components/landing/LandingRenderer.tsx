@@ -22,7 +22,6 @@ import CurrentTimeView from "./views/CurrentTimeView";
 import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
-import FireworkView from "./views/FireworkView";
 import DrawModeCountPopup from "./views/DrawModeCountPopup";
 import HoldToConfirmButton from "./views/HoldToConfirmButton";
 
@@ -321,8 +320,6 @@ function renderComponent(
       // Chỉ tới đây khi KHÔNG interactive (Builder) — ở Present Mode, scoreboard đã bị lọc khỏi
       // `sorted` phía trên và vẽ riêng như overlay canh giữa, xem khối sau vòng lặp map() chính.
       return <ScoreboardView component={component} data={data} />;
-    case "firework":
-      return <FireworkView component={component} data={data} sequence={interactive ? sequence : undefined} />;
     default:
       return null;
   }
