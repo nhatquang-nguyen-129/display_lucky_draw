@@ -183,7 +183,10 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
           LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. `confirmPrompt.holdMs` (action
           "reset" — xem CONFIRM_HOLD_MS trong ButtonView.tsx) đổi nút "Confirm" bấm 1 phát thành GIỮ
           đủ số ms đó (HoldToConfirmButton.tsx) — nặng tay hơn hẳn xoá SẠCH cả session nên cần khó bấm
-          nhầm hơn "confirm" 1 người trúng. */}
+          nhầm hơn "confirm" 1 người trúng. KHÔNG có dòng phụ tự sinh "Press and hold for Xs" nữa (đã
+          bỏ, gộp thẳng vào đúng 1 câu `message` cho gọn) — action nào dùng `holdMs` sau này PHẢI tự
+          nói rõ luôn việc "giữ nút" trong `CONFIRM_MESSAGES` của action đó, không có dòng nào tự thêm
+          vào giúp nữa. */}
       {interactive && sequence?.confirmPrompt && (
         <div
           className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -196,11 +199,6 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-base font-medium text-base-100">{sequence.confirmPrompt.message}</p>
-            {sequence.confirmPrompt.holdMs && (
-              <p className="mt-1.5 text-xs text-base-500">
-                Press and hold Confirm for {Math.round(sequence.confirmPrompt.holdMs / 1000)}s
-              </p>
-            )}
             <div className="mt-5 flex justify-center gap-3">
               <Button variant="secondary" onClick={() => sequence.resolveConfirmPrompt(false)}>
                 Cancel
