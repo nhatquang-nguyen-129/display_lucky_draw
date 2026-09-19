@@ -99,39 +99,43 @@ Disappear kịp chạy (bản chất chính là bug "flash tên mới khi Redraw
 giải quyết TRIỆT ĐỂ hơn — không chỉ reset `revealed` trong render mà còn tách hẳn timing
 Appear/Disappear thành 2 field độc lập).
 
-**Reset ép về Idle NGAY LẬP TỨC (dữ liệu), không suy luận qua `resultId`**: `DrawSequenceActions
-.resetSeq` (`useDrawSequence.ts`) tăng thêm 1 mỗi lần `resetSession()` chạy xong thật sự —
-`useRevealed` đổi giá trị này thì ép `displayed` về `""` NGAY trong render + huỷ mọi timer
-Appear/Disappear đang chờ, KHÔNG đợi `results[0].id` đổi (vốn phải chờ đúng nhịp `data` refresh xong,
-dễ lệch nhịp nếu 1 request refresh CŨ hơn lại resolve SAU — xem `useLandingData.ts`). Tín hiệu tường
-minh này bảo đảm Winner Name luôn về đúng trạng thái mới-vào-landing sau Reset VỀ MẶT DỮ LIỆU, bất kể
-đang Idle/Revealed/Disappear lúc bấm — **TRỪ KHI `idleState === "appear"`** (xem ngay dưới đây), lúc
-đó bước ép này bị BỎ QUA HOÀN TOÀN (không setDisplayed(""), không reset hadPreviousRef) để tên tiếp
-tục hiển thị nguyên vẹn qua Reset.
+**Reset ép về Idle bằng ĐÚNG 1 phase, không suy luận qua `resultId`**: `DrawSequenceActions.resetSeq`
+(`useDrawSequence.ts`) tăng thêm 1 mỗi lần `resetSession()` chạy xong thật sự — `useRevealed` phát
+hiện thay đổi này NGAY TRONG RENDER (ghi vào 1 ref, `firedPhaseRef.current = "idle"`), rồi xử lý THẬT
+SỰ (setState) bên trong `useEffect` khoá theo `fireKey` (chuỗi ghép từ `resultId`/`resetSeq`, ĐÚNG
+kiến trúc `useDrawCycleVisibility` dùng cho Image/Text) — KHÔNG còn setState-trong-render như bản
+trước (từng gây bug thật: `useRevealTransition` suy luận "có phải do Reset không" bằng cách so sánh
+riêng `resetSeq` của chính nó, nhưng `text` chỉ thật sự đổi SAU KHI effect của `useRevealed` chạy
+xong — CÓ THỂ ở 1 lượt render KHÁC hẳn với lượt `resetSeq` đổi — nên so sánh tách rời luôn có nguy cơ
+lệch nhịp, khiến Reset bị nhầm dùng hiệu ứng/delay của Redraw thường thay vì của Idle). Tín hiệu tường
+minh này bảo đảm Winner Name luôn về đúng trạng thái mới-vào-landing sau Reset, bất kể đang
+Idle/Revealed/Disappear lúc bấm — **TRỪ KHI `idleState === "appear"`** (xem ngay dưới đây), lúc đó
+bước này bị BỎ QUA HOÀN TOÀN để tên tiếp tục hiển thị nguyên vẹn qua Reset.
+
+`useRevealed` trả về `{ text, phase }` (`RevealState`, `drawRevealHooks.ts`) thay vì 1 chuỗi trần —
+`phase` (`"idle" | "draw" | "redraw" | null`) LUÔN cập nhật ĐỒNG THỜI với `text` trong CÙNG 1 lần
+setState, nên bất kỳ hook/component nào cần biết "text này đổi VÌ SAO" (vd `useRevealTransition` cần
+biết có phải Idle/Reset không để chọn `idleEffect` thay vì `disappearEffect`) chỉ cần ĐỌC THẲNG
+`phase` từ state đó — không bao giờ lệch nhịp, vì 2 giá trị luôn thuộc CÙNG 1 lần render.
 
 **`idleState` (`DrawRestState` — cùng type với `ImageProps`/`TextProps.drawCycle.idleState`) — CÓ hay
 KHÔNG ẩn tên khi Reset**: mặc định/`undefined` = `"disappear"` (hành vi ở trên, không đổi gì). Đặt
 `"appear"` thì Reset (`resetSeq` đổi) hoàn toàn KHÔNG đụng tới tên đang hiện — dùng khi muốn tên người
 trúng gần nhất tiếp tục hiển thị trang trí cho tới khi có lượt Draw mới, thay vì biến mất ngay khi bấm
-Reset. Field này KHÔNG ảnh hưởng gì tới lúc MỞ LẠI landing (`useRevealed` luôn khởi tạo `useState("")`
-— rỗng ngay từ đầu, tách biệt hoàn toàn khỏi `idleState`) — giữ đúng quyết định sản phẩm "Landing luôn
-mở ở Idle, không restore winner cũ" đã chốt trước đó, `idleState="appear"` CHỈ có tác dụng cho việc
-bấm nút Reset GIỮA phiên, không phải lúc khởi động app.
+Reset. Field này KHÔNG ảnh hưởng gì tới lúc MỞ LẠI landing (`useRevealed` luôn khởi tạo
+`useState({text: "", phase: null})` — rỗng ngay từ đầu, tách biệt hoàn toàn khỏi `idleState`) — giữ
+đúng quyết định sản phẩm "Landing luôn mở ở Idle, không restore winner cũ" đã chốt trước đó,
+`idleState="appear"` CHỈ có tác dụng cho việc bấm nút Reset GIỮA phiên, không phải lúc khởi động app.
 
-`idleEffect`/`idleDelayMs` (Effect + Delay riêng, KHÁC `disappearEffect`/`disappearDelayMs` của
+**`idleEffect`/`idleDelayMs`** (Effect + Delay riêng, KHÁC `disappearEffect`/`disappearDelayMs` của
 Redraw) CHỈ có tác dụng khi `idleState = "disappear"` — mô tả tốc độ/hiệu ứng NHÌN THẤY của lớp tên cũ
-đang fade-out lúc Reset (`useRevealTransition`, thuần cosmetic — KHÔNG đụng tới bước ép dữ liệu ở
-trên, 2 việc này tách biệt hoàn toàn: `useRevealed` xử lý ĐÚNG NGAY tính đúng đắn dữ liệu, còn
-`useRevealTransition` chỉ điều khiển tốc độ hiệu ứng của cái ĐÃ đúng đó). `idleState = "appear"` thì
-2 field này vô nghĩa (không có gì đổi để chạy hiệu ứng).
-
-**Idle CÓ Effect + Delay riêng cho phần NHÌN THẤY** (`idleEffect`/`idleDelayMs`, KHÁC
-`disappearEffect`/`disappearDelayMs` dùng cho Redraw) — TÁCH BIỆT HOÀN TOÀN với đoạn "ép về Idle NGAY
-LẬP TỨC" ở trên: cái đó là tính đúng đắn DỮ LIỆU (`useRevealed`, xử lý xong ngay trong render, không
-đổi), còn `idleEffect`/`idleDelayMs` chỉ ảnh hưởng TỐC ĐỘ HIỆU ỨNG NHÌN THẤY của lớp text CŨ đang
-fade-out (`useRevealTransition`, thuần cosmetic) — tên đang hiện có thể đứng yên thêm `idleDelayMs`
-rồi mới biến mất bằng `idleEffect` khi bấm Reset, thay vì cắt ngay lập tức (mặc định `undefined` = ẩn
-ngay, giữ đúng hành vi cũ). Không ảnh hưởng gì khi Reset lúc đang Idle (không có gì để fade).
+đang fade-out lúc Reset (`useRevealTransition`, đọc qua tham số `viaIdle` — CHÍNH LÀ
+`revealState.phase === "idle"`, xem WinnerNameView.tsx). `idleState = "appear"` thì 2 field này vô
+nghĩa (không có gì đổi để chạy hiệu ứng). Mặc định `undefined` = ẩn NGAY, không hiệu ứng, giữ đúng
+hành vi cũ — tên đang hiện có thể đứng yên thêm `idleDelayMs` rồi mới biến mất bằng `idleEffect` nếu
+được cấu hình. `useRevealTransition` còn tự BỎ QUA việc giữ lớp tên cũ chờ hết `TRANSITION_MS` khi
+`text` MỚI là chuỗi rỗng (Idle/Reset LUÔN vậy) — animation "appear" của Draw không có ý nghĩa gì khi
+appear vào chỗ trống, nên không lấy nó làm lý do trì hoãn việc ẩn tên cũ.
 
 Properties Panel của Winner Name (`LiveTextPanel.tsx`) tổ chức 3 mục **Idle**/**Draw**/**Redraw**
 (2 mục sau đổi tên từ "When Revealed"/"When Disappear" cũ cho khớp thuật ngữ chung, xem mục dưới) —
