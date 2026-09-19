@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DEFAULT_PRIZE_STAGE_EFFECT, DrawSequenceActions, LandingData, PrizeImageComponent } from "@/lib/landing/types";
 import PrizeEffectOverlay from "./PrizeEffectOverlay";
 import { ensureAlphaLoaded } from "./pixelAlphaHitTest";
-import { computePrizeTransform, cssVarsToStyle, resolvePrizeEffects } from "./prizeEffectTransform";
+import { computePrizeTransform, computeScaleFraction, cssVarsToStyle, resolvePrizeEffects } from "./prizeEffectTransform";
 import { registerPrizeHitTarget } from "./prizeHitCoordinator";
 
 // LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (props.prizeId), không đổi theo kết quả quay. Đặt
@@ -80,6 +80,21 @@ export default function PrizeImageView({
   const justWon =
     !!sequence && !!boundPrize && !!sequence.candidate && sequence.candidate.prizeId === boundPrize.id && !sequence.spinning;
 
+  // Spotlight "When Won" (xem PrizeWonAmbientEffect trong types.ts) — KHÁC hẳn onWon's
+  // Focus/Highlight/Motion (1 hiệu ứng oneshot ngắn rồi tắt): Spotlight HIỆN SUỐT lúc `justWon` còn
+  // đúng, chỉ trễ đúng `wonAmbientDelayMs` lúc BẮT ĐẦU hiện — tắt NGAY (không delay) khi `justWon` hết
+  // đúng (Reset/Redraw/1 lượt quay mới bắt đầu), không cần state máy phức tạp như oneshot.
+  const [spotlightOn, setSpotlightOn] = useState(false);
+  const wonAmbientEffect = component.props.wonAmbientEffect ?? "none";
+  useEffect(() => {
+    if (!justWon || wonAmbientEffect !== "spotlight") {
+      setSpotlightOn(false);
+      return;
+    }
+    const timer = setTimeout(() => setSpotlightOn(true), Math.max(0, component.props.wonAmbientDelayMs ?? 0));
+    return () => clearTimeout(timer);
+  }, [justWon, wonAmbientEffect, component.props.wonAmbientDelayMs]);
+
   // Dữ liệu "sống" cho target đăng ký với prizeHitCoordinator.ts — đọc qua ref để callback của nó
   // luôn thấy giá trị MỚI NHẤT mà không cần đăng ký lại (huỷ + tạo lại listener) mỗi lần render, chỉ
   // đăng ký ĐÚNG 1 LẦN cho tới khi `interactive` đổi (xem effect bên dưới).
@@ -126,6 +141,18 @@ export default function PrizeImageView({
       })
     : {};
   const motionTransform = resolved.motion ? computePrizeTransform(resolved.motion.config, resolved.motion.mode) : {};
+  // % zoom Focus ĐANG active (vd onSelect vẫn giữ scaleUp SUỐT lúc `selected` — không tự tắt lúc vừa
+  // thắng, `selectedPrizeId` chỉ đổi khi người vận hành CHỦ ĐỘNG bấm chọn giải khác/bỏ chọn) — CHỈ tính
+  // cho "persistent" (oneshot scaleUp là 1 cú nảy thoáng qua rồi TRỞ VỀ trung tính, không đứng yên ở
+  // mức đã cấu hình nên không cần bù, xem doc-comment computePrizeTransform). Dùng để nới rộng đáy
+  // Spotlight bên dưới cho khớp kích thước ảnh THẬT đang hiện, không phải kích thước khung gốc tĩnh —
+  // xấp xỉ ĐÚNG TUYỆT ĐỐI khi neo zoom ở giữa (mặc định của onSelect, xem defaultPrizeStage trong
+  // componentRegistry.ts), hơi lệch nếu người dùng tự kéo neo ra xa tâm — chấp nhận được, còn hơn hẳn
+  // không bù gì cả.
+  const activeFocusScaleFraction =
+    resolved.focus?.mode === "persistent" && resolved.focus.config.effect === "scaleUp"
+      ? computeScaleFraction(resolved.focus.config)
+      : 0;
 
   return (
     <div
@@ -195,6 +222,36 @@ export default function PrizeImageView({
           />
         )}
       </div>
+      {/* Spotlight "When Won" — NGOÀI wrapper Focus (không CHIA transform-origin/scale CSS của
+          scaleUp/lift, vì thứ đó sẽ kéo lệch luôn cả điểm neo "đỉnh canvas" bên dưới). KHÁC hẳn mọi
+          overlay khác trong file này: vượt ra khỏi khung x/y/width/height CỦA CHÍNH component này —
+          `top: -component.y` + `height: component.y + component.height` kéo nón từ ĐỈNH CANVAS (y=0
+          tuyệt đối, không phải đỉnh khung Prize Image) xuống ĐÚNG tới đáy khung Prize — canvas ngoài
+          cùng (LandingRenderer.tsx) không `overflow: hidden` phần dưới y=0 nên phần vượt lên trên
+          KHÔNG bị cắt mất. Đáy nón khớp bề rộng ảnh THẬT ĐANG HIỆN (`component.width` nhân thêm
+          `activeFocusScaleFraction` — xem doc-comment ở trên) chứ không phải khung gốc tĩnh, vì
+          onSelect có thể vẫn đang scaleUp SUỐT lúc vừa thắng — thiếu bước bù này 2 mép nón sẽ lệch hẳn
+          khỏi rìa ảnh thật lúc đang zoom (bug đã gặp thật). Phong cách (màu/hình nón/độ mờ) CỐ ĐỊNH
+          trong code — xem doc-comment PrizeWonAmbientEffect trong types.ts cho lý do không phơi ra
+          Properties Panel. Luôn render (không điều kiện theo `spotlightOn`) để `opacity` transition
+          mượt lúc bật/tắt thay vì mount/unmount đột ngột — `pointer-events: none` để không chặn click
+          chọn giải. */}
+      {wonAmbientEffect === "spotlight" && (
+        <div
+          className="pointer-events-none absolute z-20"
+          style={{
+            top: -component.y,
+            left: (-component.width * activeFocusScaleFraction) / 2,
+            width: component.width * (1 + activeFocusScaleFraction),
+            height: component.y + component.height,
+            opacity: spotlightOn ? 1 : 0,
+            transition: "opacity 400ms ease-out",
+            clipPath: "polygon(42.5% 0%, 57.5% 0%, 100% 100%, 0% 100%)",
+            background: "linear-gradient(to bottom, rgba(255,255,255,0.3), rgba(255,255,255,0.18))",
+            filter: "blur(22px)",
+          }}
+        />
+      )}
     </div>
   );
 }

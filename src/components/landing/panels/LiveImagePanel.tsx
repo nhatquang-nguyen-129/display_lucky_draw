@@ -142,7 +142,40 @@ export default function LiveImagePanel({ props, prizes, onChange, componentId, a
           onStartEditingAnchor={() => startEditingAnchor("onWon", onWon.focus ?? DEFAULT_PRIZE_GROUP_EFFECT)}
           onDoneAnchor={() => doneAnchor("onWon")}
           onRemoveAnchor={() => removeAnchor("onWon")}
-        />
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelClass}>Ambient effect</label>
+              <select
+                className={fieldClass}
+                value={props.wonAmbientEffect ?? "none"}
+                onChange={(e) => onChange({ wonAmbientEffect: e.target.value as LiveImageProps["wonAmbientEffect"] })}
+              >
+                <option value="none">None</option>
+                <option value="spotlight">Spotlight</option>
+              </select>
+            </div>
+            {(props.wonAmbientEffect ?? "none") !== "none" && (
+              <div>
+                <label className={labelClass}>Delay (ms)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  className={fieldClass}
+                  value={props.wonAmbientDelayMs ?? 0}
+                  onChange={(e) => onChange({ wonAmbientDelayMs: Math.max(0, Number(e.target.value)) })}
+                />
+              </div>
+            )}
+          </div>
+          {(props.wonAmbientEffect ?? "none") !== "none" && (
+            <p className="text-[10px] leading-snug text-base-500">
+              Shines directly onto this exact prize's box the instant it's won — style is fixed, only
+              the trigger delay is configurable.
+            </p>
+          )}
+        </PrizeEffectPicker>
         <PrizeEffectPicker
           title="When Out of Stock"
           value={onOutOfStock}

@@ -38,8 +38,11 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
 }
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
-// nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette.
-export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive", "Effects"] as const;
+// nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette. "Effects" đã bỏ (Firework/
+// Spotlight không còn là component đứng độc lập — Spotlight giờ là 1 dropdown "When Won" ngay trong
+// panel Prize Image, xem PrizeWonAmbientEffect trong types.ts; Firework đã xoá hẳn, chưa có kiến trúc
+// thay thế) — thêm lại category này nếu sau này có component TỰ ĐỨNG thuộc nhóm "hiệu ứng" khác.
+export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive"] as const;
 export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
 
 export interface ComponentRegistryEntry {
@@ -139,6 +142,8 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       onWon: defaultPrizeStage(),
       onOutOfStock: defaultPrizeStage(),
       outOfStockDimAmount: 58,
+      wonAmbientEffect: "none",
+      wonAmbientDelayMs: 0,
     }),
   },
   currentTime: {
@@ -215,23 +220,6 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       backgroundColor: "#FFFFFF",
       backgroundImageDataUrl: null,
       backgroundImageFit: "cover",
-    }),
-  },
-  firework: {
-    label: "Firework",
-    description: "Sparse, subtle fireworks bound to one prize — fires within this box the instant that prize's winner is revealed.",
-    category: "Effects",
-    defaultWidth: 480,
-    defaultHeight: 360,
-    // Preset "Subtle Champagne" mặc định — xem PRESETS trong FireworkPanel.tsx.
-    createDefaultProps: () => ({
-      prizeId: "",
-      color1: "#F6D98B",
-      color2: "#E8C66A",
-      intervalMs: 1200,
-      delayMs: 0,
-      mode: "duration",
-      durationMs: 4000,
     }),
   },
 };
