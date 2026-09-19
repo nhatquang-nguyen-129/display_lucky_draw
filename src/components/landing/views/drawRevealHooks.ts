@@ -194,8 +194,11 @@ type FiredPhase = "idle" | "draw" | "redraw";
  * hiện ra: bật `shown = true` NGAY rồi mới chạy hiệu ứng xuất hiện đè lên). `redrawAction !== "none"`
  * chạy `redrawEffect` (xử lý nội dung CŨ), rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp bước
  * "hiện lại" bằng CHÍNH `drawEffect` (không có field riêng — công bố kết quả là 1 hành động chung) —
- * `drawEffect.delayMs` đo từ lúc `redrawEffect` chạy XONG HẲN (delay + thời lượng hiệu ứng, hoặc 0
- * nếu effect "none"), nối tiếp thật, không đo song song từ lúc bấm Redraw.
+ * nối tiếp qua callback `onDone` của `runStep` (chạy ĐÚNG lúc `setShown(false)` của bước ẩn đã thật
+ * sự thực thi), KHÔNG tính lại mốc thời gian rồi đặt 1 setTimeout song song (đã gặp bug thật: 2 timer
+ * tính ra CÙNG 1 mốc tuyệt đối đua nhau theo thứ tự nạp event loop — nếu `setShown(false)` chạy SAU
+ * `setShown(true)` sẽ đè mất hiệu ứng vừa hiện lại ngay lập tức, trông như "ẩn được nhưng không hiện
+ * lại"). `drawEffect.delayMs` đo THÊM từ lúc `onDone` gọi (tức từ lúc `redrawEffect` chạy xong hẳn).
  */
 export function useDrawCycleVisibility(
   resultId: string | undefined,
@@ -241,7 +244,13 @@ export function useDrawCycleVisibility(
     if (!firedPhase) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    function runStep(toVisible: boolean, step: DrawPhaseEffectConfig | undefined) {
+    // `onDone` chạy ĐÚNG lúc bước này THẬT SỰ hoàn tất (sau khi setShown/setTransitionClass cuối cùng
+    // đã gọi) — dùng để nối bước kế tiếp (Redraw → hiện lại) một cách CHÍNH XÁC, thay vì tính lại thời
+    // gian từ bên ngoài (`delay + TRANSITION_MS`) rồi đặt 1 setTimeout SONG SONG: 2 timer tính ra cùng
+    // 1 mốc tuyệt đối sẽ ĐUA NHAU theo thứ tự nạp vào event loop, không đảm bảo timer nào chạy trước —
+    // nếu setShown(false) (từ bước ẩn) chạy SAU setShown(true) (từ bước hiện) mới đè lên, hiện lại sẽ
+    // bị dập tắt ngay lập tức (bug thật đã gặp: Redraw ẩn được nhưng không thấy hiện lại).
+    function runStep(toVisible: boolean, step: DrawPhaseEffectConfig | undefined, onDone?: () => void) {
       const delay = Math.max(0, step?.delayMs ?? 0);
       const effect = step?.effect ?? "none";
       timers.push(
@@ -252,16 +261,19 @@ export function useDrawCycleVisibility(
               setTransitionClass(APPEAR_CLASS[effect]);
               timers.push(setTimeout(() => setTransitionClass(""), TRANSITION_MS));
             }
+            onDone?.();
           } else if (effect !== "none") {
             setTransitionClass(DISAPPEAR_CLASS[effect]);
             timers.push(
               setTimeout(() => {
                 setTransitionClass("");
                 setShown(false);
+                onDone?.();
               }, TRANSITION_MS)
             );
           } else {
             setShown(false);
+            onDone?.();
           }
         }, delay)
       );
@@ -276,18 +288,13 @@ export function useDrawCycleVisibility(
       // Redraw: "none" = không làm gì (giữ nguyên trạng thái đang có). Khác "none" luôn TRÙNG
       // idleState (Panel đã ràng buộc) — chạy đúng 1 bước riêng (ẩn nội dung cũ), rồi — NẾU Draw có
       // action thật — tự động chạy tiếp bằng CHÍNH `drawEffect` để hiện nội dung mới (công bố kết quả
-      // là 1 hành động chung, không có field riêng cho bước này).
+      // là 1 hành động chung, không có field riêng cho bước này), CHỈ SAU KHI bước ẩn báo `onDone`.
       if (config.redrawAction === "none") return;
-      const outEffect = config.redrawEffect?.effect ?? "none";
-      const outDelay = Math.max(0, config.redrawEffect?.delayMs ?? 0);
-      const outDuration = outEffect === "none" ? 0 : TRANSITION_MS;
-      runStep(restVisible, config.redrawEffect);
-      if (config.drawAction !== "none") {
+      runStep(restVisible, config.redrawEffect, () => {
+        if (config.drawAction === "none") return;
         const inDelay = Math.max(0, config.drawEffect?.delayMs ?? 0);
-        timers.push(
-          setTimeout(() => runStep(!restVisible, config.drawEffect), outDelay + outDuration + inDelay)
-        );
-      }
+        timers.push(setTimeout(() => runStep(!restVisible, config.drawEffect), inDelay));
+      });
     }
 
     return () => timers.forEach(clearTimeout);
