@@ -63,7 +63,7 @@ export default function WinnerNameView({
   // 3 trạng thái Idle/Revealed/Disappear (xem doc-comment WinnerNameProps trong types.ts và
   // useRevealed trong drawRevealHooks.ts) — hoàn toàn tự quản lý qua appearDelayMs/disappearDelayMs
   // của CHÍNH Winner Name này, không còn phụ thuộc thời lượng quay của Lucky Wheel trên trang.
-  const revealedName = useRevealed(
+  const revealState = useRevealed(
     liveResultId,
     winnerName,
     appearDelayMs ?? 0,
@@ -71,13 +71,16 @@ export default function WinnerNameView({
     resetSeq,
     idleState ?? "disappear"
   );
-  const text = builderPreview ? BUILDER_PLACEHOLDER : quickDrawActive ? quickDrawText : revealedName;
+  const text = builderPreview ? BUILDER_PLACEHOLDER : quickDrawActive ? quickDrawText : revealState.text;
+  // CHỈ tin `phase === "idle"` khi thật sự đang hiện `revealState.text` (không bị builderPreview/
+  // quickDrawActive ghi đè) — 2 override đó không liên quan gì tới phase của luồng reveal thật.
+  const viaIdle = !builderPreview && !quickDrawActive && revealState.phase === "idle";
 
   const { current, previous, previousClass } = useRevealTransition(
     text,
     appearEffect ?? "none",
     disappearEffect ?? "none",
-    resetSeq,
+    viaIdle,
     idleEffect,
     idleDelayMs
   );

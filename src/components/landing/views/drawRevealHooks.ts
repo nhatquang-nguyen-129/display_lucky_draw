@@ -33,10 +33,24 @@ export const APPEAR_CLASS: Record<WinnerTransitionEffect, string> = {
   zoom: "winner-transition-zoom-in",
 };
 
+export type RevealPhase = "idle" | "draw" | "redraw";
+
+export interface RevealState {
+  // Chuỗi ĐANG THỰC SỰ hiện trên màn hình ngay lúc này ("" = không hiện gì).
+  text: string;
+  // Phase THẬT SỰ đã sinh ra giá trị `text` này ngay trên — LUÔN cập nhật ĐỒNG THỜI với `text` trong
+  // CÙNG 1 lần setState (xem effect bên dưới), KHÔNG BAO GIỜ suy luận riêng ở nơi khác bằng cách so
+  // sánh resetSeq tách rời (bản trước làm vậy ở useRevealTransition — đã gặp bug thật: `resetSeq` đổi
+  // và `text` đổi theo KHÔNG NẰM CÙNG 1 LƯỢT RENDER khi `text` được set qua effect, nên so sánh
+  // resetSeq ở 1 hook khác luôn có nguy cơ lệch nhịp, khiến Reset bị nhầm dùng hiệu ứng/delay của
+  // Redraw thường). `null` = chưa từng có phase nào fire (lúc mount).
+  phase: RevealPhase | null;
+}
+
 // `resultId` = data?.results[0]?.id — undefined nghĩa là Idle/Reset (chưa/không còn candidate nào).
-// Trả về CHUỖI ĐANG THỰC SỰ hiện trên màn hình ngay lúc này ("" = không hiện gì) — implement đúng 3
-// trạng thái của Winner Name (xem doc-comment WinnerNameProps trong types.ts):
-//   1. Idle (resultId undefined): "" ngay lập tức, không delay nào áp dụng — Reset là hành động rõ
+// Trả về đúng 3 trạng thái của Winner Name (xem doc-comment WinnerNameProps trong types.ts):
+//   1. Idle (resultId undefined, HOẶC resetSeq vừa đổi): "" ngay lập tức (trừ khi `idleState="appear"`
+//      — xem doc-comment WinnerNameProps.idleState), không delay nào áp dụng — Reset là hành động rõ
 //      ràng của người vận hành, không phải 1 lượt Draw mới cần chờ Disappear.
 //   2. resultId đổi sang 1 giá trị MỚI, đang KHÔNG hiện gì (Idle → có candidate, lượt Draw đầu tiên):
 //      giữ "" cho tới đúng `appearDelayMs` (tính từ lúc resultId đổi = lúc bấm Draw) thì đổi sang
@@ -46,64 +60,73 @@ export const APPEAR_CLASS: Record<WinnerTransitionEffect, string> = {
 //      với việc sau đúng `appearDelayMs` (CÙNG tính từ lúc resultId đổi, không xếp hàng chờ nhau) thì
 //      đổi sang `value` MỚI (appearEffect chạy) — cả 2 mốc đều đo từ đúng 1 sự kiện (bấm Draw).
 // `value` chỉ được ĐỌC vào lúc mỗi timer thực sự chạy (qua closure của effect, ứng với đúng
-// resultId hiện tại) — KHÔNG hiện ngay dù `value` (vd winnerName tính từ data.results[0]) đã đổi
-// tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ" trước khi Disappear kịp chạy.
+// `fireKey` — resultId/resetSeq hiện tại) — KHÔNG hiện ngay dù `value` (vd winnerName tính từ
+// data.results[0]) đã đổi tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ" trước khi
+// Disappear kịp chạy. Toàn bộ logic nằm TRONG effect (giống hệt kiến trúc `useDrawCycleVisibility` ở
+// cuối file) — KHÔNG còn setState-trong-render như bản trước, tránh hẳn lớp bug do 2 lượt render (1
+// lượt bị huỷ, 1 lượt chạy lại) đọc phải giá trị CHƯA kịp cập nhật.
 export function useRevealed(
   resultId: string | undefined,
   value: string,
   appearDelayMs: number,
   disappearDelayMs: number,
   // DrawSequenceActions.resetSeq (xem doc-comment ở types.ts) — tăng mỗi lần resetSession() chạy
-  // xong THẬT SỰ. Đổi giá trị (so bằng useRef, không phải dep của effect timer) ép `displayed` về ""
-  // NGAY LẬP TỨC (nếu `idleState !== "appear"`), HUỶ mọi timer Appear/Disappear đang chờ — tín hiệu
-  // TƯỜNG MINH từ đúng hành động Reset, không suy luận qua resultId (vốn phải đợi `data`/`candidate`
-  // refresh xong mới đổi, có thể lệch nhịp nếu 1 request refresh CŨ hơn lại resolve SAU, ghi đè nhầm
-  // state mới — xem useLandingData.ts). undefined (Builder canvas, không có sequence thật) = bỏ qua
-  // cơ chế này.
+  // xong THẬT SỰ. Đổi giá trị ép về phase "idle" NGAY (nếu `idleState !== "appear"`), HUỶ mọi timer
+  // Appear/Disappear đang chờ — tín hiệu TƯỜNG MINH từ đúng hành động Reset, không suy luận qua
+  // resultId (vốn phải đợi `data`/`candidate` refresh xong mới đổi, có thể lệch nhịp nếu 1 request
+  // refresh CŨ hơn lại resolve SAU, ghi đè nhầm state mới — xem useLandingData.ts). undefined (Builder
+  // canvas, không có sequence thật) = bỏ qua cơ chế này.
   resetSeq?: number,
   // "disappear" (mặc định) = hành vi cũ, ẩn ngay khi Idle/Reset. "appear" = GIỮ NGUYÊN chuỗi đang
   // hiện, không tự xoá gì cả — xem doc-comment WinnerNameProps.idleState trong types.ts. KHÔNG ảnh
-  // hưởng state khởi tạo (`useState("")` — luôn rỗng lúc mount, giữ nguyên quyết định "Landing luôn
-  // mở ở Idle, không restore winner cũ").
+  // hưởng state khởi tạo (`useState` — luôn rỗng lúc mount, giữ nguyên quyết định "Landing luôn mở ở
+  // Idle, không restore winner cũ").
   idleState: DrawRestState = "disappear"
-): string {
-  const [displayed, setDisplayed] = useState("");
+): RevealState {
+  const [state, setState] = useState<RevealState>({ text: "", phase: null });
   const prevIdRef = useRef(resultId);
   const hadPreviousRef = useRef(false);
   const prevResetSeqRef = useRef(resetSeq);
+  const firedPhaseRef = useRef<RevealPhase | null>(null);
 
-  // setState-trong-render có điều kiện + so KHÁC giá trị — pattern React hợp lệ (React huỷ output
-  // render hiện tại rồi render lại ngay TRƯỚC khi paint, xem thêm ở useRevealTransition bên dưới).
+  // Xác định phase nào VỪA xảy ra NGAY trong lúc render (đồng bộ, giống pattern
+  // useDrawCycleVisibility) — chỉ ghi lại vào ref để effect bên dưới đọc, KHÔNG tự setState ở đây.
   if (prevResetSeqRef.current !== resetSeq) {
     prevResetSeqRef.current = resetSeq;
-    if (idleState !== "appear") {
-      hadPreviousRef.current = false;
-      setDisplayed("");
-    }
+    firedPhaseRef.current = "idle";
+    hadPreviousRef.current = false;
   } else if (prevIdRef.current !== resultId) {
-    // CHỈ xử lý nhánh Idle (ẩn ngay) ở đây — nhánh "có resultId mới" để nguyên `displayed` (tên CŨ
-    // nếu có) và giao lại cho effect bên dưới đổi đúng lúc theo 2 mốc Delay, đồng thời ghi lại đã có
-    // tên đang hiện hay chưa (`displayed` lúc này VẪN là giá trị của lượt TRƯỚC, effect chưa kịp đổi).
     if (resultId === undefined) {
-      if (idleState !== "appear") setDisplayed("");
+      firedPhaseRef.current = "idle";
+      hadPreviousRef.current = false;
     } else {
-      hadPreviousRef.current = displayed !== "";
+      firedPhaseRef.current = hadPreviousRef.current ? "redraw" : "draw";
+      hadPreviousRef.current = true;
     }
   }
   prevIdRef.current = resultId;
 
+  // Key đổi ĐÚNG 1 lần mỗi khi có 1 phase mới cần chạy — tách khỏi re-render thường.
+  const fireKey = `${resultId ?? "__idle__"}:${resetSeq ?? 0}`;
+
   useEffect(() => {
-    if (resultId === undefined) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    if (hadPreviousRef.current) {
-      timers.push(setTimeout(() => setDisplayed(""), Math.max(0, disappearDelayMs)));
+    const phase = firedPhaseRef.current;
+    if (!phase) return;
+    if (phase === "idle") {
+      if (idleState !== "appear") setState({ text: "", phase: "idle" });
+      return;
     }
-    timers.push(setTimeout(() => setDisplayed(value), Math.max(0, appearDelayMs)));
+    // "draw" hoặc "redraw" — resultId chắc chắn có giá trị ở đây.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (phase === "redraw") {
+      timers.push(setTimeout(() => setState({ text: "", phase: "redraw" }), Math.max(0, disappearDelayMs)));
+    }
+    timers.push(setTimeout(() => setState({ text: value, phase }), Math.max(0, appearDelayMs)));
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultId, value, appearDelayMs, disappearDelayMs, resetSeq]);
+  }, [fireKey]);
 
-  return displayed;
+  return state;
 }
 
 // "current"/"previous" — 2 lớp text CHỒNG LÊN NHAU trong lúc chuyển cảnh: "previous" = đoạn VỪA MẤT
@@ -112,17 +135,21 @@ export function useRevealed(
 // xem bên dưới), "current" = đoạn ĐANG HIỆN TỚI (đang chạy `appearEffect`, class "-in"). `previous ===
 // null` = trạng thái đứng yên bình thường, không có gì đang chuyển cảnh.
 //
-// `resetSeq`/`idleEffect`/`idleDelayMs`: khi `text` đổi VÌ Reset (resetSeq vừa đổi — tức
-// `useRevealed` ở trên vừa ép `displayed` về "" NGAY LẬP TỨC để giữ đúng tính đúng đắn dữ liệu, xem
-// doc-comment ở đó), lớp VISUAL "previous" ở đây KHÔNG bắt buộc phải biến mất ngay theo — nó có thể
-// đứng yên (hiện nguyên tên cũ) thêm `idleDelayMs` rồi mới chạy hiệu ứng `idleEffect` (khác hẳn
-// `disappearEffect`/không delay dùng cho Redraw thường) — tách biệt HOÀN TOÀN tính đúng đắn dữ liệu
-// (đã xong ngay trong `useRevealed`) khỏi tốc độ hiệu ứng NHÌN THẤY (thuần cosmetic, xử lý ở đây).
+// `viaIdle`: TRUE khi ĐÚNG lượt đổi `text` NÀY là do phase "idle" (Reset, hoặc tự nhiên về Idle) sinh
+// ra — ĐỌC TRỰC TIẾP từ `RevealState.phase` của `useRevealed` (component gọi hàm này tự truyền vào,
+// xem WinnerNameView.tsx), KHÔNG tự suy luận lại bằng cách so sánh `resetSeq` ở ĐÂY (bản trước làm
+// vậy — đã gặp bug thật: `text` chỉ thật sự đổi sau khi effect của `useRevealed` chạy xong, tức có thể
+// ở LƯỢT RENDER KHÁC hẳn với lượt `resetSeq` đổi, nên so `resetSeq` tách rời ở 1 hook khác luôn có
+// nguy cơ lệch nhịp). Vì `RevealState.phase` LUÔN cập nhật ĐỒNG THỜI với `text` trong CÙNG 1 lần
+// setState của `useRevealed`, `viaIdle` tính từ đó không bao giờ lệch nhịp với `text`. Khi `viaIdle`,
+// lớp VISUAL "previous" ở đây KHÔNG bắt buộc phải biến mất ngay theo `text` — nó có thể đứng yên (hiện
+// nguyên tên cũ) thêm `idleDelayMs` rồi mới chạy hiệu ứng `idleEffect` (khác hẳn
+// `disappearEffect`/không delay dùng cho Redraw thường).
 export function useRevealTransition(
   text: string,
   appearEffect: WinnerTransitionEffect,
   disappearEffect: WinnerTransitionEffect,
-  resetSeq?: number,
+  viaIdle: boolean,
   idleEffect?: WinnerTransitionEffect,
   idleDelayMs?: number
 ): { current: string; previous: string | null; previousClass: string } {
@@ -132,33 +159,23 @@ export function useRevealTransition(
     previousClass: string;
   }>({ current: text, previous: null, previousClass: "" });
   const prevTextRef = useRef(text);
-  const prevResetSeqRef = useRef(resetSeq);
-  const viaResetRef = useRef(false);
-
-  // CHỈ đánh dấu "viaReset" khi resetSeq đổi VÀ `text` THẬT SỰ sẽ đổi theo (so trực tiếp với
-  // `prevTextRef.current` NGAY TRONG RENDER, trước khi effect bên dưới kịp chạy) — nếu
-  // `idleState="appear"` khiến `useRevealed` KHÔNG xoá `displayed` (text giữ nguyên), effect dưới sẽ
-  // bail sớm ở `text === prevTextRef.current` và KHÔNG BAO GIỜ dùng/dọn flag này — không canh ở đây
-  // thì flag còn "true" dây dưa sang đúng lượt đổi text tiếp theo (1 lượt Draw thường), khiến nó bị
-  // nhầm dùng `idleEffect` thay vì `disappearEffect`/`appearEffect` thật.
-  if (prevResetSeqRef.current !== resetSeq) {
-    prevResetSeqRef.current = resetSeq;
-    viaResetRef.current = text !== prevTextRef.current;
-  }
 
   useEffect(() => {
     if (text === prevTextRef.current) return;
     const old = prevTextRef.current;
     prevTextRef.current = text;
-    const viaReset = viaResetRef.current;
-    viaResetRef.current = false;
 
-    const usedDisappearEffect = viaReset ? idleEffect ?? "none" : disappearEffect;
-    const delay = viaReset ? Math.max(0, idleDelayMs ?? 0) : 0;
+    const usedDisappearEffect = viaIdle ? idleEffect ?? "none" : disappearEffect;
+    const delay = viaIdle ? Math.max(0, idleDelayMs ?? 0) : 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     function startTransition() {
-      if (appearEffect === "none" && usedDisappearEffect === "none") {
+      // Chỉ CẦN chạy hiệu ứng "-in" khi `text` MỚI thật sự có nội dung (appear vào chuỗi rỗng = không
+      // thấy gì, animation vô nghĩa) — vd Idle/Reset luôn có `text=""`, dù `appearEffect` của Draw có
+      // cấu hình gì đi nữa cũng không liên quan, không được lấy đó làm lý do giữ lớp "previous" (tên
+      // cũ) treo thêm TRANSITION_MS vô ích.
+      const showAppear = text !== "" && appearEffect !== "none";
+      if (!showAppear && usedDisappearEffect === "none") {
         setLayers({ current: text, previous: null, previousClass: "" });
         return;
       }
@@ -173,7 +190,7 @@ export function useRevealTransition(
     }
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, appearEffect, disappearEffect, idleEffect, idleDelayMs]);
+  }, [text, appearEffect, disappearEffect, viaIdle, idleEffect, idleDelayMs]);
 
   return { current, previous, previousClass };
 }
