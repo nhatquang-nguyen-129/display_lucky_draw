@@ -25,7 +25,7 @@ option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `conf
 | **Confirm** | `sequence.confirm()` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua nút Discard |
 | **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm (kể cả candidate đang chờ Confirm, chỉ tồn tại trong bộ nhớ). Popup xác nhận bắt **giữ nút Confirm đủ 3 giây** (không phải bấm 1 phát) — xem `CONFIRM_HOLD_MS` bên dưới |
 | **Scoreboard** | `sequence.toggleScoreboard()` | Không ghi gì | Bật/tắt popup Scoreboard giữa màn hình |
-| **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **Source** — mở URL của winner GẦN NHẤT, no-op im lặng nếu chưa có winner/field rỗng |
+| **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **Source** — mở URL của winner GẦN NHẤT, báo popup (`sequence.showInfoPrompt`) nếu chưa có winner/winner đó không có link |
 
 **Chi tiết Open Link**: **Source** (`ButtonProps.urlField`) là ví dụ nhánh 2 của quy tắc "Source
 picker" ở [`docs/landing/properties-panel.md`](./properties-panel.md) — CHỈ liệt kê cột đã gán Data
@@ -33,13 +33,19 @@ Type = "url" ở Data Editor (`listParticipantColumnsForType`, xem
 [`docs/participants/column-mapping.md`](../participants/column-mapping.md)) VÀ còn dữ liệu thật,
 KHÁC hẳn Draw/Display field của Lucky Wheel (nhánh 1, field nào cũng dùng được). Chưa có cột nào gán
 Data Type URL → hiện `<select disabled>` placeholder "Set a column's Data Type to URL first.", không
-dropdown rỗng hay cho chọn nhầm 1 cột Name/Phone làm URL (chọn nhầm sẽ luôn no-op, không rõ vì sao).
+dropdown rỗng hay cho chọn nhầm 1 cột Name/Phone làm URL. Bấm mà chưa có winner, hoặc winner đó không
+có giá trị ở đúng cột `urlField` (rỗng/chưa nhập) → popup "There is no winner yet!"/"This winner
+doesn't have a link to open!" (`ButtonView.tsx`'s `runAction`), KHÔNG còn no-op im lặng như trước
+(đã gặp thật: bấm hoài không thấy gì, tưởng nút lỗi).
 `urlField` đang lưu trỏ vào 1 cột không còn hợp lệ (đổi Data Type/xoá cột, hoặc landing cũ lưu tên
 field cố định "name"/"phone"/"code"/"email" từ trước khi Source đổi sang lọc theo Data Type) tự
 chuyển sang cột URL thật đầu tiên (`useEffect` trong `ButtonPanel.tsx`). URL đọc của CHÍNH participant
 vừa trúng (`sequence.candidate`) qua `getParticipantExtraField()`. Mở bằng `shell.openExternal()`
-(main process, chỉ chấp nhận `http(s)://` để tránh mở nhầm scheme lạ) — KHÔNG dùng `window.open` (bị
-chặn dưới `contextIsolation: true`).
+(main process) — chỉ chặn URL có SẴN 1 scheme khác `http(s)://` (vd `file://`, `ftp://`) để tránh mở
+nhầm scheme lạ; URL người tổ chức nhập THIẾU tiền tố (vd `facebook.com/abc`, rất hay gặp khi nhập tay
+vào Excel/CSV) tự được thêm `https://` rồi mở, không còn bị chặn nhầm như scheme lạ (đã gặp thật —
+xem `electron/main.ts`'s `shell:openExternal`). KHÔNG dùng `window.open` (bị chặn dưới
+`contextIsolation: true`).
 
 ## Chữ hiển thị trên nút — không còn sửa tay được, tự theo action
 

@@ -17,12 +17,15 @@ function getIconPath(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
-let presentWindow: BrowserWindow | null = null;
-let hasUnsavedEditorChanges = false;
 
-ipcMain.on("editor:dirty-changed", (_e, dirty: boolean) => {
-  hasUnsavedEditorChanges = dirty;
-});
+// Tên session thật (sessions.name) để ghép vào tiêu đề cửa sổ phụ (xem getWindowTitle trong
+// appConfig.ts) — đọc thẳng qua better-sqlite3 (đồng bộ, đủ nhanh cho 1 câu SELECT 1 dòng lúc mở cửa
+// sổ). "Untitled Session" cho id lạ/đã bị xoá thay vì để trống — không nên xảy ra bình thường (nút mở
+// cửa sổ luôn đi kèm 1 sessionId đang hiện hữu) nhưng vẫn cần 1 fallback không trông như lỗi.
+function getSessionName(sessionId: string): string {
+  const row = db.prepare(`SELECT name FROM sessions WHERE id = ?`).get(sessionId) as { name: string } | undefined;
+  return row?.name ?? "Untitled Session";
+}
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -44,24 +47,6 @@ function createMainWindow() {
   // từ index.html hoặc React) ghi đè lại tiêu đề đã set.
   mainWindow.on("page-title-updated", (e) => e.preventDefault());
 
-  // Chặn đóng app đột ngột nếu Data Editor còn thay đổi chưa lưu — hỏi xác nhận trước.
-  mainWindow.on("close", (e) => {
-    if (!hasUnsavedEditorChanges) return;
-    e.preventDefault();
-    const choice = dialog.showMessageBoxSync(mainWindow!, {
-      type: "warning",
-      buttons: ["Cancel", "Close and discard changes"],
-      defaultId: 0,
-      cancelId: 0,
-      message: "The Data Editor has unsaved changes",
-      detail: "If you close the app now, unsaved changes will be lost.",
-    });
-    if (choice === 1) {
-      hasUnsavedEditorChanges = false;
-      mainWindow?.destroy();
-    }
-  });
-
   if (IS_DEV) {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -74,19 +59,27 @@ function createMainWindow() {
   });
 }
 
+// 1 cửa sổ Present ĐỘC LẬP cho MỖI session (khoá theo sessionId, không phải 1 singleton toàn app) —
+// mở cho session B trong lúc Present của session A còn đang mở sẽ ra 1 cửa sổ MỚI, không focus nhầm
+// lại cửa sổ A (bug đã gặp thật: trước đây dùng 1 biến `BrowserWindow | null` DUY NHẤT cho mọi
+// session). Mở lại ĐÚNG session đang có cửa sổ chỉ focus lại, không tạo trùng.
+const presentWindows = new Map<string, BrowserWindow>();
+
 // Cửa sổ "Present mode" riêng biệt để trình chiếu, có thể kéo sang màn hình 2. Mở WINDOWED (không
 // fullscreen ngay) để người vận hành kéo cửa sổ sang đúng màn hình muốn trình chiếu trước, rồi mới
 // bấm fullscreen (nút overlay trong PresentMode.tsx hoặc phím F11) — nếu tự fullscreen ngay khi mở
 // thì mặc định luôn dính màn hình chính, phải thoát fullscreen mới kéo được, bất tiện hơn.
 function openPresentWindow(sessionId: string) {
-  if (presentWindow) {
-    presentWindow.focus();
+  const existing = presentWindows.get(sessionId);
+  if (existing) {
+    existing.focus();
     return;
   }
-  presentWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1280,
     height: 720,
     backgroundColor: "#FFFFFF",
+    title: getWindowTitle("Presentation", getSessionName(sessionId)),
     icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -94,11 +87,16 @@ function openPresentWindow(sessionId: string) {
       nodeIntegration: false,
     },
   });
+  presentWindows.set(sessionId, win);
+
+  // Khoá tiêu đề — cùng lý do đã ghi ở createMainWindow's page-title-updated (index.html có <title>
+  // tĩnh, không được phép ghi đè tiêu đề đã set theo session/role ở trên).
+  win.on("page-title-updated", (e) => e.preventDefault());
 
   // Ẩn menu bar File/Edit/View/Window/Help — cửa sổ trình chiếu cho người xem tại sự kiện thấy, không
   // phải màn hình làm việc. removeMenu() chỉ có tác dụng Windows/Linux (menu trong khung cửa sổ);
   // macOS dùng menu bar toàn cục trên cùng của OS nên không ảnh hưởng, không cần xử lý riêng.
-  presentWindow.removeMenu();
+  win.removeMenu();
 
   // Toggle fullscreen bằng F11 — tự bắt phím ở main process (KHÔNG dựa vào accelerator của menu mặc
   // định vì đã removeMenu() ở trên, và để hành vi giống nhau trên cả Windows lẫn macOS thay vì lệ
@@ -109,49 +107,60 @@ function openPresentWindow(sessionId: string) {
   // đóng popup vừa thoát fullscreen cùng lúc, gây khó hiểu (bug đã cân nhắc, bỏ Esc để tránh hẳn).
   // F11 an toàn vì không nơi nào khác trong app dùng phím này. Toggle không đụng gì tới sequence
   // (Draw/Confirm/spinning...) nên bấm bất cứ lúc nào, kể cả đang quay, cũng không làm gián đoạn gì.
-  presentWindow.webContents.on("before-input-event", (_e, input) => {
-    if (input.type === "keyDown" && input.key === "F11" && presentWindow) {
-      presentWindow.setFullScreen(!presentWindow.isFullScreen());
+  // Đóng qua `win` (closure riêng của ĐÚNG cửa sổ này) thay vì biến module-level như trước — mỗi
+  // session giờ có 1 cửa sổ Present RIÊNG nên không còn 1 biến duy nhất để tham chiếu nữa.
+  win.webContents.on("before-input-event", (_e, input) => {
+    if (input.type === "keyDown" && input.key === "F11") {
+      win.setFullScreen(!win.isFullScreen());
     }
   });
 
   // Báo cho renderer biết trạng thái fullscreen hiện tại (để đổi icon nút toggle, kể cả khi người
   // dùng thoát fullscreen bằng cách khác — vd nút xanh lá trên macOS — không chỉ qua IPC toggle).
-  presentWindow.on("enter-full-screen", () => presentWindow?.webContents.send("present:fullscreen-changed", true));
-  presentWindow.on("leave-full-screen", () => presentWindow?.webContents.send("present:fullscreen-changed", false));
+  win.on("enter-full-screen", () => win.webContents.send("present:fullscreen-changed", true));
+  win.on("leave-full-screen", () => win.webContents.send("present:fullscreen-changed", false));
 
   const hash = `#/present/${sessionId}`;
   if (IS_DEV) {
-    presentWindow.loadURL(`http://localhost:5173/${hash}`);
+    win.loadURL(`http://localhost:5173/${hash}`);
   } else {
-    presentWindow.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
+    win.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
   }
 
-  presentWindow.on("closed", () => {
-    presentWindow = null;
+  win.on("closed", () => {
+    presentWindows.delete(sessionId);
   });
 }
 
-let landingBuilderWindow: BrowserWindow | null = null;
-let hasUnsavedLandingBuilderChanges = false;
+// 1 cửa sổ Builder ĐỘC LẬP cho MỖI session (khoá theo sessionId) — cùng lý do đã ghi ở
+// `presentWindows` phía trên. `landingBuilderDirty` theo dõi trạng thái "chưa lưu" RIÊNG cho TỪNG cửa
+// sổ (trước đây 1 boolean DUY NHẤT đủ dùng vì chỉ có 1 cửa sổ Builder tồn tại cùng lúc) — map theo
+// CHÍNH đối tượng `BrowserWindow`, cập nhật qua `BrowserWindow.fromWebContents(e.sender)` để biết
+// ĐÚNG renderer nào vừa gửi tín hiệu dirty (nhiều cửa sổ Builder gửi cùng 1 channel
+// "landingBuilder:dirty-changed", không còn suy được "cửa sổ nào" nếu chỉ đọc mỗi payload).
+const landingBuilderWindows = new Map<string, BrowserWindow>();
+const landingBuilderDirty = new Map<BrowserWindow, boolean>();
 
-ipcMain.on("landingBuilder:dirty-changed", (_e, dirty: boolean) => {
-  hasUnsavedLandingBuilderChanges = dirty;
+ipcMain.on("landingBuilder:dirty-changed", (e, dirty: boolean) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (win) landingBuilderDirty.set(win, dirty);
 });
 
 // Cửa sổ phụ chứa Landing Page Builder (canvas + toolbar nổi) — tách riêng khỏi cửa sổ chính vì
 // cần toàn bộ màn hình cho canvas, giống cách Present mode cũng mở cửa sổ riêng.
 function openLandingBuilderWindow(sessionId: string) {
-  if (landingBuilderWindow) {
-    landingBuilderWindow.focus();
+  const existing = landingBuilderWindows.get(sessionId);
+  if (existing) {
+    existing.focus();
     return;
   }
-  landingBuilderWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: "#0B0B10",
+    title: getWindowTitle("Builder", getSessionName(sessionId)),
     icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -159,14 +168,18 @@ function openLandingBuilderWindow(sessionId: string) {
       nodeIntegration: false,
     },
   });
+  landingBuilderWindows.set(sessionId, win);
+
+  // Khoá tiêu đề — cùng lý do đã ghi ở createMainWindow's page-title-updated.
+  win.on("page-title-updated", (e) => e.preventDefault());
 
   // Chặn đóng đột ngột nếu Builder còn thay đổi chưa lưu — giống hệt guard của cửa sổ chính,
-  // nhưng dùng cờ riêng vì đây là 1 cửa sổ độc lập, đóng nó không nên phụ thuộc/ảnh hưởng
-  // tới trạng thái "chưa lưu" của Data Editor ở cửa sổ chính.
-  landingBuilderWindow.on("close", (e) => {
-    if (!hasUnsavedLandingBuilderChanges) return;
+  // nhưng dùng cờ riêng (theo ĐÚNG cửa sổ này, xem `landingBuilderDirty` phía trên) vì đây là 1 cửa
+  // sổ độc lập, đóng nó không nên phụ thuộc/ảnh hưởng tới cửa sổ Builder khác đang mở cho session khác.
+  win.on("close", (e) => {
+    if (!landingBuilderDirty.get(win)) return;
     e.preventDefault();
-    const choice = dialog.showMessageBoxSync(landingBuilderWindow!, {
+    const choice = dialog.showMessageBoxSync(win, {
       type: "warning",
       buttons: ["Cancel", "Close and discard changes"],
       defaultId: 0,
@@ -175,21 +188,96 @@ function openLandingBuilderWindow(sessionId: string) {
       detail: "If you close this window now, unsaved changes will be lost.",
     });
     if (choice === 1) {
-      hasUnsavedLandingBuilderChanges = false;
-      landingBuilderWindow?.destroy();
+      landingBuilderDirty.set(win, false);
+      win.destroy();
     }
   });
 
   const hash = `#/landing-builder/${sessionId}`;
   if (IS_DEV) {
-    landingBuilderWindow.loadURL(`http://localhost:5173/${hash}`);
+    win.loadURL(`http://localhost:5173/${hash}`);
   } else {
-    landingBuilderWindow.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
+    win.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
   }
 
-  landingBuilderWindow.on("closed", () => {
-    landingBuilderWindow = null;
-    hasUnsavedLandingBuilderChanges = false;
+  win.on("closed", () => {
+    landingBuilderWindows.delete(sessionId);
+    landingBuilderDirty.delete(win);
+  });
+}
+
+// 1 cửa sổ Data Editor ĐỘC LẬP cho MỖI session — cùng lý do + cùng cơ chế dirty-theo-từng-cửa-sổ đã
+// ghi ở `landingBuilderWindows`/`landingBuilderDirty` phía trên. Reuse ĐÚNG channel
+// "editor:dirty-changed" đã có sẵn (renderer gọi qua window.api.editor.reportDirty, xem
+// DataEditorModal.tsx) — trước đây guard cho `mainWindow` (Data Editor từng là modal trong cửa sổ
+// chính, chỉ có ĐÚNG 1 nơi gửi dirty nên không cần phân biệt "cửa sổ nào"); giờ có thể nhiều cửa sổ
+// Editor cùng gửi chung 1 channel này nên PHẢI tách theo `BrowserWindow.fromWebContents(e.sender)`.
+const dataEditorWindows = new Map<string, BrowserWindow>();
+const dataEditorDirty = new Map<BrowserWindow, boolean>();
+
+ipcMain.on("editor:dirty-changed", (e, dirty: boolean) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (win) dataEditorDirty.set(win, dirty);
+});
+
+// Cửa sổ phụ chứa Data Editor (chỉnh participant) — tách riêng khỏi cửa sổ chính, giống hệt Landing
+// Builder/Present Mode (xem 2 hàm openXxxWindow ở trên) thay vì hiện dưới dạng modal trong cửa sổ
+// chính như trước — nhất quán "mọi việc lớn liên quan tới 1 session cụ thể đều có cửa sổ riêng".
+function openDataEditorWindow(sessionId: string) {
+  const existing = dataEditorWindows.get(sessionId);
+  if (existing) {
+    existing.focus();
+    return;
+  }
+  const win = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
+    backgroundColor: "#0B0B10",
+    title: getWindowTitle("Editor", getSessionName(sessionId)),
+    icon: getIconPath(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  dataEditorWindows.set(sessionId, win);
+
+  win.on("page-title-updated", (e) => e.preventDefault());
+
+  // Chặn đóng đột ngột nếu Data Editor còn thay đổi chưa lưu — cùng khuôn với Landing Builder's guard
+  // ở trên. `requestClose()` bên trong DataEditorModal.tsx ĐÃ tự hỏi xác nhận riêng (confirm() JS)
+  // trước khi gọi `onClose` khi đóng qua nút X TRONG app — dialog ở ĐÂY chỉ còn cần thiết cho đường
+  // đóng KHÔNG đi qua React (nút X thật của cửa sổ/Alt+F4), xem doc-comment DataEditorWindow.tsx.
+  win.on("close", (e) => {
+    if (!dataEditorDirty.get(win)) return;
+    e.preventDefault();
+    const choice = dialog.showMessageBoxSync(win, {
+      type: "warning",
+      buttons: ["Cancel", "Close and discard changes"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "The Data Editor has unsaved changes",
+      detail: "If you close this window now, unsaved changes will be lost.",
+    });
+    if (choice === 1) {
+      dataEditorDirty.set(win, false);
+      win.destroy();
+    }
+  });
+
+  const hash = `#/data-editor/${sessionId}`;
+  if (IS_DEV) {
+    win.loadURL(`http://localhost:5173/${hash}`);
+  } else {
+    win.loadFile(path.join(__dirname, "../dist/index.html"), { hash });
+  }
+
+  win.on("closed", () => {
+    dataEditorWindows.delete(sessionId);
+    dataEditorDirty.delete(win);
   });
 }
 
@@ -644,13 +732,23 @@ ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {
   openLandingBuilderWindow(sessionId);
 });
 
+ipcMain.handle("dataEditor:open", (_e, sessionId: string) => {
+  openDataEditorWindow(sessionId);
+});
+
 // Button action "openLink" trên Landing Page — luôn mở bằng trình duyệt mặc định của hệ điều hành
 // (shell.openExternal), không phải cửa sổ trong app. Chỉ nhận http/https — URL trong extra_data
 // là dữ liệu do người tổ chức tự nhập vào danh sách participant, nhưng vẫn chặn scheme lạ
-// (file://, custom scheme...) để tránh mở nhầm thứ ngoài ý muốn.
+// (file://, custom scheme...) để tránh mở nhầm thứ ngoài ý muốn. Người tổ chức nhập URL vào Excel/
+// CSV RẤT hay thiếu tiền tố "https://" (vd "facebook.com/abc") — trước đây bị chặn ÂM THẦM y hệt
+// scheme lạ, khiến nút Open Link bấm được nhưng không mở gì cả, không có cách nào biết vì sao (bug
+// đã gặp thật). Chỉ URL đã có SẴN 1 scheme khác (vd "ftp://", "file://") mới coi là "scheme lạ" và
+// chặn — chưa có scheme nào cả thì mặc định thêm "https://" rồi mở, không chặn nữa.
 ipcMain.handle("shell:openExternal", (_e, url: string) => {
-  if (!/^https?:\/\//i.test(url)) return;
-  shell.openExternal(url);
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(url);
+  const normalized = hasScheme ? url : `https://${url}`;
+  if (!/^https?:\/\//i.test(normalized)) return;
+  shell.openExternal(normalized);
 });
 
 import fs from "fs";

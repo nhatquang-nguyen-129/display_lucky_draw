@@ -1,7 +1,5 @@
 import { Fragment, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
-import Modal from "./Modal";
 import Button from "./Button";
-import { useSession } from "@/context/SessionContext";
 import { Participant, Session } from "@/types";
 import { CORE_FIELDS, EditorRow, EditorState, getCell, isCoreField } from "@/lib/dataEditor/types";
 import { useCommandHistory } from "@/lib/dataEditor/history";
@@ -44,8 +42,14 @@ interface DataEditorModalProps {
   open: boolean;
   sessionId: string;
   session: Session | null;
-  onClose: () => void;
   onSaved: () => void;
+  // Gọi lại NGAY sau khi đổi Data Type/nhãn cột (2 API ghi thẳng xuống DB, không qua nút Save chính)
+  // — trước đây đọc thẳng `useSession().refresh` vì Data Editor luôn sống trong cửa sổ chính (cùng
+  // SessionProvider); giờ Data Editor là 1 cửa sổ RIÊNG (xem DataEditorWindow.tsx), không có
+  // SessionProvider nào để gọi `useSession()` — component cha (DataEditorWindow.tsx) tự quyết định
+  // "refresh" nghĩa là gì (refetch `session` cục bộ của chính nó qua sessions:get). Xem doc-comment
+  // đầy đủ tại nơi gọi bên dưới cho lý do vì sao bước này BẮT BUỘC, không phải optional.
+  onSessionRefresh: () => void;
 }
 
 // Menu = ĐỘNG TỪ thuần (giống Google Sheets). Phạm vi (cột/dòng/ô) do người dùng chọn TRỰC TIẾP trên
@@ -138,13 +142,13 @@ function sameRow(a: EditorRow, b: EditorRow): boolean {
   );
 }
 
-export default function DataEditorModal({ open, sessionId, session, onClose, onSaved }: DataEditorModalProps) {
-  // `session` là prop tới từ SessionContext — context đó chỉ refresh() khi add/rename/close tab, KHÔNG
-  // tự cập nhật khi đổi Data Type/nhãn cột (2 API lưu thẳng xuống DB ngay, không qua nút Save chính).
-  // Thiếu refresh() sau khi lưu thì lần load() kế tiếp (mỗi khi mở lại modal, xem effect bên dưới) sẽ
-  // đọc lại đúng bản session CŨ trong context — làm mất Data Type vừa gán (bug đã gặp thật: gán "Name"
-  // xong đóng/mở lại editor thì mất, trong khi Phone/URL gán từ trước đó, lúc context còn mới, thì vẫn còn).
-  const { refresh: refreshSessions } = useSession();
+export default function DataEditorModal({ open, sessionId, session, onSaved, onSessionRefresh }: DataEditorModalProps) {
+  // `session` là prop do CHA truyền vào (DataEditorWindow.tsx) — cha đó chỉ refetch khi mount / khi
+  // `onSessionRefresh` được gọi, KHÔNG tự cập nhật khi đổi Data Type/nhãn cột (2 API lưu thẳng xuống
+  // DB ngay, không qua nút Save chính). Thiếu gọi `onSessionRefresh()` sau khi lưu thì lần load() kế
+  // tiếp (mỗi khi mở lại modal, xem effect bên dưới) sẽ đọc lại đúng bản session CŨ — làm mất Data
+  // Type vừa gán (bug đã gặp thật: gán "Name" xong đóng/mở lại editor thì mất, trong khi Phone/URL
+  // gán từ trước đó, lúc session còn mới, thì vẫn còn).
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [originalRows, setOriginalRows] = useState<EditorRow[]>([]);
@@ -323,7 +327,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
   function updateColumnType(col: string, type: ColumnType) {
     setColumnTypes((prev) => {
       const next = { ...prev, [col]: type };
-      window.api.sessions.updateColumnTypes({ id: sessionId, columnTypes: next }).then(refreshSessions);
+      window.api.sessions.updateColumnTypes({ id: sessionId, columnTypes: next }).then(onSessionRefresh);
       return next;
     });
   }
@@ -335,7 +339,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
       const next = { ...prev };
       if (!label.trim() || label.trim() === (COLUMN_LABELS[col] ?? col)) delete next[col];
       else next[col] = label.trim();
-      window.api.sessions.updateColumnLabels({ id: sessionId, columnLabels: next }).then(refreshSessions);
+      window.api.sessions.updateColumnLabels({ id: sessionId, columnLabels: next }).then(onSessionRefresh);
       return next;
     });
   }
@@ -797,13 +801,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     }
   }
 
-  function requestClose() {
-    if (history.dirty) {
-      if (!confirm("The Data Editor has unsaved changes. Close and discard them?")) return;
-    }
-    onClose();
-  }
-
   function handleKeyDown(e: React.KeyboardEvent) {
     if (editingCell) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -893,8 +890,16 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
     );
   }
 
+  if (!open) return null;
+
+  // Render FULL cửa sổ (không còn bọc trong <Modal> nền tối + card canh giữa) — Data Editor giờ sống
+  // trong 1 BrowserWindow RIÊNG (xem DataEditorWindow.tsx), giống hệt Landing Builder/Present Mode,
+  // không phải 1 dialog nổi trong cửa sổ chính như trước. Không có nút Close/X riêng trong app nữa —
+  // đóng qua chính khung cửa sổ (nút X thật/Alt+F4), đã được guard "còn thay đổi chưa lưu" ở main
+  // process (electron/main.ts's openDataEditorWindow), CÙNG kiểu Landing Builder cũng không có nút
+  // Close riêng trong UI của nó.
   return (
-    <Modal open={open} title="" onClose={requestClose} maxWidth="max-w-[95vw]">
+    <div className="flex h-screen w-screen flex-col bg-base-900 p-4">
       {loading ? (
         <div className="py-12 text-center text-sm text-base-400">Loading data...</div>
       ) : (
@@ -903,7 +908,7 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
           tabIndex={0}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          className="flex h-[75vh] flex-col outline-none"
+          className="flex h-full flex-col outline-none"
         >
           <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-base-800 bg-base-900 pb-2">
             <div className="flex gap-1">
@@ -2193,6 +2198,6 @@ export default function DataEditorModal({ open, sessionId, session, onClose, onS
           </div>
         </div>
       )}
-    </Modal>
+    </div>
   );
 }

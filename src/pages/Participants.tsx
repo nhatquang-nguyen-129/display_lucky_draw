@@ -2,17 +2,21 @@ import { useEffect, useState } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import Button from "@/components/Button";
-import DataEditorModal from "@/components/DataEditorModal";
 import { useSession } from "@/context/SessionContext";
 import { Participant } from "@/types";
 import { computeActiveParticipantCoreFields, getParticipantField } from "@/lib/landing/types";
 
 const CORE_COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
 
+// Poll participants list mỗi 2s, CÙNG khoảng với LandingPage.tsx's CONFIG_POLL_MS — Data Editor giờ
+// là 1 cửa sổ Electron RIÊNG (xem DataEditorWindow.tsx, mở qua window.api.dataEditor.open), 1 process
+// khác hẳn nên Save ở đó không hề đụng tới state của trang preview này, phải tự poll để phản ánh đúng
+// bản mới nhất — giống hệt cách LandingPage.tsx poll landing_config cho Landing Builder.
+const PARTICIPANTS_POLL_MS = 2000;
+
 export default function Participants() {
   const { activeSessionId, activeSession } = useSession();
   const [items, setItems] = useState<Participant[]>([]);
-  const [showEditor, setShowEditor] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
   // Preview RAW, giống hệt cột đang hiện trong Data Editor trước khi gán nhãn — không còn ép cứng 4
@@ -45,6 +49,8 @@ export default function Participants() {
   useEffect(() => {
     refresh();
     setImportError(null);
+    const interval = setInterval(refresh, PARTICIPANTS_POLL_MS);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
@@ -141,7 +147,7 @@ export default function Participants() {
           {items.length} participants in session "{activeSession.name}"
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setShowEditor(true)}>
+          <Button variant="secondary" onClick={() => window.api.dataEditor.open(activeSessionId!)}>
             Edit
           </Button>
           <Button variant="secondary" onClick={handleImportFile}>
@@ -199,14 +205,6 @@ export default function Participants() {
           </tbody>
         </table>
       </div>
-
-      <DataEditorModal
-        open={showEditor}
-        sessionId={activeSessionId!}
-        session={activeSession}
-        onClose={() => setShowEditor(false)}
-        onSaved={refresh}
-      />
     </div>
   );
 }

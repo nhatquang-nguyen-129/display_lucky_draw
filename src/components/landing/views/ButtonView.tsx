@@ -30,8 +30,11 @@ const CONFIRM_HOLD_MS: Partial<Record<ButtonAction, number>> = {
 // Bấm là chạy đúng 1 action cố định đã chọn trong Properties Panel — gọi thẳng hàm tương ứng của
 // DrawSequenceActions, không qua tín hiệu/trung gian nào (trừ "confirm"/"reset" phải qua popup xác
 // nhận trước, xem CONFIRM_MESSAGES + handleClick bên dưới). "openLink" đọc URL từ field đã chọn
-// của winner GẦN NHẤT (data.results[0]) — no-op im lặng nếu chưa có winner hoặc field rỗng, giữ
-// đúng triết lý "bấm nhầm lúc chưa có gì thì không xảy ra chuyện gì", không báo lỗi phiền người vận hành.
+// của winner GẦN NHẤT (data.results[0]) — báo popup (sequence.showInfoPrompt) nếu chưa có winner
+// hoặc winner đó không có link, KHÁC các action khác (vốn no-op im lặng khi bấm lúc chưa có gì) vì
+// đây là action DUY NHẤT mà bấm "thành công" hay "không làm gì" trông giống hệt nhau từ bên ngoài
+// (không mở cửa sổ nào trong app để thấy khác biệt) — thiếu popup thì người vận hành tưởng nút lỗi
+// (đã gặp thật: bấm hoài "không ra gì" giữa lúc đang standby/vừa Reset xong).
 function runAction(component: ButtonComponent, sequence: DrawSequenceActions, data: LandingData | undefined) {
   const { action, urlField, multipleDrawPaceMs } = component.props;
   switch (action) {
@@ -56,8 +59,15 @@ function runAction(component: ButtonComponent, sequence: DrawSequenceActions, da
     case "openLink": {
       const winnerRow = data?.results?.[0];
       const participant = winnerRow ? data?.participants.find((p) => p.id === winnerRow.participant_id) : undefined;
-      const url = participant ? getParticipantField(participant, urlField ?? "") : "";
-      if (!url) return;
+      if (!participant) {
+        sequence.showInfoPrompt("There is no winner yet!");
+        return;
+      }
+      const url = getParticipantField(participant, urlField ?? "");
+      if (!url) {
+        sequence.showInfoPrompt("This winner doesn't have a link to open!");
+        return;
+      }
       window.api.shell.openExternal(url);
       return;
     }
@@ -237,6 +247,30 @@ export default function ButtonView({
 
   function handleClick() {
     if (!sequence || locked) return;
+    // Draw ở Single mode đang có candidate CHỜ CONFIRM (isPending) mà người vận hành vừa chuyển
+    // sang CHỌN MỘT GIẢI KHÁC (không phải bỏ chọn — case đó đã chặn riêng ở redo(), xem
+    // useDrawSequence.ts) thì bấm Draw sẽ ÂM THẦM huỷ candidate đang chờ đó để quay giải mới (xem
+    // runDraw's nhánh discardPending trong useDrawSequence.ts) — nhắc trước bằng 1 popup "Are you
+    // sure" đơn giản (không bắt Confirm/Reset trước như 2 action ghi dữ liệu ở CONFIRM_MESSAGES,
+    // chỉ hỏi lại đúng 1 câu) để người vận hành không mất người vừa trúng mà không hay biết. Multiple/
+    // Quick Draw không cần nhắc — 2 chế độ đó tự pick() mới hoàn toàn, không đi qua nhánh redo() nào
+    // (xem runMultipleDrawInternal/runQuickDrawInternal), nên không có gì bị âm thầm huỷ.
+    if (
+      component.props.action === "draw" &&
+      sequence.drawMode === "single" &&
+      sequence.isPending &&
+      sequence.candidate &&
+      sequence.selectedPrizeId &&
+      sequence.selectedPrizeId !== sequence.candidate.prizeId
+    ) {
+      sequence.requestConfirm(
+        "Are you sure you don't want to confirm the current winner before drawing again?",
+        () => runAction(component, sequence, data),
+        undefined,
+        "Redraw"
+      );
+      return;
+    }
     const confirmMessage = CONFIRM_MESSAGES[component.props.action];
     if (confirmMessage) {
       sequence.requestConfirm(confirmMessage, () => runAction(component, sequence, data), CONFIRM_HOLD_MS[component.props.action]);

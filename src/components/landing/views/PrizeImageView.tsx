@@ -2,8 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { DEFAULT_PRIZE_STAGE_EFFECT, DrawSequenceActions, LandingData, PrizeImageComponent } from "@/lib/landing/types";
 import PrizeEffectOverlay from "./PrizeEffectOverlay";
 import { ensureAlphaLoaded } from "./pixelAlphaHitTest";
-import { computePrizeTransform, computeScaleFraction, cssVarsToStyle, resolvePrizeEffects } from "./prizeEffectTransform";
+import {
+  computePrizeTransform,
+  computeScaleFraction,
+  computeSpotlightClipPath,
+  cssVarsToStyle,
+  resolvePrizeEffects,
+} from "./prizeEffectTransform";
 import { registerPrizeHitTarget } from "./prizeHitCoordinator";
+
+// Khoảng dư (12%) luôn cộng thêm vào kích thước elip Spotlight "When Won" NGOÀI mức zoom
+// `activeFocusScaleFraction` (nếu onSelect đang scaleUp) — xem doc-comment tại nơi dùng
+// (`coverFraction`) trong JSX bên dưới. Mục đích DUY NHẤT: đảm bảo ảnh LUÔN nằm gọn trong elip, dư ra
+// 1 chút thay vì khớp pixel-đúng-bằng (dễ vỡ nếu tính sai 1 ly, hoặc anchor scaleUp lệch tâm — xem
+// doc-comment activeFocusScaleFraction).
+const SPOTLIGHT_COVER_MARGIN = 0.12;
 
 // LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (props.prizeId), không đổi theo kết quả quay. Đặt
 // nhiều instance rải khắp landing (mỗi cái tự do vị trí/kích thước khớp artwork nền) để mỗi ảnh đại
@@ -172,6 +185,63 @@ export default function PrizeImageView({
         filter: disabled ? `brightness(${1 - (outOfStockDimAmount ?? 58) / 100})` : undefined,
       }}
     >
+      {/* Spotlight "When Won" — TRƯỚC wrapper Focus trong DOM và KHÔNG có z-index riêng (trước đây
+          `z-20` render ĐÈ LÊN TRÊN ảnh, đoạn nón/đáy elip trùm lên đúng phần ảnh sản phẩm làm ảnh bị
+          rửa trắng/mờ đi — bug đã gặp thật). Đặt TRƯỚC (DOM order mặc định = vẽ trước = nằm DƯỚI các
+          sibling sau nó) để ảnh sản phẩm (wrapper Focus, vẽ SAU) tự nhiên đè lên trên đúng phần chồng
+          lấn — chỗ ảnh CÓ pixel (opaque) che kín nón, giữ ảnh rõ nét 100%; chỗ ảnh KHÔNG có pixel (PNG
+          trong suốt quanh sản phẩm) hoặc ở NGOÀI khung ảnh (đoạn nón phía trên, giữa nguồn sáng và sản
+          phẩm) vẫn hiện đúng, không đổi gì. KHÁC hẳn mọi overlay khác trong file này: vượt ra khỏi
+          khung x/y/width/height CỦA CHÍNH component này — `top: -component.y` kéo nón từ ĐỈNH CANVAS
+          (y=0 tuyệt đối, không phải đỉnh khung Prize Image) xuống ĐÚNG tới đáy khung Prize — canvas
+          ngoài cùng (LandingRenderer.tsx) không `overflow: hidden` phần dưới y=0 nên phần vượt lên
+          trên KHÔNG bị cắt mất. Đáy nón (elip) PHẢI to hơn hẳn khung ảnh THẬT ĐANG HIỆN, không phải
+          khớp SÁT — `SPOTLIGHT_COVER_MARGIN` (dưới đây) cộng thêm 1 khoảng dư ĐỀU cả 2 chiều để ảnh
+          LUÔN nằm gọn trong elip, không tràn ra ngoài (đã gặp thật lúc onSelect đang scaleUp: ảnh phóng to
+          nhưng trước đây CHỈ bù `width` theo `activeFocusScaleFraction`, quên bù `height` — ảnh cao
+          hơn tràn thẳng ra dưới đáy elip cũ, xem `spotlightHeight` bên dưới bù CẢ 2 chiều bằng đúng 1
+          công thức, cộng thêm margin cho chắc thay vì khớp pixel-đúng-bằng dễ vỡ lại nếu tính sai 1
+          ly). Đáy nón hình ELIP (không phải đường thẳng ngang) — xem doc-comment
+          computeSpotlightClipPath trong prizeEffectTransform.ts. Phong cách (màu/hình nón/độ mờ) CỐ
+          ĐỊNH trong code — xem doc-comment PrizeWonAmbientEffect trong types.ts cho lý do không phơi
+          ra Properties Panel. Luôn render (không điều kiện theo `spotlightOn`) để `opacity` transition
+          mượt lúc bật/tắt thay vì mount/unmount đột ngột — `pointer-events: none` để không chặn click
+          chọn giải. */}
+      {wonAmbientEffect === "spotlight" &&
+        (() => {
+          // Khoảng dư CỐ ĐỊNH (12%) cộng vào CẢ WIDTH LẪN HEIGHT, ĐÈ LÊN TRÊN
+          // `activeFocusScaleFraction` (mức zoom onSelect đang active, nếu có) — coi như 1 mức "zoom"
+          // bù thêm, tái dùng NGUYÊN công thức tính left/width đã có cho `activeFocusScaleFraction`
+          // (giả định ảnh phóng to ĐỀU quanh tâm — xem doc-comment activeFocusScaleFraction ở trên,
+          // cùng 1 xấp xỉ, cùng mức chấp nhận được) thay vì tự nghĩ công thức margin riêng.
+          const coverFraction = activeFocusScaleFraction + SPOTLIGHT_COVER_MARGIN;
+          const spotlightWidth = component.width * (1 + coverFraction);
+          // Bù chiều CAO y hệt chiều RỘNG: ảnh phóng to/thu nhỏ ĐỀU quanh tâm nên nửa phần "dư" nằm
+          // TRÊN mép gốc, nửa nằm DƯỚI — nửa DƯỚI mới cần cộng thêm vào `spotlightHeight` (đẩy đáy
+          // elip xuống thấp hơn), nửa TRÊN đã nằm gọn trong khoảng `-component.y` kéo lên tận đỉnh
+          // canvas rồi nên không cần bù riêng.
+          const spotlightHeight = component.y + component.height + (component.height * coverFraction) / 2;
+          return (
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                top: -component.y,
+                left: (-component.width * coverFraction) / 2,
+                width: spotlightWidth,
+                height: spotlightHeight,
+                opacity: spotlightOn ? 1 : 0,
+                transition: "opacity 400ms ease-out",
+                // Đáy ELIP (không phải đường thẳng ngang) — xem doc-comment computeSpotlightClipPath
+                // trong prizeEffectTransform.ts, `clip-path: path()` cần toạ độ PIXEL thật nên PHẢI
+                // truyền đúng `spotlightWidth`/`spotlightHeight` (px) đang dùng cho chính `width`/
+                // `height` ở trên, không phải suy lại theo %.
+                clipPath: computeSpotlightClipPath(spotlightWidth, spotlightHeight),
+                background: "linear-gradient(to bottom, rgba(255,255,255,0.6), rgba(255,255,255,0.36))",
+                filter: "blur(22px)",
+              }}
+            />
+          );
+        })()}
       {/* Wrapper Focus — chỉ chiếm transform của NHÓM Focus (scaleUp/lift), `key` remount lúc oneshot
           để replay đúng lượt Multiple Draw dù cùng 1 effect (xem resolvePrizeEffects). `isolate` mở 1
           stacking context RIÊNG cho khung này — bắt buộc để z-index âm của lớp glow (xem
@@ -198,15 +268,69 @@ export default function PrizeImageView({
         {src ? (
           // Wrapper Motion — chỉ bọc ảnh, chiếm transform của NHÓM Motion (bounce/pulse/shake), tách
           // riêng khỏi wrapper Focus ở trên để 2 nhóm animate ĐỒNG THỜI không tranh chấp `transform`.
+          // `relative` (thêm riêng cho Spotlight bên dưới) — để 2 lớp sáng/tối "dán" ĐÚNG theo ảnh kể
+          // cả lúc Motion đang lệch vị trí (bounce/shake), không neo nhầm theo wrapper Focus tĩnh hơn.
           <div
             key={resolved.motion?.mode === "oneshot" ? resolved.motion.key : undefined}
-            className={`h-full w-full ${motionTransform.className ?? ""}`}
+            className={`relative h-full w-full ${motionTransform.className ?? ""}`}
             style={cssVarsToStyle(motionTransform.cssVars)}
           >
             <img ref={imgRef} src={src} alt="" className="h-full w-full" style={{ objectFit: fit === "stretch" ? "fill" : fit, borderRadius }} />
+            {/* Spotlight "When Won" — NỬA TRÊN của chính ảnh (không phải khung) sáng hơn, NỬA DƯỚI giữ
+                NGUYÊN độ sáng gốc — chia ĐÔI rõ ràng theo yêu cầu (không phải tối dần TỪ ĐỈNH ảnh như
+                bản trước), mô phỏng ánh sáng chiếu thẳng từ trên xuống làm mặt trên sản phẩm hắt sáng.
+                Giữ NGUYÊN mức sáng (0%-45%) rồi mới nhạt dần xuống 0 ở 55% — dải chuyển 45%-55% CHỈ để
+                tránh 1 đường cắt cứng thấy rõ pixel, không phải gradient tăng dần từ đỉnh. Dùng kỹ
+                thuật mask-image theo alpha của ảnh (giống PrizeEffectOverlay.tsx's "sweep") để CHỈ hiện
+                trong silhouette ảnh (PNG trong suốt), không tràn ra ngoài thành 1 khối chữ nhật xấu.
+                `mixBlendMode: soft-light` — cộng sáng nhẹ, không rửa trôi chi tiết như "screen". Bóng
+                đổ ở chân ảnh giờ tách RIÊNG thành 1 lớp `drop-shadow` LAN RA NGOÀI biên ảnh (xem khối
+                JSX ngay sau `{src ? (...) : (...)}` bên dưới, kiểu "outer glow" của PrizeEffectOverlay
+                nhưng lệch xuống dưới + màu tối), không còn là gradient tối BÊN TRONG ảnh như bản trước
+                (không thấy rõ, đã gặp thật — user báo "chưa nhìn thấy đổ bóng luôn"). */}
+            {wonAmbientEffect === "spotlight" && (
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  borderRadius,
+                  opacity: spotlightOn ? 1 : 0,
+                  transition: "opacity 400ms ease-out",
+                  WebkitMaskImage: `url("${src}")`,
+                  maskImage: `url("${src}")`,
+                  WebkitMaskSize: fit === "stretch" ? "100% 100%" : fit,
+                  maskSize: fit === "stretch" ? "100% 100%" : fit,
+                  WebkitMaskPosition: "center",
+                  maskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  maskRepeat: "no-repeat",
+                  background: "linear-gradient(to bottom, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.45) 45%, rgba(255,255,255,0) 55%)",
+                  mixBlendMode: "soft-light",
+                }}
+              />
+            )}
           </div>
         ) : (
           <span className="text-xs text-base-500">No image</span>
+        )}
+        {/* Bóng đổ Spotlight "When Won" — 1 bản SAO ảnh phủ `drop-shadow` dịch XUỐNG DƯỚI, đặt `-z-10`
+            NHƯ "glow" (xem PrizeEffectOverlay.tsx's `-z-10` comment) để bản sao bị chính ảnh thật phía
+            trên che kín hoàn toàn — CHỈ còn lộ ra đúng phần shadow LAN RA NGOÀI biên dưới ảnh (do
+            offset dy + blur), đúng cảm giác "stroke tối đổ xuống dưới" thay vì tối đều bên trong ảnh. */}
+        {src && wonAmbientEffect === "spotlight" && (
+          <div
+            className="pointer-events-none absolute inset-0 -z-10"
+            style={{ opacity: spotlightOn ? 1 : 0, transition: "opacity 400ms ease-out" }}
+          >
+            <img
+              src={src}
+              alt=""
+              className="h-full w-full"
+              style={{
+                objectFit: fit === "stretch" ? "fill" : fit,
+                filter: "drop-shadow(0 16px 14px rgba(15,10,5,0.65))",
+              }}
+            />
+          </div>
         )}
         {src && resolved.highlightPersistent && (
           <PrizeEffectOverlay config={resolved.highlightPersistent} mode="persistent" imageSrc={src} fit={fit} borderRadius={borderRadius} />
@@ -222,36 +346,6 @@ export default function PrizeImageView({
           />
         )}
       </div>
-      {/* Spotlight "When Won" — NGOÀI wrapper Focus (không CHIA transform-origin/scale CSS của
-          scaleUp/lift, vì thứ đó sẽ kéo lệch luôn cả điểm neo "đỉnh canvas" bên dưới). KHÁC hẳn mọi
-          overlay khác trong file này: vượt ra khỏi khung x/y/width/height CỦA CHÍNH component này —
-          `top: -component.y` + `height: component.y + component.height` kéo nón từ ĐỈNH CANVAS (y=0
-          tuyệt đối, không phải đỉnh khung Prize Image) xuống ĐÚNG tới đáy khung Prize — canvas ngoài
-          cùng (LandingRenderer.tsx) không `overflow: hidden` phần dưới y=0 nên phần vượt lên trên
-          KHÔNG bị cắt mất. Đáy nón khớp bề rộng ảnh THẬT ĐANG HIỆN (`component.width` nhân thêm
-          `activeFocusScaleFraction` — xem doc-comment ở trên) chứ không phải khung gốc tĩnh, vì
-          onSelect có thể vẫn đang scaleUp SUỐT lúc vừa thắng — thiếu bước bù này 2 mép nón sẽ lệch hẳn
-          khỏi rìa ảnh thật lúc đang zoom (bug đã gặp thật). Phong cách (màu/hình nón/độ mờ) CỐ ĐỊNH
-          trong code — xem doc-comment PrizeWonAmbientEffect trong types.ts cho lý do không phơi ra
-          Properties Panel. Luôn render (không điều kiện theo `spotlightOn`) để `opacity` transition
-          mượt lúc bật/tắt thay vì mount/unmount đột ngột — `pointer-events: none` để không chặn click
-          chọn giải. */}
-      {wonAmbientEffect === "spotlight" && (
-        <div
-          className="pointer-events-none absolute z-20"
-          style={{
-            top: -component.y,
-            left: (-component.width * activeFocusScaleFraction) / 2,
-            width: component.width * (1 + activeFocusScaleFraction),
-            height: component.y + component.height,
-            opacity: spotlightOn ? 1 : 0,
-            transition: "opacity 400ms ease-out",
-            clipPath: "polygon(42.5% 0%, 57.5% 0%, 100% 100%, 0% 100%)",
-            background: "linear-gradient(to bottom, rgba(255,255,255,0.3), rgba(255,255,255,0.18))",
-            filter: "blur(22px)",
-          }}
-        />
-      )}
     </div>
   );
 }

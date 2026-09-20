@@ -37,8 +37,16 @@ export const APP_ENV: AppEnv = normalizeEnv(process.env.APP_ENV ?? process.env.N
 
 export const IS_DEV = APP_ENV === "development" || APP_ENV === "local";
 
-/** Tiêu đề cửa sổ chính — vd "[dev] Lucky Draw Studio" hoặc "Lucky Draw Studio" ở production. */
-export function getWindowTitle(): string {
+/**
+ * Tiêu đề cửa sổ — cửa sổ chính (không truyền gì) vd "[dev] Lucky Draw Studio". Cửa sổ phụ theo
+ * session (Builder/Editor/Presentation, xem main.ts's openXxxWindow) truyền thêm `role` + tên session
+ * thật (đọc từ DB) để phân biệt được NHIỀU cửa sổ cùng loại đang mở cho các session khác nhau trên
+ * thanh taskbar/Alt-Tab — vd "[dev] Lucky Draw Builder for Test Session". `role` CỐ TÌNH thay hẳn
+ * "Studio" (không phải nối thêm đằng sau) — "Lucky Draw Studio Builder for..." dài dòng hơn hẳn mà
+ * không rõ nghĩa hơn.
+ */
+export function getWindowTitle(role?: string, sessionName?: string): string {
   const label = ENV_LABELS[APP_ENV];
-  return label ? `[${label}] ${APP_NAME}` : APP_NAME;
+  const name = role ? `Lucky Draw ${role}${sessionName ? ` for ${sessionName} Session` : ""}` : APP_NAME;
+  return label ? `[${label}] ${name}` : name;
 }

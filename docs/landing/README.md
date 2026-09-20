@@ -10,6 +10,7 @@ khổng lồ khi chỉ cần sửa 1 phần:
 | [properties-panel.md](./properties-panel.md) | `PropertiesPanel`/`SharedFields`, danh sách panel theo type, nhóm component trong Palette |
 | [button-actions.md](./button-actions.md) | Button — action cố định (Draw/Confirm/Reset/Scoreboard/Open Link), 3 chế độ Draw (Single/Multiple/Quick) |
 | [lucky-wheel.md](./lucky-wheel.md) | 2 template Lucky Wheel (Wheel Circular/Digit Roller), field validation cho Digit Roll |
+| [prize.md](./prize.md) | Prize Image — click-to-select theo pixel alpha, 4 giai đoạn tương tác (Focus/Highlight/Motion), Spotlight "When Won" (nón đáy elip + bóng đổ) |
 | [reactions.md](./reactions.md) | `EffectReaction` — hệ effect generic gắn theo trigger Draw/Confirm/Redo |
 | [present-mode.md](./present-mode.md) | Pipeline render + Present Mode khác Builder canvas ở prop `interactive` như thế nào |
 | [config-lifecycle.md](./config-lifecycle.md) | Save/Discard, lưu trữ `landing_config`, checklist thêm 1 loại component mới |

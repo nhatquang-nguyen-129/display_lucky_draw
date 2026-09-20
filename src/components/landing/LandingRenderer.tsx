@@ -208,11 +208,11 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
                   holdMs={sequence.confirmPrompt.holdMs}
                   onConfirm={() => sequence.resolveConfirmPrompt(true)}
                 >
-                  Confirm
+                  {sequence.confirmPrompt.confirmLabel ?? "Confirm"}
                 </HoldToConfirmButton>
               ) : (
                 <Button variant="danger" onClick={() => sequence.resolveConfirmPrompt(true)}>
-                  Confirm
+                  {sequence.confirmPrompt.confirmLabel ?? "Confirm"}
                 </Button>
               )}
             </div>
