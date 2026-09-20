@@ -7,6 +7,7 @@ import Help from "./pages/Help";
 import PresentMode from "./pages/PresentMode";
 import LandingPage from "./pages/LandingPage";
 import LandingBuilderWindow from "./pages/LandingBuilderWindow";
+import DataEditorWindow from "./pages/DataEditorWindow";
 
 export default function App() {
   return (
@@ -16,6 +17,9 @@ export default function App() {
 
       {/* Cửa sổ Landing Builder: cửa sổ phụ riêng, cần toàn màn hình cho canvas */}
       <Route path="/landing-builder/:sessionId" element={<LandingBuilderWindow />} />
+
+      {/* Cửa sổ Data Editor: cửa sổ phụ riêng, giống Landing Builder/Present Mode */}
+      <Route path="/data-editor/:sessionId" element={<DataEditorWindow />} />
 
       {/* Cửa sổ chính: dashboard đầy đủ, mọi trang đều theo tab (phiên) đang active */}
       <Route element={<Layout />}>

@@ -100,7 +100,9 @@ export function useDrawSequence(
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [scoreboardVisible, setScoreboardVisible] = useState(false);
-  const [confirmPrompt, setConfirmPrompt] = useState<{ message: string; holdMs?: number } | null>(null);
+  const [confirmPrompt, setConfirmPrompt] = useState<{ message: string; holdMs?: number; confirmLabel?: string } | null>(
+    null
+  );
   // Xem doc-comment DrawSequenceActions.resetSeq trong types.ts.
   const [resetSeq, setResetSeq] = useState(0);
   const pendingConfirmActionRef = useRef<(() => void) | null>(null);
@@ -207,6 +209,16 @@ export function useDrawSequence(
     } finally {
       setBusy(false);
     }
+  }
+
+  // Huỷ candidate đang chờ Confirm (chưa ghi DB nên huỷ không mất dữ liệu thật) — dùng bởi runDraw()
+  // khi phát hiện người vận hành đã chuyển sang CHỌN MỘT GIẢI KHÁC giữa lúc còn pending (xem nhánh
+  // gọi bên dưới; ButtonView.tsx đã tự hỏi xác nhận "Are you sure" trước khi tới được đây).
+  function discardPending() {
+    setCandidate(null);
+    setConfirmed(false);
+    excludeIdsRef.current = [];
+    lockedPrizeIdRef.current = null;
   }
 
   async function redo() {
@@ -394,6 +406,21 @@ export function useDrawSequence(
       return;
     }
     if (isPending) {
+      // Đang pending giải A nhưng người vận hành đã chuyển sang chọn giải B (KHÁC hẳn case "unselect"
+      // đã chặn trong redo() — đây là chọn hẳn 1 giải cụ thể khác) → redo() sẽ sai (nó luôn quay lại
+      // ĐÚNG giải đã khoá từ lượt trước, bỏ qua hoàn toàn lựa chọn mới — bug đã gặp thật: Spotlight/
+      // kết quả vẫn cứ bám giải cũ dù đã chọn giải khác). Huỷ candidate cũ rồi pick() thẳng cho giải
+      // B thay vì redo() giải A. ButtonView.tsx đã tự hỏi xác nhận "Are you sure" trước khi gọi tới
+      // runDraw() trong đúng trường hợp này.
+      if (candidate && selectedPrizeId && selectedPrizeId !== candidate.prizeId) {
+        discardPending();
+        try {
+          await pick();
+        } catch {
+          // Lỗi đã tự showInfoPrompt bên trong pick() — không cần làm gì thêm ở đây.
+        }
+        return;
+      }
       await redo();
       return;
     }
@@ -499,9 +526,9 @@ export function useDrawSequence(
 
   // Popup xác nhận chung — xem comment ở DrawSequenceActions trong types.ts. `action` giữ trong ref
   // (không phải state) vì bản thân nó là 1 closure/hàm, không cần re-render khi gán.
-  function requestConfirm(message: string, action: () => void, holdMs?: number) {
+  function requestConfirm(message: string, action: () => void, holdMs?: number, confirmLabel?: string) {
     pendingConfirmActionRef.current = action;
-    setConfirmPrompt({ message, holdMs });
+    setConfirmPrompt({ message, holdMs, confirmLabel });
   }
 
   function resolveConfirmPrompt(confirmed: boolean) {
@@ -558,6 +585,7 @@ export function useDrawSequence(
     selectedPrizeId,
     togglePrizeSelection,
     infoPrompt,
+    showInfoPrompt,
     notifyOutOfStock,
     dismissInfoPrompt,
     spinning,

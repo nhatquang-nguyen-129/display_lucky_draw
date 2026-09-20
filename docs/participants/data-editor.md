@@ -2,6 +2,14 @@
 
 `src/components/DataEditorModal.tsx` (component chính, rất lớn) + `src/lib/dataEditor/` (logic thuần, không JSX: `types.ts`, `commands.ts`, `validate.ts`, `transforms.ts`, `history.ts`).
 
+Mở qua nút "Edit" ở `Participants.tsx` (`window.api.dataEditor.open(sessionId)`) — chạy trong **1 cửa
+sổ Electron RIÊNG** (`src/pages/DataEditorWindow.tsx`, route `/data-editor/:sessionId`), giống hệt
+Landing Builder/Present Mode, KHÔNG còn là modal hiện trong cửa sổ chính như trước. `DataEditorModal.tsx`
+vì vậy KHÔNG tự gọi `useSession()` (route đó không có `SessionProvider`) — nhận `session` (tự fetch qua
+`sessions:get`) + `onSessionRefresh` (refetch lại đúng session đó) qua props từ `DataEditorWindow.tsx`.
+`Participants.tsx` tự poll `participants:list` mỗi 2s để phản ánh thay đổi lưu từ cửa sổ Editor (khác
+process, không share React state) — xem [`docs/architecture/ipc-and-windows.md`](../architecture/ipc-and-windows.md) mục "Kiến trúc đa cửa sổ".
+
 ## Ý tưởng
 
 Trình soạn thảo bảng tính rút gọn (giống Excel/Google Sheets thu nhỏ) ngay trong app — sửa từng ô, thêm/xoá hàng-cột, tìm & thay thế, phát hiện trùng lặp, sinh mã tự động, **Undo/Redo cho MỌI thao tác kể cả thao tác hàng loạt**.
@@ -121,9 +129,17 @@ Cùng cơ chế Ctrl+Click-mở-URL này cũng áp dụng cho ô dữ liệu tro
 
 `Ctrl/Cmd+Z` (Undo), `Ctrl/Cmd+Y` hoặc `Ctrl/Cmd+Shift+Z` (Redo), `Ctrl/Cmd+S` (Save), `Delete` (xoá dòng đang chọn) — xử lý trong `handleKeyDown()`, tự bỏ qua khi `editingCell` đang set (để trình duyệt xử lý undo/redo NGAY TRONG ô đang gõ, không đụng lịch sử của cả bảng).
 
-`Modal.tsx` không tự focus nội dung khi mở, nên container bắt phím (`containerRef`, `tabIndex={0}`) phải tự `.focus()` ngay khi `open && !loading` (container chỉ THẬT SỰ mount lúc đó — trước đó vẫn đang hiện "Loading data..."). Thiếu bước này thì mở Data Editor lên bấm Ctrl+Z ngay không có phản ứng gì, phải click chuột vào bảng trước mới bắt đầu nhận phím tắt (bug đã gặp thật). Effect này chạy lại sau mỗi lần Save (`load()` khiến `loading` bật/tắt lại) — chủ đích, giữ phím tắt luôn sẵn sàng ngay sau khi tải/lưu xong.
+Trình duyệt không tự focus nội dung khi component mount, nên container bắt phím (`containerRef`, `tabIndex={0}`) phải tự `.focus()` ngay khi `open && !loading` (container chỉ THẬT SỰ mount lúc đó — trước đó vẫn đang hiện "Loading data..."). Thiếu bước này thì mở Data Editor lên bấm Ctrl+Z ngay không có phản ứng gì, phải click chuột vào bảng trước mới bắt đầu nhận phím tắt (bug đã gặp thật). Effect này chạy lại sau mỗi lần Save (`load()` khiến `loading` bật/tắt lại) — chủ đích, giữ phím tắt luôn sẵn sàng ngay sau khi tải/lưu xong.
 
-`Modal` mở KHÔNG có tiêu đề (`title=""` — `Modal.tsx` bỏ hẳn `<h2>` khi `title` rỗng, chỉ còn nút ✕) để đỡ tốn 1 dòng cho 1 cái tên đã hiển nhiên (đang mở từ nút "Data Editor"). Góc phải toolbar: dòng chữ nhỏ **"Last saved at HH:MM:SS"** (`lastSavedAt`, set lại sau MỌI lần save thành công — kể cả auto-save âm thầm) đứng cạnh **History (N)** rồi tới nút **Save** (chỉ còn chữ "Save", bỏ hint phím tắt "(Ctrl+S)" cho gọn — phím tắt vẫn hoạt động bình thường) — không còn chip trạng thái "Saved"/"Unsaved" riêng như thiết kế cũ.
+Không có tiêu đề/nút ✕ riêng trong app nữa (trước đây bọc trong `Modal.tsx` với `title=""` + nút ✕ —
+đã bỏ hẳn khi Data Editor tách thành 1 `BrowserWindow` RIÊNG, xem đầu file này) — tên "Data Editor"
+giờ hiện ở TIÊU ĐỀ CỬA SỔ thật (`getWindowTitle("Editor", ...)`, xem
+[`docs/architecture/ipc-and-windows.md`](../architecture/ipc-and-windows.md)), đóng qua khung cửa sổ
+thật (nút X/Alt+F4), guard "còn thay đổi chưa lưu" nằm ở main process. Góc phải toolbar: dòng chữ nhỏ
+**"Last saved at HH:MM:SS"** (`lastSavedAt`, set lại sau MỌI lần save thành công — kể cả auto-save âm
+thầm) đứng cạnh **History (N)** rồi tới nút **Save** (chỉ còn chữ "Save", bỏ hint phím tắt "(Ctrl+S)"
+cho gọn — phím tắt vẫn hoạt động bình thường) — không còn chip trạng thái "Saved"/"Unsaved" riêng như
+thiết kế cũ.
 
 ## Dropdown filter/sort cột — `fixed` theo toạ độ thật, KHÔNG `absolute` lồng trong `<th>`
 

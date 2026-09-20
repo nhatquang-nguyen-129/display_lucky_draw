@@ -236,3 +236,27 @@ export function resolvePrizeEffects(
 
   return { focus: winner("focus"), motion: winner("motion"), highlightPersistent, highlightOneshot, hidden };
 }
+
+// Đáy Spotlight "When Won" (PrizeImageView.tsx) hình ELIP thay vì cắt cụt bằng 1 đường thẳng ngang —
+// giống vệt sáng đèn sân khấu thật (chùm sáng hẹp dần từ nguồn xuống rồi loang thành 1 vũng sáng bầu
+// dục khi "chạm đất", không phải bị cắt phẳng). Xấp xỉ đơn giản (không phải quang học thật): 2 cạnh
+// nghiêng của nón nối THẲNG vào 2 điểm ngoài cùng trái/phải của elip (cùng độ cao tâm elip `ey`), rồi
+// khép nửa dưới elip bằng 1 cung SVG arc — toạ độ y trong SVG hướng XUỐNG nên "tăng góc θ" (quy ước
+// chuẩn của spec) lại hiện ra thành CHIỀU KIM ĐỒNG HỒ trên màn hình (trục y bị lật so với toán học
+// thường); đi từ điểm TRÁI sang điểm PHẢI, `sweep-flag=0` (θ giảm dần 180°→90°→0°, đi qua đúng điểm
+// ĐÁY elip ở 90°) mới bulge XUỐNG dưới đường nối — `sweep-flag=1` ở chiều này lại đi qua ĐỈNH elip
+// (bulge LÊN, sai hướng, đã tự kiểm lại bằng công thức tham số hoá cung tâm của spec SVG trước khi
+// chốt flag này). Cho đúng hình "cây kem ốc quế" thay vì nón cụt đáy thẳng. `clip-path: path()` cần
+// toạ độ PIXEL THẬT (không nhận %), nên nhận thẳng `width`/`height` đã tính sẵn (px) của khung
+// Spotlight thay vì tự suy percentage như `polygon()` cũ.
+export function computeSpotlightClipPath(width: number, height: number): string {
+  const topLeftX = width * 0.425;
+  const topRightX = width * 0.575;
+  const rx = width / 2;
+  // Tỉ lệ elip (rộng-dẹt, không phải hình tròn) — 1 vũng sáng thật trên bề mặt luôn rộng hơn hẳn
+  // cao. Kẹp trong nửa `height` để không lấn ngược lên trên đỉnh nón khi khung quá thấp (prize đặt
+  // sát đỉnh canvas, `component.y` nhỏ).
+  const ry = Math.min(rx * 0.28, height / 2);
+  const ey = height - ry;
+  return `path("M ${topLeftX} 0 L 0 ${ey} A ${rx} ${ry} 0 0 0 ${width} ${ey} L ${topRightX} 0 Z")`;
+}

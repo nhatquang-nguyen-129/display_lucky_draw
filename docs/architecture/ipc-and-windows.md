@@ -29,15 +29,44 @@ Lưu ý runtime: sau khi sửa `electron/*.ts`, **phải tắt bật lại `npm 
 
 ## Kiến trúc đa cửa sổ (multi-window)
 
-3 loại `BrowserWindow`, cùng dùng chung 1 `preload.js` (nên `window.api` giống hệt nhau ở cả 3):
+4 loại `BrowserWindow`, cùng dùng chung 1 `preload.js` (nên `window.api` giống hệt nhau ở cả 4):
 
 | Cửa sổ | Route | Đặc điểm |
 |---|---|---|
 | Cửa sổ chính | `/`, `/participants`, `/prizes`, `/landing`, `/settings` | Có `<Layout>` (sidebar + `TabBar`), theo tab đang active qua `SessionContext` |
 | Present Mode | `/present/:sessionId` | Không sidebar, không menu bar (`removeMenu()`), mở WINDOWED — `LandingRenderer interactive=true`, nơi khán giả xem |
 | Landing Builder | `/landing-builder/:sessionId` | Không sidebar, còn menu bar mặc định, windowed 1440×900, canvas kéo-thả — nơi người tổ chức THIẾT KẾ (không tương tác thật) |
+| Data Editor | `/data-editor/:sessionId` | Không sidebar, còn menu bar mặc định, windowed 1440×900 — `DataEditorModal.tsx` (Edit participant) render full-window thay vì modal trong cửa sổ chính như trước |
 
-Cả 2 cửa sổ phụ tự fetch session/participants/prizes riêng qua `window.api` (không dùng `SessionContext`, vì đó là 1 cửa sổ độc lập với Context Provider riêng của React — mỗi `BrowserWindow` là 1 renderer process/React tree hoàn toàn tách biệt). Chi tiết cách 2 cửa sổ Landing dùng chung 1 nguồn dữ liệu: [`docs/landing/README.md`](../landing/README.md) mục 1.
+3 cửa sổ phụ đều tự fetch session/participants/prizes riêng qua `window.api` (không dùng
+`SessionContext`, vì đó là 1 cửa sổ độc lập với Context Provider riêng của React — mỗi `BrowserWindow`
+là 1 renderer process/React tree hoàn toàn tách biệt). `DataEditorModal.tsx` từng tự gọi `useSession()`
+bên trong (lúc còn sống trong cửa sổ chính, cùng cây `SessionProvider`) — đổi sang nhận `session` +
+`onSessionRefresh` qua props khi tách thành cửa sổ riêng, xem `DataEditorWindow.tsx`. Chi tiết cách 2
+cửa sổ Landing dùng chung 1 nguồn dữ liệu: [`docs/landing/README.md`](../landing/README.md) mục 1.
+
+Cả 3 cửa sổ phụ (Present/Builder/Editor) là **singleton THEO TỪNG SESSION** (`Map<sessionId,
+BrowserWindow>` module-level cho mỗi loại trong `main.ts`, KHÔNG phải 1 biến DUY NHẤT cho toàn app
+như trước) — mở cho session B trong lúc Builder của session A đang mở sẽ ra 1 cửa sổ Builder MỚI cho
+B, không đụng gì tới cửa sổ A; mở lại ĐÚNG session đang có cửa sổ chỉ `focus()` lại, không tạo trùng.
+Trạng thái "chưa lưu" (Builder/Editor) cũng theo TỪNG cửa sổ — `Map<BrowserWindow, boolean>`, cập nhật
+qua `BrowserWindow.fromWebContents(e.sender)` khi nhận IPC `landingBuilder:dirty-changed`/
+`editor:dirty-changed` (nhiều cửa sổ CÙNG LOẠI gửi chung 1 channel này, phải tách theo đúng cửa sổ nào
+vừa gửi, không thể suy chỉ từ payload).
+
+### Tiêu đề cửa sổ — role + tên session (`getWindowTitle`, `appConfig.ts`)
+
+`getWindowTitle(role?, sessionName?)` sinh tiêu đề, dùng ở CẢ 4 cửa sổ:
+- Cửa sổ chính: gọi KHÔNG tham số → `"[dev] Lucky Draw Studio"` (hoặc không tiền tố ở production).
+- 3 cửa sổ phụ: gọi kèm `role` ("Builder"/"Editor"/"Presentation") + tên session thật (đọc trực tiếp
+  qua `db.prepare("SELECT name FROM sessions WHERE id = ?")` trong `openXxxWindow`, đồng bộ, đủ nhanh
+  cho 1 câu SELECT 1 dòng) → vd `"[dev] Lucky Draw Builder for Test Session"`. `role` THAY HẲN "Studio"
+  (không nối thêm đằng sau) — mục đích phân biệt NHIỀU cửa sổ trên taskbar/Alt-Tab khi có nhiều tab
+  đang mở nhiều cửa sổ phụ cùng lúc.
+
+Mọi `BrowserWindow` (kể cả cửa sổ chính) đều `.on("page-title-updated", (e) => e.preventDefault())` —
+`index.html` có `<title>` TĨNH ("Lucky Draw Studio"), thiếu bước khoá này thì Chromium tự ghi đè lại
+tiêu đề đã set bằng đúng chữ tĩnh đó ngay khi trang load xong.
 
 ### Present Mode: mở windowed, tự bấm fullscreen (không dùng Esc)
 

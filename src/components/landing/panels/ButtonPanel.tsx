@@ -73,14 +73,18 @@ export default function ButtonPanel({ props, participants, columnTypesJson, used
     return configured.filter((col) => participants.some((p) => getParticipantField(p, col).trim()));
   }, [participants, columnTypesJson, activeCoreFields]);
 
-  // Tự chuyển urlField đang lưu sang cột URL thật đầu tiên ngay khi nó đang trỏ vào 1 cột không còn
-  // gán Data Type = URL (vd landing cũ lưu field cố định "name"/"phone"/"code"/"email" từ trước khi
-  // Source đổi sang lọc theo Data Type, hoặc cột đã bị đổi Data Type/xoá ở Data Editor) — tránh
-  // <select> kẹt lại 1 giá trị không còn khớp option nào (cùng cách LuckyWheelPanel.tsx tự sửa
-  // drawField/displayField/winnerDisplayField phantom).
+  // Tự chuyển urlField đang lưu sang cột URL thật đầu tiên khi nó CHƯA từng được chọn (Button mới
+  // tạo, mặc định "" — xem componentRegistry.ts) HOẶC đang trỏ vào 1 cột không còn gán Data Type =
+  // URL (vd landing cũ lưu field cố định "name"/"phone"/"code"/"email" từ trước khi Source đổi sang
+  // lọc theo Data Type, hoặc cột đã bị đổi Data Type/xoá ở Data Editor) — tránh <select> kẹt lại 1
+  // giá trị không còn khớp option nào (cùng cách LuckyWheelPanel.tsx tự sửa drawField/displayField/
+  // winnerDisplayField phantom). Trước đây bỏ qua case "chưa chọn gì" (`!props.urlField` tự return
+  // sớm) — <select> vẫn HIỂN THỊ cột đầu tiên như đã chọn (xem `value` bên dưới) nhưng KHÔNG lưu
+  // thật vào props, khiến Open Link luôn no-op/báo "no link" dù nhìn Panel tưởng đã cấu hình xong
+  // (đã gặp thật).
   useEffect(() => {
     if (props.action !== "openLink") return;
-    if (!props.urlField || urlColumns.includes(props.urlField)) return;
+    if (props.urlField && urlColumns.includes(props.urlField)) return;
     if (urlColumns[0]) onChange({ urlField: urlColumns[0] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.action, props.urlField, urlColumns]);

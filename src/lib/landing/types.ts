@@ -470,9 +470,11 @@ export interface PrizeImageComponent extends BaseComponent {
 // "spotlight" đã bỏ hẳn trong `PrizeEffectName`/nhóm Highlight (xem doc-comment ở đó) — đó là 1 Ý
 // TƯỞNG KHÁC (đèn sân khấu chiếu từ trên xuống, thử và bỏ vì không ra hướng đẹp), tên trùng ngẫu
 // nhiên. "none" (mặc định) = tắt hẳn, giữ đúng hành vi mọi Prize Image đã lưu trước khi có field này.
-// "spotlight" = phủ 1 luồng sáng hình nón tĩnh từ đỉnh khung xuống đáy (CSS thuần: clip-path hình
-// thang + gradient mờ dần dọc + blur mềm 2 mép, xem PrizeImageView.tsx) — HIỆN SUỐT lúc `justWon` còn
-// đúng (tắt ngay khi Reset/lượt quay mới bắt đầu, không phải 1 hiệu ứng ngắn rồi tự tắt như
+// "spotlight" = phủ 1 luồng sáng hình nón (đáy ELIP, không phải cắt cụt đáy thẳng) từ đỉnh canvas
+// xuống đáy khung Prize, CỘNG thêm ảnh sáng hơn ở nửa trên/đổ bóng lan ra dưới đáy — toàn bộ CSS
+// thuần (clip-path SVG path()/mask-image/drop-shadow, xem PrizeImageView.tsx và
+// docs/landing/prize.md mục 4 cho lý do từng lựa chọn kỹ thuật) — HIỆN SUỐT lúc `justWon` còn đúng
+// (tắt ngay khi Reset/lượt quay mới bắt đầu, không phải 1 hiệu ứng ngắn rồi tự tắt như
 // Focus/Highlight/Motion oneshot).
 export type PrizeWonAmbientEffect = "none" | "spotlight";
 
@@ -1064,8 +1066,12 @@ export interface DrawSequenceActions {
   // GIỮ nút Confirm đúng `holdMs` (không phải bấm 1 phát) mới thật sự chạy — xem HoldToConfirmButton
   // trong LandingRenderer.tsx. undefined = giữ nguyên popup Cancel/Confirm bấm 1 phát như cũ (action
   // "confirm" 1 người trúng).
-  confirmPrompt: { message: string; holdMs?: number } | null;
-  requestConfirm: (message: string, action: () => void, holdMs?: number) => void;
+  // `confirmLabel` (optional) — chữ trên nút xác nhận, mặc định "Confirm" (LandingRenderer.tsx tự
+  // fallback) — action "confirm"/"reset" giữ nguyên "Confirm" vì đúng nghĩa đen; case Draw đang
+  // pending đổi giải (xem ButtonView.tsx) PHẢI đặt chữ khác ("Draw Anyway") vì bản thân câu hỏi đã
+  // nói về việc KHÔNG confirm người trúng cũ — để nút vẫn ghi "Confirm" sẽ gây hiểu lầm ngược nghĩa.
+  confirmPrompt: { message: string; holdMs?: number; confirmLabel?: string } | null;
+  requestConfirm: (message: string, action: () => void, holdMs?: number, confirmLabel?: string) => void;
   resolveConfirmPrompt: (confirmed: boolean) => void;
   // Giải đang được CHỌN qua PrizeImageView.tsx (click 1 ảnh giải) — khác null thì pick() TRUYỀN
   // THẲNG vào lockedPrizeId đã có sẵn ở electron/drawEngine.ts, ép Draw chỉ random người TRONG đúng
@@ -1083,6 +1089,11 @@ export interface DrawSequenceActions {
   // chọn vừa hết hàng (đã bỏ — gây mất trải nghiệm thị giác ngay lúc Wheel vừa quay xong) —
   // useDrawSequence.ts vẫn tự âm thầm bỏ chọn giải đó lúc đó, không kèm popup.
   infoPrompt: string | null;
+  // Hàm CHUNG để bật popup này với message tuỳ ý — notifyOutOfStock() chỉ là 1 cách gọi RIÊNG đã có
+  // sẵn format câu cố định ("... is out of stock!"). Button action "openLink" (ButtonView.tsx) dùng
+  // THẲNG hàm này khi chưa có winner/winner không có link — trước đây no-op im lặng, đổi thành popup
+  // vì "bấm không thấy gì" khiến người vận hành tưởng nút bị lỗi (đã gặp thật).
+  showInfoPrompt: (message: string) => void;
   notifyOutOfStock: (prizeName: string) => void;
   dismissInfoPrompt: () => void;
   // Đang trong khoảng Lucky Wheel quay (từ lúc có candidate mới tới đúng lúc animation quay xong hẳn
@@ -1130,7 +1141,10 @@ export interface DrawSequenceActions {
   // Hàm THẬT SỰ chạy khi bấm nút Draw chính (ButtonView.tsx) — rẽ nhánh theo drawMode đang ARM:
   // "multiple"/"quick" chạy batch với drawCount đã lưu (tự re-validate count/remaining MỚI NHẤT,
   // phòng trường hợp đổi từ lúc arm tới lúc bấm Draw); "single" giữ NGUYÊN hành vi cũ — đang có
-  // candidate CHỜ CONFIRM (isPending) thì "quay lại" (redo), chưa có gì chờ thì pick() 1 candidate mới.
+  // candidate CHỜ CONFIRM (isPending) thì "quay lại" (redo), chưa có gì chờ thì pick() 1 candidate
+  // mới. Ngoại lệ: đang pending giải A mà `selectedPrizeId` đã đổi sang giải B cụ thể (khác hẳn case
+  // "unselect" — xem redo() trong useDrawSequence.ts) thì HUỶ candidate A rồi pick() thẳng cho B,
+  // không redo() nhầm giải A — ButtonView.tsx tự hỏi xác nhận "Are you sure" trước khi gọi tới đây.
   // `multipleDrawPaceMs` — ButtonView.tsx truyền thẳng `component.props.multipleDrawPaceMs` (đọc
   // ngay lúc bấm, không phải lúc arm) — CHỈ có tác dụng khi drawMode === "multiple", bỏ qua hoàn
   // toàn ở "single"/"quick" (Quick Draw không nghỉ gì, xem doc-comment ButtonProps.multipleDrawPaceMs).

@@ -175,6 +175,9 @@ declare global {
         open: (sessionId: string) => Promise<void>;
         reportDirty: (dirty: boolean) => void;
       };
+      dataEditor: {
+        open: (sessionId: string) => Promise<void>;
+      };
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
       };

@@ -99,6 +99,12 @@ const api = {
     // của Data Editor vì đây là 1 cửa sổ độc lập (xem main.ts, openLandingBuilderWindow).
     reportDirty: (dirty: boolean) => ipcRenderer.send("landingBuilder:dirty-changed", dirty),
   },
+  dataEditor: {
+    // Mở Data Editor thành 1 cửa sổ riêng (giống landingBuilder.open) — xem main.ts's
+    // openDataEditorWindow. `editor.reportDirty` bên dưới vẫn dùng để báo trạng thái chưa lưu, không
+    // cần thêm hàm riêng cho namespace này.
+    open: (sessionId: string) => ipcRenderer.invoke("dataEditor:open", sessionId),
+  },
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
     },
