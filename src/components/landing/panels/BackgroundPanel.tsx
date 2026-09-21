@@ -46,7 +46,7 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
             value={background.type}
             onChange={(e) => onChange({ type: e.target.value as "color" | "image" })}
           >
-            <option value="color">Solid color</option>
+            <option value="color">Solid Color</option>
             <option value="image">Image</option>
           </select>
         </div>

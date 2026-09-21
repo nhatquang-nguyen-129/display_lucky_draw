@@ -119,8 +119,8 @@ export default function ScoreboardPanel({ props, participants, onChange }: Score
             value={backgroundType}
             onChange={(e) => onChange({ backgroundType: e.target.value as ScoreboardProps["backgroundType"] })}
           >
-            <option value="none">None (transparent)</option>
-            <option value="color">Solid color</option>
+            <option value="none">None (Transparent)</option>
+            <option value="color">Solid Color</option>
             <option value="image">Image</option>
           </select>
         </div>

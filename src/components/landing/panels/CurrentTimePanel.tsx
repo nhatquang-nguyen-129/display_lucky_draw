@@ -25,8 +25,8 @@ export default function CurrentTimePanel({ props, onChange }: CurrentTimePanelPr
           value={props.format}
           onChange={(e) => onChange({ format: e.target.value as CurrentTimeProps["format"] })}
         >
-          <option value="24h">24-hour</option>
-          <option value="12h">12-hour (AM/PM)</option>
+          <option value="24h">24-Hour</option>
+          <option value="12h">12-Hour (AM/PM)</option>
         </select>
       </div>
       <div className="grid grid-cols-2 gap-2">
