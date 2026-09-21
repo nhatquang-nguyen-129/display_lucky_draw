@@ -2,7 +2,16 @@
 // khi thả). Thêm loại mới chỉ cần thêm 1 entry ở đây (sau khi đã có type ở lib/landing/types.ts
 // và view/panel tương ứng) — xem checklist ở đầu lib/landing/types.ts.
 
-import { LandingComponent, LandingComponentType, newComponentId, PrizeEffectName, PrizeGroupEffect, PrizeStageEffect } from "@/lib/landing/types";
+import {
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  LandingComponent,
+  LandingComponentType,
+  newComponentId,
+  PrizeEffectName,
+  PrizeGroupEffect,
+  PrizeStageEffect,
+} from "@/lib/landing/types";
 
 function noGroupEffect(): PrizeGroupEffect {
   return { effect: "none", color: "#FFCA2D", size: 24, directionX: 50, directionY: 50, handleX: 50, handleY: 50, anchorPlaced: false };
@@ -42,7 +51,7 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
 // Spotlight không còn là component đứng độc lập — Spotlight giờ là 1 dropdown "When Won" ngay trong
 // panel Prize Image, xem PrizeWonAmbientEffect trong types.ts; Firework đã xoá hẳn, chưa có kiến trúc
 // thay thế) — thêm lại category này nếu sau này có component TỰ ĐỨNG thuộc nhóm "hiệu ứng" khác.
-export const CATEGORY_ORDER = ["Basic", "Draw & Results", "Live Info", "Interactive"] as const;
+export const CATEGORY_ORDER = ["Basic", "Draw", "Live", "Interactive"] as const;
 export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
 
 export interface ComponentRegistryEntry {
@@ -81,10 +90,21 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       borderRadius: 0,
     }),
   },
+  background: {
+    label: "Background",
+    description: "Full-canvas image (video support planned) — drag to reposition/resize, any area left uncovered stays black",
+    category: "Basic",
+    defaultWidth: CANVAS_WIDTH,
+    defaultHeight: CANVAS_HEIGHT,
+    createDefaultProps: () => ({
+      srcDataUrl: null,
+      fit: "cover",
+    }),
+  },
   luckyWheel: {
     label: "Lucky Wheel",
     description: "Spinning wheel bound to the Draw Engine",
-    category: "Draw & Results",
+    category: "Draw",
     defaultWidth: 500,
     defaultHeight: 500,
     createDefaultProps: () => ({
@@ -114,7 +134,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   winnerName: {
     label: "Winner",
     description: "Latest winner's name",
-    category: "Draw & Results",
+    category: "Draw",
     defaultWidth: 500,
     defaultHeight: 80,
     createDefaultProps: () => ({
@@ -130,7 +150,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   prizeImage: {
     label: "Prize",
     description: "One specific prize's image, pinned to custom artwork — click in Present Mode to select it for Draw",
-    category: "Draw & Results",
+    category: "Draw",
     defaultWidth: 300,
     defaultHeight: 300,
     createDefaultProps: () => ({
@@ -149,7 +169,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   currentTime: {
     label: "Current Time",
     description: "Live clock",
-    category: "Live Info",
+    category: "Live",
     defaultWidth: 200,
     defaultHeight: 50,
     createDefaultProps: () => ({
@@ -162,7 +182,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   participantCount: {
     label: "Participant Count",
     description: "Number of participants in this session",
-    category: "Live Info",
+    category: "Live",
     defaultWidth: 260,
     defaultHeight: 50,
     createDefaultProps: () => ({
@@ -205,7 +225,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   scoreboard: {
     label: "Scoreboard",
     description: "Table of confirmed winners — shown as a popup via a \"Show Winner\" button",
-    category: "Draw & Results",
+    category: "Draw",
     defaultWidth: 420,
     defaultHeight: 520,
     createDefaultProps: () => ({

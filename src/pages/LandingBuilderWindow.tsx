@@ -9,7 +9,6 @@ import { COMPONENT_REGISTRY, createComponentAt } from "@/components/landing/comp
 import { useConfigHistory } from "@/components/landing/useConfigHistory";
 import {
   AnchorEditTarget,
-  BackgroundConfig,
   ButtonComponent,
   computeDigitRollerFitHeight,
   DEFAULT_PRIZE_GROUP_EFFECT,
@@ -337,27 +336,6 @@ export default function LandingBuilderWindow() {
     });
   }
 
-  function handleTogglePageSettings() {
-    // `selectedIds.length === 0` (không phải chỉ `!selected`) — multi-select cũng có `selected` rỗng
-    // nhưng panel lúc đó đang hiện "N selected" chứ không phải Background, bấm nút này phải CHUYỂN
-    // sang Background (xoá vùng chọn) chứ không phải chỉ đóng panel.
-    if (showPanel && selectedIds.length === 0) {
-      setShowPanel(false);
-    } else {
-      setSelectedIds([]);
-      setShowPanel(true);
-    }
-  }
-
-  function handleChangeBackground(patch: Partial<BackgroundConfig>) {
-    updateConfig(
-      (prev) => ({
-        ...prev,
-        canvas: { ...prev.canvas, background: { ...prev.canvas.background, ...patch } },
-      }),
-      { label: "Edited background" }
-    );
-  }
 
   // `opts.commit` truyền `true` cho các lần gọi RỜI RẠC (vd toggle ẩn/hiện layer) — mặc định (kéo-thả/
   // resize trên canvas, bắn liên tục mỗi mousemove) để trống, tự gộp theo thời gian.
@@ -473,6 +451,14 @@ export default function LandingBuilderWindow() {
     // có lý do nghiệp vụ nào cần.
     if (type === "luckyWheel" && (config?.components ?? []).some((c) => c.type === "luckyWheel")) {
       showCenterNotice("Can't create more Lucky Wheels — a page can only have 1.");
+      setShowAddFlyout(false);
+      return;
+    }
+
+    // Background cũng chỉ 1 cái/trang — cùng tinh thần Scoreboard/Lucky Wheel: nó đại diện cho "cái
+    // nền" của cả trang, thêm cái thứ 2 chỉ gây nhầm lẫn cái nào mới thật sự là nền.
+    if (type === "background" && (config?.components ?? []).some((c) => c.type === "background")) {
+      showCenterNotice("Can't create more Backgrounds — a page can only have 1.");
       setShowAddFlyout(false);
       return;
     }
@@ -684,7 +670,7 @@ export default function LandingBuilderWindow() {
           </div>
         )}
 
-        {/* Toolbar nổi bên trái — Select/Hand tool + Gridline, Add component, Layers, Page settings. */}
+        {/* Toolbar nổi bên trái — Select/Hand tool + Gridline, Add component, Layers. */}
         <div className="absolute top-4 left-4 flex flex-col gap-2">
           <ToolbarTooltip label="Select tool" shortcut="V">
             <button
@@ -772,17 +758,6 @@ export default function LandingBuilderWindow() {
               </div>
             )}
           </div>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleTogglePageSettings();
-            }}
-            title="Page settings (background)"
-            className={`${floatingBtn} ${showPanel && selectedIds.length === 0 ? floatingBtnActive : floatingBtnIdle}`}
-          >
-            <BackgroundIcon />
-          </button>
         </div>
 
         {/* Chỉ báo mức zoom + nút +/- nổi góc dưới trái — cách chính vẫn là cuộn chuột/pinch trackpad
@@ -826,7 +801,7 @@ export default function LandingBuilderWindow() {
                   ? `${selectedIds.length} components selected`
                   : selected
                     ? selected.type.replace(/([A-Z])/g, " $1")
-                    : "Page settings"}
+                    : "No selection"}
               </span>
               <button onClick={() => setShowPanel(false)} className="text-base-500 hover:text-base-200">
                 ✕
@@ -840,7 +815,6 @@ export default function LandingBuilderWindow() {
                 prizes={prizes}
                 participants={participants}
                 columnTypesJson={session.participant_column_types}
-                onChangeBackground={handleChangeBackground}
                 onChangeComponent={(patch) => selected && handleUpdateComponent(selected.id, patch)}
                 onChangeProps={handleUpdateProps}
                 onDelete={handleDeleteSelected}
@@ -853,8 +827,7 @@ export default function LandingBuilderWindow() {
 
         {/* Tab nổi để mở lại Properties Panel sau khi đã tạm ẩn (nút ✕ ở trên chỉ ẩn, không xoá
             lựa chọn) — không cần click lại đúng component trên canvas, tránh phải rà đúng vị trí
-            khi nó vừa bị khung panel che mất. Luôn hiện khi panel đang ẩn, kể cả chưa chọn gì (bấm
-            vào sẽ mở lại đúng Page settings, giống hành vi mặc định của PropertiesPanel). */}
+            khi nó vừa bị khung panel che mất. Luôn hiện khi panel đang ẩn, kể cả chưa chọn gì. */}
         {!showPanel && (
           <button
             onClick={(e) => {
@@ -939,15 +912,6 @@ function HandIcon() {
   );
 }
 
-function BackgroundIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <path d="M21 15l-5-5L5 21" />
-    </svg>
-  );
-}
 
 function GridIcon() {
   return (

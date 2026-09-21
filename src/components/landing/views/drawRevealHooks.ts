@@ -198,32 +198,39 @@ export function useRevealTransition(
 type FiredPhase = "idle" | "draw" | "redraw";
 
 /**
- * Model hiện/ẩn TỔNG QUÁT theo đúng 3 mốc thật của quy trình quay (Idle/Draw/Redraw) — xem
- * doc-comment DrawCycleConfig trong types.ts. Khác `useRevealed` ở trên (gắn cứng Appear=Draw,
+ * Model hiện/ẩn (hoặc dim/blur) TỔNG QUÁT theo đúng 3 mốc thật của quy trình quay (Idle/Draw/Redraw)
+ * — xem doc-comment DrawCycleConfig trong types.ts. Khác `useRevealed` ở trên (gắn cứng Appear=Draw,
  * Disappear=Redraw, Idle luôn ẩn tức thì không cấu hình được): ở đây Idle chỉ có ĐÚNG 1 input tự do
  * (`config.idleState`) — Draw/Redraw có thêm lựa chọn "none" (không làm gì) ngoài giá trị bị ràng
- * buộc theo idleState (Panel đã đảm bảo hợp lệ, xem ImagePanel.tsx) — chỉ còn Effect + Delay cho
- * từng bước có action thật — dùng cho ImageView.tsx.
+ * buộc (Panel đã đảm bảo hợp lệ, xem ImagePanel.tsx/BackgroundPanel.tsx) — chỉ còn Effect + Delay cho
+ * từng bước có action thật — dùng cho ImageView.tsx/TextView.tsx (chỉ đọc `shown`/`transitionClass`,
+ * domain 2 giá trị appear/disappear) VÀ BackgroundView.tsx (đọc thêm `activeState`/`activeAmount`,
+ * domain đủ 4 giá trị appear/disappear/dim/blur).
  *
- * Trả về `shown` (có nên render nội dung ngay bây giờ hay không) + `transitionClass` (class hiệu ứng
- * ĐANG chạy, "" nếu đứng yên). Ẩn đi KHÔNG tắt `shown` ngay — giữ `shown = true` suốt TRANSITION_MS để
- * hiệu ứng biến mất kịp chạy hết trên nội dung thật, chỉ tắt hẳn sau khi hết hiệu ứng (đối xứng với
- * hiện ra: bật `shown = true` NGAY rồi mới chạy hiệu ứng xuất hiện đè lên). `redrawAction !== "none"`
- * chạy `redrawEffect` (xử lý nội dung CŨ), rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp bước
- * "hiện lại" bằng CHÍNH `drawEffect` (không có field riêng — công bố kết quả là 1 hành động chung) —
- * nối tiếp qua callback `onDone` của `runStep` (chạy ĐÚNG lúc `setShown(false)` của bước ẩn đã thật
- * sự thực thi), KHÔNG tính lại mốc thời gian rồi đặt 1 setTimeout song song (đã gặp bug thật: 2 timer
- * tính ra CÙNG 1 mốc tuyệt đối đua nhau theo thứ tự nạp event loop — nếu `setShown(false)` chạy SAU
- * `setShown(true)` sẽ đè mất hiệu ứng vừa hiện lại ngay lập tức, trông như "ẩn được nhưng không hiện
- * lại"). `drawEffect.delayMs` đo THÊM từ lúc `onDone` gọi (tức từ lúc `redrawEffect` chạy xong hẳn).
+ * `shown` = có "hiện" gì đó hay không (mọi giá trị KHÁC "disappear" đều tính là hiện — dim/blur vẫn
+ * hiện ảnh, chỉ phủ thêm filter, không phải ẩn hẳn). `activeState`/`activeAmount` = giá trị/cường độ
+ * ĐANG active ngay lúc này (chỉ BackgroundView.tsx cần đọc 2 field này để biết vẽ filter nào — Text/
+ * Image luôn chỉ dao động appear/disappear nên bỏ qua). `transitionClass` = class hiệu ứng ĐANG chạy,
+ * "" nếu đứng yên. Ẩn đi KHÔNG tắt `shown` ngay — giữ `shown = true` suốt TRANSITION_MS để hiệu ứng
+ * biến mất kịp chạy hết trên nội dung thật, chỉ tắt hẳn sau khi hết hiệu ứng (đối xứng với hiện ra:
+ * bật `shown = true` NGAY rồi mới chạy hiệu ứng xuất hiện đè lên). `redrawAction !== "none"` chạy
+ * `redrawEffect` (chuyển sang đúng trạng thái Redraw chọn), rồi — NẾU `drawAction !== "none"` — TỰ
+ * ĐỘNG chạy tiếp bước kế bằng CHÍNH `drawEffect` (không có field riêng — công bố kết quả là 1 hành
+ * động chung) — nối tiếp qua callback `onDone` của `runStep` (chạy ĐÚNG lúc bước Redraw đã thật sự
+ * thực thi xong), KHÔNG tính lại mốc thời gian rồi đặt 1 setTimeout song song (đã gặp bug thật: 2
+ * timer tính ra CÙNG 1 mốc tuyệt đối đua nhau theo thứ tự nạp event loop — nếu bước ẩn chạy SAU bước
+ * hiện sẽ đè mất hiệu ứng vừa hiện lại ngay lập tức, trông như "ẩn được nhưng không hiện lại").
+ * `drawEffect.delayMs` đo THÊM từ lúc `onDone` gọi (tức từ lúc `redrawEffect` chạy xong hẳn).
  */
 export function useDrawCycleVisibility(
   resultId: string | undefined,
   config: DrawCycleConfig,
   resetSeq?: number
-): { shown: boolean; transitionClass: string } {
-  const restVisible = config.idleState === "appear";
-  const [shown, setShown] = useState(restVisible);
+): { shown: boolean; transitionClass: string; activeState: DrawRestState; activeAmount?: number } {
+  const restState = config.idleState;
+  const [shown, setShown] = useState(restState !== "disappear");
+  const [activeState, setActiveState] = useState<DrawRestState>(restState);
+  const [activeAmount, setActiveAmount] = useState<number | undefined>(config.idleEffect?.amount);
   const [transitionClass, setTransitionClass] = useState("");
 
   // Đã từng có ít nhất 1 resultId THẬT (khác Idle) hay chưa — phân biệt "Draw" (từ Idle) với "Redraw"
@@ -267,13 +274,16 @@ export function useDrawCycleVisibility(
     // 1 mốc tuyệt đối sẽ ĐUA NHAU theo thứ tự nạp vào event loop, không đảm bảo timer nào chạy trước —
     // nếu setShown(false) (từ bước ẩn) chạy SAU setShown(true) (từ bước hiện) mới đè lên, hiện lại sẽ
     // bị dập tắt ngay lập tức (bug thật đã gặp: Redraw ẩn được nhưng không thấy hiện lại).
-    function runStep(toVisible: boolean, step: DrawPhaseEffectConfig | undefined, onDone?: () => void) {
+    function runStep(toState: DrawRestState, step: DrawPhaseEffectConfig | undefined, onDone?: () => void) {
+      const toVisible = toState !== "disappear";
       const delay = Math.max(0, step?.delayMs ?? 0);
       const effect = step?.effect ?? "none";
       timers.push(
         setTimeout(() => {
           if (toVisible) {
             setShown(true);
+            setActiveState(toState);
+            setActiveAmount(step?.amount);
             if (effect !== "none") {
               setTransitionClass(APPEAR_CLASS[effect]);
               timers.push(setTimeout(() => setTransitionClass(""), TRANSITION_MS));
@@ -285,11 +295,15 @@ export function useDrawCycleVisibility(
               setTimeout(() => {
                 setTransitionClass("");
                 setShown(false);
+                setActiveState(toState);
+                setActiveAmount(undefined);
                 onDone?.();
               }, TRANSITION_MS)
             );
           } else {
             setShown(false);
+            setActiveState(toState);
+            setActiveAmount(undefined);
             onDone?.();
           }
         }, delay)
@@ -297,20 +311,22 @@ export function useDrawCycleVisibility(
     }
 
     if (firedPhase === "idle") {
-      runStep(restVisible, config.idleEffect);
+      runStep(config.idleState, config.idleEffect);
     } else if (firedPhase === "draw") {
       if (config.drawAction === "none") return;
-      runStep(!restVisible, config.drawEffect);
+      runStep(config.drawAction, config.drawEffect);
     } else {
-      // Redraw: "none" = không làm gì (giữ nguyên trạng thái đang có). Khác "none" luôn TRÙNG
-      // idleState (Panel đã ràng buộc) — chạy đúng 1 bước riêng (ẩn nội dung cũ), rồi — NẾU Draw có
-      // action thật — tự động chạy tiếp bằng CHÍNH `drawEffect` để hiện nội dung mới (công bố kết quả
-      // là 1 hành động chung, không có field riêng cho bước này), CHỈ SAU KHI bước ẩn báo `onDone`.
+      // Redraw: "none" = không làm gì (giữ nguyên trạng thái đang có). Khác "none" là giá trị Panel đã
+      // đảm bảo hợp lệ (khác giá trị thật gần nhất phía trước, xem doc-comment DrawPhaseAction trong
+      // types.ts) — chạy đúng 1 bước riêng (chuyển sang trạng thái Redraw chọn), rồi — NẾU Draw có
+      // action thật — tự động chạy tiếp bằng CHÍNH `drawEffect` để chuyển sang trạng thái Draw (công
+      // bố kết quả là 1 hành động chung, không có field riêng cho bước này), CHỈ SAU KHI bước đầu báo
+      // `onDone`.
       if (config.redrawAction === "none") return;
-      runStep(restVisible, config.redrawEffect, () => {
+      runStep(config.redrawAction, config.redrawEffect, () => {
         if (config.drawAction === "none") return;
         const inDelay = Math.max(0, config.drawEffect?.delayMs ?? 0);
-        timers.push(setTimeout(() => runStep(!restVisible, config.drawEffect), inDelay));
+        timers.push(setTimeout(() => runStep(config.drawAction as DrawRestState, config.drawEffect), inDelay));
       });
     }
 
@@ -318,5 +334,6 @@ export function useDrawCycleVisibility(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fireKey]);
 
-  return { shown, transitionClass };
+  return { shown, transitionClass, activeState, activeAmount };
 }
+

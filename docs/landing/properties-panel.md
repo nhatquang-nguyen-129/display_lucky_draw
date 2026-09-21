@@ -13,20 +13,29 @@ gõ dở (chưa đủ `#RRGGBB` hợp lệ) được giữ ở state cục bộ,
 đổi component đang chọn).
 
 Mọi ô chọn màu trong Properties Panel (Text/Winner/Lucky Wheel/Scoreboard/Button/Current Time/
-Participant Count/Background — kể cả `PrizeEffectPicker.tsx`) đều dùng `ColorField`, KHÔNG còn dùng
+Participant Count — kể cả `PrizeEffectPicker.tsx`; Background không có ô màu nào, chỉ Image + Fit)
+đều dùng `ColorField`, KHÔNG còn dùng
 thẳng `<input type="color">` nữa — thêm ô màu mới ở panel nào sau này cũng phải qua `ColorField`,
 không quay lại pattern cũ.
 
 ## `DrawCycleFields.tsx` — khối "Interactions with Draw" dùng chung cho component TĨNH
 
-`ImagePanel.tsx` và `TextPanel.tsx` đều render 1 component TĨNH do người dùng tự đặt (ảnh PNG/chuỗi
-chữ, không đổi theo từng lượt quay) mà muốn tự ẩn/hiện đồng bộ quy trình quay — cả 2 dùng chung ĐÚNG 1
-component `DrawCycleFields.tsx` (nhận `props: {syncWithDraw?, drawCycle?}` + `onChange`, tự SUY RA từ
-đó — không cần biết đang ở Image hay Text) thay vì lặp lại JSX. Xem doc-comment
-`DrawCycleConfig`/`DrawPhaseAction` trong `types.ts` và mục "`useDrawCycleVisibility` — model
-Idle/Draw/Redraw" ở [present-mode.md](./present-mode.md) cho cơ chế đầy đủ (checkbox **Trigger with
-Draw**, 3 mốc Idle/Draw/Redraw mỗi mốc 1 dropdown **Appearance** bị ràng buộc lẫn nhau). Thêm 1 loại
-component TĨNH mới cũng cần "Interactions with Draw" thì tái dùng THẲNG component này, không viết lại.
+`ImagePanel.tsx`, `TextPanel.tsx` và `BackgroundPanel.tsx` đều render 1 component TĨNH do người dùng
+tự đặt (ảnh PNG/chuỗi chữ/ảnh nền, không đổi theo từng lượt quay) mà muốn tự đổi Appearance đồng bộ
+quy trình quay — cả 3 dùng chung ĐÚNG 1 component `DrawCycleFields.tsx` (nhận `props:
+{syncWithDraw?, drawCycle?}` + `onChange`, tự SUY RA từ đó — không cần biết đang ở component nào) thay
+vì lặp lại JSX. Appearance có 4 giá trị PEER — Appear/Disappear/Dim/Blur (xem doc-comment
+`DrawRestState` trong `types.ts`) — nhưng KHÔNG PHẢI component nào cũng cho chọn cả 4: prop
+`allowedStates` (mặc định `["appear", "disappear"]` nếu bỏ trống, giữ NGUYÊN hành vi cũ cho
+Image/Text) khai báo domain riêng cho từng caller, Background truyền đủ cả 4 giá trị. Dim/Blur có thêm
+field **Amount** (Dim % / Blur px, chỉ hiện khi Appearance đang chọn đúng 1 trong 2 giá trị đó) —
+Image/Text không bao giờ đụng tới field này. Xem doc-comment `DrawCycleConfig`/`DrawPhaseAction` trong
+`types.ts` và mục "`useDrawCycleVisibility` — model Idle/Draw/Redraw" ở
+[present-mode.md](./present-mode.md) cho cơ chế đầy đủ (checkbox **Trigger with Draw**, 3 mốc
+Idle/Draw/Redraw mỗi mốc 1 dropdown **Appearance** bị ràng buộc — không được trùng giá trị thật gần
+nhất phía trước trong chuỗi, KHÔNG còn hardcode "đối lập nhị phân" như bản cũ, dù với domain 2 giá trị
+thì 2 quy tắc cho ra kết quả giống hệt nhau). Thêm 1 loại component TĨNH mới cũng cần "Interactions
+with Draw" thì tái dùng THẲNG component này, không viết lại.
 
 Winner Name (`LiveTextPanel.tsx`) KHÔNG dùng `DrawCycleFields.tsx` — nội dung của nó (tên người trúng)
 THẬT SỰ đổi theo từng lượt quay, không phải 1 thứ tĩnh hiện/ẩn nhị phân, nên giữ cơ chế
@@ -99,8 +108,18 @@ first." Winner Name/Button Open Link ở trên đi theo ĐÚNG mẫu này.
 
 ## Properties Panel
 
-`PropertiesPanel.tsx` là 1 switch thuần: chưa chọn gì → `BackgroundPanel` (nền trang); có chọn → 1
-Panel riêng theo đúng `type` của component + `SharedFields.tsx` luôn hiện ở cuối.
+`PropertiesPanel.tsx` là 1 switch thuần: chưa chọn gì → gợi ý chọn/thêm component; có chọn → 1
+Panel riêng theo đúng `type` của component + `SharedFields.tsx` luôn hiện ở cuối. Background KHÔNG
+còn là "nền trang" toàn cục nữa — nó là 1 loại component bình thường (kéo-thả từ Palette, category
+Basic, giống Image ở Basic options — chuẩn bị sẵn cho mở rộng video sau này), giới hạn 1 cái/trang
+(cùng cơ chế với Scoreboard/Lucky Wheel, xem `handleDropNewComponent` trong
+`LandingBuilderWindow.tsx`). Phần canvas không được Background nào phủ tới LUÔN là màu đen cố định —
+không còn config màu nền/letterbox riêng (xem `LandingRenderer.tsx`). Landing đã lưu ảnh nền kiểu cũ
+tự động migrate thành 1 Background component khi mở lại (xem `migrateLegacyBackground` trong
+`types.ts`). Tính năng dim nền cũ ("Dim background while Revealed", gắn với panel toàn cục) đã BỎ HẲN,
+nhưng quay lại dưới dạng khác — gắn THẲNG vào Background component qua "Interactions with Draw" (Dim
+hoặc Blur, xem `BackgroundPanel.tsx` bên dưới, dùng CHUNG `DrawCycleFields.tsx` với Image/Text), không
+còn tách rời khỏi Background như bản cũ.
 
 `SharedFields.tsx` — dùng chung cho MỌI loại: **X/Y/Width/Height** (Height khoá "auto" nếu là Lucky
 Wheel dùng template Digit Roller — chiều cao tự tính theo `digitCount`), **Effect** (fade/slide/pulse/
@@ -114,9 +133,9 @@ panel vẫn LUÔN giữ nút Delete component dù 2 cờ trên có bật hay kh�
 
 | Panel file | Dùng cho |
 |---|---|
-| `BackgroundPanel.tsx` | Nền trang (khi chưa chọn component nào) |
+| `BackgroundPanel.tsx` | Background — Basic options (Image + Fit, không có border radius như Image) + **Self Interactions** (chưa có mục nào, để sẵn chỗ) + **Interactions with Draw** dùng THẲNG `DrawCycleFields.tsx` (KHÔNG viết riêng) với `allowedStates={["appear","disappear","dim","blur"]}` — Dim/Blur mỗi lựa chọn có thêm field **Amount** (Dim % mặc định 80, Blur px), Appear/Disappear thì không |
 | `TextPanel.tsx` | Text — Basic options + **"Interactions with Draw"** dùng CHUNG component `DrawCycleFields.tsx` với `ImagePanel.tsx` (xem hàng dưới) — `content` là 1 chuỗi TĨNH do người dùng tự đặt nên hợp với model chung, khác Winner Name (nội dung đổi theo lượt) |
-| `ImagePanel.tsx` | Image — Basic options + **"Interactions with Draw"** (component dùng chung `DrawCycleFields.tsx`, checkbox **Trigger with Draw**, tắt = ảnh tĩnh như cũ). Mỗi mốc **Idle/Draw/Redraw** có dropdown **Appearance** riêng, gộp CHUNG với Effect/Delay ngay trong khối mốc đó: **Idle** chỉ 2 lựa chọn `Appear`/`Disappear` (không có None); **Draw** thêm `None`, dropdown TỰ VÔ HIỆU HOÁ lựa chọn TRÙNG Idle; **Redraw** cũng thêm `None`, dropdown tự vô hiệu hoá lựa chọn ĐỐI LẬP Idle (khác None thì tự động hiện lại bằng CHÍNH Effect của Draw ngay sau đó, không cấu hình lặp) — không có ô nào cấu hình sai hướng được, đổi Appearance của Idle thì Draw/Redraw đang lưu tự sửa lại nếu không còn hợp lệ — xem mục "`useDrawCycleVisibility` — model Idle/Draw/Redraw" ở [present-mode.md](./present-mode.md). Dùng khi cần 1 ảnh PNG tự ẩn/hiện đồng bộ với quy trình quay (vd 1 ảnh trang trí như Podium cần TÁCH KHỎI Background để không bị `BackgroundDimOverlay` dim theo mỗi lượt Draw) mà không cần tạo hẳn 1 loại component riêng, xem `ImageProps`/`ImageView.tsx` |
+| `ImagePanel.tsx` | Image — Basic options + **"Interactions with Draw"** (component dùng chung `DrawCycleFields.tsx`, checkbox **Trigger with Draw**, tắt = ảnh tĩnh như cũ). Mỗi mốc **Idle/Draw/Redraw** có dropdown **Appearance** riêng, gộp CHUNG với Effect/Delay ngay trong khối mốc đó: **Idle** chỉ 2 lựa chọn `Appear`/`Disappear` (không có None); **Draw** thêm `None`, dropdown TỰ VÔ HIỆU HOÁ lựa chọn TRÙNG Idle; **Redraw** cũng thêm `None`, dropdown tự vô hiệu hoá lựa chọn ĐỐI LẬP Idle (khác None thì tự động hiện lại bằng CHÍNH Effect của Draw ngay sau đó, không cấu hình lặp) — không có ô nào cấu hình sai hướng được, đổi Appearance của Idle thì Draw/Redraw đang lưu tự sửa lại nếu không còn hợp lệ — xem mục "`useDrawCycleVisibility` — model Idle/Draw/Redraw" ở [present-mode.md](./present-mode.md). Dùng khi cần 1 ảnh PNG tự ẩn/hiện đồng bộ với quy trình quay (vd 1 ảnh trang trí như Podium, tách khỏi Background vì Background luôn tĩnh) mà không cần tạo hẳn 1 loại component riêng, xem `ImageProps`/`ImageView.tsx` |
 | `LuckyWheelPanel.tsx` | Lucky Wheel (cả 2 template `wheel`/`digitRoller`) — Basic options có X/Y/Width/Height ở CUỐI (Height khoá "auto" nếu là Digit Roller). Draw/Display field KHÔNG yêu cầu Data Type cụ thể, liệt kê MỌI cột thật; field **Source** (winner display/digit source, gộp chung tên nhãn cho cả 2 template) thêm tiêu chí phụ ở Digit Roller "đúng `digitCount` ký tự" (đánh dấu Eligible/not eligible, không ẩn hẳn) — xem nhánh 1 ở mục kiến trúc phía trên |
 | `LiveTextPanel.tsx` | Winner — Basic options có thêm **Source** (dropdown mọi cột Data Type = Name **VÀ còn dữ liệu thật** trong Participants hiện tại, LUÔN hiện kể cả chỉ có 1 lựa chọn) để ghi đè cột Name mặc định cho ĐÚNG khung Winner Name này — xem `WinnerNameProps.nameSourceColumn` (`types.ts`) và `WinnerNameView.tsx`. Nhánh 2 ở mục kiến trúc phía trên — rỗng thì hiện `<select disabled>` placeholder, không dropdown trắng. "Interactions with Draw" LUÔN bật (không có checkbox — cả component chỉ tồn tại để phản ứng theo Draw), gồm 3 mục **Idle**/**Draw**/**Redraw** (2 mục sau đổi tên từ "When Revealed"/"When Disappear" cho khớp thuật ngữ chung với `DrawCycleFields.tsx`). **Idle** có dropdown **Appearance** giống Image/Text (đồng bộ hình dáng), nhưng Ý NGHĨA khác hẳn: `Disappear` (mặc định) = ẩn tên khi Reset (kèm **Effect**/**Delay (ms)** riêng — `idleEffect`/`idleDelayMs`, KHÁC `disappearEffect`/`disappearDelayMs` của Redraw vì Reset là sự kiện khác hẳn); `Appear` = GIỮ NGUYÊN tên đang hiện, Reset không xoá gì (Effect/Delay ẩn đi, không có tác dụng) — KHÔNG ảnh hưởng lúc mở lại landing (luôn rỗng lúc mount). **Draw**/**Redraw** mỗi mục CHỈ có **Effect** + **Delay (ms)**, KHÔNG dùng chung schema/component `DrawCycleFields.tsx` — nội dung Winner Name đổi theo từng lượt, không phải 1 thứ tĩnh nhị phân hiện/ẩn — xem mục "Winner Name (syncWithDraw luôn bật) — 3 trạng thái Idle/Revealed/Disappear" ở [present-mode.md](./present-mode.md) |
 | `LiveImagePanel.tsx` | Prize — "When Won" (trong "Self Interactions") có thêm **Ambient effect** (None/Spotlight) + **Delay (ms)**, xem mục "`PrizeWonAmbientEffect`" phía trên |
@@ -134,11 +153,12 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 |---|---|---|
 | **Basic** | Text | Nhãn/tiêu đề tĩnh |
 | | Image | Logo, banner, ảnh trang trí |
-| **Draw & Results** | Lucky Wheel | Vòng quay/Digit Roller gắn với Draw Engine — xem [lucky-wheel.md](./lucky-wheel.md) |
+| | Background | Ảnh nền phủ canvas — kéo-thả/resize tự do như Image (không còn là "nền trang" toàn cục), tối đa 1 cái/trang, chuẩn bị sẵn cho mở rộng video sau này |
+| **Draw** | Lucky Wheel | Vòng quay/Digit Roller gắn với Draw Engine — xem [lucky-wheel.md](./lucky-wheel.md) |
 | | Winner | Tên người trúng gần nhất |
 | | Prize | Ảnh giải vừa trúng gần nhất |
 | | Scoreboard | Bảng người trúng đã confirm, hiện qua popup |
-| **Live Info** | Current Time | Đồng hồ thời gian thực |
+| **Live** | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem [button-actions.md](./button-actions.md) |
 

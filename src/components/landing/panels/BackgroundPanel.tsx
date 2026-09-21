@@ -1,36 +1,42 @@
-import { useState } from "react";
-import { BackgroundConfig } from "@/lib/landing/types";
-import ColorField from "./ColorField";
+import { BackgroundProps, DEFAULT_BACKGROUND_DIM_AMOUNT, DrawCycleConfig } from "@/lib/landing/types";
+import DrawCycleFields from "./DrawCycleFields";
 
 interface BackgroundPanelProps {
-  background: BackgroundConfig;
-  onChange: (patch: Partial<BackgroundConfig>) => void;
+  props: BackgroundProps;
+  onChange: (patch: Partial<BackgroundProps>) => void;
 }
 
+const fieldClass =
+  "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
 const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 
-// 3 bước 1 lượt quay THẬT SỰ đi qua — dò từ DrawSequenceActions (useDrawSequence.ts), KHÔNG bịa
-// thêm mốc nào khác: Idle (chưa có candidate) → Spinning (candidate mới, sequence.spinning === true,
-// Wheel đang animate) → Revealed (spinning vừa về false, tên/số đã hiện — Confirm có chạy hay chưa
-// không tạo thêm mốc thị giác riêng nào). Tên nhóm "When Revealed" bên dưới đặt theo ĐÚNG bước này.
-//
-// Dim nền lúc Wheel Revealed — GIỮ NGUYÊN 100% field/logic đã có (dimOnSpinEnd, dimAmount,
-// dimStart/EndDelay/DurationMs, xem BackgroundConfig trong types.ts + BackgroundDimOverlay.tsx) —
-// panel này CHỈ tổ chức lại JSX/label cho khớp cấu trúc "Basic options" phẳng + "Interactions with
-// Draw" 2 cấp đã dùng cho các panel khác, không đổi hành vi/dữ liệu, tránh mất cấu hình landing cũ
-// đã lưu.
-export default function BackgroundPanel({ background, onChange }: BackgroundPanelProps) {
-  // Mở sẵn nếu tính năng đang bật (không giấu mất cấu hình user đã set), nhưng SAU ĐÓ hoàn toàn do
-  // người dùng tự đóng/mở — không đọc lại `background.dimOnSpinEnd` mỗi render (nếu không, sửa 1 số
-  // bất kỳ trong khối sẽ làm React ép lại đúng trạng thái mở lúc mount, "cãi" lại thao tác đóng tay
-  // của người dùng).
-  const [wheelSectionOpen, setWheelSectionOpen] = useState(() => !!background.dimOnSpinEnd);
+// Bộ mặc định lúc bật "Trigger with Draw" lần đầu — nền "sạch" lúc Idle, dim 80% lúc Draw (tôn Winner
+// Name/Lucky Wheel nổi bật khi vừa quay xong), sạch lại lúc Redraw rồi tự dim lại theo drawEffect —
+// cùng tinh thần "dim khi Reveal, sáng lại khi Draw tiếp" của tính năng dim nền cũ (đã gỡ khỏi
+// Background Panel toàn cục, giờ chuyển hẳn vào đây qua DrawCycleFields.tsx dùng chung với Image/Text).
+const DEFAULT_DRAW_CYCLE_ON: DrawCycleConfig = {
+  idleState: "disappear",
+  drawAction: "dim",
+  drawEffect: { effect: "crossfade", amount: DEFAULT_BACKGROUND_DIM_AMOUNT },
+  redrawAction: "disappear",
+  redrawEffect: { effect: "crossfade" },
+};
 
-  function handleImageFile(file: File) {
+// Panel của component Background:
+//   - Basic options: y hệt Image (Image + Fit), trừ Border radius (bo góc không có ý nghĩa cho 1 lớp
+//     phủ nền). Video sẽ thêm vào đây sau này (cùng field `srcDataUrl`, thêm loại file được accept) mà
+//     không cần đổi kiến trúc.
+//   - Self Interactions: CHƯA có mục nào cụ thể — để sẵn chỗ cho tính năng tương lai (vd phản ứng theo
+//     hover/click của người vận hành trên chính Background), không có field nào ở đây cho tới lúc đó.
+//   - Interactions with Draw: DÙNG CHUNG `DrawCycleFields.tsx` với Image/Text (KHÔNG viết riêng nữa) —
+//     chỉ khác ở `allowedStates` truyền vào: Background cho chọn đủ 4 giá trị Appearance
+//     (Appear/Disappear/Dim/Blur) thay vì 2, xem doc-comment DrawRestState trong types.ts.
+export default function BackgroundPanel({ props, onChange }: BackgroundPanelProps) {
+  function handleFile(file: File) {
     if (file.type !== "image/png" && file.type !== "image/jpeg") return;
     const reader = new FileReader();
-    reader.onload = () => onChange({ imageDataUrl: reader.result as string });
+    reader.onload = () => onChange({ srcDataUrl: reader.result as string });
     reader.readAsDataURL(file);
   }
 
@@ -38,150 +44,55 @@ export default function BackgroundPanel({ background, onChange }: BackgroundPane
     <div className="space-y-4">
       <div className="space-y-3">
         <span className={groupLabelClass}>Basic options</span>
-
         <div>
-          <label className={labelClass}>Type</label>
+          <label className={labelClass}>Image (PNG, JPG)</label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg"
+            className="text-xs text-base-300"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+          />
+          {props.srcDataUrl && (
+            <button
+              onClick={() => onChange({ srcDataUrl: null })}
+              className="mt-1 text-left text-[11px] text-danger-500 hover:underline"
+            >
+              Remove image
+            </button>
+          )}
+        </div>
+        <div>
+          <label className={labelClass}>Fit</label>
           <select
-            className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-            value={background.type}
-            onChange={(e) => onChange({ type: e.target.value as "color" | "image" })}
+            className={fieldClass}
+            value={props.fit}
+            onChange={(e) => onChange({ fit: e.target.value as BackgroundProps["fit"] })}
           >
-            <option value="color">Solid Color</option>
-            <option value="image">Image</option>
+            <option value="cover">Cover</option>
+            <option value="contain">Contain</option>
+            <option value="stretch">Stretch</option>
           </select>
         </div>
-
-        <div>
-          <label className={labelClass}>{background.type === "image" ? "Letterbox color" : "Color"}</label>
-          <ColorField value={background.color} onChange={(color) => onChange({ color })} className="h-8" />
-        </div>
-
-        {background.type === "image" && (
-          <>
-            <div>
-              <label className={labelClass}>Image (PNG, JPG)</label>
-              <input
-                type="file"
-                accept="image/png,image/jpeg"
-                className="text-xs text-base-300"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleImageFile(file);
-                }}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Fit</label>
-              <select
-                className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100"
-                value={background.imageFit ?? "cover"}
-                onChange={(e) => onChange({ imageFit: e.target.value as "cover" | "contain" | "stretch" })}
-              >
-                <option value="cover">Cover</option>
-                <option value="contain">Contain</option>
-                <option value="stretch">Stretch</option>
-              </select>
-            </div>
-          </>
-        )}
       </div>
 
       <div className="h-px bg-base-800" />
 
       <div className="space-y-2">
-        <span className={groupLabelClass}>Interactions with Draw</span>
-
-        <details
-          open={wheelSectionOpen}
-          onToggle={(e) => setWheelSectionOpen(e.currentTarget.open)}
-          className="rounded-lg border border-base-800"
-        >
-          <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
-            When Revealed
-          </summary>
-
-          <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
-            <label className="flex items-center gap-1.5 text-xs text-base-200">
-              <input
-                type="checkbox"
-                checked={!!background.dimOnSpinEnd}
-                onChange={(e) => onChange({ dimOnSpinEnd: e.target.checked })}
-                className="accent-gold-500"
-              />
-              Dim background while Revealed
-            </label>
-
-            {background.dimOnSpinEnd && (
-              <>
-                <div>
-                  <label className={labelClass}>Dim amount ({background.dimAmount ?? 50}%)</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    className="w-full accent-gold-500"
-                    value={background.dimAmount ?? 50}
-                    onChange={(e) => onChange({ dimAmount: Number(e.target.value) })}
-                  />
-                </div>
-
-                <div className="rounded-lg border border-base-800 p-2">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">Spinning → Revealed</span>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div>
-                      <label className={labelClass}>Delay (ms)</label>
-                      <input
-                        type="number"
-                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                        value={background.dimStartDelayMs ?? 0}
-                        onChange={(e) => onChange({ dimStartDelayMs: Number(e.target.value) })}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Duration (ms)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                        value={background.dimStartDurationMs ?? 1000}
-                        onChange={(e) => onChange({ dimStartDurationMs: Math.max(0, Number(e.target.value)) })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-base-800 p-2">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-base-400">
-                    Revealed → Spinning (next draw)
-                  </span>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div>
-                      <label className={labelClass}>Delay (ms)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                        value={background.dimEndDelayMs ?? 0}
-                        onChange={(e) => onChange({ dimEndDelayMs: Math.max(0, Number(e.target.value)) })}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Duration (ms)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500"
-                        value={background.dimEndDurationMs ?? 1000}
-                        onChange={(e) => onChange({ dimEndDurationMs: Math.max(0, Number(e.target.value)) })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </details>
+        <span className={groupLabelClass}>Self Interactions</span>
+        <p className="text-[11px] text-base-500">Nothing here yet — coming soon.</p>
       </div>
+
+      <div className="h-px bg-base-800" />
+
+      <DrawCycleFields
+        props={props}
+        onChange={onChange}
+        allowedStates={["appear", "disappear", "dim", "blur"]}
+        defaultCycleOn={DEFAULT_DRAW_CYCLE_ON}
+      />
     </div>
   );
 }

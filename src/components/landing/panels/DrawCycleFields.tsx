@@ -8,9 +8,9 @@ import {
   WinnerTransitionEffect,
 } from "@/lib/landing/types";
 
-// Field shape dùng chung bởi ImageProps/TextProps cho tính năng "Interactions with Draw" — component
-// nào có ĐÚNG 2 field này (đều optional) thì dùng được component này, không cần khai báo interface
-// riêng cho từng loại.
+// Field shape dùng chung bởi ImageProps/TextProps/BackgroundProps cho tính năng "Interactions with
+// Draw" — component nào có ĐÚNG 2 field này (đều optional) thì dùng được component này, không cần
+// khai báo interface riêng cho từng loại.
 export interface DrawCycleHostProps {
   syncWithDraw?: boolean;
   drawCycle?: DrawCycleConfig;
@@ -19,6 +19,15 @@ export interface DrawCycleHostProps {
 interface DrawCycleFieldsProps {
   props: DrawCycleHostProps;
   onChange: (patch: Partial<DrawCycleHostProps>) => void;
+  // 4 giá trị Appearance (xem doc-comment DrawRestState trong types.ts) đều DÙNG CHUNG được ở tầng
+  // type, nhưng KHÔNG PHẢI component nào cũng cho chọn cả 4 — Image/Text chỉ truyền 2 giá trị đầu
+  // (hoặc bỏ trống, mặc định đúng y hệt bản trước khi generic hoá component này), Background truyền
+  // đủ cả 4. Đây là CHỖ DUY NHẤT khai báo "domain" — mọi logic validate/label bên dưới tự đọc từ đây,
+  // không hardcode 2 giá trị nữa.
+  allowedStates?: DrawRestState[];
+  // Bộ mặc định nạp lúc bật "Trigger with Draw" lần đầu — mỗi component có 1 bộ hợp lý riêng (Image/
+  // Text: ẩn lúc Idle, hiện lúc Draw; Background: xem BackgroundPanel.tsx).
+  defaultCycleOn?: DrawCycleConfig;
 }
 
 const fieldClass =
@@ -30,16 +39,25 @@ const summaryClass = "flex cursor-pointer select-none items-center justify-betwe
 const detailsBodyClass = "space-y-2 border-t border-base-800 px-2.5 pb-2.5 pt-2.5";
 const arrowLabelClass = "text-[10px] font-normal normal-case text-base-500";
 
-function opposite(state: DrawRestState): DrawRestState {
-  return state === "appear" ? "disappear" : "appear";
-}
+const STATE_LABEL: Record<DrawRestState, string> = { appear: "Appear", disappear: "Disappear", dim: "Dim", blur: "Blur" };
+const DEFAULT_ALLOWED_STATES: DrawRestState[] = ["appear", "disappear"];
+const DEFAULT_AMOUNT: Record<"dim" | "blur", number> = { dim: 80, blur: 16 };
 
 function actionLabel(action: DrawPhaseAction): string {
-  return action === "none" ? "None" : action === "appear" ? "Appear" : "Disappear";
+  return action === "none" ? "None" : STATE_LABEL[action];
+}
+
+// Giá trị KHÔNG được chọn cho phase `phase` — quy tắc CHUNG: 1 phase không được TRÙNG giá trị thật
+// (khác "none") gần nhất phía TRƯỚC nó trong chuỗi Idle→Draw→Redraw (xem doc-comment DrawPhaseAction
+// trong types.ts). Draw so với Idle; Redraw so với Draw NẾU Draw có giá trị thật, ngược lại so với
+// Idle (Draw="none" coi như "bỏ qua", Redraw so sánh với mốc thật gần nhất trước đó là Idle).
+function forbiddenState(cycle: DrawCycleConfig, phase: "draw" | "redraw"): DrawRestState {
+  if (phase === "draw") return cycle.idleState;
+  return cycle.drawAction !== "none" ? cycle.drawAction : cycle.idleState;
 }
 
 // Bật "Trigger with Draw" lần đầu (chưa cấu hình gì) → nạp sẵn 1 bộ mặc định hợp lý (ẩn lúc Idle,
-// hiện lúc Draw, ẩn rồi hiện lại lúc Redraw).
+// hiện lúc Draw, ẩn rồi hiện lại lúc Redraw). Dùng khi caller không tự truyền `defaultCycleOn` riêng.
 const DEFAULT_DRAW_CYCLE_ON: DrawCycleConfig = {
   idleState: "disappear",
   drawAction: "appear",
@@ -50,72 +68,116 @@ const DEFAULT_DRAW_CYCLE_ON: DrawCycleConfig = {
 
 function effectFields(
   value: DrawPhaseEffectConfig | undefined,
+  targetState: DrawRestState,
   onChange: (patch: Partial<DrawPhaseEffectConfig>) => void
 ) {
   const config = value ?? { effect: "crossfade" as WinnerTransitionEffect };
+  const showAmount = targetState === "dim" || targetState === "blur";
+  const amount = config.amount ?? DEFAULT_AMOUNT[targetState === "blur" ? "blur" : "dim"];
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <div>
-        <label className={labelClass}>Effect</label>
-        <select
-          className={fieldClass}
-          value={config.effect}
-          onChange={(e) => onChange({ effect: e.target.value as WinnerTransitionEffect })}
-        >
-          {WINNER_TRANSITION_EFFECTS.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={labelClass}>Effect</label>
+          <select
+            className={fieldClass}
+            value={config.effect}
+            onChange={(e) => onChange({ effect: e.target.value as WinnerTransitionEffect })}
+          >
+            {WINNER_TRANSITION_EFFECTS.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Delay (ms)</label>
+          <input
+            type="number"
+            min={0}
+            step={100}
+            placeholder="0"
+            className={fieldClass}
+            value={config.delayMs ?? ""}
+            onChange={(e) =>
+              onChange({ delayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
+            }
+          />
+        </div>
       </div>
-      <div>
-        <label className={labelClass}>Delay (ms)</label>
-        <input
-          type="number"
-          min={0}
-          step={100}
-          placeholder="0"
-          className={fieldClass}
-          value={config.delayMs ?? ""}
-          onChange={(e) =>
-            onChange({ delayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
-          }
-        />
-      </div>
-    </div>
+      {showAmount &&
+        (targetState === "dim" ? (
+          <div>
+            <label className={labelClass}>Dim amount ({amount}%)</label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              className="w-full accent-gold-500"
+              value={amount}
+              onChange={(e) => onChange({ amount: Number(e.target.value) })}
+            />
+          </div>
+        ) : (
+          <div>
+            <label className={labelClass}>Blur amount ({amount}px)</label>
+            <input
+              type="range"
+              min={0}
+              max={40}
+              className="w-full accent-gold-500"
+              value={amount}
+              onChange={(e) => onChange({ amount: Number(e.target.value) })}
+            />
+          </div>
+        ))}
+    </>
   );
 }
 
-// Khối "Interactions with Draw" DÙNG CHUNG bởi ImagePanel.tsx/TextPanel.tsx — cả 2 component đều
-// hiện 1 thứ TĨNH do người dùng tự đặt (ảnh/chuỗi chữ), không đổi theo từng lượt quay, nên hợp với
-// model chung Idle/Draw/Redraw x Appearance (xem doc-comment DrawCycleConfig trong types.ts). Winner
-// Name KHÔNG dùng component này (LiveTextPanel.tsx) vì nội dung của nó (tên người trúng) THẬT SỰ đổi
-// theo từng lượt, dùng cơ chế `useRevealed` riêng — xem drawRevealHooks.ts.
-export default function DrawCycleFields({ props, onChange }: DrawCycleFieldsProps) {
+// Khối "Interactions with Draw" DÙNG CHUNG bởi ImagePanel.tsx/TextPanel.tsx/BackgroundPanel.tsx — cả
+// 3 component đều hiện 1 thứ TĨNH do người dùng tự đặt (ảnh/chuỗi chữ/ảnh nền), không đổi theo từng
+// lượt quay, nên hợp với model chung Idle/Draw/Redraw x Appearance (xem doc-comment DrawCycleConfig
+// trong types.ts). Winner Name KHÔNG dùng component này (LiveTextPanel.tsx) vì nội dung của nó (tên
+// người trúng) THẬT SỰ đổi theo từng lượt, dùng cơ chế `useRevealed` riêng — xem drawRevealHooks.ts.
+export default function DrawCycleFields({ props, onChange, allowedStates, defaultCycleOn }: DrawCycleFieldsProps) {
   const [openPhase, setOpenPhase] = useState<Record<string, boolean>>({ idle: true, draw: true, redraw: true });
+  const states = allowedStates ?? DEFAULT_ALLOWED_STATES;
+  const defaultOn = defaultCycleOn ?? DEFAULT_DRAW_CYCLE_ON;
 
   function toggleSync(enabled: boolean) {
     if (enabled && !props.drawCycle) {
-      onChange({ syncWithDraw: true, drawCycle: DEFAULT_DRAW_CYCLE_ON });
+      onChange({ syncWithDraw: true, drawCycle: defaultOn });
     } else {
       onChange({ syncWithDraw: enabled });
     }
   }
 
-  const cycle = props.drawCycle ?? DEFAULT_DRAW_CYCLE_ON;
+  const cycle = props.drawCycle ?? defaultOn;
 
   function updateCycle(patch: Partial<DrawCycleConfig>) {
     onChange({ drawCycle: { ...cycle, ...patch } });
   }
 
   // Đổi Idle → tự sửa lại Draw/Redraw nếu giá trị đang lưu KHÔNG còn hợp lệ với Idle mới (không được
-  // để lại 1 cặp mốc liền kề TRÙNG trạng thái nhau trong dữ liệu đã lưu).
+  // để lại 1 cặp mốc liền kề TRÙNG trạng thái nhau trong dữ liệu đã lưu). Domain 2 giá trị (Image/
+  // Text) LUÔN còn đúng 1 lựa chọn hợp lệ duy nhất sau khi loại bỏ giá trị cấm — tự chọn thẳng luôn
+  // (giữ NGUYÊN hành vi auto-flip cũ). Domain rộng hơn (Background) có thể còn NHIỀU lựa chọn hợp lệ —
+  // không đoán bừa, reset về "none" để người dùng tự chọn lại.
   function setIdleState(state: DrawRestState) {
-    const flipped = opposite(state);
     const patch: Partial<DrawCycleConfig> = { idleState: state };
-    if (cycle.drawAction !== "none" && cycle.drawAction !== flipped) patch.drawAction = flipped;
-    if (cycle.redrawAction !== "none" && cycle.redrawAction !== state) patch.redrawAction = state;
+    const drawForbidden = state;
+    if (cycle.drawAction !== "none" && cycle.drawAction === drawForbidden) {
+      const remaining = states.filter((s) => s !== drawForbidden);
+      patch.drawAction = remaining.length === 1 ? remaining[0] : "none";
+    }
+    const effectiveDraw = patch.drawAction ?? cycle.drawAction;
+    const redrawForbidden = effectiveDraw !== "none" ? effectiveDraw : state;
+    if (cycle.redrawAction !== "none" && cycle.redrawAction === redrawForbidden) {
+      const remaining = states.filter((s) => s !== redrawForbidden);
+      patch.redrawAction = remaining.length === 1 ? remaining[0] : "none";
+    }
     updateCycle(patch);
   }
 
@@ -123,8 +185,8 @@ export default function DrawCycleFields({ props, onChange }: DrawCycleFieldsProp
     setOpenPhase((s) => ({ ...s, [key]: open }));
   }
 
-  const drawInvalid = cycle.idleState; // giá trị Draw KHÔNG được chọn (trùng Idle)
-  const redrawInvalid = opposite(cycle.idleState); // giá trị Redraw KHÔNG được chọn (đối lập Idle)
+  const drawForbidden = forbiddenState(cycle, "draw");
+  const redrawForbidden = forbiddenState(cycle, "redraw");
 
   return (
     <div className="space-y-2">
@@ -154,11 +216,14 @@ export default function DrawCycleFields({ props, onChange }: DrawCycleFieldsProp
                   value={cycle.idleState}
                   onChange={(e) => setIdleState(e.target.value as DrawRestState)}
                 >
-                  <option value="appear">Appear</option>
-                  <option value="disappear">Disappear</option>
+                  {states.map((s) => (
+                    <option key={s} value={s}>
+                      {STATE_LABEL[s]}
+                    </option>
+                  ))}
                 </select>
               </div>
-              {effectFields(cycle.idleEffect, (patch) =>
+              {effectFields(cycle.idleEffect, cycle.idleState, (patch) =>
                 updateCycle({ idleEffect: { ...(cycle.idleEffect ?? { effect: "crossfade" }), ...patch } })
               )}
             </div>
@@ -178,16 +243,15 @@ export default function DrawCycleFields({ props, onChange }: DrawCycleFieldsProp
                   onChange={(e) => updateCycle({ drawAction: e.target.value as DrawPhaseAction })}
                 >
                   <option value="none">None</option>
-                  <option value="appear" disabled={drawInvalid === "appear"}>
-                    Appear
-                  </option>
-                  <option value="disappear" disabled={drawInvalid === "disappear"}>
-                    Disappear
-                  </option>
+                  {states.map((s) => (
+                    <option key={s} value={s} disabled={s === drawForbidden}>
+                      {STATE_LABEL[s]}
+                    </option>
+                  ))}
                 </select>
               </div>
               {cycle.drawAction !== "none" &&
-                effectFields(cycle.drawEffect, (patch) =>
+                effectFields(cycle.drawEffect, cycle.drawAction, (patch) =>
                   updateCycle({ drawEffect: { ...(cycle.drawEffect ?? { effect: "crossfade" }), ...patch } })
                 )}
             </div>
@@ -207,22 +271,21 @@ export default function DrawCycleFields({ props, onChange }: DrawCycleFieldsProp
                   onChange={(e) => updateCycle({ redrawAction: e.target.value as DrawPhaseAction })}
                 >
                   <option value="none">None</option>
-                  <option value="appear" disabled={redrawInvalid === "appear"}>
-                    Appear
-                  </option>
-                  <option value="disappear" disabled={redrawInvalid === "disappear"}>
-                    Disappear
-                  </option>
+                  {states.map((s) => (
+                    <option key={s} value={s} disabled={s === redrawForbidden}>
+                      {STATE_LABEL[s]}
+                    </option>
+                  ))}
                 </select>
               </div>
               {cycle.redrawAction !== "none" && (
                 <>
-                  {effectFields(cycle.redrawEffect, (patch) =>
+                  {effectFields(cycle.redrawEffect, cycle.redrawAction, (patch) =>
                     updateCycle({ redrawEffect: { ...(cycle.redrawEffect ?? { effect: "crossfade" }), ...patch } })
                   )}
                   {cycle.drawAction !== "none" && (
                     <p className="text-[10px] text-base-500">
-                      Then reveals the new result using the same effect as Draw above.
+                      Then switches to the new result using the same effect as Draw above.
                     </p>
                   )}
                 </>
