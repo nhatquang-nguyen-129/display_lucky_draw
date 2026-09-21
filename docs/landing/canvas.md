@@ -55,8 +55,9 @@ tool, còn PAN nếu đang bật Hand tool — không cần giữ chuột kéo m
 
 Toolbar nổi góc trái trên: **Select** (phím `V`/`Esc`) / **Hand** (phím `H`, tắt khi đã fit-to-screen
 vì không còn gì để pan) / **Gridline** (phím `G`) / **Add component** (mở `ComponentPalette`, xem
-[properties-panel.md](./properties-panel.md)) / **Layers** (mở/ẩn + sắp xếp component) / **Page
-settings** (chỉnh background — mở Properties Panel khi chưa chọn gì).
+[properties-panel.md](./properties-panel.md)) / **Layers** (mở/ẩn + sắp xếp component). Không còn nút
+"Page settings" riêng — Background giờ thêm/chỉnh qua Add component + Properties Panel như mọi
+component khác (xem [properties-panel.md](./properties-panel.md)).
 
 Di chuột vào nút Select/Hand/Gridline hiện 1 popup nhỏ (tên nút + phím tắt, `ToolbarTooltip` trong
 `LandingBuilderWindow.tsx`) thay cho tooltip mặc định của trình duyệt — có độ trễ nhỏ để không nhấp

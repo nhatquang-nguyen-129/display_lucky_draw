@@ -63,14 +63,14 @@ Mở Present Mode/`LandingPage.tsx` cho 1 session đã có `draw_results` từ t
 CHƯA có `candidate` (`useDrawSequence.ts`) trả thẳng `data` — `data.results` lúc đó là **toàn bộ lịch
 sử từ DB**, không phải "kết quả mới". Mọi component tự-quay/tự-hiện lại chỉ nhìn `results[0]?.id` để
 quyết định "có nên chạy hay không" nên hiểu nhầm dòng lịch sử cũ là 1 kết quả mới: Digit Roller/Wheel
-tự quay, Winner Name tự hiện tên, nền tự dim — vài giây sau khi mount, dù chưa ai bấm Draw.
+tự quay, Winner Name tự hiện tên — vài giây sau khi mount, dù chưa ai bấm Draw.
 
 Sửa bằng `isLiveDrawResultId(id)` = `id?.startsWith("pending-")` (hằng `PENDING_RESULT_ID_PREFIX`
 trong `src/lib/landing/types.ts`) — chỉ dòng LIVE (đang có 1 lượt Draw thật trong phiên Present hiện
 tại, id do `effectiveData` độn vào) mới coi là "có kết quả để phản ứng". Áp dụng ở
 `WheelTemplate`/`DigitRollerTemplate` (điều kiện bắt đầu quay), `WinnerNameView`/`TextView` (feed
-`useRevealed` một id LIVE-only, id khác thì luôn `undefined` = Idle), `BackgroundDimOverlay` (điều
-kiện dim), và `LandingRenderer` (remount-on-result key = id LIVE hoặc `"idle"`). Kết quả: mở
+`useRevealed` một id LIVE-only, id khác thì luôn `undefined` = Idle), và `LandingRenderer`
+(remount-on-result key = id LIVE hoặc `"idle"`). Kết quả: mở
 Landing/Present luôn về màn hình Idle; ai muốn xem lịch sử trúng thưởng thì mở Scoreboard.
 
 **Quyết định sản phẩm liên quan (đừng làm lại)**: KHÔNG xây tính năng "khôi phục winner gần nhất khi
@@ -141,7 +141,7 @@ Properties Panel của Winner Name (`LiveTextPanel.tsx`) tổ chức 3 mục **I
 (2 mục sau đổi tên từ "When Revealed"/"When Disappear" cũ cho khớp thuật ngữ chung, xem mục dưới) —
 mỗi mục CHỈ gồm đúng **Effect** + **Delay (ms)** — xem thêm [properties-panel.md](./properties-panel.md).
 
-## `useDrawCycleVisibility` — model Idle/Draw/Redraw (Image, Text)
+## `useDrawCycleVisibility` — model Idle/Draw/Redraw (Image, Text, Background)
 
 `useRevealed` ở trên GẮN CỨNG "Appear = lúc có kết quả mới" và "Disappear = lúc kết quả cũ bị thay" —
 đúng cho Winner Name (nội dung THẬT SỰ đổi theo từng lượt — tên người trúng khác nhau mỗi lần, không
@@ -149,29 +149,38 @@ có gì để hiện lúc Idle vì chưa có ai trúng cả) nhưng SAI cho 1 th
 hay 1 ảnh trang trí generic như Podium (Image): hoàn toàn có thể muốn nó hiện SẴN lúc Idle rồi ẩn đi
 lúc Draw đang diễn ra, tức là ĐẢO NGƯỢC chiều mặc định — model cũ không cấu hình được việc đó.
 
-`useDrawCycleVisibility` (`drawRevealHooks.ts`, dùng bởi `ImageView.tsx` VÀ `TextView.tsx` khi
-`syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem properties-panel.md) tách
-đúng 3 mốc THẬT của quy trình quay — **Idle** (chưa Draw lần nào / vừa vào Landing, hoặc vừa Reset),
-**Draw** (1 lượt Draw mới, đang KHÔNG hiện gì trước đó), **Redraw** (1 lượt Draw mới, ĐANG hiện kết
-quả lượt trước). Mỗi mốc có 1 dropdown **Appearance**, nhưng KHÔNG cho tự do chọn bừa (bản trước từng
-cho Idle bật cả Disappear lẫn Appear cùng lúc, tạo ra 2 hiệu ứng ĐỐI LẬP đua nhau ngay lúc mới vào
-trang — vô nghĩa, vì Idle là trạng thái NGHỈ/mặc định ban đầu, chỉ có ĐÚNG 1 kết quả cuối):
-- **Idle** (`idleState` — `DrawRestState`, CHỈ 2 giá trị `appear`/`disappear`, KHÔNG có "none" vì Idle
-  luôn phải có 1 dáng vẻ mặc định): hiệu ứng đi kèm (`idleEffect`) chạy lúc QUAY VỀ idleState — CHỈ
-  xảy ra khi Reset, KHÔNG BAO GIỜ chạy lúc trang vừa mở (chưa từng rời Idle thì không có gì để "quay
-  về" cả — lúc mới vào Landing, `idleState` chỉ quyết định DÁNG VẺ TĨNH ban đầu, không có animation).
+`useDrawCycleVisibility` (`drawRevealHooks.ts`, dùng bởi `ImageView.tsx`/`TextView.tsx`/
+`BackgroundView.tsx` khi `syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem
+properties-panel.md) tách đúng 3 mốc THẬT của quy trình quay — **Idle** (chưa Draw lần nào / vừa vào
+Landing, hoặc vừa Reset), **Draw** (1 lượt Draw mới, đang KHÔNG hiện gì trước đó), **Redraw** (1 lượt
+Draw mới, ĐANG hiện kết quả lượt trước). Mỗi mốc có 1 dropdown **Appearance**, nhưng KHÔNG cho tự do
+chọn bừa (bản trước từng cho Idle bật cả Disappear lẫn Appear cùng lúc, tạo ra 2 hiệu ứng ĐỐI LẬP đua
+nhau ngay lúc mới vào trang — vô nghĩa, vì Idle là trạng thái NGHỈ/mặc định ban đầu, chỉ có ĐÚNG 1 kết
+quả cuối). Appearance có 4 giá trị PEER — `appear`/`disappear`/`dim`/`blur` (`DrawRestState` trong
+`types.ts`) — nhưng Image/Text CHỈ cho chọn 2 giá trị đầu qua `allowedStates` truyền vào
+`DrawCycleFields.tsx` (Background truyền đủ cả 4, xem properties-panel.md):
+- **Idle** (`idleState` — `DrawRestState`, KHÔNG có "none" vì Idle luôn phải có 1 dáng vẻ mặc định):
+  hiệu ứng đi kèm (`idleEffect`) chạy lúc QUAY VỀ idleState — CHỈ xảy ra khi Reset, KHÔNG BAO GIỜ chạy
+  lúc trang vừa mở (chưa từng rời Idle thì không có gì để "quay về" cả — lúc mới vào Landing,
+  `idleState` chỉ quyết định DÁNG VẺ TĨNH ban đầu, không có animation).
 - **Draw** (`drawAction` — `DrawPhaseAction`, thêm giá trị `none`): dropdown vô hiệu hoá (disable)
-  ngay lựa chọn TRÙNG `idleState` — chỉ còn `none` (Draw không đổi gì) hoặc giá trị ĐỐI LẬP idleState.
-- **Redraw** (`redrawAction` — cùng type): dropdown vô hiệu hoá lựa chọn ĐỐI LẬP `idleState` — chỉ
-  còn `none` (Redraw không đổi gì) hoặc giá trị TRÙNG idleState. Khác `none` thì chạy `redrawEffect`
-  để quay VỀ idleState, rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp bằng CHÍNH `drawEffect`
-  để quay LẠI trạng thái Draw, SAU KHI `redrawEffect` chạy xong HẲN (nối tiếp thật, `delayMs` đo từ
-  lúc đó chứ không phải từ lúc bấm Redraw) — không có field effect riêng cho bước "hiện lại" này, vì
-  bản chất "công bố kết quả" là 1 hành động chung dù Draw lần đầu hay Redraw.
+  ngay lựa chọn TRÙNG `idleState` — chỉ còn `none` (Draw không đổi gì) hoặc 1 giá trị KHÁC idleState
+  (domain 2 giá trị chỉ còn ĐÚNG 1 lựa chọn — ép luân phiên nhị phân y hệt bản cũ; domain 4 giá trị
+  của Background còn NHIỀU lựa chọn hơn).
+- **Redraw** (`redrawAction` — cùng type): dropdown vô hiệu hoá lựa chọn TRÙNG `drawAction` (nếu
+  `drawAction !== "none"`, ngược lại TRÙNG `idleState`) — chỉ còn `none` (Redraw không đổi gì) hoặc 1
+  giá trị khác giá trị đó. Khác `none` thì chạy `redrawEffect` để chuyển sang trạng thái Redraw chọn,
+  rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp bằng CHÍNH `drawEffect` để chuyển LẠI trạng
+  thái Draw, SAU KHI `redrawEffect` chạy xong HẲN (nối tiếp thật, `delayMs` đo từ lúc đó chứ không
+  phải từ lúc bấm Redraw) — không có field effect riêng cho bước "đổi lại" này, vì bản chất "công bố
+  kết quả" là 1 hành động chung dù Draw lần đầu hay Redraw. Với domain 2 giá trị, quy tắc "khác
+  drawAction" ⟺ "trùng idleState" (vì drawAction luôn bị ép khác idleState) — giống hệt bản cũ.
 
 `DrawCycleFields.tsx` tự sửa `drawAction`/`redrawAction` mỗi khi đổi `idleState` nếu giá trị đang lưu
 không còn hợp lệ (vd Draw đang `appear`, đổi Idle thành `appear` luôn thì Draw tự nhảy sang
-`disappear`) — không bao giờ để lại 1 cặp mốc liền kề TRÙNG trạng thái nhau trong dữ liệu đã lưu.
+`disappear`) — CHỈ tự chọn thẳng khi domain (2 giá trị, Image/Text) còn ĐÚNG 1 lựa chọn hợp lệ duy
+nhất; domain rộng hơn (Background) không đoán bừa, reset về `none`. Không bao giờ để lại 1 cặp mốc
+liền kề TRÙNG trạng thái nhau trong dữ liệu đã lưu.
 
 Ví dụ Podium (idleState = `appear`): Idle hiện sẵn lúc đứng yên, Draw = `disappear` (ẩn đi khi bắt đầu
 quay), Redraw = `disappear` (tự ẩn lại dùng `redrawEffect`) rồi tự động hiện lại (dùng CHÍNH

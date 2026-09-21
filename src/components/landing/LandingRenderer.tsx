@@ -1,6 +1,5 @@
 import {
   availableParticipantColumns,
-  computeWheelRevealDelayMs,
   DrawSequenceActions,
   isLiveDrawResultId,
   LandingComponent,
@@ -11,10 +10,10 @@ import {
 } from "@/lib/landing/types";
 import Button from "@/components/Button";
 import "./landingEffects.css";
-import BackgroundDimOverlay from "./views/BackgroundDimOverlay";
 import EscapeKeyHandler from "./views/EscapeKeyHandler";
 import TextView from "./views/TextView";
 import ImageView from "./views/ImageView";
+import BackgroundView from "./views/BackgroundView";
 import LuckyWheelView from "./views/LuckyWheelView";
 import WinnerNameView from "./views/WinnerNameView";
 import PrizeImageView from "./views/PrizeImageView";
@@ -57,7 +56,7 @@ const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["prizeImage"]);
 // lệch pixel nhau — chỉ có 1 hàm biết cách vẽ mỗi loại component (renderComponent bên dưới).
 
 export default function LandingRenderer({ config, data, scale, interactive, sequence, clip = true }: LandingRendererProps) {
-  const { width, height, background } = config.canvas;
+  const { width, height } = config.canvas;
   // Ở Present Mode thật (interactive), Scoreboard KHÔNG vẽ trong vòng lặp per-component bình thường
   // ở khung x/y/width/height của nó — nó là 1 popup canh giữa màn hình, chỉ hiện khi được 1 Button
   // "showScoreboard" bật lên (xem khối riêng sau vòng lặp bên dưới). Ở Builder (không interactive)
@@ -74,10 +73,6 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   const scoreboards = config.components.filter(
     (c): c is Extract<LandingComponent, { type: "scoreboard" }> => c.type === "scoreboard"
   );
-  // CHỈ còn dùng cho BackgroundDimOverlay.tsx (dim nền sau khi Wheel quay xong hẳn) — WinnerNameView/
-  // TextView KHÔNG còn phụ thuộc giá trị này nữa, tự quản lý 3 trạng thái Idle/Revealed/Disappear qua
-  // appearDelayMs/disappearDelayMs riêng (xem doc-comment WinnerNameProps trong types.ts).
-  const winnerRevealDelayMs = computeWheelRevealDelayMs(config.components);
   // `clip={false}` là tín hiệu RIÊNG LandingCanvas.tsx đã dùng sẵn để tự nhận diện "đây là canvas kéo
   // thả của Builder" (xem doc-comment `clip` trong LandingRendererProps) — dùng LẠI đúng tín hiệu này
   // cho WinnerNameView/TextView thay vì suy luận qua `interactive`, vì LandingPage.tsx (preview
@@ -97,23 +92,11 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         height,
         transform: `scale(${scale})`,
         transformOrigin: "top left",
-        backgroundColor: background.color,
-        backgroundImage:
-          background.type === "image" && background.imageDataUrl ? `url(${background.imageDataUrl})` : undefined,
-        backgroundSize:
-          background.imageFit === "contain" ? "contain" : background.imageFit === "stretch" ? "100% 100%" : "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
+        // Nền mặc định LUÔN đen — phần canvas không được component Background nào (loại "background",
+        // xem BackgroundView.tsx) phủ tới thì giữ nguyên màu này, không còn config màu/letterbox riêng.
+        backgroundColor: "#000000",
       }}
     >
-      {/* CHỈ ở Present Mode thật (interactive) — Builder không cần thấy nền tối dần đi trong lúc đang
-          chỉnh sửa, dù bản thân overlay tự bất hoạt (return null) khi tính năng tắt hoặc chưa có kết
-          quả nào. Render TRƯỚC {sorted.map(...)} để luôn nằm DƯỚI mọi component (chỉ dim background,
-          không dim nội dung nổi trên nó) — xem BackgroundDimOverlay.tsx. */}
-      {interactive && (
-        <BackgroundDimOverlay background={background} data={data} winnerRevealDelayMs={winnerRevealDelayMs} />
-      )}
-
       {sorted.map((component) => {
         // Chỉ remount theo dòng kết quả LIVE (id "pending-*" — 1 lượt Draw đang diễn ra trong phiên
         // Present này). Kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở luôn quy về "idle" nên
@@ -293,6 +276,10 @@ function renderComponent(
     case "image":
       return (
         <ImageView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
+      );
+    case "background":
+      return (
+        <BackgroundView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
       );
     case "luckyWheel":
       return <LuckyWheelView component={component} data={data} />;

@@ -54,42 +54,58 @@ export interface TextProps {
   drawCycle?: DrawCycleConfig;
 }
 
-// "Appearance" NGHỈ (lúc Idle) của 1 component đồng bộ Draw — CHỈ có 1 trong 2 giá trị, vì Idle là
-// trạng thái ban đầu/mặc định (không phải 1 "hành động" như Draw/Redraw), nên chỉ CÓ MỘT kết quả cuối
-// hợp lý, không có "none" (khác DrawPhaseAction bên dưới) — Idle LUÔN phải có 1 dáng vẻ mặc định.
-export type DrawRestState = "appear" | "disappear";
+// "Appearance" — trạng thái ĐÍCH của 1 mốc (Idle/Draw/Redraw) trong chu trình đồng bộ Draw. 4 giá trị
+// PEER nhau, dùng CHUNG giữa mọi loại component có `syncWithDraw` (Text/Image CHỈ dùng 2 giá trị đầu
+// qua Panel của chúng — "dim"/"blur" không xuất hiện trong dropdown Appearance của chúng, dù type cho
+// phép — landing cũ chỉ từng lưu "appear"/"disappear" vẫn hợp lệ nguyên vẹn; Background dùng đủ cả 4,
+// xem BackgroundPanel.tsx):
+//   - "appear"/"disappear": nội dung hiện/ẩn hẳn (Text/Image/Background đều dùng được — với
+//     Background, "disappear" nghĩa là ẩn hẳn ảnh nền, lộ ra màu đen của canvas).
+//   - "dim"/"blur": CHỈ Background dùng — 1 lớp filter phủ lên ảnh (không ẩn ảnh, chỉ làm tối/mờ đi),
+//     xem `DrawPhaseEffectConfig.amount` bên dưới cho cường độ.
+// Idle LUÔN phải có 1 giá trị thật (không có "none" — Idle là trạng thái nghỉ mặc định, không phải 1
+// "hành động").
+export type DrawRestState = "appear" | "disappear" | "dim" | "blur";
 
 // Appearance của Draw/Redraw — thêm "none" (không làm gì, giữ nguyên trạng thái đang có) so với
-// DrawRestState của Idle. Properties Panel (ImagePanel.tsx) RÀNG BUỘC lựa chọn hợp lệ theo
-// `idleState` (xem DrawCycleConfig bên dưới), vô hiệu hoá (disabled) lựa chọn không hợp lệ ngay trên
-// dropdown — không cho tự do chọn bừa (đã thử cho Idle bật ĐỘC LẬP cả 2 chiều Appear/Disappear cùng
-// lúc ở bản trước, thấy ngay vô nghĩa: 2 hiệu ứng đối lập chạy đua nhau ngay khi mới vào trang).
+// DrawRestState của Idle. Properties Panel (ImagePanel.tsx/BackgroundPanel.tsx) RÀNG BUỘC lựa chọn
+// hợp lệ: 1 phase KHÔNG được trùng giá trị với phase THẬT (khác "none") gần nhất phía TRƯỚC nó trong
+// chuỗi Idle→Draw→Redraw (Draw so với Idle; Redraw so với Draw NẾU Draw có giá trị thật, ngược lại so
+// với Idle) — vô hiệu hoá (disabled) đúng 1 lựa chọn đó ngay trên dropdown, không cho tự do chọn bừa.
+// Với domain 2 giá trị (Text/Image) điều này ép Draw/Redraw luân phiên NHỊ PHÂN y hệt hành vi cũ
+// (Draw bắt buộc = giá trị còn lại duy nhất, Redraw bắt buộc quay về đúng idleState) — domain 4 giá
+// trị (Background) thì mỗi phase còn NHIỀU lựa chọn hợp lệ hơn (chỉ cấm đúng 1 giá trị vừa dùng ngay
+// trước, không ép phải quay lại ĐÚNG idleState như bản nhị phân).
 export type DrawPhaseAction = "none" | DrawRestState;
 
 export interface DrawPhaseEffectConfig {
   effect: WinnerTransitionEffect;
   delayMs?: number;
+  // CHỈ có ý nghĩa khi trạng thái ĐÍCH của phase này là "dim" (0-100, %) hoặc "blur" (px) — Text/Image
+  // không bao giờ đọc/ghi field này (Panel của chúng không cho chọn dim/blur). Xem
+  // DEFAULT_BACKGROUND_DIM_AMOUNT/DEFAULT_BACKGROUND_BLUR_AMOUNT bên dưới cho giá trị mặc định.
+  amount?: number;
 }
 
-// Toàn bộ chu trình hiện/ẩn theo Draw của 1 component TĨNH (dùng bởi ImageProps VÀ TextProps — cả 2
-// đều là "1 thứ cố định do người dùng tự đặt, không đổi theo từng lượt quay", khác Winner Name — tên
-// người trúng đổi theo TỪNG lượt, xem WinnerNameProps/useRevealed) — CHỈ 1 input tự do hoàn toàn
-// (`idleState`), còn `drawAction`/`redrawAction` bị RÀNG BUỘC theo nó để LUÔN giữ đúng thứ tự
-// xen kẽ hợp lý (không mốc nào TRÙNG trạng thái với mốc liền trước nó):
+// Toàn bộ chu trình hiện/ẩn (hoặc dim/blur) theo Draw của 1 component TĨNH (dùng bởi ImageProps/
+// TextProps/BackgroundProps — CẢ 3 đều là "1 thứ cố định do người dùng tự đặt, không đổi theo từng
+// lượt quay", khác Winner Name — tên người trúng đổi theo TỪNG lượt, xem WinnerNameProps/useRevealed)
+// — CHỈ 1 input tự do hoàn toàn (`idleState`), còn `drawAction`/`redrawAction` bị RÀNG BUỘC theo quy
+// tắc "khác giá trị thật gần nhất phía trước" (xem doc-comment DrawPhaseAction ở trên):
 //   - idleState   : trạng thái nghỉ (xem DrawRestState) — hiệu ứng đi kèm (`idleEffect`) CHẠY LÚC
 //     QUAY VỀ idleState, CHỈ xảy ra khi Reset (`resetSeq` đổi), KHÔNG BAO GIỜ chạy lúc trang vừa mở
 //     (chưa từng rời khỏi Idle thì không có gì để "quay về", xem useDrawCycleVisibility trong
 //     drawRevealHooks.ts).
-//   - drawAction  : "none" (Draw không đổi gì, giữ nguyên trạng thái đang có) HOẶC BẮT BUỘC là giá
-//     trị ĐỐI LẬP `idleState` — Panel vô hiệu hoá lựa chọn TRÙNG idleState trên dropdown. Khác "none"
-//     thì dùng `drawEffect` để chuyển sang trạng thái đó.
-//   - redrawAction: "none" (Redraw không đổi gì) HOẶC BẮT BUỘC là giá trị TRÙNG idleState (tức đối
-//     lập `drawAction`) — Panel vô hiệu hoá lựa chọn ĐỐI LẬP idleState trên dropdown. Khác "none" thì
-//     dùng `redrawEffect` để quay VỀ idleState, rồi — NẾU `drawAction !== "none"` — TỰ ĐỘNG chạy tiếp
-//     bằng CHÍNH `drawEffect` để quay LẠI trạng thái mà Draw đưa tới, SAU KHI `redrawEffect` chạy
-//     xong HẲN (nối tiếp thật, không đo song song) — đúng ý "biến mất rồi hiện lại ngay khi ấn quay
-//     lại". Không cần field effect riêng cho bước "hiện lại" này — công bố kết quả là ĐÚNG 1 hành
-//     động dù là Draw lần đầu hay Redraw.
+//   - drawAction  : "none" (Draw không đổi gì, giữ nguyên trạng thái đang có) HOẶC khác `idleState` —
+//     Panel vô hiệu hoá đúng lựa chọn TRÙNG idleState trên dropdown. Khác "none" thì dùng `drawEffect`
+//     để chuyển sang trạng thái đó.
+//   - redrawAction: "none" (Redraw không đổi gì) HOẶC khác `drawAction` (nếu `drawAction !== "none"`,
+//     ngược lại khác `idleState`) — Panel vô hiệu hoá đúng 1 lựa chọn đó trên dropdown. Khác "none"
+//     thì dùng `redrawEffect` để chuyển sang trạng thái đó, rồi — NẾU `drawAction !== "none"` — TỰ
+//     ĐỘNG chạy tiếp bằng CHÍNH `drawEffect` để chuyển LẠI trạng thái mà Draw đưa tới, SAU KHI
+//     `redrawEffect` chạy xong HẲN (nối tiếp thật, không đo song song) — đúng ý "đổi trạng thái rồi
+//     đổi lại ngay khi ấn quay tiếp". Không cần field effect riêng cho bước "đổi lại" này — công bố
+//     kết quả là ĐÚNG 1 hành động dù là Draw lần đầu hay Redraw.
 export interface DrawCycleConfig {
   idleState: DrawRestState;
   idleEffect?: DrawPhaseEffectConfig;
@@ -126,6 +142,37 @@ export interface TextComponent extends BaseComponent {
 export interface ImageComponent extends BaseComponent {
   type: "image";
   props: ImageProps;
+}
+
+// Giá trị `amount` mặc định khi 1 phase mới được đổi sang đích "dim"/"blur" mà chưa từng cấu hình gì
+// (xem BackgroundPanel.tsx) — Dim 80% theo đúng yêu cầu, Blur 16px chọn tạm 1 mức vừa phải.
+export const DEFAULT_BACKGROUND_DIM_AMOUNT = 80;
+export const DEFAULT_BACKGROUND_BLUR_AMOUNT = 16;
+
+// Component riêng cho ảnh nền (tách khỏi Image cũ) — về mặt props Basic options gần như giống hệt
+// ImageProps, tách type riêng CHỦ YẾU để sau này mở rộng thêm video mà không đụng gì tới Image thường
+// (2 mảng props sẽ tự phân kỳ dần theo nhu cầu). Không có borderRadius như Image — Background dùng để
+// phủ nền nên bo góc không có ý nghĩa. Không còn khái niệm màu nền/letterbox riêng nữa — phần canvas
+// không được Background nào phủ tới LUÔN là màu đen cố định (xem LandingRenderer.tsx).
+//
+// "Interactions with Draw" dùng THẲNG `DrawCycleConfig`/`DrawCycleFields.tsx` — CÙNG kiến trúc với
+// Image/Text (xem doc-comment DrawCycleConfig ở trên), chỉ khác ở Panel: Background cho chọn cả 4 giá
+// trị Appearance (Appear/Disappear/Dim/Blur) thay vì 2. "Self Interactions" (phản ứng theo thao tác
+// người vận hành với CHÍNH component này, khác "with Draw") — CHƯA có mục nào cụ thể, chỉ để sẵn chỗ
+// trong Properties Panel (xem BackgroundPanel.tsx) cho tính năng tương lai, không có field nào ở đây
+// cho tới lúc đó.
+export interface BackgroundProps {
+  srcDataUrl: string | null;
+  fit: "cover" | "contain" | "stretch";
+  // Mặc định undefined/false = ảnh nền luôn "sạch" (không filter gì) như hành vi cũ, landing đã lưu
+  // trước khi có tính năng này không bị ảnh hưởng — xem doc-comment tương tự ImageProps.syncWithDraw.
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
+}
+
+export interface BackgroundComponent extends BaseComponent {
+  type: "background";
+  props: BackgroundProps;
 }
 
 // `(string & {})` giữ gợi ý autocomplete cho các giá trị cố định bên dưới nhưng vẫn cho phép bất kỳ
@@ -692,6 +739,7 @@ export interface ButtonComponent extends BaseComponent {
 export type LandingComponent =
   | TextComponent
   | ImageComponent
+  | BackgroundComponent
   | LuckyWheelComponent
   | WinnerNameComponent
   | PrizeImageComponent
@@ -702,37 +750,11 @@ export type LandingComponent =
 
 export type LandingComponentType = LandingComponent["type"];
 
-export interface BackgroundConfig {
-  type: "color" | "image";
-  color: string; // hex — luôn có, dùng làm màu viền letterbox khi type = "image" không phủ hết khung
-  imageDataUrl?: string;
-  imageFit?: "cover" | "contain" | "stretch";
-  // Dim nền (phủ 1 lớp đen mờ dần lên TRÊN background, DƯỚI mọi component khác — "spotlight" cho nội
-  // dung như Winner Name/Button nổi bật hơn) khi Lucky Wheel trên trang đã quay xong hẳn — optional,
-  // mặc định TẮT hoàn toàn (field không tồn tại ở config cũ, đọc bằng `??` giữ đúng hành vi cũ, xem
-  // BackgroundDimOverlay.tsx). 2 CHIỀU tách biệt hoàn toàn, mỗi chiều tự có delay + thời gian chuyển
-  // riêng — "start" = dim XUỐNG sau khi Wheel quay xong, "end" = sáng LẠI sau khi bấm Draw/Discard lần
-  // tiếp (candidate mới xuất hiện). `dimAmount` là mức tối ĐÍCH dùng chung cho cả 2 chiều (chỉ có 1 độ
-  // tối "hết mức", không cần tách riêng).
-  dimOnSpinEnd?: boolean;
-  dimAmount?: number; // 0-100 (%) — độ tối khi dim hết mức (opacity lớp phủ đen = dimAmount/100)
-  // Trễ trước khi bắt đầu dim XUỐNG, tính từ lúc Wheel quay xong hẳn (cùng mốc winnerRevealDelayMs
-  // dùng cho WinnerNameView — xem computeWheelRevealDelayMs) — 0 = bắt đầu dim ngay lúc vừa dừng.
-  // ÂM = bắt đầu SỚM HƠN (từ lúc còn đang quay gần xong). DƯƠNG = trễ hơn, sau khi đã dừng hẳn.
-  dimStartDelayMs?: number;
-  dimStartDurationMs?: number; // ms — TỪ lúc bắt đầu dim xuống TỚI lúc dim hẳn (tốc độ chuyển mờ dần)
-  // Trễ trước khi bắt đầu sáng LẠI, tính từ lúc có candidate MỚI (bấm Draw/Discard lần tiếp) — luôn
-  // KHÔNG ÂM (không có khái niệm "trước khi Draw" ở đây, Draw là 1 sự kiện rời rạc).
-  dimEndDelayMs?: number;
-  dimEndDurationMs?: number; // ms — TỪ lúc bắt đầu sáng lại TỚI lúc sáng hẳn
-}
-
 export interface LandingConfig {
   version: 1;
   canvas: {
     width: number; // cố định 1920 ở v1
     height: number; // cố định 1080 ở v1 (16:9)
-    background: BackgroundConfig;
   };
   components: LandingComponent[];
 }
@@ -742,13 +764,18 @@ export const CANVAS_HEIGHT = 1080;
 
 export const DEFAULT_LANDING_CONFIG: LandingConfig = {
   version: 1,
-  canvas: {
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
-    background: { type: "color", color: "#FFFFFF" },
-  },
+  canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
   components: [],
 };
+
+// Hình dạng `canvas.background` cũ (trước khi Background trở thành 1 component kéo-thả bình thường
+// như Image) — CHỈ dùng để migrate landing đã lưu trước đây, không còn xuất hiện ở LandingConfig hiện
+// tại. Type "color" bị bỏ hẳn (không migrate — canvas giờ mặc định luôn đen, xem LandingRenderer.tsx).
+interface LegacyBackgroundConfig {
+  type?: "color" | "image";
+  imageDataUrl?: string;
+  imageFit?: "cover" | "contain" | "stretch";
+}
 
 /** Parse an toàn — bất kỳ lỗi/thiếu field nào cũng rơi về config rỗng thay vì crash Builder/Present Mode. */
 export function parseLandingConfig(raw: string | null): LandingConfig {
@@ -756,12 +783,37 @@ export function parseLandingConfig(raw: string | null): LandingConfig {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && parsed.version === 1 && Array.isArray(parsed.components) && parsed.canvas) {
-      return parsed as LandingConfig;
+      return migrateLegacyBackground(parsed);
     }
     return DEFAULT_LANDING_CONFIG;
   } catch {
     return DEFAULT_LANDING_CONFIG;
   }
+}
+
+// Landing lưu TRƯỚC khi có Background component có thể còn `canvas.background` kiểu ảnh — chuyển
+// NGUYÊN ảnh đó thành 1 BackgroundComponent phủ kín canvas (id cố định để parse lại không tạo trùng),
+// zIndex thấp nhất để luôn nằm dưới mọi component khác đã có trên trang. Type "color" (không có ảnh)
+// không migrate gì — canvas tự động thành nền đen mặc định.
+function migrateLegacyBackground(parsed: LandingConfig & { canvas: { background?: LegacyBackgroundConfig } }): LandingConfig {
+  const legacy = parsed.canvas.background;
+  const { background: _legacyBackground, ...canvas } = parsed.canvas;
+  const alreadyMigrated = parsed.components.some((c) => c.id === "bg-migrated");
+  if (legacy?.type === "image" && legacy.imageDataUrl && !alreadyMigrated) {
+    const bgComponent: BackgroundComponent = {
+      id: "bg-migrated",
+      x: 0,
+      y: 0,
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      zIndex: -1,
+      effect: "none",
+      type: "background",
+      props: { srcDataUrl: legacy.imageDataUrl, fit: legacy.imageFit ?? "cover" },
+    };
+    return { ...parsed, canvas, components: [bgComponent, ...parsed.components] };
+  }
+  return { ...parsed, canvas };
 }
 
 export function newComponentId(): string {
@@ -1097,8 +1149,8 @@ export interface DrawSequenceActions {
   notifyOutOfStock: (prizeName: string) => void;
   dismissInfoPrompt: () => void;
   // Đang trong khoảng Lucky Wheel quay (từ lúc có candidate mới tới đúng lúc animation quay xong hẳn
-  // — cùng mốc winnerRevealDelayMs dùng cho WinnerNameView/BackgroundDimOverlay, xem
-  // computeWheelRevealDelayMs trong file này) — gần như MỌI thao tác bị khoá trong lúc này (Button
+  // — cùng mốc winnerRevealDelayMs dùng cho WinnerNameView, xem computeWheelRevealDelayMs trong file
+  // này) — gần như MỌI thao tác bị khoá trong lúc này (Button
   // action nào cũng no-op, xem ButtonView.tsx; chọn/bỏ chọn giải cũng bị khoá, xem PrizeImageView.tsx
   // — giải ĐANG chọn giữ nguyên, không đổi được cho tới khi quay xong). Trang không có Lucky Wheel
   // nào thì gần như luôn false ngay (winnerRevealDelayMs = 0).

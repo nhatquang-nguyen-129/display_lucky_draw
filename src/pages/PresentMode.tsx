@@ -77,10 +77,7 @@ export default function PresentMode() {
   }
 
   return (
-    <div
-      className="flex h-screen w-screen items-center justify-center overflow-hidden"
-      style={{ backgroundColor: config.canvas.background.color }}
-    >
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
       <div style={{ width: config.canvas.width * scale, height: config.canvas.height * scale }}>
         {/* Lỗi Draw/Confirm/Redo/Reset (hết participant, hết giải, timeout IPC...) hiện qua popup
             sequence.infoPrompt bên trong LandingRenderer — cùng chỗ với "Please select a prize

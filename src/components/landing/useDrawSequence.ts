@@ -81,9 +81,9 @@ export function useDrawSequence(
   // xuyên suốt cả bước gọi lại này (xem confirm()/resetSession() bên dưới), nên UI (popup loading —
   // xem LandingRenderer.tsx) tự nhiên chặn thao tác trong đúng khoảng hở đó.
   refreshData: () => Promise<void>,
-  // Thời lượng (ms) Lucky Wheel trên trang quay xong hẳn kể từ lúc có candidate mới — CÙNG 1 mốc
-  // WinnerNameView.tsx/BackgroundDimOverlay.tsx dùng (xem computeWheelRevealDelayMs trong types.ts),
-  // tính sẵn ở PresentMode.tsx (nơi có `config`, hook này không có). Dùng để tự khoá `spinning` đúng
+  // Thời lượng (ms) Lucky Wheel trên trang quay xong hẳn kể từ lúc có candidate mới (xem
+  // computeWheelRevealDelayMs trong types.ts), tính sẵn ở PresentMode.tsx (nơi có `config`, hook này
+  // không có). Dùng để tự khoá `spinning` đúng
   // khoảng thời gian Wheel đang quay — xem startSpinLock() bên dưới.
   winnerRevealDelayMs: number,
   // Trang có ít nhất 1 UI chọn giải (Prize Gallery/Prize Image selectable — xem hasSelectablePrizeUI

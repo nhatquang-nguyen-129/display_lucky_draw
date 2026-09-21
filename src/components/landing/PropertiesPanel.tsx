@@ -1,4 +1,4 @@
-import { AnchorEditTarget, BackgroundConfig, ButtonAction, LandingComponent, LandingConfig } from "@/lib/landing/types";
+import { AnchorEditTarget, ButtonAction, LandingComponent, LandingConfig } from "@/lib/landing/types";
 import { Participant, Prize } from "@/types";
 import BackgroundPanel from "./panels/BackgroundPanel";
 import SharedFields from "./panels/SharedFields";
@@ -28,7 +28,6 @@ interface PropertiesPanelProps {
   // (xem resolveWheelField trong lib/landing/types.ts); ButtonPanel.tsx dùng để liệt kê cột đang gán
   // Data Type = URL cho dropdown "Source" của action "Open Link".
   columnTypesJson: string | null;
-  onChangeBackground: (patch: Partial<BackgroundConfig>) => void;
   onChangeComponent: (patch: Partial<LandingComponent>) => void;
   onChangeProps: (patch: Record<string, any>) => void;
   onDelete: () => void;
@@ -38,7 +37,8 @@ interface PropertiesPanelProps {
   onSetAnchorEdit: (target: AnchorEditTarget | null) => void;
 }
 
-// Container của Properties Panel — không có gì được chọn thì hiện form Background; chọn đúng 1 thì
+// Container của Properties Panel — không có gì được chọn thì hiện gợi ý chọn/thêm component (Background
+// giờ là 1 component bình thường như Image, không còn panel riêng lúc chưa chọn gì); chọn đúng 1 thì
 // hiện SharedFields (x/y/w/h/effect + xoá) + form riêng của đúng loại component đó (switch theo
 // type); chọn NHIỀU thì chỉ hiện tổng số + xoá hàng loạt, không có form nào giả định 1 component duy
 // nhất (SharedFields và mọi panel riêng-theo-type bên dưới đều nhận thẳng `selected.props`, không
@@ -50,7 +50,6 @@ export default function PropertiesPanel({
   prizes,
   participants,
   columnTypesJson,
-  onChangeBackground,
   onChangeComponent,
   onChangeProps,
   onDelete,
@@ -74,7 +73,7 @@ export default function PropertiesPanel({
   if (!selected) {
     return (
       <div className="p-3">
-        <BackgroundPanel background={config.canvas.background} onChange={onChangeBackground} />
+        <p className="text-xs text-base-400">Select a component to edit its properties, or add one from the palette.</p>
       </div>
     );
   }
@@ -83,6 +82,7 @@ export default function PropertiesPanel({
     <div className="space-y-4 p-3">
       {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
+      {selected.type === "background" && <BackgroundPanel props={selected.props} onChange={onChangeProps} />}
       {selected.type === "luckyWheel" && (
         <LuckyWheelPanel
           props={selected.props}
