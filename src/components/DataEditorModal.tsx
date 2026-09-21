@@ -1275,8 +1275,8 @@ export default function DataEditorModal({ open, sessionId, session, onSaved, onS
                                 onChange={(e) => setGenNumberMode(e.target.value as typeof genNumberMode)}
                                 className={popupRowInput}
                               >
-                                <option value="plain">Sequential with Plain Number (1, 2, 3...)</option>
-                                <option value="padded">Sequential with Zero-padded Number (001, 002...)</option>
+                                <option value="plain">Sequential with Plain Number</option>
+                                <option value="padded">Sequential with Zero-padded Number</option>
                               </select>
                             )}
                             {renderPopupField(
