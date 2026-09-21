@@ -59,8 +59,8 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
           value={props.mode}
           onChange={(e) => onChange({ mode: e.target.value as ParticipantCountProps["mode"] })}
         >
-          <option value="total">Total participants</option>
-          <option value="remainingEligible">Not yet won (approximate)</option>
+          <option value="total">Total Participants</option>
+          <option value="remainingEligible">Not Yet Won (Approximate)</option>
         </select>
       </div>
       <div>
@@ -143,8 +143,8 @@ export default function ParticipantCountPanel({ props, onChange }: ParticipantCo
           value={backgroundType}
           onChange={(e) => onChange({ backgroundType: e.target.value as ParticipantCountProps["backgroundType"] })}
         >
-          <option value="none">None (transparent)</option>
-          <option value="color">Solid color</option>
+          <option value="none">None (Transparent)</option>
+          <option value="color">Solid Color</option>
           <option value="image">Image</option>
         </select>
       </div>

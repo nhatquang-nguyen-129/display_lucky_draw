@@ -478,8 +478,8 @@ export default function LuckyWheelPanel({
                 onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
               >
                 <option value="linear">Linear</option>
-                <option value="easeOut">Fast start, slow stop</option>
-                <option value="easeInOut">Smooth start and stop</option>
+                <option value="easeOut">Fast Start and Slow Stop</option>
+                <option value="easeInOut">Smooth Start and Stop</option>
               </select>
             </div>
           </div>
@@ -519,8 +519,8 @@ export default function LuckyWheelPanel({
                     value={props.revealTiming ?? "together"}
                     onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
                   >
-                    <option value="together">All characters stop at once</option>
-                    <option value="sequential">One at a time, left to right</option>
+                    <option value="together">All Characters Stop at Once</option>
+                    <option value="sequential">One at a Time and Left to Right</option>
                   </select>
                 </div>
 
