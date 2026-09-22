@@ -285,7 +285,9 @@ export default function DrawCycleFields({ props, onChange, allowedStates, defaul
                   )}
                   {cycle.drawAction !== "none" && (
                     <p className="text-[10px] text-base-500">
-                      Then switches to the new result using the same effect as Draw above.
+                      Then switches to the new result using the same effect as Draw above, always at least 1s
+                      after this step finishes (fixed buffer, on top of Draw&rsquo;s own delay) so the two
+                      effects never land on top of each other.
                     </p>
                   )}
                 </>

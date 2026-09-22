@@ -321,7 +321,11 @@ export default function LiveTextPanel({
                 }
               />
             </div>
-            <p className="text-[10px] text-base-500">Then reveals the new winner using the same effect as Draw above.</p>
+            <p className="text-[10px] text-base-500">
+              Then reveals the new winner using the same effect as Draw above, always at least 1s after this
+              step finishes (fixed buffer, on top of Draw&rsquo;s own delay) so the two effects never land on
+              top of each other.
+            </p>
           </div>
         </details>
         <details open={quickDrawOpen} onToggle={(e) => setQuickDrawOpen(e.currentTarget.open)} className={detailsClass}>
