@@ -18,6 +18,14 @@ import { DrawCycleConfig, DrawPhaseEffectConfig, DrawRestState, WinnerTransition
 // đổi 1 trong 2 chỗ thì phải đổi luôn chỗ còn lại.
 export const TRANSITION_MS = 500;
 
+// Khoảng đệm CỐ ĐỊNH (không cho người dùng cấu hình) dùng CHUNG bởi cả `useRevealed` VÀ
+// `useDrawCycleVisibility` bên dưới — chèn giữa lúc bước ẩn của Redraw thật sự chạy xong (disappear
+// state đã set/`onDone` gọi) và lúc bắt đầu tính delay của bước reveal (appearDelayMs/drawEffect.
+// delayMs). Đảm bảo LUÔN có tối thiểu 1s giữa "ẩn xong" và "hiện lại" bất kể người dùng đặt delay đó
+// là bao nhiêu (kể cả 0), thay vì bắt Properties Panel validate field này — người dùng chỉ cần biết:
+// cứ sau đúng 1s (window cố định) rồi mới tới delay họ tự đặt, rồi mới chạy hiệu ứng.
+const MIN_REDRAW_REVEAL_GAP_MS = 1000;
+
 export const DISAPPEAR_CLASS: Record<WinnerTransitionEffect, string> = {
   none: "",
   crossfade: "winner-transition-crossfade-out",
@@ -55,10 +63,14 @@ export interface RevealState {
 //   2. resultId đổi sang 1 giá trị MỚI, đang KHÔNG hiện gì (Idle → có candidate, lượt Draw đầu tiên):
 //      giữ "" cho tới đúng `appearDelayMs` (tính từ lúc resultId đổi = lúc bấm Draw) thì đổi sang
 //      `value` (tên người trúng) — không có gì để Disappear cả.
-//   3. resultId đổi sang 1 giá trị MỚI, đang CÓ SẴN 1 chuỗi hiện (lượt Draw tiếp theo): GIỮ NGUYÊN
-//      chuỗi CŨ tại chỗ cho tới đúng `disappearDelayMs` thì đổi về "" (disappearEffect chạy), ĐỘC LẬP
-//      với việc sau đúng `appearDelayMs` (CÙNG tính từ lúc resultId đổi, không xếp hàng chờ nhau) thì
-//      đổi sang `value` MỚI (appearEffect chạy) — cả 2 mốc đều đo từ đúng 1 sự kiện (bấm Draw).
+//   3. resultId đổi sang 1 giá trị MỚI, đang CÓ SẴN 1 chuỗi hiện (lượt Redraw): GIỮ NGUYÊN chuỗi CŨ
+//      tại chỗ cho tới đúng `disappearDelayMs` thì đổi về "" (disappearEffect chạy) — bước reveal SAU
+//      ĐÓ (đổi sang `value` MỚI) KHÔNG còn đo `appearDelayMs` ĐỘC LẬP cùng gốc với `disappearDelayMs`
+//      nữa (bản trước làm vậy — đã gặp bug thật giống hệt `useDrawCycleVisibility`: 2 giá trị quá
+//      gần/nhỏ khiến tên mới hiện đè lên đúng lúc tên cũ còn đang ẩn dở) — mà CHAIN: ẩn xong rồi mới
+//      chờ thêm đúng 1 window CỐ ĐỊNH `MIN_REDRAW_REVEAL_GAP_MS` (1s, xem đầu file), sau đó mới tính
+//      tiếp `appearDelayMs` rồi mới đổi sang `value` MỚI (appearEffect chạy) — CÙNG kiến trúc với bước
+//      reveal sau Redraw của `useDrawCycleVisibility`.
 // `value` chỉ được ĐỌC vào lúc mỗi timer thực sự chạy (qua closure của effect, ứng với đúng
 // `fireKey` — resultId/resetSeq hiện tại) — KHÔNG hiện ngay dù `value` (vd winnerName tính từ
 // data.results[0]) đã đổi tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ" trước khi
@@ -119,9 +131,23 @@ export function useRevealed(
     // "draw" hoặc "redraw" — resultId chắc chắn có giá trị ở đây.
     const timers: ReturnType<typeof setTimeout>[] = [];
     if (phase === "redraw") {
-      timers.push(setTimeout(() => setState({ text: "", phase: "redraw" }), Math.max(0, disappearDelayMs)));
+      // CHAIN — xem điểm 3 ở doc-comment trên: ẩn xong (đúng lúc disappearDelayMs) rồi mới chờ thêm
+      // window CỐ ĐỊNH `MIN_REDRAW_REVEAL_GAP_MS`, sau đó mới tính tiếp `appearDelayMs` trước khi hiện
+      // tên mới — KHÔNG còn 2 timer độc lập đo cùng từ 1 gốc như bản trước.
+      timers.push(
+        setTimeout(() => {
+          setState({ text: "", phase: "redraw" });
+          timers.push(
+            setTimeout(
+              () => setState({ text: value, phase: "redraw" }),
+              MIN_REDRAW_REVEAL_GAP_MS + Math.max(0, appearDelayMs)
+            )
+          );
+        }, Math.max(0, disappearDelayMs))
+      );
+    } else {
+      timers.push(setTimeout(() => setState({ text: value, phase }), Math.max(0, appearDelayMs)));
     }
-    timers.push(setTimeout(() => setState({ text: value, phase }), Math.max(0, appearDelayMs)));
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fireKey]);
@@ -219,8 +245,11 @@ type FiredPhase = "idle" | "draw" | "redraw";
  * động chung) — nối tiếp qua callback `onDone` của `runStep` (chạy ĐÚNG lúc bước Redraw đã thật sự
  * thực thi xong), KHÔNG tính lại mốc thời gian rồi đặt 1 setTimeout song song (đã gặp bug thật: 2
  * timer tính ra CÙNG 1 mốc tuyệt đối đua nhau theo thứ tự nạp event loop — nếu bước ẩn chạy SAU bước
- * hiện sẽ đè mất hiệu ứng vừa hiện lại ngay lập tức, trông như "ẩn được nhưng không hiện lại").
- * `drawEffect.delayMs` đo THÊM từ lúc `onDone` gọi (tức từ lúc `redrawEffect` chạy xong hẳn).
+ * hiện sẽ đè mất hiệu ứng vừa hiện lại ngay lập tức, trông như "ẩn được nhưng không hiện lại"). Giữa
+ * lúc `onDone` gọi và lúc bắt đầu tính `drawEffect.delayMs` LUÔN có thêm đúng 1 window CỐ ĐỊNH
+ * `MIN_REDRAW_REVEAL_GAP_MS` (1s, không cấu hình được, KHÔNG cộng dồn với `drawEffect.delayMs` theo
+ * kiểu áp 2 lần — xem comment tại chỗ gọi) — đảm bảo khoảng cách "ẩn xong" → "hiện lại" luôn tối thiểu
+ * 1s dù người dùng đặt `drawEffect.delayMs` là 0, mà không cần Properties Panel validate field này.
  */
 export function useDrawCycleVisibility(
   resultId: string | undefined,
@@ -325,8 +354,16 @@ export function useDrawCycleVisibility(
       if (config.redrawAction === "none") return;
       runStep(config.redrawAction, config.redrawEffect, () => {
         if (config.drawAction === "none") return;
-        const inDelay = Math.max(0, config.drawEffect?.delayMs ?? 0);
-        timers.push(setTimeout(() => runStep(config.drawAction as DrawRestState, config.drawEffect), inDelay));
+        // MIN_REDRAW_REVEAL_GAP_MS = window CỐ ĐỊNH (không đọc từ config nào) — chạy XONG rồi mới tính
+        // tiếp `drawEffect.delayMs` bên trong `runStep` (KHÔNG cộng dồn 2 lần `drawEffect.delayMs` như
+        // bản trước — đã từng là bug thật: bọc `setTimeout(drawEffect.delayMs)` rồi gọi `runStep` cũng
+        // tự áp lại đúng `drawEffect.delayMs` đó lần nữa, ra tổng 2× thay vì đúng 1 lần).
+        timers.push(
+          setTimeout(
+            () => runStep(config.drawAction as DrawRestState, config.drawEffect),
+            MIN_REDRAW_REVEAL_GAP_MS
+          )
+        );
       });
     }
 

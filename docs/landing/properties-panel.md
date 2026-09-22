@@ -37,6 +37,23 @@ nhất phía trước trong chuỗi, KHÔNG còn hardcode "đối lập nhị ph
 thì 2 quy tắc cho ra kết quả giống hệt nhau). Thêm 1 loại component TĨNH mới cũng cần "Interactions
 with Draw" thì tái dùng THẲNG component này, không viết lại.
 
+Bước "reveal" của Redraw KHÔNG có field riêng — sau khi bước ẩn (`redrawEffect`) báo `onDone` xong
+hẳn, code chờ thêm 1 window CỐ ĐỊNH `MIN_REDRAW_REVEAL_GAP_MS` (1s, hardcode trong
+`drawRevealHooks.ts`, KHÔNG cấu hình được ở Properties Panel), rồi MỚI tính tiếp `drawEffect.delayMs`
+(giá trị người dùng tự đặt ở Draw) trước khi chạy lại bằng CHÍNH `drawEffect` (xem
+`useDrawCycleVisibility` ở [present-mode.md](./present-mode.md)). Tổng thời gian từ lúc "ẩn xong" tới
+lúc "hiện lại" luôn = `1000 + drawEffect.delayMs` — đảm bảo tối thiểu 1s dù người dùng để Draw's Delay
+= 0, mà KHÔNG cần Properties Panel validate/ràng buộc field nào cả (Draw's Delay vẫn tự do như cũ,
+đúng nghĩa "trễ thêm bao nhiêu sau window 1s đó"). `redrawEffect.delayMs` không liên quan gì tới
+khoảng cách này — nó chỉ quyết định lúc nào bắt đầu ẩn.
+
+Bug đã sửa cùng lúc: bản trước ĐÃ có 1 window kiểu này nhưng lấy nhầm giá trị — bọc
+`setTimeout(drawEffect.delayMs)` BÊN NGOÀI trước khi gọi `runStep(drawAction, drawEffect)`, trong khi
+`runStep` đã tự áp đúng `drawEffect.delayMs` đó bên trong nó rồi, khiến độ trễ thật sự bị áp 2 LẦN (2×
+`drawEffect.delayMs`, phụ thuộc vào giá trị người dùng đặt — có thể là 0) thay vì 1 window CỐ ĐỊNH
+cộng thêm giá trị đó đúng 1 lần. Đã đổi `inDelay` từ `drawEffect.delayMs` sang hằng số
+`MIN_REDRAW_REVEAL_GAP_MS`.
+
 Winner Name (`LiveTextPanel.tsx`) KHÔNG dùng `DrawCycleFields.tsx` — nội dung của nó (tên người trúng)
 THẬT SỰ đổi theo từng lượt quay, không phải 1 thứ tĩnh hiện/ẩn nhị phân, nên giữ cơ chế
 `useRevealed`/`useRevealTransition` riêng (xem `drawRevealHooks.ts`) — chỉ ĐỔI TÊN panel + bổ sung

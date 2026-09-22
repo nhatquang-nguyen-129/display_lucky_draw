@@ -89,9 +89,14 @@ Lucky Wheel trên trang (model cũ dùng `computeWheelRevealDelayMs` đã bỏ h
    không có gì để "quay về" cả.
 2. **Draw lần đầu**: giữ "" cho tới đúng `appearDelayMs` tính từ lúc bấm Draw (`resultId` đổi), rồi
    `appearEffect` chạy để hiện tên.
-3. **Draw lần tiếp theo** (đang hiện của lượt trước): chuỗi CŨ đứng yên tại chỗ cho tới đúng
-   `disappearDelayMs` (tính từ CÙNG mốc bấm Draw) thì `disappearEffect` mới chạy để nó biến mất —
-   ĐỘC LẬP, không xếp hàng chờ, chuỗi MỚI cũng hiện sau đúng `appearDelayMs` tính từ mốc đó.
+3. **Redraw** (đang hiện của lượt trước): chuỗi CŨ đứng yên tại chỗ cho tới đúng `disappearDelayMs`
+   (tính từ mốc bấm Redraw) thì `disappearEffect` chạy để nó biến mất — SAU ĐÓ chờ thêm 1 window CỐ
+   ĐỊNH 1s (`MIN_REDRAW_REVEAL_GAP_MS`, không cấu hình được) rồi mới tính tiếp `appearDelayMs` trước
+   khi chuỗi MỚI hiện lên — CHAIN tuần tự, KHÔNG còn 2 mốc ĐỘC LẬP đo cùng 1 gốc như bản trước (đã gặp
+   bug thật giống hệt Image/Text/Background: `appearDelayMs` quá nhỏ/gần `disappearDelayMs` khiến tên
+   mới hiện đè lên lúc tên cũ còn đang ẩn dở — xem mục "`DrawCycleFields.tsx`" ở
+   [properties-panel.md](./properties-panel.md) cho cơ chế window 1s tương ứng của
+   `useDrawCycleVisibility`).
 
 `value` (winnerName) chỉ được đọc vào ĐÚNG lúc mỗi timer chạy (qua closure của effect) — không hiện
 ngay dù giá trị nguồn đã đổi tức thì lúc bấm Draw, tránh bug "tên MỚI nhảy vào chỗ tên CŨ" trước khi
