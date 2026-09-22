@@ -247,22 +247,16 @@ export default function ButtonView({
 
   function handleClick() {
     if (!sequence || locked) return;
-    // Draw ở Single mode đang có candidate CHỜ CONFIRM (isPending) mà người vận hành vừa chuyển
-    // sang CHỌN MỘT GIẢI KHÁC (không phải bỏ chọn — case đó đã chặn riêng ở redo(), xem
-    // useDrawSequence.ts) thì bấm Draw sẽ ÂM THẦM huỷ candidate đang chờ đó để quay giải mới (xem
-    // runDraw's nhánh discardPending trong useDrawSequence.ts) — nhắc trước bằng 1 popup "Are you
-    // sure" đơn giản (không bắt Confirm/Reset trước như 2 action ghi dữ liệu ở CONFIRM_MESSAGES,
-    // chỉ hỏi lại đúng 1 câu) để người vận hành không mất người vừa trúng mà không hay biết. Multiple/
-    // Quick Draw không cần nhắc — 2 chế độ đó tự pick() mới hoàn toàn, không đi qua nhánh redo() nào
-    // (xem runMultipleDrawInternal/runQuickDrawInternal), nên không có gì bị âm thầm huỷ.
-    if (
-      component.props.action === "draw" &&
-      sequence.drawMode === "single" &&
-      sequence.isPending &&
-      sequence.candidate &&
-      sequence.selectedPrizeId &&
-      sequence.selectedPrizeId !== sequence.candidate.prizeId
-    ) {
+    // Đang có 1 candidate CHỜ CONFIRM (isPending) mà bấm Draw NGƯỜI VẬN HÀNH TỰ TAY bấm lần nữa —
+    // BẤT KỂ mode nào (Single redo cùng giải, Single đổi giải, Multiple, Quick) đều làm mất candidate
+    // đó (Single redo() vẫn PICK 1 NGƯỜI KHÁC cho cùng giải, người đang pending vẫn bị bỏ luôn — không
+    // phải "giữ lại", chỉ là giữ NGUYÊN giải; Multiple/Quick's runMultipleDrawInternal/
+    // runQuickDrawInternal không đọc lại candidate đang pending, luôn pick() HOÀN TOÀN MỚI). Nhắc bằng
+    // 1 popup "Are you sure" đơn giản (không bắt giữ nút như CONFIRM_MESSAGES, chỉ hỏi lại đúng 1 câu)
+    // TRƯỚC MỌI lần bấm Draw như vậy — KHÔNG hỏi lại giữa CÁC LƯỢT nội bộ của 1 batch Multiple/Quick
+    // đã chạy (mỗi lượt trong batch tự Confirm luôn, không có gì "chưa confirm" để mất — và người vận
+    // hành cũng không tự tay bấm Draw cho từng lượt đó, cả batch chỉ 1 cú bấm duy nhất).
+    if (component.props.action === "draw" && sequence.isPending && sequence.candidate) {
       sequence.requestConfirm(
         "Are you sure you don't want to confirm the current winner before drawing again?",
         () => runAction(component, sequence, data),
