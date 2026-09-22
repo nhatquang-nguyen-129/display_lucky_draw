@@ -57,9 +57,15 @@ interface ReelPlan {
 }
 
 /** Random nhẹ 8 vòng quay đầy đủ trở lên (điểm yêu cầu: 8-15 vòng) + jitter ±10% cho từng pha, để
- * mỗi ô "cảm nhận" hơi khác nhau, không ô nào giống hệt ô nào (tránh cảm giác máy tính). */
-function planReelSlot(target: string, duration: number): ReelPlan {
-  const alphabet = wheelFor(target);
+ * mỗi ô "cảm nhận" hơi khác nhau, không ô nào giống hệt ô nào (tránh cảm giác máy tính).
+ * `alphabetOverride` — CHỈ dùng cho lượt quay chốt "-" sau Quick Draw (xem runRoll trong
+ * DigitRollerTemplate): wheelFor("-") tự nó trả bảng chữ cái 1 ký tự (kMax = 0, KHÔNG cuộn gì cả —
+ * bug đã gặp thật: ô "đứng hình" ngay ở "-" thay vì quay đủ spinDurationMs), nên phải ép 1 bảng
+ * chữ cái nhiều ký tự (digit + "-") để CÓ quãng đường mà cuộn. Không đổi hành vi wheelFor cho lượt
+ * quay THẬT (startSpin() không truyền override) — 1 dấu "-" xuất hiện tự nhiên trong dữ liệu thật
+ * (vd số điện thoại có định dạng gạch nối) vẫn đứng yên như cũ, không bị ép quay giả tạo. */
+function planReelSlot(target: string, duration: number, alphabetOverride?: string): ReelPlan {
+  const alphabet = alphabetOverride ?? wheelFor(target);
   const L = alphabet.length;
   if (L <= 1) return { strip: [target], kMax: 0, ta: 0, tc: 0, td: 0, vc: 0, duration: 0 };
 
@@ -136,13 +142,14 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
   const participants = data?.participants ?? [];
   const results = data?.results ?? [];
   const columnTypesJson = data?.columnTypesJson ?? null;
+  const quickDrawActive = data?.quickDrawActive ?? false;
   // Cột Name/Phone/Email/Code nào đang thực sự có dữ liệu — dùng để resolve đúng cột đã gán Data
   // Type tương ứng (xem resolveWheelField), không đọc cứng participant.name/.phone/....
   const activeCoreFields = useMemo(() => computeActiveParticipantCoreFields(participants), [participants]);
 
-  // Placeholder ban đầu (chưa có lượt quay nào) là ký tự NGẪU NHIÊN, không phải "-" — trông giống
-  // 1 ô số thật đang chờ hơn là 1 ô rỗng/lỗi.
-  const [chars, setChars] = useState<string[]>(() => Array.from({ length: count }, randomChar));
+  // Placeholder ban đầu (chưa có lượt quay nào, hoặc vừa Reset — xem effect "idle" bên dưới) là "-"
+  // cho MỌI ô, đúng nghĩa "chưa có gì" thay vì trông giống 1 giá trị thật ngẫu nhiên.
+  const [chars, setChars] = useState<string[]>(() => Array(count).fill("-"));
   // Số ô (từ trái) đã chốt xong giá trị thật — cả 2 revealTiming đều chốt đúng thứ tự trái->phải.
   const [settledCount, setSettledCount] = useState(count);
   const [spinning, setSpinning] = useState(false);
@@ -160,7 +167,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
   const spinAbortRef = useRef<{ cancelled: boolean; rafId: number } | null>(null);
 
   useEffect(() => {
-    setChars((prev) => (prev.length === count ? prev : Array.from({ length: count }, randomChar)));
+    setChars((prev) => (prev.length === count ? prev : Array(count).fill("-")));
     setSettledCount(count);
     setReelStrips(Array(count).fill([]));
     setReelBounceVersion(Array(count).fill(0));
@@ -175,17 +182,27 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
     const winner = participants.find((p) => p.id === latest.participant_id);
     if (!winner) return;
 
+    // Hiển thị NGUYÊN VẸN giá trị thật — không lọc ký tự, không cắt prefix. slice/padStart chỉ là
+    // lưới an toàn cho trường hợp hiếm dữ liệu lệch độ dài so với lúc validate ở panel.
+    const targetChars = resolveWheelField(winner, winnerDisplayField, columnTypesJson, activeCoreFields)
+      .slice(-count)
+      .padStart(count, " ")
+      .split("");
+    runRoll(targetChars);
+  }
+
+  // Chạy đúng 1 lượt quay (RAF loop flicker/reel) tới `targetChars` cho trước — tách riêng khỏi
+  // startSpin() để dùng chung cho cả 2 nguồn: (1) quay tới giá trị THẬT của 1 người trúng cụ thể
+  // (startSpin() ở trên, không truyền reelAlphabetOverride), (2) quay tới "-" cho mọi ô lúc Quick
+  // Draw vừa xong (xem effect "Quick Draw VỪA xong" bên dưới, CÓ truyền reelAlphabetOverride để
+  // rollStyle "reel" thật sự cuộn thay vì đứng hình — xem doc-comment planReelSlot).
+  function runRoll(targetChars: string[], reelAlphabetOverride?: string) {
     if (spinAbortRef.current) {
       spinAbortRef.current.cancelled = true;
       cancelAnimationFrame(spinAbortRef.current.rafId);
     }
     const abort = { cancelled: false, rafId: 0 };
     spinAbortRef.current = abort;
-
-    // Hiển thị NGUYÊN VẸN giá trị thật — không lọc ký tự, không cắt prefix. slice/padStart chỉ là
-    // lưới an toàn cho trường hợp hiếm dữ liệu lệch độ dài so với lúc validate ở panel.
-    const rawValue = resolveWheelField(winner, winnerDisplayField, columnTypesJson, activeCoreFields);
-    const targetChars = rawValue.slice(-count).padStart(count, " ").split("");
 
     // Thời điểm CHỐT của từng ô — "together": tất cả chốt cùng lúc, lúc spinDurationMs. "sequential":
     // ô sau chốt trễ hơn ô trước 1 khoảng NGẪU NHIÊN quanh revealStaggerMs (70%-130%, không phải 1
@@ -204,7 +221,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
     setSettledCount(0);
 
     if (rollStyle === "reel") {
-      const plans = targetChars.map((t, i) => planReelSlot(t, stopAt[i]));
+      const plans = targetChars.map((t, i) => planReelSlot(t, stopAt[i], reelAlphabetOverride));
       setReelStrips(plans.map((p) => p.strip));
 
       const startTime = performance.now();
@@ -304,17 +321,55 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
     }
   }, []);
 
+  // Đóng băng ở placeholder "-" tĩnh (huỷ lượt quay đang chạy nếu có) trong 2 trường hợp:
+  // (1) Idle thật sự — CHƯA từng có kết quả nào trong session (results rỗng): vừa mở landing lần
+  //     đầu, HOẶC vừa Reset xong (resetSession() refreshData() trước khi xoá candidate nên results
+  //     rỗng THẬT, xem doc-comment resetSession trong useDrawSequence.ts).
+  // (2) Đang giữa chừng Quick Draw (quickDrawActive) — results[0].id đổi liên tục không nghỉ theo
+  //     từng người trúng, quay riêng lẻ theo từng candidate là vô nghĩa (không có 1 người "đúng" nào,
+  //     lượt sau chồng lượt trước trước khi kịp chốt — bug đã gặp thật: ô số kẹt ở trạng thái
+  //     nửa-số-thật-nửa-nhấp-nháy do nhiều startSpin() chồng nhau huỷ nhau liên tục). Xem effect
+  //     "chạy đúng 1 lượt quay chốt về -" ngay bên dưới — đó mới là lượt quay THẬT hiện cho người xem.
+  const isIdle = results.length === 0;
+  useEffect(() => {
+    if (!isIdle && !quickDrawActive) return;
+    if (spinAbortRef.current) {
+      spinAbortRef.current.cancelled = true;
+      cancelAnimationFrame(spinAbortRef.current.rafId);
+      spinAbortRef.current = null;
+    }
+    setSpinning(false);
+    setChars(Array(count).fill("-"));
+    setSettledCount(count);
+    setReelStrips(Array(count).fill([]));
+  }, [isIdle, quickDrawActive, count]);
+
+  // Quick Draw VỪA xong (quickDrawActive true → false) — chạy đúng 1 lượt quay THẬT (đủ nguyên
+  // spinDurationMs đã cấu hình, không bị cắt ngang bởi bất kỳ candidate nào khác vì Quick Draw đã
+  // dứt hẳn) nhưng chốt ở "-" cho mọi ô, KHÔNG hiện số điện thoại của người trúng cuối cùng — không
+  // có 1 người trúng "đúng" nào để hiện riêng giữa 1 loạt trúng cùng lúc.
+  const wasQuickDrawActiveRef = useRef(false);
+  useEffect(() => {
+    const wasActive = wasQuickDrawActiveRef.current;
+    wasQuickDrawActiveRef.current = quickDrawActive;
+    if (wasActive && !quickDrawActive) runRoll(Array(count).fill("-"), WHEEL_DIGITS + "-");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickDrawActive, count]);
+
   // Tự phát hiện có candidate MỚI rồi tự bắt đầu quay — cơ chế gốc trước khi có Trigger Graph (đã bỏ),
   // xem comment tương tự ở WheelTemplate.tsx. CHỈ phản ứng với dòng kết quả LIVE (id "pending-*") —
   // bỏ qua kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở, tránh tự quay tới winner cũ lúc mount.
+  // Bỏ qua hoàn toàn lúc quickDrawActive — xem 2 effect ở trên (đóng băng trong lúc quay, rồi tự
+  // chạy đúng 1 lượt "-" khi xong), không quay theo từng candidate riêng lẻ trong Quick Draw.
   const lastSpunIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const latestId = results[0]?.id;
     if (!isLiveDrawResultId(latestId) || latestId === lastSpunIdRef.current) return;
     lastSpunIdRef.current = latestId;
+    if (quickDrawActive) return;
     startSpin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results[0]?.id]);
+  }, [results[0]?.id, quickDrawActive]);
 
   // Kích thước ô số luôn tính từ khung kéo thả (component.width/height) trên canvas — giống cách
   // WheelTemplate lấy size = min(width, height) — để kéo-resize khung là cách trực tiếp, trực quan

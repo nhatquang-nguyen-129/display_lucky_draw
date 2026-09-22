@@ -1025,6 +1025,10 @@ export interface LandingData {
   // session.participant_column_types — cần cho Lucky Wheel resolve đúng cột nào đang gán Data Type
   // Name/Phone/Email/Code (xem resolveWheelField bên dưới), không đọc cứng participant.name/.phone/....
   columnTypesJson: string | null;
+  // true khi đang chạy Quick Draw (results[0].id đổi liên tục không nghỉ, xem runQuickDrawInternal
+  // trong useDrawSequence.ts) — không có 1 người trúng "đúng" nào để quay/hiện riêng lẻ, dùng để
+  // DigitRollerTemplate hiện placeholder tĩnh ("-") thay vì cố quay theo từng người trúng.
+  quickDrawActive?: boolean;
 }
 
 // 4 field cố định của Participant — luôn tồn tại kể cả khi bảng rỗng.

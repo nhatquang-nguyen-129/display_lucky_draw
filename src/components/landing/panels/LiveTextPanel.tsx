@@ -56,8 +56,13 @@ const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.
 // rỗng lúc mount). Lý do khác biệt còn lại: NỘI DUNG Winner Name (tên người trúng) THẬT SỰ đổi theo
 // TỪNG lượt quay — khác Image/Text (1 thứ TĨNH do người dùng tự đặt, không đổi theo lượt) — nên vẫn
 // dùng cơ chế `useRevealed`/`useRevealTransition` riêng (xem drawRevealHooks.ts), không migrate sang
-// `useDrawCycleVisibility`. KHÔNG có "Self Interactions" (Winner Name không bị click/hover/select
-// trực tiếp, mọi thứ nó làm đều VÌ Draw đã chạy). 4 mục:
+// `useDrawCycleVisibility`. Thứ tự 2 nhóm dưới "Basic options": "Self Interactions" TRƯỚC (đúng thứ
+// tự chuẩn ở BackgroundPanel.tsx/LiveImagePanel.tsx/LuckyWheelPanel.tsx), "Interactions with Draw"
+// SAU. "Self Interactions" chỉ có ĐÚNG 1 mục "When Quick Draw" (Quick Draw text — hiện thay tên khi
+// 1 Quick Draw vừa chạy xong) — TÁCH RIÊNG khỏi "Interactions with Draw" vì không thuộc khái niệm
+// Idle/Draw/Redraw theo từng lượt, không phải Winner Name "tự" phản ứng click/hover (Winner Name
+// không bị thao tác trực tiếp) mà vì Quick Draw là 1 luồng khác hẳn Draw đơn lẻ. "Interactions with
+// Draw" có 3 mục:
 //   - "Idle" (MỚI — Appearance + Effect + Delay riêng cho lúc Reset, xem doc-comment
 //     WinnerNameProps.idleState/idleEffect trong types.ts. Effect/Delay CHỈ có tác dụng khi Appearance
 //     = Disappear — Appear không có gì để chạy hiệu ứng, vì không đổi gì cả. Mặc định undefined =
@@ -70,7 +75,6 @@ const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.
 //     ở trên, giống ImagePanel.tsx/TextPanel.tsx, chỉ khác: 2 mốc thời gian ĐO ĐỘC LẬP từ CÙNG 1 lúc
 //     bấm Draw — KHÔNG nối tiếp/chờ nhau như DrawCycleConfig — giữ nguyên hành vi đã có, không đổi
 //     choreography của 1 tính năng đã hoạt động ổn định)
-//   - "When Quick Draw" (Quick Draw text — hiện thay tên khi 1 Quick Draw vừa chạy xong)
 export default function LiveTextPanel({
   props,
   x,
@@ -203,6 +207,25 @@ export default function LiveTextPanel({
       <div className="h-px bg-base-800" />
 
       <div className="space-y-2">
+        <span className={groupLabelClass}>Self Interactions</span>
+        <details open={quickDrawOpen} onToggle={(e) => setQuickDrawOpen(e.currentTarget.open)} className={detailsClass}>
+          <summary className={summaryClass}>When Quick Draw</summary>
+          <div className={detailsBodyClass}>
+            <div>
+              <label className={labelClass}>Quick Draw text</label>
+              <input
+                className={fieldClass}
+                value={props.quickDrawText ?? "Congratulations!"}
+                onChange={(e) => onChange({ quickDrawText: e.target.value })}
+              />
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div className="h-px bg-base-800" />
+
+      <div className="space-y-2">
         <span className={groupLabelClass}>Interactions with Draw</span>
         <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
           <summary className={summaryClass}>Idle</summary>
@@ -326,19 +349,6 @@ export default function LiveTextPanel({
               step finishes (fixed buffer, on top of Draw&rsquo;s own delay) so the two effects never land on
               top of each other.
             </p>
-          </div>
-        </details>
-        <details open={quickDrawOpen} onToggle={(e) => setQuickDrawOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Quick Draw</summary>
-          <div className={detailsBodyClass}>
-            <div>
-              <label className={labelClass}>Quick Draw text</label>
-              <input
-                className={fieldClass}
-                value={props.quickDrawText ?? "Congratulations!"}
-                onChange={(e) => onChange({ quickDrawText: e.target.value })}
-              />
-            </div>
           </div>
         </details>
       </div>
