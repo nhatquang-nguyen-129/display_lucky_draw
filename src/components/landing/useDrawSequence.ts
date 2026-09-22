@@ -567,6 +567,13 @@ export function useDrawSequence(
     return { ...data, results: [synthetic, ...data.results] };
   }, [candidate, data, sessionId, participantColumnTypesJson]);
 
+  // Overlay riêng, KHÔNG gộp vào useMemo trên (batchProgress đổi liên tục mỗi lượt trong vòng lặp
+  // Quick Draw — gộp chung sẽ tính lại synthetic result mỗi lần không cần thiết).
+  const effectiveDataWithBatch = useMemo<LandingData>(
+    () => ({ ...effectiveData, quickDrawActive: batchProgress?.mode === "quick" }),
+    [effectiveData, batchProgress],
+  );
+
   return {
     candidate,
     isPending,
@@ -598,6 +605,6 @@ export function useDrawSequence(
     closeDrawModePrompt,
     confirmDrawModePrompt,
     runDraw,
-    effectiveData,
+    effectiveData: effectiveDataWithBatch,
   };
 }

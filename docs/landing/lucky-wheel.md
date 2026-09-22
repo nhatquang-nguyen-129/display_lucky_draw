@@ -20,6 +20,30 @@ Hệ quả: `DigitRollerTemplate` không còn `.replace(/\D/g, "")` — hiển t
 
 Kích thước ô luôn tính từ khung kéo-thả trên canvas (`component.width`/`height`), không lệ thuộc 1 field "Font size" tách rời — giống hệt cách `WheelTemplate` lấy `size = min(width, height)`. Đây cũng là 1 quyết định sửa lại: ban đầu ô tính từ `fontSize` cố định, khiến khung mặc định (kế thừa 500×500 từ Wheel Circular) to hơn hẳn nội dung thật.
 
+### Digit Roller trong Quick Draw — quay xong CHỐT Ở "-", không hiện số của người trúng cuối
+
+Quick Draw ra nhiều người trúng NGAY LẬP TỨC không nghỉ giữa các lượt (xem mục "3 chế độ Draw" ở
+[button-actions.md](./button-actions.md)) — không có 1 người trúng "đúng" nào để Digit Roller quay
+tới riêng lẻ, và `results[0].id` đổi liên tục theo từng người khiến nhiều lượt `startSpin()` chồng
+lên nhau huỷ nhau dở dang nếu quay theo cách thường (bug đã gặp thật: ô số kẹt nửa-số-thật-nửa-nhấp-
+nháy). Cách xử lý trong `DigitRollerTemplate.tsx`:
+
+- Trong lúc `data.quickDrawActive` (đọc từ `effectiveData` — xem `useDrawSequence.ts`) đang bật: mọi
+  candidate mới xuất hiện trong batch bị BỎ QUA hoàn toàn (không tự quay theo từng người), ô số đóng
+  băng tĩnh ở `-`.
+- Ngay khi Quick Draw dứt hẳn (`quickDrawActive` true → false), tự chạy ĐÚNG 1 lượt quay THẬT
+  (`runRoll`) — đủ nguyên `spinDurationMs` đã cấu hình (không bị cắt ngang bởi candidate nào khác vì
+  Quick Draw đã xong) — nhưng CHỐT ở `-` cho MỌI ô thay vì số điện thoại/mã của người trúng cuối cùng.
+- Idle thật sự (chưa từng có kết quả nào trong session — vừa mở landing lần đầu, HOẶC vừa Reset xong)
+  cũng đóng băng ở `-` — không còn hiện ký tự ngẫu nhiên như trước.
+
+`rollStyle` "reel" cần lưu ý riêng: `wheelFor("-")` tự nó trả bảng chữ cái 1 ký tự (không digit/upper/
+lower) → `kMax = 0` → KHÔNG cuộn gì cả nếu dùng thẳng, đứng hình ngay ở `-` bất kể `spinDurationMs`.
+`planReelSlot`/`runRoll` nhận thêm `alphabetOverride` — CHỈ lượt quay chốt `-` sau Quick Draw truyền
+`WHEEL_DIGITS + "-"` để ép có quãng đường mà cuộn (quay qua số rồi mới dừng ở `-`); lượt quay THẬT của
+1 người trúng cụ thể (`startSpin()`) không truyền override, 1 dấu `-` xuất hiện tự nhiên trong dữ liệu
+thật (vd số điện thoại định dạng gạch nối) vẫn đứng yên như cũ.
+
 ## Field validation trong LuckyWheelPanel — "field nào dùng được cho Digit Roll"
 
 Draw/Display/Winner display field của Lucky Wheel là ví dụ nhánh 1 của quy tắc "Source picker" ở
