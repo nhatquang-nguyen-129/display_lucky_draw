@@ -137,6 +137,35 @@ Draw đang chạy, Winner hiện `props.quickDrawText` (mặc định "Congratul
 người trúng — Quick Draw ra nhiều người cùng lúc nên không có 1 tên "đúng" nào để hiện (xem
 `WinnerNameProps.quickDrawText`, `DrawSequenceActions.quickDrawResult`).
 
+### Popup "Are you sure" trước khi âm thầm huỷ 1 candidate đang chờ Confirm
+
+`ButtonView.tsx`'s `handleClick()` tự hỏi lại 1 câu đơn giản ("Are you sure you don't want to confirm
+the current winner before drawing again?" — KHÔNG bắt giữ nút như `CONFIRM_MESSAGES`, chỉ hỏi lại
+đúng 1 lần) TRƯỚC KHI gọi `runDraw()`, bất cứ khi nào NGƯỜI VẬN HÀNH TỰ TAY bấm Draw trong lúc còn 1
+candidate đang `isPending` (đã pick, chưa Confirm) — điều kiện DUY NHẤT: `sequence.isPending &&
+sequence.candidate`, KHÔNG phân biệt mode nào hay giải nào đang chọn:
+
+- **Single Draw, redo LẠI ĐÚNG giải đang pending** — `redo()` (`useDrawSequence.ts`) vẫn PICK 1
+  NGƯỜI KHÁC cho giải đó, người đang pending vẫn bị bỏ luôn (chỉ là GIẢI không đổi, không phải "giữ
+  lại người đó").
+- **Single Draw, đã chuyển sang CHỌN MỘT GIẢI KHÁC** — `runDraw()` sẽ `discardPending()` rồi
+  `pick()` giải mới thay vì `redo()` giải cũ.
+- **Multiple/Quick Draw, BẤT KỂ giải nào đang chọn** — `runMultipleDrawInternal`/
+  `runQuickDrawInternal` (`useDrawSequence.ts`) KHÔNG hề đọc lại candidate đang pending, luôn tự
+  `pick()` HOÀN TOÀN MỚI ngay từ đầu batch.
+
+KHÔNG hỏi lại giữa CÁC LƯỢT nội bộ của 1 batch Multiple/Quick đã chạy — mỗi lượt trong batch tự
+Confirm luôn trước khi sang lượt kế (xem bảng 3 chế độ ở trên), không có gì "chưa confirm" để mất, và
+người vận hành cũng không tự tay bấm Draw cho từng lượt đó (cả batch chỉ 1 cú bấm duy nhất khởi động).
+
+Bug đã sửa (2 vòng): vòng 1 CHỈ chặn đúng trường hợp Single Draw đổi giải (`sequence.drawMode ===
+"single"` là điều kiện bắt buộc) — chuyển sang Multiple/Quick Draw trong lúc Single Draw còn đang
+pending rồi bấm Draw sẽ âm thầm mất người vừa trúng mà KHÔNG có cảnh báo nào. Vòng 2 (bản hiện tại)
+sửa tiếp: vòng 1 còn CHỪA case "Single Draw redo lại đúng giải đang pending" ra khỏi điều kiện (coi là
+"quay lại chủ đích, không mất gì") — nhưng thực tế `redo()` vẫn pick 1 người KHÁC, người đang pending
+vẫn bị bỏ mất, nên case này CŨNG phải hỏi — bỏ hẳn phân biệt theo mode/giải, chỉ còn đúng 1 điều kiện
+`isPending && candidate`.
+
 ## Bug đã sửa: "Button nhìn trong suốt" trong Builder
 
 `ButtonView.tsx` ban đầu dùng `disabled:opacity-40` — vì `disabled` LUÔN true trong Builder (không có `sequence`, xem [present-mode.md](./present-mode.md)), Button luôn hiện mờ 40%, trông như trong suốt. Sửa bằng cách TÁCH 2 khái niệm: "không bấm được vì đang ở Builder" (vẫn hiện FULL độ đậm) khác với "tạm thời không bấm được ở Present Mode thật vì sai phase/busy" (mới thật sự làm mờ) — qua 1 cờ riêng `showFaded = !!sequence && disabled`, không gắn opacity trực tiếp vào thuộc tính HTML `disabled`.
