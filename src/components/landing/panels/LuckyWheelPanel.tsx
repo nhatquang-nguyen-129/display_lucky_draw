@@ -73,16 +73,23 @@ const FONT_OPTIONS = [
 // Template lẫn field data-binding cũ (Draw/Display/Winner-Source field, Digit count, Mask phone
 // numbers) VÀ field display cũ (Font, Font size, Color) thành 1 nhóm PHẲNG DUY NHẤT (không collapsible,
 // không còn tách riêng "Data binding"/"Display" nữa — gộp lại cho gọn) — CÙNG kiểu "menu 2 cấp" + CÙNG
-// quy ước đặt tên "When..." với LiveImagePanel.tsx's Self Interactions ở 2 nhóm còn lại (Self
-// Interactions LUÔN đứng TRƯỚC Interactions with Draw — tự thân component trước, phản ứng theo sự
-// kiện ngoài sau):
-//   - "Self Interactions" (LUÔN hiện) → "When Spinning" (Spin Behavior — cách wheel tự quay, không
-//     phụ thuộc Draw đã xong hay chưa).
-//   - "Interactions with Draw" (CHỈ digitRoller) → "When Draw" (Reveal Animation — phản ứng đúng lúc
-//     Draw trả kết quả).
-// Mỗi nhóm gồm ĐÚNG 1 <details> con — mở sẵn mặc định (`useState(true)`, không phải `open` tĩnh —
-// tránh React ép mở lại mỗi lần re-render, xem revealOpen/spinOpen) vì đây là cấu hình CỐT LÕI, khác
-// PrizeEffectPicker.tsx (effect tuỳ chọn thêm, mặc định đóng trừ khi đã cấu hình).
+// quy ước đặt tên "When..." với LiveImagePanel.tsx, nhưng KHÔNG tách riêng nhóm "Interactions with
+// Draw" như các component khác — Lucky Wheel LUÔN gắn liền với Draw (không có khái niệm "tắt phản
+// ứng theo Draw" như Image/Text/Background có thể tắt `syncWithDraw`). Tiêu chí phân nhóm ĐÚNG hơn
+// không phải "display vs kỹ thuật" (mọi hiệu ứng reveal đều vừa kỹ thuật vừa do Draw kích hoạt, không
+// phân biệt được gì) mà là: field đó có ĐỔI KHÁC NHAU tuỳ mốc Idle/Draw/Redraw hay không (model
+// `DrawCycleConfig` generic) — Style của Wheel chỉ có ĐÚNG 1 cấu hình áp dụng MỌI lần reveal, không có
+// khái niệm "khác nhau giữa Idle/Draw/Redraw", nên thuộc Self Interactions y hệt Spin Behavior — gộp
+// CHUNG 1 nhóm DUY NHẤT "Self Interactions" với ĐÚNG 1 <details> tên "Spin": Spin duration/Spin style
+// (LUÔN hiện) + Style của reveal (CHỈ digitRoller, nối ngay bên dưới trong CÙNG khối). Timing/Effect
+// (Reel/flicker) đã bỏ hẳn khỏi Panel — đơn giản hoá tối đa, chỉ còn ĐÚNG 3 field cấu hình được
+// (Duration/Spin style/Style) — luôn dùng giá trị mặc định MỚI cố định (sequential + pop, xem
+// componentRegistry.ts) cho component tạo mới, landing cũ đã tự chỉnh tay trước đó vẫn giữ nguyên giá
+// trị đã lưu (revealTiming/reelCardEffect/reelNumberEffect/landingEffect vẫn còn trong
+// LuckyWheelProps/DigitRollerTemplate.tsx, chỉ không còn ai chỉnh được qua Panel nữa).
+// <details> mở sẵn mặc định (`useState(true)`, không phải `open` tĩnh — tránh React ép mở lại mỗi lần
+// re-render, xem spinOpen) vì đây là cấu hình CỐT LÕI, khác PrizeEffectPicker.tsx (effect tuỳ chọn
+// thêm, mặc định đóng trừ khi đã cấu hình).
 export default function LuckyWheelPanel({
   props,
   participants,
@@ -102,11 +109,10 @@ export default function LuckyWheelPanel({
   // của SharedFields.tsx trước khi Position dời vào đây).
   const heightLocked = isDigitRoller;
   // Mở sẵn mặc định — khác PrizeEffectPicker.tsx (chỉ mở nếu ĐÃ cấu hình gì đó, vì hiệu ứng ở đó là
-  // tuỳ chọn thêm) — Reveal Animation/Spin Behavior là cấu hình CỐT LÕI của Wheel, hầu như ai cũng
+  // tuỳ chọn thêm) — Spin Behavior/Reveal Animation là cấu hình CỐT LÕI của Wheel, hầu như ai cũng
   // cần thấy ngay. `useState` (không phải "open" tĩnh) để tôn trọng lần đóng thủ công của người dùng
   // — nếu để `open` là 1 giá trị cố định, React ép lại thành true mỗi lần re-render, đóng lại vẫn tự
   // bung ra.
-  const [revealOpen, setRevealOpen] = useState(true);
   const [spinOpen, setSpinOpen] = useState(true);
 
   // Mọi tên cột optional (extra_data) đang THỰC SỰ xuất hiện ở ít nhất 1 participant trong session
@@ -248,26 +254,6 @@ export default function LuckyWheelPanel({
       patch.winnerDisplayField = candidate?.value ?? available.find((o) => o.value !== "name")?.value ?? "phone";
     }
     onChange(patch);
-  }
-
-  // "Effect" — 1 Ô CHUNG, 1 COMBINATION ĐỒNG BỘ cho cả 2 rollStyle, không phải chọn riêng từng lớp:
-  // "pop" bật ĐỒNG THỜI cả reelCardEffect ("pop" — khung trắng flash/scale in) LẪN reelNumberEffect
-  // ("bounce" — ký tự nảy nhẹ), 2 field gốc luôn ĐI CÙNG NHAU qua field này (không còn bật lẻ được
-  // từng cái như trước) — không đổi gì ở DigitRollerTemplate.tsx, vẫn đọc đúng 2 field cũ đó. flicker
-  // dùng thẳng field `landingEffect` sẵn có ("bounce" cũ vẫn hợp lệ trong type nhưng KHÔNG còn hiện
-  // trong dropdown — trước mắt chỉ 2 lựa chọn None/Pop, "trước mắt" nghĩa là còn mở rộng thêm sau).
-  // Landing đã lưu TRƯỚC bản gộp này vẫn chạy ĐÚNG y nguyên (field gốc không đổi) — chỉ riêng lúc
-  // HIỂN THỊ, dropdown chỉ coi là "Pop" khi ĐÚNG combination trên, còn lại (kể cả bounce lẻ/legacy
-  // không đồng bộ) đều hiện "None".
-  const landingEffectValue: "none" | "pop" =
-    props.rollStyle === "reel" ? (props.reelCardEffect === "pop" ? "pop" : "none") : props.landingEffect === "pop" ? "pop" : "none";
-
-  function handleLandingEffectChange(value: "none" | "pop") {
-    if (props.rollStyle === "reel") {
-      onChange({ reelCardEffect: value === "pop" ? "pop" : "none", reelNumberEffect: value === "pop" ? "bounce" : "none" });
-    } else {
-      onChange({ landingEffect: value });
-    }
   }
 
   return (
@@ -456,7 +442,7 @@ export default function LuckyWheelPanel({
           className="rounded-lg border border-base-800"
         >
           <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
-            When Spinning
+            Spin
           </summary>
           <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
             <div>
@@ -482,60 +468,23 @@ export default function LuckyWheelPanel({
                 <option value="easeInOut">Smooth Start and Stop</option>
               </select>
             </div>
+
+            {isDigitRoller && (
+              <div>
+                <label className={labelClass}>Style</label>
+                <select
+                  className={fieldClass}
+                  value={props.rollStyle ?? "flicker"}
+                  onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
+                >
+                  <option value="flicker">Flicker</option>
+                  <option value="reel">Reel</option>
+                </select>
+              </div>
+            )}
           </div>
         </details>
       </div>
-
-      {isDigitRoller && (
-        <>
-          <div className="h-px bg-base-800" />
-          <div className="space-y-2">
-            <span className={groupLabelClass}>Interactions with Draw</span>
-            <details
-              open={revealOpen}
-              onToggle={(e) => setRevealOpen(e.currentTarget.open)}
-              className="rounded-lg border border-base-800"
-            >
-              <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
-                When Draw
-              </summary>
-              <div className="space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5">
-                <div>
-                  <label className={labelClass}>Style</label>
-                  <select
-                    className={fieldClass}
-                    value={props.rollStyle ?? "flicker"}
-                    onChange={(e) => onChange({ rollStyle: e.target.value as LuckyWheelProps["rollStyle"] })}
-                  >
-                    <option value="flicker">Flicker</option>
-                    <option value="reel">Reel</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={labelClass}>Timing</label>
-                  <select
-                    className={fieldClass}
-                    value={props.revealTiming ?? "together"}
-                    onChange={(e) => onChange({ revealTiming: e.target.value as LuckyWheelProps["revealTiming"] })}
-                  >
-                    <option value="together">All Characters Stop at Once</option>
-                    <option value="sequential">One at a Time and Left to Right</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={labelClass}>Effect</label>
-                  <select className={fieldClass} value={landingEffectValue} onChange={(e) => handleLandingEffectChange(e.target.value as "none" | "pop")}>
-                    <option value="none">None</option>
-                    <option value="pop">Pop</option>
-                  </select>
-                </div>
-              </div>
-            </details>
-          </div>
-        </>
-      )}
     </div>
   );
 }

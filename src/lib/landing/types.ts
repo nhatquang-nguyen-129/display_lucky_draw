@@ -208,15 +208,14 @@ export interface LuckyWheelProps {
   rollStyle: "flicker" | "reel";
   // Sub-setting của rollStyle "reel" (KHÔNG phải landingEffect, chỉ có ý nghĩa khi rollStyle =
   // "reel") — 1 ô số hình dung gồm 2 PHẦN TÁCH BIỆT: khung trắng chứa ký tự, và CHÍNH ký tự bên
-  // trong, mỗi phần VỀ MẶT DỮ LIỆU/RENDER (DigitRollerTemplate.tsx) vẫn là 2 field tách rời — nhưng
-  // LuckyWheelPanel.tsx giờ LUÔN đọc/ghi ĐỒNG THỜI cả 2 qua ĐÚNG 1 dropdown "Effect" (1 combination
-  // đồng bộ, không cho chọn lẻ từng lớp nữa — xem landingEffectValue/handleLandingEffectChange ở đó):
-  // "Pop" = reelCardEffect="pop" VÀ reelNumberEffect="bounce" CÙNG BẬT, "None" = cả 2 cùng "none".
-  // Landing lưu TRƯỚC bản gộp này (từng cho bật lẻ/không đồng bộ) vẫn chạy đúng y nguyên field gốc,
-  // chỉ khác ở panel: không khớp ĐÚNG combination "Pop" ở trên thì hiện "None" dù 1 trong 2 field vẫn
-  // đang bật.
+  // trong, mỗi phần VỀ MẶT DỮ LIỆU/RENDER (DigitRollerTemplate.tsx) vẫn là 2 field tách rời.
   // reelCardEffect — hiệu ứng cho KHUNG TRẮNG: "pop" = khung "bật ra" (scale+fade), tạo cảm giác
   // xuất hiện chớp nhoáng. Không đụng gì tới bản thân ký tự bên trong.
+  // KHÔNG còn dropdown "Effect" riêng trong Properties Panel nữa (đơn giản hoá — Panel giờ chỉ còn
+  // đúng 3 field: Duration/Spin style/Style, xem LuckyWheelPanel.tsx) — component MỚI tạo luôn dùng
+  // combination "pop" (reelCardEffect="pop" + reelNumberEffect="bounce", xem componentRegistry.ts),
+  // landing CŨ đã tự chỉnh tay trước khi bỏ dropdown vẫn giữ nguyên giá trị đã lưu (kể cả bật lẻ/
+  // không đồng bộ 2 field này từ trước khi panel từng gộp chung 1 dropdown).
   reelCardEffect: "none" | "pop";
   // reelNumberEffect — hiệu ứng cho CHÍNH KÝ TỰ (không đụng khung): "bounce" = ký tự nảy lên nhẹ rồi
   // rơi xuống đúng vị trí giữa, kiểu quả bóng chạm đất, chỉ 1 nhịp nhỏ (không phải hiệu ứng của khung).
@@ -224,7 +223,10 @@ export interface LuckyWheelProps {
   // Trục 2 — thời điểm các ô CHUYỂN SANG PHA CHỐT (settling — bắt đầu giảm tốc dần rồi dừng ở ký tự
   // thật): "together" = mọi ô vào pha chốt ngay t=0 (chốt cùng lúc, cùng giảm tốc). "sequential" =
   // ô thứ i CHỈ bắt đầu giảm tốc SAU KHI ô (i-1) đã dừng hẳn + revealStaggerMs — trong lúc chờ tới
-  // lượt, ô đó vẫn nhấp nháy/cuộn NHANH BÌNH THƯỜNG (không giảm tốc theo ô đang chốt).
+  // lượt, ô đó vẫn nhấp nháy/cuộn NHANH BÌNH THƯỜNG (không giảm tốc theo ô đang chốt). KHÔNG còn
+  // dropdown "Timing" riêng trong Properties Panel nữa (đơn giản hoá, cùng đợt với reelCardEffect ở
+  // trên) — component MỚI tạo luôn dùng "sequential" (xem componentRegistry.ts), landing CŨ đã tự
+  // chỉnh tay trước đó vẫn giữ nguyên giá trị đã lưu.
   revealTiming: "together" | "sequential";
   // Chỉ có tác dụng khi revealTiming = "sequential" — khoảng nghỉ (ms) SAU KHI ô này đã dừng hẳn,
   // trước khi ô kế tiếp bắt đầu giảm tốc. KHÔNG còn ô nhập riêng trong Properties Panel (đơn giản hoá
@@ -234,7 +236,9 @@ export interface LuckyWheelProps {
   // Trục 3 — hiệu ứng 1 LẦN ngay khi 1 ô vừa chốt xong ký tự thật, CHỈ áp dụng cho rollStyle
   // "flicker" (rollStyle "reel" dùng reelCardEffect/reelNumberEffect riêng ở trên, không dùng field
   // này): "none" = dừng luôn. "bounce" = rơi xuống + nảy nhẹ. "pop" = phóng to 1 chút rồi thu về
-  // kích thước ban đầu.
+  // kích thước ban đầu. KHÔNG còn dropdown riêng trong Properties Panel (cùng đợt bỏ "Effect" ở trên,
+  // vốn gộp chung điều khiển cả field này lẫn reelCardEffect/reelNumberEffect qua ĐÚNG 1 dropdown) —
+  // component MỚI tạo luôn dùng "pop" (xem componentRegistry.ts), landing CŨ giữ nguyên giá trị đã lưu.
   landingEffect: "none" | "bounce" | "pop";
   fontFamily: string;
   fontColor: string;
