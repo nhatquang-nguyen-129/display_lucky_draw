@@ -90,6 +90,25 @@ export default function ScaleAnchorOverlay({
     onPlaceAnchor(Math.round(snapped.x), Math.round(snapped.y));
   }
 
+  // Giữ Shift lúc kéo pin Direction — bẻ góc (so với Anchor cố định) về bội số 45° gần nhất (0/45/90/
+  // .../315), GIỮ NGUYÊN khoảng cách Euclid tới Anchor (chỉ đổi hướng, không đổi mức độ zoom/dịch
+  // chuyển đang kéo tới) — tính trong hệ toạ độ % (0-100 theo cả 2 trục) như mọi nơi khác trong file
+  // này, KHÔNG hiệu chỉnh theo tỉ lệ khung thật (nếu khung không vuông, "45°" ở đây là 45° trong không
+  // gian %, có thể lệch vài độ so với 45° hình học thật trên màn hình — chấp nhận được, đơn giản hơn
+  // nhiều so với quy đổi qua px thật rồi quy ngược lại %).
+  function snapDirectionAngle(x: number, y: number): { x: number; y: number } {
+    const dx = x - anchorX;
+    const dy = y - anchorY;
+    const dist = Math.hypot(dx, dy);
+    if (dist === 0) return { x, y };
+    const step = Math.PI / 4;
+    const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+    return {
+      x: Math.min(100, Math.max(0, anchorX + dist * Math.cos(angle))),
+      y: Math.min(100, Math.max(0, anchorY + dist * Math.sin(angle))),
+    };
+  }
+
   // Chỉ pin Direction kéo được — Anchor cố định NGAY sau lúc thả (xem doc-comment đầu file), không còn
   // hit-test "pin nào gần hơn" như bản trước (gây nhầm: vừa thả xong 2 pin trùng nhau y hệt, luôn đoán
   // trúng Anchor thay vì Direction — đúng bug người dùng báo).
@@ -98,11 +117,16 @@ export default function ScaleAnchorOverlay({
     e.preventDefault();
     const start = pointerToPercent(e.clientX, e.clientY);
     if (!start) return;
-    onChangeHandle(Math.round(start.x), Math.round(start.y));
+    const startPoint = e.shiftKey ? snapDirectionAngle(start.x, start.y) : start;
+    onChangeHandle(Math.round(startPoint.x), Math.round(startPoint.y));
 
     function onMove(ev: MouseEvent) {
       const p = pointerToPercent(ev.clientX, ev.clientY);
-      if (p) onChangeHandle(Math.round(p.x), Math.round(p.y));
+      if (!p) return;
+      // Đọc `shiftKey` NGAY TRÊN mousemove (không chỉ lúc mousedown) — bấm/nhả Shift GIỮA lúc đang kéo
+      // vẫn có tác dụng ngay lập tức, đúng hành vi quen thuộc của các công cụ thiết kế khác.
+      const next = ev.shiftKey ? snapDirectionAngle(p.x, p.y) : p;
+      onChangeHandle(Math.round(next.x), Math.round(next.y));
     }
     function onUp() {
       window.removeEventListener("mousemove", onMove);
