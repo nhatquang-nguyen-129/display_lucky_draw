@@ -39,7 +39,8 @@ export default function ScaleAnchorTrigger({
           Done — stop editing on canvas
         </button>
         <p className="text-[10px] leading-snug text-base-500">
-          Drag the yellow Direction arrow to set how far (and toward where) it zooms — the Anchor pin is fixed now.
+          Drag the yellow Direction arrow to set how far (and toward where) it zooms — the Anchor pin is fixed
+          now. Hold Shift to snap the angle to straight/45° diagonals.
         </p>
       </div>
     );

@@ -29,6 +29,7 @@ export default function LiftDirectionTrigger({
         </button>
         <p className="text-[10px] leading-snug text-base-500">
           Drag the yellow arrow away from the fixed center point to set how far (and toward where) it lifts.
+          Hold Shift to snap the angle to straight/45° diagonals.
         </p>
       </div>
     );
