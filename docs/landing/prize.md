@@ -1,4 +1,4 @@
-# Prize Image — ảnh đại diện 1 giải + hiệu ứng Spotlight "When Won"
+# Prize Image — ảnh đại diện 1 giải + hiệu ứng Spotlight "Won"
 
 > Đọc trước khi sửa `src/components/landing/views/PrizeImageView.tsx`,
 > `src/components/landing/views/prizeEffectTransform.ts`,
@@ -46,9 +46,9 @@ Giải quyết bằng 2 file phối hợp:
 
 | Giai đoạn | Kiểu chạy | Khi nào active |
 |---|---|---|
-| `onHover` | persistent (lặp suốt trạng thái) | Di chuột gần/vào — CHỈ lúc CHƯA chọn (click chính là hành động chọn nên "When Click" và "When Select" gộp làm 1) |
+| `onHover` | persistent (lặp suốt trạng thái) | Di chuột gần/vào — CHỈ lúc CHƯA chọn (click chính là hành động chọn nên "Click" và "Select" gộp làm 1 mục panel duy nhất, tên "Select") |
 | `onSelect` | persistent | Suốt lúc giải này đang là giải ĐANG CHỌN |
-| `onOutOfStock` | persistent | Suốt lúc hết hàng/không active — LAYER THÊM lên trên `outOfStockDimAmount` (0-100%, `filter: brightness(...)`, luôn có bất kể có chọn effect gì hay không) |
+| `onOutOfStock` | persistent | Suốt lúc hết hàng/không active — mặc định Highlight = Dim 58% (xem bên dưới), KHÔNG còn field nền `outOfStockDimAmount` riêng luôn-bật-sẵn như trước, chỉ còn 1 lựa chọn Highlight bình thường như 3 giai đoạn kia |
 | `onWon` | **oneshot** (chạy đúng 1 lần rồi tắt) | Đúng lúc Wheel VỪA TRẢ VỀ người trúng giải NÀY (`candidate.prizeId === prizeId`) — KHÔNG đợi Confirm, xem `justWon` trong `PrizeImageView.tsx` |
 
 Trùng nhau thì ưu tiên `onOutOfStock` > `onSelect` > `onHover` (đang hover 1 giải đã hết hàng thì hiện
@@ -60,8 +60,11 @@ cả 3 (vd vừa `scaleUp` vừa `glow`) — chỉ TRONG 1 nhóm mới giới h�
 - **Focus** — `scaleUp` (phóng to quanh 1 điểm neo kéo-thả trên canvas) / `lift` (nâng/dịch theo
   hướng, điểm cố định LUÔN là chính giữa khung).
 - **Highlight** — `glow` (viền sáng, vẽ bằng `filter: drop-shadow()` lặp 3 lớp, đặt `-z-10` để chỉ lộ
-  ra outer glow — xem mục 5 bên dưới, cùng kỹ thuật với Spotlight's outer shadow) / `sweep` (1 dải
-  sáng quét ngang qua bề mặt, dùng `mask-image` theo alpha để không tràn ra ngoài silhouette).
+  ra outer glow) / `sweep` (1 dải sáng quét ngang qua bề mặt, dùng `mask-image` theo alpha để không
+  tràn ra ngoài silhouette) / `dim` (phủ đen mask theo silhouette, `size` = % tối đi) / `spotlight`
+  (luồng sáng toàn cảnh hình nón — xem mục 4, KHÁC 3 effect còn lại ở chỗ vẽ RIÊNG trong
+  `PrizeImageView.tsx` chứ không qua `PrizeEffectOverlay.tsx`, vì cần
+  `component.x/y/width/height` để kéo lên tận đỉnh canvas).
 - **Motion** — `bounce`/`pulse`/`shake` (biên độ theo px, keyframes CSS trong `landingEffects.css`).
 
 Cộng thêm nhóm thứ 4 tách riêng, `appearance: "none" | "disappear"` — công tắc ẩn/hiện thuần, không
@@ -71,29 +74,39 @@ Vẽ ở 2 file: `prizeEffectTransform.ts` (Focus/Motion — biến đổi TRỰ
 wrapper DOM riêng để 2 nhóm animate đồng thời không tranh chấp cùng thuộc tính) và
 `PrizeEffectOverlay.tsx` (Highlight — 1 lớp phủ RIÊNG cạnh ảnh).
 
-## 4. Spotlight "When Won" — hiệu ứng ánh sáng toàn cảnh
+## 4. Spotlight — hiệu ứng ánh sáng toàn cảnh
 
-### 4.1. Khác gì với `onWon`'s Focus/Highlight/Motion
+### 4.1. Khác gì với Focus/Highlight/Motion còn lại — và LỊCH SỬ 2 VÒNG kiến trúc
 
-`wonAmbientEffect` (`LiveImageProps`, dropdown "Ambient effect" trong panel "When Won") là **1 lớp
-phủ HOÀN TOÀN RIÊNG**, không phải effect thứ 4 của nhóm nào ở mục 3:
+`spotlight` là 1 effect BÌNH THƯỜNG của nhóm **Highlight** (mục 3) — chọn được ở CẢ 4 giai đoạn
+Hover/Select/Won/Out of Stock, y hệt `glow`/`sweep`/`dim` — nhưng khác 3 effect kia ở CÁCH VẼ:
 
-- Hiện **SUỐT** lúc `justWon` còn đúng (không phải 1 cú chạy ngắn rồi tắt như oneshot Focus/Highlight/
-  Motion) — tắt NGAY (không delay) khi `justWon` hết đúng (Reset/Redraw/1 lượt quay mới bắt đầu).
-- Chỉ trễ đúng `wonAmbientDelayMs` lúc BẮT ĐẦU hiện (cấu hình được), không có field "tắt sau bao
-  lâu".
+- Không vẽ qua `PrizeEffectOverlay.tsx` như `glow`/`sweep`/`dim` (những effect đó chỉ cần
+  `imageSrc`/`fit`/`borderRadius`) — Spotlight cần `component.x/y/width/height` để kéo nón sáng lên
+  tận ĐỈNH CANVAS (vượt ra khỏi khung của CHÍNH component này), nên vẽ RIÊNG ngay trong
+  `PrizeImageView.tsx`, đọc trực tiếp `resolvePrizeEffects()`'s `highlightPersistent`/
+  `highlightOneshot` để biết stage nào (nếu có) đang active.
+- Hiện **SUỐT** lúc stage đó còn active (không phải 1 cú chạy ngắn rồi tắt như oneshot
+  Focus/Highlight/Motion khác) — tắt NGAY (không delay) khi hết active.
+- Chỉ trễ đúng `delayMs` (field RIÊNG của `PrizeGroupEffect`, CHỈ effect này dùng) lúc BẮT ĐẦU hiện,
+  không có field "tắt sau bao lâu".
 - Phong cách (màu/hình dạng/độ mờ) **CỐ ĐỊNH trong code**, không phơi ra Properties Panel — panel chỉ
-  cho chọn LOẠI hiệu ứng (`None`/`Spotlight`) + Delay. Lý do: đây là 1 kiểu ánh sáng photoreal khó
-  tham số hoá gọn gàng bằng vài ô nhập, cố định sẵn 1 phong cách "đẹp mặc định" đơn giản hơn nhiều so
-  với mở hết ra cho người dùng tự chỉnh màu/góc/cường độ.
+  cho chọn effect (`Spotlight`) + Delay, y hệt 3 effect Highlight kia không có field phụ ngoài
+  Color/Size của riêng chúng. Lý do: đây là 1 kiểu ánh sáng photoreal khó tham số hoá gọn gàng bằng
+  vài ô nhập, cố định sẵn 1 phong cách "đẹp mặc định" đơn giản hơn nhiều so với mở hết ra cho người
+  dùng tự chỉnh màu/góc/cường độ.
 
-Giá trị hiện tại: `"none" | "spotlight"` — mảng mở để sau này thêm loại ambient effect khác (vd
-"Rim light") mà không cần đổi shape dữ liệu.
+**LỊCH SỬ 2 VÒNG** (quan trọng để hiểu vì sao kiến trúc hiện tại trông "lằng nhằng" hơn cần thiết nếu
+chỉ đọc code hiện tại):
 
-> Lưu ý đặt tên dễ nhầm: từng có 1 effect tên **"spotlight"** trong nhóm Highlight (mục 3) — đã bỏ
-> hẳn sau nhiều vòng thử (polygon nhìn phẳng lì, bản 2D lighting/compositing cũng không ra hướng ổn).
-> Đó là **1 ý tưởng khác, đã chết**, trùng tên ngẫu nhiên với ambient effect này. Landing cũ lỡ chọn
-> effect "spotlight" đó cho 1 giai đoạn nào đó tự rơi về `"none"` khi render, không crash.
+1. **Vòng 1** (đã CHẾT) — `spotlight` từng là 1 effect Highlight vẽ NGAY trong `PrizeEffectOverlay.tsx`
+   (kiểu polygon/2D lighting) — bỏ hẳn sau nhiều vòng thử vì không ra hướng đẹp (nhìn phẳng lì).
+2. **Vòng 2** — dựng LẠI hoàn toàn bằng kỹ thuật khác (nón đáy elip + mask silhouette + drop-shadow,
+   mục 4.2-4.3 dưới đây), nhưng LÚC ĐẦU triển khai như 1 field HOÀN TOÀN TÁCH RIÊNG
+   (`wonAmbientEffect`/`wonAmbientDelayMs` trên `LiveImageProps`, gắn cứng CHỈ cho `onWon`, không đi
+   qua hệ 3-nhóm Focus/Highlight/Motion) — rồi mới GỘP LẠI làm 1 lựa chọn Highlight bình thường, dùng
+   được cho cả 4 giai đoạn (bản hiện tại). 2 field `wonAmbientEffect`/`wonAmbientDelayMs` KHÔNG còn
+   tồn tại nữa.
 
 ### 4.2. Spotlight ngoài đời thật trông như thế nào
 
@@ -191,11 +204,13 @@ silhouette PNG mà lan ra ngoài biên, không cần Canvas 2D tự vẽ alpha m
 
 ### 4.4. Đồng bộ bật/tắt 3 lớp
 
-Nón + lớp sáng + lớp bóng đều dùng CHUNG state `spotlightOn` (1 `useState` trong `PrizeImageView.tsx`,
-bật sau đúng `wonAmbientDelayMs` kể từ lúc `justWon`, tắt NGAY khi `justWon` hết) và CHUNG
-`transition: "opacity 400ms ease-out"` — đảm bảo 3 lớp luôn fade in/out ĐỒNG THỜI, không lệch nhịp
-(vd nón hiện trước, ảnh sáng lên sau nửa giây sẽ trông như 2 hiệu ứng rời rạc thay vì 1 luồng sáng
-thống nhất).
+Nón + lớp sáng + lớp bóng đều dùng CHUNG state `spotlightOn` (1 `useState` trong `PrizeImageView.tsx`)
+và CHUNG `transition: "opacity 400ms ease-out"` — đảm bảo 3 lớp luôn fade in/out ĐỒNG THỜI, không lệch
+nhịp (vd nón hiện trước, ảnh sáng lên sau nửa giây sẽ trông như 2 hiệu ứng rời rạc thay vì 1 luồng sáng
+thống nhất). `spotlightOn` bật sau đúng `delayMs` (đọc từ CONFIG của stage đang active — oneshot ưu
+tiên hơn persistent nếu trùng nhau) kể từ lúc `spotlightTriggerKey` đổi (oneshot: mỗi lượt thắng mới,
+qua `key` remount riêng; persistent: mỗi lần CHUYỂN sang active), tắt NGAY khi `spotlightActive` về
+`false` (hết active, không phải effect nào đó đang chọn "Spotlight" nữa).
 
 ### 4.5. Giới hạn đã biết (chấp nhận được, không phải bug)
 
@@ -206,8 +221,8 @@ thống nhất).
   tuyệt đối trong MỌI trường hợp — riêng nón (đặt ở cấp ngoài Focus wrapper) không track cả Focus lẫn
   Motion; lớp sáng/bóng trên ảnh (đặt trong Motion wrapper) track đúng Motion nhưng không track
   Focus's `transform-origin` lệch tâm. Trong thực tế Motion là hiệu ứng oneshot chạy rất ngắn, còn
-  Spotlight thường bật sau `wonAmbientDelayMs` (đã trễ), nên 2 pha hiếm khi chồng đúng lúc — cùng kiểu
-  đánh đổi đã chấp nhận sẵn cho `glow`/`sweep` ở `PrizeEffectOverlay.tsx`.
+  Spotlight thường bật sau `delayMs` (đã trễ), nên 2 pha hiếm khi chồng đúng lúc — cùng kiểu đánh đổi
+  đã chấp nhận sẵn cho `glow`/`sweep` ở `PrizeEffectOverlay.tsx`.
 - Màu/hình dạng/độ dày stroke đổ bóng là hằng số cố định trong code (không phơi Properties Panel) —
   đổi trực tiếp trong `PrizeImageView.tsx` nếu cần tinh chỉnh, không có UI riêng.
 
@@ -215,15 +230,15 @@ thống nhất).
 
 | File | Vai trò |
 |---|---|
-| `src/lib/landing/types.ts` | `LiveImageProps`/`PrizeInteractions`/`PrizeStageEffect`/`PrizeGroupEffect`/`PrizeWonAmbientEffect` — toàn bộ shape dữ liệu |
-| `src/components/landing/views/PrizeImageView.tsx` | Component render chính — click-to-select, 4 giai đoạn, Spotlight (nón + lớp sáng/bóng trên ảnh) |
+| `src/lib/landing/types.ts` | `LiveImageProps`/`PrizeInteractions`/`PrizeStageEffect`/`PrizeGroupEffect` (kèm `delayMs`, CHỈ spotlight dùng) — toàn bộ shape dữ liệu |
+| `src/components/landing/views/PrizeImageView.tsx` | Component render chính — click-to-select, 4 giai đoạn, Spotlight (nón + lớp sáng/bóng trên ảnh, đọc `resolved.highlightPersistent`/`highlightOneshot` để biết stage nào đang chọn Spotlight) |
 | `src/components/landing/views/prizeEffectTransform.ts` | Tính `transform` cho Focus/Motion, `resolvePrizeEffects` (ưu tiên persistent/oneshot), `computeSpotlightClipPath` |
-| `src/components/landing/views/PrizeEffectOverlay.tsx` | Vẽ Highlight (`glow`/`sweep`) — cùng kỹ thuật `drop-shadow`/`mask-image` mà Spotlight tái dùng |
+| `src/components/landing/views/PrizeEffectOverlay.tsx` | Vẽ Highlight `glow`/`sweep`/`dim` — cùng kỹ thuật `drop-shadow`/`mask-image` mà Spotlight tái dùng (nhưng Spotlight KHÔNG vẽ ở đây, xem mục 4.1) |
 | `src/components/landing/views/pixelAlphaHitTest.ts` | Decode alpha PNG thật qua canvas, cache theo `src` |
 | `src/components/landing/views/prizeHitCoordinator.ts` | Dò lại toàn bộ ngăn xếp phần tử tại điểm chuột — xử lý nhiều Prize Image chồng bounding box |
-| `src/components/landing/panels/LiveImagePanel.tsx` | Properties Panel — Prize/Fit/Border radius, 4 `PrizeEffectPicker`, dropdown Spotlight + Delay |
-| `src/components/landing/panels/PrizeEffectPicker.tsx` | UI chọn Focus/Highlight/Motion cho 1 giai đoạn |
-| `src/components/landing/componentRegistry.ts` | Default props khi tạo Prize Image mới (`prizeImage` entry) |
+| `src/components/landing/panels/LiveImagePanel.tsx` | Properties Panel — Prize/Fit/Border radius, 4 `PrizeEffectPicker` giống hệt nhau (không còn nội dung riêng qua `children`) |
+| `src/components/landing/panels/PrizeEffectPicker.tsx` | UI chọn Focus/Highlight/Motion cho 1 giai đoạn — dropdown Highlight có Spotlight (+ Delay) và Dim (+ Amount %) |
+| `src/components/landing/componentRegistry.ts` | Default props khi tạo Prize Image mới (`prizeImage` entry, `onOutOfStock` mặc định Dim 58%) |
 
 Xem thêm: [effects.md](./effects.md) (trần kỹ thuật hiệu ứng, tier nào dùng khi nào),
 [button-actions.md](./button-actions.md) (nút Draw đọc `selectedPrizeId` do Prize Image set),

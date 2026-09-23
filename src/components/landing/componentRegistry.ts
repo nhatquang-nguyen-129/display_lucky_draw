@@ -14,7 +14,7 @@ import {
 } from "@/lib/landing/types";
 
 function noGroupEffect(): PrizeGroupEffect {
-  return { effect: "none", color: "#FFCA2D", size: 24, directionX: 50, directionY: 50, handleX: 50, handleY: 50, anchorPlaced: false };
+  return { effect: "none", color: "#FFCA2D", size: 24, directionX: 50, directionY: 50, handleX: 50, handleY: 50, anchorPlaced: false, delayMs: 0 };
 }
 
 // Default mới cho 1 giai đoạn tương tác prize (PrizeInteractions, xem types.ts) — "none" = tắt hẳn cả
@@ -37,6 +37,7 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
     // hưởng gì tới việc effect có chạy hay không; panel vẫn hiện nút "Drop anchor point" để người dùng
     // chủ động thả lại nếu muốn tuỳ chỉnh trực quan trên canvas.
     anchorPlaced: false,
+    delayMs: 0,
   };
   return {
     focus: group === "focus" ? active : noGroupEffect(),
@@ -48,9 +49,10 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
 // nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette. "Effects" đã bỏ (Firework/
-// Spotlight không còn là component đứng độc lập — Spotlight giờ là 1 dropdown "When Won" ngay trong
-// panel Prize Image, xem PrizeWonAmbientEffect trong types.ts; Firework đã xoá hẳn, chưa có kiến trúc
-// thay thế) — thêm lại category này nếu sau này có component TỰ ĐỨNG thuộc nhóm "hiệu ứng" khác.
+// Spotlight không còn là component đứng độc lập — Spotlight giờ là 1 lựa chọn Highlight bình thường
+// ngay trong panel Prize Image, dùng được ở cả 4 giai đoạn Hover/Select/Won/Out of Stock, xem
+// doc-comment PrizeEffectName trong types.ts; Firework đã xoá hẳn, chưa có kiến trúc thay thế) — thêm
+// lại category này nếu sau này có component TỰ ĐỨNG thuộc nhóm "hiệu ứng" khác.
 export const CATEGORY_ORDER = ["Basic", "Draw", "Live", "Interactive"] as const;
 export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
 
@@ -161,10 +163,16 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       onHover: defaultPrizeStage(),
       onSelect: defaultPrizeStage("focus", "scaleUp"),
       onWon: defaultPrizeStage(),
-      onOutOfStock: defaultPrizeStage(),
-      outOfStockDimAmount: 58,
-      wonAmbientEffect: "none",
-      wonAmbientDelayMs: 0,
+      // Highlight = Dim 58% mặc định — giữ ĐÚNG cảm giác `outOfStockDimAmount` cũ (field nền riêng,
+      // luôn bật 58% khi hết hàng, xem doc-comment PrizeInteractions trong types.ts) dù giờ "Dim" chỉ
+      // còn là 1 lựa chọn Highlight bình thường như 3 giai đoạn kia — không dùng `defaultPrizeStage()`
+      // vì hàm đó không cho tuỳ chỉnh `size` theo effect.
+      onOutOfStock: {
+        focus: noGroupEffect(),
+        highlight: { ...noGroupEffect(), effect: "dim", size: 58 },
+        motion: noGroupEffect(),
+        appearance: "none",
+      },
     }),
   },
   currentTime: {
