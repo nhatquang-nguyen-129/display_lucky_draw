@@ -10,16 +10,17 @@ function alphaHex(fraction: number): string {
     .padStart(2, "0");
 }
 
-// Vẽ 2 effect thuộc nhóm "overlay-category" (glow/sweep — thêm 1 LỚP PHỦ RIÊNG cạnh ảnh, xem
+// Vẽ 3 effect thuộc nhóm "overlay-category" (glow/sweep/dim — thêm 1 LỚP PHỦ RIÊNG cạnh ảnh, xem
 // doc-comment PrizeStageEffect trong types.ts) — KHÁC NHAU về vị trí lớp phủ: glow nằm DƯỚI ảnh thật
 // (`-z-10`, chỉ còn lộ ra phần lan RA NGOÀI biên ảnh — outer glow thuần tuý, không đè sáng lên chính
-// ảnh) còn sweep nằm TRÊN (ánh sáng quét ngang qua bề mặt, cần che phủ trực tiếp lên ảnh mới đúng cảm
-// giác "ánh sáng phản chiếu lướt qua"). Effect thuộc nhóm "transform-category"
-// (scaleUp/lift/bounce/pulse/shake) và "none" đều trả `null` ở đây — 2 nhóm đó biến đổi TRỰC TIẾP
-// element ảnh thật, tính ở prizeEffectTransform.ts, không qua component này. Từng có thêm "spotlight"
-// (đèn sân khấu) — bỏ hẳn sau nhiều vòng thử không ra hướng đi ổn, xem doc-comment PrizeEffectName
-// trong types.ts — landing cũ lỡ chọn "spotlight" cho 1 giai đoạn nào đó rơi thẳng về `return null` ở
-// cuối file (không khớp "glow" cũng không khớp "sweep"), không crash.
+// ảnh) còn sweep/dim nằm TRÊN (sweep: ánh sáng quét ngang qua bề mặt, cần che phủ trực tiếp lên ảnh
+// mới đúng cảm giác "ánh sáng phản chiếu lướt qua" · dim: phủ đen mask theo silhouette ảnh, thay
+// `filter: brightness()` cũ áp lên CẢ khung — xem doc-comment PrizeEffectName trong types.ts). Effect
+// thuộc nhóm "transform-category" (scaleUp/lift/bounce/pulse/shake) và "none" đều trả `null` ở đây — 2
+// nhóm đó biến đổi TRỰC TIẾP element ảnh thật, tính ở prizeEffectTransform.ts, không qua component
+// này. "spotlight" CŨNG trả `null` ở đây (rơi vào nhánh cuối file) — KHÔNG phải effect lạ/không nhận
+// diện được, mà vẽ Ở NƠI KHÁC (PrizeImageView.tsx, cần `component.x/y/width/height` để kéo lên tận
+// đỉnh canvas — dữ liệu component này không có sẵn), xem doc-comment PrizeEffectName trong types.ts.
 //
 // `mode`: "persistent" (When Select/Out of Stock — lặp vô hạn suốt trạng thái) hay "oneshot" (When
 // Click/Won — chạy đúng 1 lần rồi đứng yên ở khung cuối). Component cha (PrizeImageView.tsx) chịu
@@ -149,7 +150,21 @@ export default function PrizeEffectOverlay({
     );
   }
 
-  // Effect không nhận diện được (vd landing cũ lỡ lưu "spotlight" — đã bỏ hẳn, xem doc-comment đầu
-  // file) — không vẽ gì thay vì đoán bừa, an toàn hơn crash hay hiện nhầm hiệu ứng khác.
+  if (effect === "dim") {
+    // Phủ đen mask theo silhouette ảnh (giống sweep — mixBlendMode "multiply" thay vì "screen" vì đây
+    // là TỐI đi, không phải sáng thêm) — thay hẳn `filter: brightness(1 - amount/100)` cũ áp lên CẢ
+    // khung component (kể cả nền trong suốt quanh ảnh PNG) — giờ CHỈ tối đúng phần có pixel ảnh thật,
+    // `size` (0-100, xem SIZE_RANGE trong PrizeEffectPicker.tsx) = opacity lớp phủ đen.
+    return (
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ borderRadius, backgroundColor: "#000000", opacity: Math.max(0, Math.min(100, size)) / 100, mixBlendMode: "multiply", ...maskProps }}
+      />
+    );
+  }
+
+  // Effect không nhận diện được ở ĐÂY — bao gồm "spotlight" (vẽ Ở NƠI KHÁC, xem doc-comment đầu file)
+  // và mọi effect lạ/cũ khác — không vẽ gì thay vì đoán bừa, an toàn hơn crash hay hiện nhầm hiệu ứng
+  // khác.
   return null;
 }

@@ -58,7 +58,8 @@ const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.
 // dùng cơ chế `useRevealed`/`useRevealTransition` riêng (xem drawRevealHooks.ts), không migrate sang
 // `useDrawCycleVisibility`. Thứ tự 2 nhóm dưới "Basic options": "Self Interactions" TRƯỚC (đúng thứ
 // tự chuẩn ở BackgroundPanel.tsx/LiveImagePanel.tsx/LuckyWheelPanel.tsx), "Interactions with Draw"
-// SAU. "Self Interactions" chỉ có ĐÚNG 1 mục "When Quick Draw" (Quick Draw text — hiện thay tên khi
+// SAU. "Self Interactions" chỉ có ĐÚNG 1 mục "Quick Draw" (không tiền tố "When ", bỏ cho gọn cùng đợt
+// với LiveImagePanel.tsx — Quick Draw text hiện thay tên khi
 // 1 Quick Draw vừa chạy xong) — TÁCH RIÊNG khỏi "Interactions with Draw" vì không thuộc khái niệm
 // Idle/Draw/Redraw theo từng lượt, không phải Winner Name "tự" phản ứng click/hover (Winner Name
 // không bị thao tác trực tiếp) mà vì Quick Draw là 1 luồng khác hẳn Draw đơn lẻ. "Interactions with
@@ -209,7 +210,7 @@ export default function LiveTextPanel({
       <div className="space-y-2">
         <span className={groupLabelClass}>Self Interactions</span>
         <details open={quickDrawOpen} onToggle={(e) => setQuickDrawOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>When Quick Draw</summary>
+          <summary className={summaryClass}>Quick Draw</summary>
           <div className={detailsBodyClass}>
             <div>
               <label className={labelClass}>Quick Draw text</label>

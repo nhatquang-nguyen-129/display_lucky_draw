@@ -334,21 +334,36 @@ export interface WinnerNameProps extends LiveTextProps {
 // đoạn tương tác (xem PrizeInteractions bên dưới), chia 3 NHÓM cố định — mỗi nhóm là 1 "kênh" độc
 // lập, hiển thị trong Properties Panel (PrizeEffectPicker.tsx):
 //   - Focus: scaleUp (phóng to, thay "Zoom" cũ), lift (nâng/dịch theo hướng).
-//   - Highlight: glow (viền sáng, thay "Glow" cũ), sweep (ánh sáng quét qua). Từng có thêm "spotlight"
-//     (đèn sân khấu chiếu từ trên xuống) — bỏ hẳn sau nhiều vòng thử vì không tìm được hướng đi ổn
-//     (polygon nhìn như hình khối phẳng lì; bản dựng lại kiểu 2D lighting/compositing photoreal cũng
-//     chưa ra hướng thoả đáng) — landing cũ lỡ chọn "spotlight" cho 1 giai đoạn nào đó tự rơi về "none"
-//     khi render (xem PrizeEffectOverlay.tsx), không crash.
+//   - Highlight: glow (viền sáng, thay "Glow" cũ), sweep (ánh sáng quét qua), spotlight (đèn sân khấu
+//     chiếu từ đỉnh canvas xuống — xem dưới), dim (tối đi — xem dưới).
 //   - Motion: bounce, pulse, shake.
 // TRONG CÙNG 1 nhóm chỉ chọn được ĐÚNG 1 effect (hoặc "none" = tắt nhóm đó) — nhưng 3 nhóm hoạt động
-// ĐỘC LẬP, nên 1 giai đoạn (vd "When Select") có thể BẬT ĐỒNG THỜI cả Focus lẫn Highlight lẫn Motion
-// (tối đa 3 effect cùng lúc, mỗi nhóm 1 cái) — xem PrizeStageEffect bên dưới. Xem
-// PrizeEffectOverlay.tsx/prizeEffectTransform.ts cho cách vẽ.
-export type PrizeEffectName = "none" | "scaleUp" | "lift" | "glow" | "sweep" | "bounce" | "pulse" | "shake";
+// ĐỘC LẬP, nên 1 giai đoạn (vd "Select") có thể BẬT ĐỒNG THỜI cả Focus lẫn Highlight lẫn Motion (tối
+// đa 3 effect cùng lúc, mỗi nhóm 1 cái) — xem PrizeStageEffect bên dưới. Xem
+// PrizeEffectOverlay.tsx/prizeEffectTransform.ts cho cách vẽ glow/sweep/dim.
+//
+// "spotlight" — LỊCH SỬ 2 VÒNG: vòng 1 (đèn sân khấu chiếu từ trên xuống, vẽ kiểu polygon/2D lighting
+// ngay TRONG PrizeEffectOverlay.tsx như glow/sweep) bị bỏ hẳn vì không ra hướng đẹp (nhìn như hình khối
+// phẳng lì). Vòng 2: dựng LẠI hoàn toàn bằng kỹ thuật khác (nón đáy ELIP + mask theo silhouette ảnh +
+// drop-shadow, toàn bộ CSS thuần — xem doc-comment `PrizeWonAmbientEffect` CŨ, đã xoá, và
+// docs/landing/prize.md mục 4) — LÚC ĐẦU gắn cứng CHỈ cho `onWon` qua field `wonAmbientEffect` riêng
+// (TÁCH HẲN khỏi hệ 3-nhóm này), rồi sau đó GỘP LẠI vào đây làm 1 lựa chọn Highlight bình thường, dùng
+// được cho CẢ 4 giai đoạn — không còn field `wonAmbientEffect`/`wonAmbientDelayMs` riêng nữa. Vì cần
+// `component.x/y/width/height` (vượt ra khỏi khung chính nó, kéo lên tận đỉnh canvas) mà
+// `PrizeEffectOverlay.tsx` không có sẵn — effect này KHÔNG vẽ ở đó như glow/sweep/dim, mà vẽ RIÊNG ở
+// `PrizeImageView.tsx` (đọc thẳng `resolvePrizeEffects`'s `highlightPersistent`/`highlightOneshot` để
+// biết stage nào đang active). Phong cách (màu/hình nón/độ mờ) vẫn CỐ ĐỊNH trong code, không phơi ra
+// Panel — chỉ có `delayMs` (field RIÊNG của `PrizeGroupEffect`, xem bên dưới, CHỈ effect này dùng) là
+// tuỳ chỉnh được.
+// "dim" — thay thế `outOfStockDimAmount` cũ (field NỀN riêng, LUÔN áp dụng khi hết hàng bất kể effect
+// nào chọn) — giờ là 1 lựa chọn Highlight bình thường, `size` (0-100, tái dùng field có sẵn của
+// `PrizeGroupEffect`) = % tối đi, vẽ ở `PrizeEffectOverlay.tsx` như 1 lớp phủ đen mask theo silhouette
+// ảnh (không còn `filter: brightness()` áp lên CẢ khung như bản cũ).
+export type PrizeEffectName = "none" | "scaleUp" | "lift" | "glow" | "sweep" | "spotlight" | "dim" | "bounce" | "pulse" | "shake";
 
 export const PRIZE_EFFECT_GROUPS: { key: "focus" | "highlight" | "motion"; label: string; effects: PrizeEffectName[] }[] = [
   { key: "focus", label: "Focus", effects: ["scaleUp", "lift"] },
-  { key: "highlight", label: "Highlight", effects: ["glow", "sweep"] },
+  { key: "highlight", label: "Highlight", effects: ["glow", "sweep", "spotlight", "dim"] },
   { key: "motion", label: "Motion", effects: ["bounce", "pulse", "shake"] },
 ];
 
@@ -365,12 +380,16 @@ export const PRIZE_APPEARANCE_NAMES: PrizeAppearanceName[] = ["disappear"];
 // effect cho gọn). Không phải effect nào cũng dùng hết field:
 //   - color: dùng bởi glow (màu quầng sáng).
 //   - size: Ý NGHĨA THEO TỪNG EFFECT (panel tự đổi label — xem PrizeEffectPicker.tsx): glow = bán kính
-//       lan toả (px) · bounce/pulse/shake = biên độ (px). sweep không dùng field này (cố định sẵn).
-//       scaleUp VÀ lift ĐỀU không còn dùng field này nữa (bỏ hẳn ô nhập số riêng — mức độ giờ SUY RA
-//       từ khoảng cách handleX/Y tới điểm cố định, xem `handleX/Y` bên dưới); giá trị `size` cũ của 1
-//       landing đã lưu TRƯỚC bản đổi này trở thành dữ liệu thừa vô hại cho 2 effect này (scaleUp còn
-//       dùng làm fallback 1 LẦN lúc suy ra handleX/Y mặc định — xem resolveScaleHandle trong
-//       prizeEffectTransform.ts; lift thì bỏ hẳn, không fallback gì).
+//       lan toả (px) · dim = % tối đi (0-100, thay outOfStockDimAmount cũ) · bounce/pulse/shake = biên
+//       độ (px). sweep/spotlight không dùng field này (cố định sẵn). scaleUp VÀ lift ĐỀU không còn
+//       dùng field này nữa (bỏ hẳn ô nhập số riêng — mức độ giờ SUY RA từ khoảng cách handleX/Y tới
+//       điểm cố định, xem `handleX/Y` bên dưới); giá trị `size` cũ của 1 landing đã lưu TRƯỚC bản đổi
+//       này trở thành dữ liệu thừa vô hại cho 2 effect này (scaleUp còn dùng làm fallback 1 LẦN lúc
+//       suy ra handleX/Y mặc định — xem resolveScaleHandle trong prizeEffectTransform.ts; lift thì bỏ
+//       hẳn, không fallback gì).
+//   - delayMs: CHỈ spotlight dùng — chờ bao lâu (ms) SAU KHI giai đoạn này BẮT ĐẦU active mới bắt đầu
+//       hiện hiệu ứng (undefined = 0, hiện ngay) — xem PrizeImageView.tsx. Effect còn lại đều bỏ qua
+//       field này.
 //   - directionX/Y: CHỈ scaleUp dùng — 0-100% mỗi trục, ĐÚNG toạ độ ĐIỂM NEO cố định (kéo-thả trực
 //     tiếp trên ảnh thật ở canvas Builder, xem ScaleAnchorOverlay.tsx) — KHÔNG nghịch đảo,
 //     transform-origin dùng THẲNG giá trị này (sau khi bám pixel thật gần nhất, xem
@@ -403,6 +422,7 @@ export interface PrizeGroupEffect {
   handleX: number;
   handleY: number;
   anchorPlaced: boolean;
+  delayMs: number;
 }
 
 export const DEFAULT_PRIZE_GROUP_EFFECT: PrizeGroupEffect = {
@@ -417,6 +437,7 @@ export const DEFAULT_PRIZE_GROUP_EFFECT: PrizeGroupEffect = {
   handleX: 50,
   handleY: 50,
   anchorPlaced: false,
+  delayMs: 0,
 };
 
 // Cấu hình ĐẦY ĐỦ cho 1 giai đoạn tương tác (When Hover/Select/Won/Out of Stock) — GỘP 3 nhóm ĐỘC
@@ -492,11 +513,11 @@ export interface PrizeInteractions {
   onHover: PrizeStageEffect;
   onSelect: PrizeStageEffect;
   onWon: PrizeStageEffect;
+  // KHÔNG còn field `outOfStockDimAmount` riêng — độ tối khi hết hàng giờ CHÍNH LÀ effect "dim" của
+  // nhóm Highlight (`onOutOfStock.highlight`, `size` = % tối đi), dùng chung cơ chế với 3 giai đoạn
+  // còn lại thay vì 1 field nền tách biệt luôn-bật-sẵn (xem doc-comment PrizeEffectName ở trên,
+  // componentRegistry.ts đặt mặc định `onOutOfStock` = Dim 58% để giữ đúng cảm giác cũ).
   onOutOfStock: PrizeStageEffect;
-  // 0-100 (%) — độ tối CỐ ĐỊNH khi hết hàng/không active (filter: brightness(1 - amount/100)), tách
-  // riêng khỏi `onOutOfStock` (effect CHỌN THÊM, tuỳ chọn) vì đây là tín hiệu "hết hàng" cơ bản LUÔN
-  // cần có để phân biệt được với giải còn hàng, không phụ thuộc có chọn effect gì hay không.
-  outOfStockDimAmount: number;
 }
 
 export interface WinnerNameComponent extends BaseComponent {
@@ -508,26 +529,6 @@ export interface PrizeImageComponent extends BaseComponent {
   type: "prizeImage";
   props: LiveImageProps;
 }
-
-// Hiệu ứng TOÀN CẢNH khi ĐÚNG giải của Prize Image này vừa thắng ("When Won" — cùng mốc `justWon` với
-// `onWon`/`PrizeStageEffect` ở PrizeInteractions, xem PrizeImageView.tsx) — KHÁC HẲN 3 nhóm
-// Focus/Highlight/Motion (biến đổi CHÍNH ảnh giải: scale/glow/bounce...), đây là 1 lớp phủ RIÊNG,
-// PHONG CÁCH CỐ ĐỊNH trong code (không phơi màu/hình dạng ra Properties Panel) — chỉ chọn LOẠI hiệu
-// ứng + Delay. Từng có 1 phiên bản "Spotlight" là component ĐỨNG ĐỘC LẬP (đặt tay + tự chọn 1 prizeId
-// để gắn, y hệt cách Firework CŨ hoạt động) — bỏ hẳn vì hầu như MỌI trường hợp dùng đều muốn hiệu ứng
-// bám ĐÚNG khung ảnh của prize đó, tự tính theo x/y/width/height CÓ SẴN, không cần đặt/định vị/chọn
-// prizeId thêm 1 lần nữa — thêm 1 giải mới cần hiệu ứng này chỉ cần đổi ĐÚNG 1 dropdown trên panel của
-// chính Prize Image đó, không phải thêm 1 component mới. LƯU Ý: KHÔNG liên quan gì tới effect
-// "spotlight" đã bỏ hẳn trong `PrizeEffectName`/nhóm Highlight (xem doc-comment ở đó) — đó là 1 Ý
-// TƯỞNG KHÁC (đèn sân khấu chiếu từ trên xuống, thử và bỏ vì không ra hướng đẹp), tên trùng ngẫu
-// nhiên. "none" (mặc định) = tắt hẳn, giữ đúng hành vi mọi Prize Image đã lưu trước khi có field này.
-// "spotlight" = phủ 1 luồng sáng hình nón (đáy ELIP, không phải cắt cụt đáy thẳng) từ đỉnh canvas
-// xuống đáy khung Prize, CỘNG thêm ảnh sáng hơn ở nửa trên/đổ bóng lan ra dưới đáy — toàn bộ CSS
-// thuần (clip-path SVG path()/mask-image/drop-shadow, xem PrizeImageView.tsx và
-// docs/landing/prize.md mục 4 cho lý do từng lựa chọn kỹ thuật) — HIỆN SUỐT lúc `justWon` còn đúng
-// (tắt ngay khi Reset/lượt quay mới bắt đầu, không phải 1 hiệu ứng ngắn rồi tự tắt như
-// Focus/Highlight/Motion oneshot).
-export type PrizeWonAmbientEffect = "none" | "spotlight";
 
 // CHỈ dùng bởi PrizeImageComponent — LUÔN hiện đúng 1 giải CỐ ĐỊNH do người dùng chọn (`prizeId`),
 // không đổi theo kết quả quay — dùng để đặt NHIỀU Prize Image rải rác khắp landing, mỗi cái tự do
@@ -544,12 +545,6 @@ export interface LiveImageProps extends PrizeInteractions {
   fit: "cover" | "contain" | "stretch";
   borderRadius: number;
   prizeId?: string;
-  // "none" (mặc định/undefined) = tắt — xem doc-comment PrizeWonAmbientEffect ở trên.
-  wonAmbientEffect?: PrizeWonAmbientEffect;
-  // Chờ bao lâu (ms) SAU khi giải này vừa thắng (`justWon`) mới BẮT ĐẦU hiện hiệu ứng — undefined = 0
-  // (hiện ngay). Không có field "tắt sau bao lâu" — hiệu ứng tự tắt theo đúng lúc `justWon` hết đúng
-  // (Reset/Redraw/1 lượt quay mới), không cần cấu hình riêng.
-  wonAmbientDelayMs?: number;
 }
 
 // Thêm template mới: thêm giá trị vào union này + 1 file trong components/landing/scoreboardTemplates/
