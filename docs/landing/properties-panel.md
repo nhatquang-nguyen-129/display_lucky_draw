@@ -184,7 +184,7 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 | **Live** | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem [button-actions.md](./button-actions.md) |
-| **Effects** | Orbit Lights | N hạt sáng (mặc định 3) kéo vệt, bay theo quỹ đạo elip kiểu nguyên tử quanh tâm khung — mặc định phủ cả canvas. Canvas 2D, chỉ chạy animation ở Present Mode, xem [orbit-lights.md](./orbit-lights.md) |
+| **Effects** | Orbit Lights | N hạt sáng (mặc định 3) kéo vệt, bay theo quỹ đạo elip kiểu nguyên tử quanh tâm khung — mặc định phủ cả canvas. Canvas 2D, chỉ chạy animation ở Present Mode, xem [effects.md](./effects.md) mục 6 |
 
 `COMPONENT_REGISTRY` (`componentRegistry.ts`) là nguồn DUY NHẤT "nối dây" 1 loại component vào cả
 Palette lẫn Canvas (tạo instance mặc định khi thả) — xem checklist thêm component mới ở

@@ -14,8 +14,7 @@ khổng lồ khi chỉ cần sửa 1 phần:
 | [reactions.md](./reactions.md) | `EffectReaction` — hệ effect generic gắn theo trigger Draw/Confirm/Redo |
 | [present-mode.md](./present-mode.md) | Pipeline render + Present Mode khác Builder canvas ở prop `interactive` như thế nào |
 | [config-lifecycle.md](./config-lifecycle.md) | Save/Discard, lưu trữ `landing_config`, checklist thêm 1 loại component mới |
-| [orbit-lights.md](./orbit-lights.md) | Orbit Lights — component đầu tiên nhóm "Effects": hạt sáng kéo vệt bay quỹ đạo kiểu nguyên tử, màu riêng từng hạt, Trigger with Draw |
-| [effects.md](./effects.md) | Trần đồ hoạ — 4 tier kỹ thuật hiệu ứng (CSS/Canvas 2D/WebGL/asset ngoài), khi nào dùng tier nào |
+| [effects.md](./effects.md) | Trần đồ hoạ — 4 tier kỹ thuật hiệu ứng (CSS/Canvas 2D/WebGL/asset ngoài), khi nào dùng tier nào; các effect đã có trong nhóm "Effects" (Orbit Lights) |
 
 ## 1. Tổng quan — 2 cửa sổ, 1 nguồn dữ liệu
 
