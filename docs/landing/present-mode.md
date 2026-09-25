@@ -57,6 +57,11 @@ thật) — sai hoàn toàn vì 2 hệ tên không bao giờ trùng nhau (`"part
 báo đỏ oan. Sửa bằng cách loại 6 field trong `SCOREBOARD_FIELDS` khỏi việc kiểm tra tồn tại — chỉ còn
 cột optional thật sự cần đối chiếu.
 
+Cùng cơ chế: `hasMissingPrizeBinding(component, prizeIds)` (`types.ts`) gắn badge **"⚠ Prize not
+found"** khi 1 component bật Trigger with Draw đang gán Prize (`drawCycle.prizeId`) không còn trong
+`data.prizes` (đã bị xoá ở trang Prizes) — component đó sẽ không bao giờ kích hoạt. Chỉ kiểm khi
+`data.prizes` đã nạp (tránh báo oan lúc đang tải), chỉ ở Builder canvas.
+
 ## Bug đã sửa: mở lại 1 phiên đã quay dở thì tự nhảy hiện winner cũ
 
 Mở Present Mode/`LandingPage.tsx` cho 1 session đã có `draw_results` từ trước: `effectiveData` lúc
@@ -146,7 +151,11 @@ Properties Panel của Winner Name (`LiveTextPanel.tsx`) tổ chức 3 mục **I
 (2 mục sau đổi tên từ "When Revealed"/"When Disappear" cũ cho khớp thuật ngữ chung, xem mục dưới) —
 mỗi mục CHỈ gồm đúng **Effect** + **Delay (ms)** — xem thêm [properties-panel.md](./properties-panel.md).
 
-## `useDrawCycleVisibility` — model Idle/Draw/Redraw (Image, Text, Background)
+## `useDrawCycleVisibility` — model Idle/Draw/Redraw (Image, Text, Background, Effects)
+
+`resultId` đưa vào hook LUÔN qua `drawCycleResultId(latest, drawCycle)` (`types.ts`): chỉ lượt LIVE, và nếu
+có gán `drawCycle.prizeId` thì lượt quay ra giải khác = `undefined` → hook chạy nhánh Idle (xem mục
+"Prize" ở [properties-panel.md](./properties-panel.md)).
 
 `useRevealed` ở trên GẮN CỨNG "Appear = lúc có kết quả mới" và "Disappear = lúc kết quả cũ bị thay" —
 đúng cho Winner Name (nội dung THẬT SỰ đổi theo từng lượt — tên người trúng khác nhau mỗi lần, không
@@ -155,7 +164,7 @@ hay 1 ảnh trang trí generic như Podium (Image): hoàn toàn có thể muốn
 lúc Draw đang diễn ra, tức là ĐẢO NGƯỢC chiều mặc định — model cũ không cấu hình được việc đó.
 
 `useDrawCycleVisibility` (`drawRevealHooks.ts`, dùng bởi `ImageView.tsx`/`TextView.tsx`/
-`BackgroundView.tsx`/`OrbitLightsView.tsx` khi `syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem
+`BackgroundView.tsx`/`OrbitLightsView.tsx`/`FireworksView.tsx`/`ConfettiView.tsx`/`MarqueeLightsView.tsx`/`SparkFountainView.tsx` khi `syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem
 properties-panel.md) tách đúng 3 mốc THẬT của quy trình quay — **Idle** (chưa Draw lần nào / vừa vào
 Landing, hoặc vừa Reset), **Draw** (1 lượt Draw mới, đang KHÔNG hiện gì trước đó), **Redraw** (1 lượt
 Draw mới, ĐANG hiện kết quả lượt trước). Mỗi mốc có 1 dropdown **Appearance**, nhưng KHÔNG cho tự do

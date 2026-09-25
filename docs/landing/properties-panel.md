@@ -35,7 +35,20 @@ Image/Text không bao giờ đụng tới field này. Xem doc-comment `DrawCycle
 Idle/Draw/Redraw mỗi mốc 1 dropdown **Appearance** bị ràng buộc — không được trùng giá trị thật gần
 nhất phía trước trong chuỗi, KHÔNG còn hardcode "đối lập nhị phân" như bản cũ, dù với domain 2 giá trị
 thì 2 quy tắc cho ra kết quả giống hệt nhau). Thêm 1 loại component TĨNH mới cũng cần "Interactions
-with Draw" thì tái dùng THẲNG component này, không viết lại.
+with Draw" thì tái dùng THẲNG component này, không viết lại. Hiện dùng bởi 7 component: Text, Image,
+Background và 5 Effect (Orbit Lights/Fireworks/Confetti/Marquee Lights/Spark Fountain).
+
+**Prize** — dropdown ĐẦU TIÊN ngay dưới checkbox Trigger with Draw (`DrawCycleConfig.prizeId`):
+"Any prize" (mặc định, `undefined` = hành vi cũ, lượt quay ra giải nào cũng kích hoạt) hoặc 1 giải cụ
+thể của session (hiện dạng "Category - Tên giải", giải chưa có category chỉ hiện tên). Gán giải thì CHỈ lượt quay ra đúng giải đó mới chạy Draw/Redraw; lượt quay ra giải
+KHÁC → component quay về **Idle** (chạy `idleEffect` như Reset) — màn hình chỉ "ăn mừng" đúng giải đang
+quay, không lẫn effect của giải trước. Lượt đúng giải kế tiếp sau đó tính là **Draw** mới (không phải
+Redraw). Lọc theo giải ĐÃ QUAY RA (`results[0].prize_id`), không theo giải đang được click chọn trên
+Prize Image — đúng cả với trang không có Prize Image (Draw Engine tự chọn giải). Cơ chế: `drawCycleResultId()`
+(`types.ts`) trả `undefined` cho lượt khác giải → `useDrawCycleVisibility` tự chạy nhánh Idle có sẵn,
+không sửa gì bên trong hook. Danh sách giải đưa xuống qua `DrawCyclePrizesContext` (PropertiesPanel.tsx
+cung cấp) thay vì luồn prop qua cả 7 panel. Giải đã gán bị xoá: dropdown hiện "(Deleted prize)", canvas
+Builder gắn badge "⚠ Prize not found" (`hasMissingPrizeBinding`, xem [present-mode.md](./present-mode.md)).
 
 Bước "reveal" của Redraw KHÔNG có field riêng — sau khi bước ẩn (`redrawEffect`) báo `onDone` xong
 hẳn, code chờ thêm 1 window CỐ ĐỊNH `MIN_REDRAW_REVEAL_GAP_MS` (1s, hardcode trong
@@ -165,6 +178,10 @@ panel vẫn LUÔN giữ nút Delete component dù 2 cờ trên có bật hay kh�
 | `ParticipantCountPanel.tsx` | Participant Count |
 | `ButtonPanel.tsx` | Button (chọn action + styling, xem [button-actions.md](./button-actions.md)) — action "Open Link" có thêm **Source**, cùng nhánh 2 (Data Type = URL) như Winner Name's Source |
 | `OrbitLightsPanel.tsx` | Orbit Lights — 1 nhóm Basic options phẳng: Particles (1–6)/Particle size/Lap time (ms)/Color 1…N (1 ô màu cho MỖI hạt, số ô = Particles — `colors[]`, hạt thiếu màu fallback `color`, xem `orbitLightColor()`)/Trail length (%)/Orbit width (%)/Show orbit paths, rồi **Interactions with Draw** dùng chung `DrawCycleFields.tsx` y hệt Image (Appear/Disappear, mặc định tắt = luôn hiện) — lúc ẩn thì unmount canvas, dừng luôn rAF |
+| `FireworksPanel.tsx` | Fireworks — Basic options: Launch from/Sparks per burst/Interval (ms)/Burst size (%)/Launch height (%)/Colors (1–6, thêm/xoá), rồi **Interactions with Draw** dùng chung `DrawCycleFields.tsx` y hệt Orbit Lights |
+| `ConfettiPanel.tsx` | Confetti — Basic options: Launch from/Play (Once/Loop)/Pieces/Piece size/Interval (ms, CHỈ hiện khi Loop + Center/Both sides)/Colors (1–6), rồi **Interactions with Draw** dùng chung `DrawCycleFields.tsx` |
+| `MarqueeLightsPanel.tsx` | Marquee Lights — Basic options: Pattern/Step (ms)/Bulb size/Spacing/Corner radius/Colors (1–6, xen kẽ dọc viền), rồi **Interactions with Draw** dùng chung `DrawCycleFields.tsx` |
+| `SparkFountainPanel.tsx` | Spark Fountain — Basic options: Fountains/Intensity/Play (Continuous/Once)/Duration (ms, CHỈ hiện khi Once)/Height (%)/Spread (°)/Colors (1–6), rồi **Interactions with Draw** dùng chung `DrawCycleFields.tsx` |
 | `ScoreboardPanel.tsx` | Scoreboard — "Columns" là bản multi-select của nhánh 1 (liệt kê MỌI cột thật, không lọc Data Type) nhưng KHÔNG có tiêu chí phụ nào (bảng hiện được bất kỳ cột nào), nên không có khái niệm Eligible/not eligible ở đây — mọi checkbox luôn bật được |
 
 ## Nhóm component (`ComponentPalette.tsx`)
@@ -185,6 +202,15 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem [button-actions.md](./button-actions.md) |
 | **Effects** | Orbit Lights | N hạt sáng (mặc định 3) kéo vệt, bay theo quỹ đạo elip kiểu nguyên tử quanh tâm khung — mặc định phủ cả canvas. Canvas 2D, chỉ chạy animation ở Present Mode, xem [effects.md](./effects.md) mục 6 |
+| | Fireworks | Pháo hoa 2 pha (bay lên → nổ → rơi tàn) bắn liên tục, mặc định phủ cả canvas. Canvas 2D, chỉ chạy animation ở Present Mode, xem [effects.md](./effects.md) mục 6 |
+| | Confetti | Pháo giấy bung từ 2 góc/giữa hoặc rơi từ trên, lật + lắc khi rơi, Once/Loop. Canvas 2D, chỉ chạy animation ở Present Mode, xem [effects.md](./effects.md) mục 6 |
+| | Marquee Lights | Hàng bóng đèn chạy quanh viền khung (Chase/Alternate/Twinkle), bo góc tuỳ chỉnh. Canvas 2D, chỉ chạy animation ở Present Mode, xem [effects.md](./effects.md) mục 6 |
+| | Spark Fountain | Pháo lạnh sân khấu — N cột tia lửa phun lên từ đáy khung rồi rơi lả tả, Continuous/Once. Canvas 2D, chỉ chạy animation ở Present Mode, xem [effects.md](./effects.md) mục 6 |
+
+Kéo 1 Effect vào trang tự đặt tên **"Confetti 1", "Confetti 2"**... (số nhỏ nhất còn trống, theo
+đúng loại — xem `handleDropNewComponent` trong `LandingBuilderWindow.tsx`) để phân biệt trong Layers khi
+có nhiều effect cùng loại, mỗi cái gán 1 Prize khác nhau. CHỈ nhóm Effects — Button vẫn giữ quy ước cũ
+("Button", "Button 2"...), các loại khác không tự đặt tên.
 
 `COMPONENT_REGISTRY` (`componentRegistry.ts`) là nguồn DUY NHẤT "nối dây" 1 loại component vào cả
 Palette lẫn Canvas (tạo instance mặc định khi thả) — xem checklist thêm component mới ở

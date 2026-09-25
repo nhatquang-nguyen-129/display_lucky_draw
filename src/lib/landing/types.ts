@@ -107,6 +107,10 @@ export interface DrawPhaseEffectConfig {
 //     đổi lại ngay khi ấn quay tiếp". Không cần field effect riêng cho bước "đổi lại" này — công bố
 //     kết quả là ĐÚNG 1 hành động dù là Draw lần đầu hay Redraw.
 export interface DrawCycleConfig {
+  // Chỉ phản ứng với lượt quay ra ĐÚNG giải này (id prize của session). undefined = bất kỳ giải nào
+  // (hành vi cũ). Lượt quay ra giải KHÁC = coi như chưa có kết quả → quay về Idle (xem
+  // drawCycleResultId bên dưới) — màn hình chỉ "ăn mừng" đúng giải đang quay, không lẫn của giải trước.
+  prizeId?: string;
   idleState: DrawRestState;
   idleEffect?: DrawPhaseEffectConfig;
   drawAction: DrawPhaseAction;
@@ -603,6 +607,28 @@ export function isLiveDrawResultId(id: string | null | undefined): boolean {
   return typeof id === "string" && id.startsWith(PENDING_RESULT_ID_PREFIX);
 }
 
+// resultId đưa vào useDrawCycleVisibility (drawRevealHooks.ts) cho MỌI component có "Trigger with
+// Draw". Chỉ lượt Draw LIVE (id "pending-*") mới tính — kết quả cũ từ DB khi mở lại phiên không tự kích
+// hoạt gì. Có gán `prizeId` mà lượt vừa quay ra giải KHÁC → trả undefined: hook coi như "không còn kết
+// quả" → chạy đúng nhánh Idle có sẵn (về trạng thái nghỉ, reset luôn Draw/Redraw — lượt ĐÚNG giải kế
+// tiếp tính là Draw mới, không phải Redraw).
+export function drawCycleResultId(
+  latest: import("@/types").DrawResultRow | undefined,
+  cycle: DrawCycleConfig | undefined
+): string | undefined {
+  if (!latest || !isLiveDrawResultId(latest.id)) return undefined;
+  if (cycle?.prizeId && latest.prize_id !== cycle.prizeId) return undefined;
+  return latest.id;
+}
+
+// Component có Trigger with Draw đang gán 1 prize KHÔNG còn trong session (bị xoá ở trang Prizes) —
+// trả tên field để LandingRenderer.tsx gắn badge cảnh báo trong Builder (cùng kiểu missingColumnBindings).
+export function hasMissingPrizeBinding(component: LandingComponent, prizeIds: Set<string>): boolean {
+  const props = component.props as { syncWithDraw?: boolean; drawCycle?: DrawCycleConfig };
+  const prizeId = props.syncWithDraw ? props.drawCycle?.prizeId : undefined;
+  return !!prizeId && !prizeIds.has(prizeId);
+}
+
 // Danh sách người đã trúng giải VÀ ĐÃ CONFIRM (draw_results thật — xem ScoreboardView.tsx, lọc bỏ
 // dòng "pending-*" do useDrawSequence độn vào khi có candidate chưa Confirm, không tính là đã trúng
 // thật). Danh sách có thể dài (nhiều lượt quay) nên bản thân component cuộn dọc bên trong khung cố
@@ -767,6 +793,98 @@ export interface OrbitLightsComponent extends BaseComponent {
   props: OrbitLightsProps;
 }
 
+// Fireworks — component thứ 2 của nhóm "Effects": pháo hoa 2 pha (quả pháo bay lên để lại vệt → nổ
+// thành chùm tia toả tròn, 1 phần tia rơi tàn kiểu "willow"). Bắn LIÊN TỤC mỗi `launchIntervalMs` ở
+// Present Mode; Builder/preview chỉ vẽ 1 khung tĩnh vài chùm đang nổ (xem FireworksView.tsx). Cùng
+// khuôn Orbit Lights: mặc định luôn bắn, bật `syncWithDraw` thì ẩn/hiện theo Idle/Draw/Redraw (vd
+// Idle = Disappear, Draw = Appear → chỉ bắn pháo hoa lúc công bố người trúng).
+export type FireworksLaunchFrom = "scattered" | "center" | "sides";
+
+export interface FireworksProps {
+  launchFrom: FireworksLaunchFrom; // rải rác khắp đáy khung / giữa đáy / 2 góc đáy chéo vào giữa
+  colors: string[]; // mỗi quả pháo chọn ngẫu nhiên 1 màu trong danh sách
+  sparkCount: number; // số tia mỗi lần nổ
+  burstSize: number; // % — độ to chùm nổ (100 = chuẩn)
+  launchHeight: number; // % chiều cao khung quả pháo bay lên trước khi nổ (tính từ đáy)
+  launchIntervalMs: number; // ms giữa 2 quả pháo liên tiếp
+  // Cùng model/ý nghĩa với ImageProps.syncWithDraw/drawCycle — undefined/false = luôn hiện + luôn bắn.
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
+}
+
+export interface FireworksComponent extends BaseComponent {
+  type: "fireworks";
+  props: FireworksProps;
+}
+
+// Confetti — component thứ 3 của nhóm "Effects": mảnh giấy màu (chữ nhật/tròn/dải ruy băng) bung ra
+// rồi rơi lả tả, vừa rơi vừa lật + lắc ngang. Cùng khuôn Fireworks (step/draw tách rời, khung tĩnh
+// Builder = mô phỏng trước, xem ConfettiView.tsx). "once" = đúng 1 đợt rồi thôi — hợp nhất khi bật
+// `syncWithDraw` (mỗi lần Appear là component mount lại → tự bung lại 1 đợt); "loop" = lặp mỗi
+// `intervalMs` (burst) / rơi liên tục (top).
+export type ConfettiLaunchFrom = "top" | "center" | "sides";
+
+export interface ConfettiProps {
+  launchFrom: ConfettiLaunchFrom; // rơi từ mép trên / bung từ giữa / 2 góc dưới bắn chéo lên
+  playMode: "once" | "loop";
+  intervalMs: number; // ms giữa 2 đợt bung khi loop (không dùng với "top" — top loop là rơi liên tục)
+  pieceCount: number; // số mảnh mỗi đợt
+  pieceSize: number; // px artboard — cạnh dài của mảnh chữ nhật
+  colors: string[]; // mỗi mảnh chọn ngẫu nhiên 1 màu
+  // Cùng model/ý nghĩa với ImageProps.syncWithDraw/drawCycle — undefined/false = luôn hiện.
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
+}
+
+export interface ConfettiComponent extends BaseComponent {
+  type: "confetti";
+  props: ConfettiProps;
+}
+
+// Marquee Lights — component thứ 4 của nhóm "Effects": 1 hàng bóng đèn chạy quanh viền khung (chữ nhật
+// bo góc) như bảng hiệu sân khấu/máy quay thưởng. Cùng khuôn Orbit Lights (hàm thuần theo thời gian,
+// không có trạng thái mô phỏng — xem MarqueeLightsView.tsx). Kéo khung ôm Lucky Wheel/Prize để đóng
+// khung, hoặc để mặc định phủ cả canvas thành viền màn hình.
+export type MarqueePattern = "chase" | "alternate" | "twinkle";
+
+export interface MarqueeLightsProps {
+  pattern: MarqueePattern; // đuổi nhau / nhấp nháy xen kẽ chẵn-lẻ / lấp lánh ngẫu nhiên
+  stepMs: number; // ms mỗi nhịp — càng nhỏ càng nhanh
+  bulbSize: number; // bán kính bóng (px artboard)
+  spacing: number; // khoảng cách mong muốn giữa 2 tâm bóng (px) — tự co giãn để chia đều viền
+  cornerRadius: number; // bo góc đường viền đặt bóng (px)
+  colors: string[]; // bóng thứ i dùng colors[i % length] — 2+ màu = xen kẽ màu dọc viền
+  // Cùng model/ý nghĩa với ImageProps.syncWithDraw/drawCycle — undefined/false = luôn hiện.
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
+}
+
+export interface MarqueeLightsComponent extends BaseComponent {
+  type: "marqueeLights";
+  props: MarqueeLightsProps;
+}
+
+// Spark Fountain — component thứ 5 của nhóm "Effects": pháo lạnh sân khấu — N cột tia lửa phun thẳng
+// lên từ đáy khung rồi rơi lả tả, tắt dần. Cùng khuôn Fireworks (mô phỏng có trạng thái, step/draw
+// tách rời, khung tĩnh Builder = mô phỏng trước bằng seededRng — xem SparkFountainView.tsx).
+export interface SparkFountainProps {
+  fountainCount: number; // 1–8 cột, chia đều theo chiều ngang đáy khung
+  height: number; // % chiều cao khung — tia phun cao nhất tới đâu
+  spread: number; // độ — nửa góc loe của cột tia quanh phương thẳng đứng
+  intensity: number; // số tia phun ra mỗi giây, MỖI cột
+  playMode: "continuous" | "once"; // phun liên tục / phun `durationMs` rồi tắt
+  durationMs: number; // chỉ dùng khi playMode = "once"
+  colors: string[]; // mỗi tia chọn ngẫu nhiên 1 màu
+  // Cùng model/ý nghĩa với ImageProps.syncWithDraw/drawCycle — undefined/false = luôn hiện.
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
+}
+
+export interface SparkFountainComponent extends BaseComponent {
+  type: "sparkFountain";
+  props: SparkFountainProps;
+}
+
 export type LandingComponent =
   | TextComponent
   | ImageComponent
@@ -778,7 +896,11 @@ export type LandingComponent =
   | ParticipantCountComponent
   | ButtonComponent
   | ScoreboardComponent
-  | OrbitLightsComponent;
+  | OrbitLightsComponent
+  | FireworksComponent
+  | ConfettiComponent
+  | MarqueeLightsComponent
+  | SparkFountainComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 

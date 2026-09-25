@@ -509,6 +509,17 @@ export default function LandingBuilderWindow() {
     updateConfig(
       (prev) => {
         const component = createComponentAt(type, x, y, prev.components.length);
+        // Nhóm Effects: tự đặt tên "Confetti 1", "Confetti 2"... (số nhỏ nhất CÒN TRỐNG — xoá "Confetti
+        // 1" rồi thêm mới sẽ lấp lại số 1) để phân biệt trong LayersPanel khi 1 trang có nhiều effect
+        // cùng loại (vd mỗi cái gán 1 Prize khác nhau). Khác quy ước của Button ở trên ("Button",
+        // "Button 2"...) — tạm chỉ áp cho Effects theo yêu cầu, chưa đổi Button.
+        if (COMPONENT_REGISTRY[type].category === "Effects") {
+          const label = COMPONENT_REGISTRY[type].label;
+          const usedNames = new Set(prev.components.filter((c) => c.type === type).map((c) => c.name?.trim()));
+          let n = 1;
+          while (usedNames.has(`${label} ${n}`)) n++;
+          component.name = `${label} ${n}`;
+        }
         setSelectedIds([component.id]);
         setShowPanel(true);
         return { ...prev, components: [...prev.components, component] };

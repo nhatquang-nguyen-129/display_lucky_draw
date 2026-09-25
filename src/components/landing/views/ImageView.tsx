@@ -1,4 +1,4 @@
-import { DEFAULT_DRAW_CYCLE, ImageComponent, isLiveDrawResultId, LandingData } from "@/lib/landing/types";
+import { DEFAULT_DRAW_CYCLE, drawCycleResultId, ImageComponent, LandingData } from "@/lib/landing/types";
 import { useDrawCycleVisibility } from "./drawRevealHooks";
 
 export default function ImageView({
@@ -18,9 +18,8 @@ export default function ImageView({
 }) {
   const { srcDataUrl, fit, borderRadius, syncWithDraw, drawCycle } = component.props;
   const latest = data?.results[0];
-  // Chỉ 1 lượt Draw LIVE (id "pending-*") mới tính là 1 mốc Draw/Redraw thật — kết quả cũ từ DB khi
-  // mở lại phiên không tự kích hoạt gì, xem chú thích tương tự trong WinnerNameView.tsx.
-  const liveResultId = isLiveDrawResultId(latest?.id) ? latest!.id : undefined;
+  // Lọc theo Prize đã gán (nếu có) + chỉ lượt LIVE — xem drawCycleResultId trong types.ts.
+  const liveResultId = drawCycleResultId(latest, drawCycle);
 
   // `drawCycle` chỉ undefined khi CHƯA từng bật `syncWithDraw` — DEFAULT_DRAW_CYCLE không bao giờ
   // thực sự ảnh hưởng gì tới hiển thị trong trường hợp đó (xem `visible`/`showFrame` bên dưới).
