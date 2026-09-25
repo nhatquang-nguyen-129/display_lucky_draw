@@ -3,7 +3,7 @@ import {
   DEFAULT_BACKGROUND_BLUR_AMOUNT,
   DEFAULT_BACKGROUND_DIM_AMOUNT,
   DEFAULT_DRAW_CYCLE,
-  isLiveDrawResultId,
+  drawCycleResultId,
   LandingData,
 } from "@/lib/landing/types";
 import { useDrawCycleVisibility } from "./drawRevealHooks";
@@ -30,7 +30,8 @@ export default function BackgroundView({
 }) {
   const { srcDataUrl, fit, syncWithDraw, drawCycle } = component.props;
   const latest = data?.results[0];
-  const liveResultId = isLiveDrawResultId(latest?.id) ? latest!.id : undefined;
+  // Lọc theo Prize đã gán (nếu có) + chỉ lượt LIVE — xem drawCycleResultId trong types.ts.
+  const liveResultId = drawCycleResultId(latest, drawCycle);
 
   // builderPreview (canvas Builder) LUÔN hiện "sạch" (appear) để còn thấy mà chọn/kéo/resize — giống
   // Text/Image. Không bật syncWithDraw thì cũng không có gì để active.

@@ -110,6 +110,40 @@ function OrbitLightsIcon() {
   );
 }
 
+function FireworksIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="M12 3v3M12 14v3M5 10h3M16 10h3M7 5l2 2M17 5l-2 2M7 15l2-2M17 15l-2-2" />
+      <path d="M12 17v4" strokeDasharray="1 2" />
+    </svg>
+  );
+}
+
+function ConfettiIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="m4 20 5-12 7 7-12 5Z" />
+      <path d="M14 4h.01M19 9h.01M17 3l-1 2M21 6l-2 1M15 8c1-1 2.5-1.5 4-1" />
+    </svg>
+  );
+}
+
+function MarqueeLightsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <rect x="3" y="5" width="18" height="14" rx="2" strokeDasharray="0.01 3.5" strokeWidth="2.6" />
+    </svg>
+  );
+}
+
+function SparkFountainIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="M8 21h8M12 21V11M12 11l-3-6M12 11l3-6M12 11V4M9.5 14 6 9M14.5 14 18 9" />
+    </svg>
+  );
+}
+
 function GenericComponentIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" className="h-5 w-5">
@@ -130,6 +164,10 @@ const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   button: ButtonIcon,
   scoreboard: ScoreboardIcon,
   orbitLights: OrbitLightsIcon,
+  fireworks: FireworksIcon,
+  confetti: ConfettiIcon,
+  marqueeLights: MarqueeLightsIcon,
+  sparkFountain: SparkFountainIcon,
 };
 
 export default function ComponentTypeIcon({ type }: { type: LandingComponentType }) {

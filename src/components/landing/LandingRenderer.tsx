@@ -6,6 +6,7 @@ import {
   LandingComponentType,
   LandingConfig,
   LandingData,
+  hasMissingPrizeBinding,
   missingColumnBindings,
 } from "@/lib/landing/types";
 import Button from "@/components/Button";
@@ -22,6 +23,10 @@ import ParticipantCountView from "./views/ParticipantCountView";
 import ButtonView from "./views/ButtonView";
 import ScoreboardView from "./views/ScoreboardView";
 import OrbitLightsView from "./views/OrbitLightsView";
+import FireworksView from "./views/FireworksView";
+import ConfettiView from "./views/ConfettiView";
+import MarqueeLightsView from "./views/MarqueeLightsView";
+import SparkFountainView from "./views/SparkFountainView";
 import DrawModeCountPopup from "./views/DrawModeCountPopup";
 import HoldToConfirmButton from "./views/HoldToConfirmButton";
 
@@ -84,6 +89,9 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   // trong Data Editor thì gắn cờ cảnh báo lên nó — xem missingColumnBindings. Không tính ở Present
   // Mode để không làm rối buổi quay thật (cùng tinh thần với các badge chỉ-hiện-trong-Builder khác).
   const availableCols = builderPreview ? availableParticipantColumns(data?.participants ?? []) : null;
+  // Cùng tinh thần: Trigger with Draw gán 1 prize đã bị xoá → không bao giờ kích hoạt, báo trong Builder.
+  // Chỉ kiểm khi đã có danh sách prize (data chưa nạp xong thì không báo oan).
+  const prizeIds = builderPreview && data?.prizes ? new Set(data.prizes.map((p) => p.id)) : null;
 
   return (
     <div
@@ -105,6 +113,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         const resultKey = isLiveDrawResultId(data?.results[0]?.id) ? data!.results[0]!.id : "idle";
         const key = REMOUNT_ON_RESULT_TYPES.has(component.type) ? `${component.id}-${resultKey}` : component.id;
         const missingCols = availableCols ? missingColumnBindings(component, availableCols) : [];
+        const missingPrize = prizeIds ? hasMissingPrizeBinding(component, prizeIds) : false;
         return (
           <div
             key={key}
@@ -131,6 +140,15 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
                 title={`Column(s) not found: ${missingCols.join(", ")} — deleted in the Data Editor`}
               >
                 ⚠ Column not found: {missingCols.join(", ")}
+              </div>
+            )}
+            {missingPrize && (
+              <div
+                className="absolute -top-2 left-0 z-10 max-w-full truncate rounded bg-danger-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow"
+                style={{ pointerEvents: "none" }}
+                title="The prize bound in Trigger with Draw was deleted — this component will never trigger"
+              >
+                ⚠ Prize not found
               </div>
             )}
           </div>
@@ -309,6 +327,46 @@ function renderComponent(
     case "orbitLights":
       return (
         <OrbitLightsView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "fireworks":
+      return (
+        <FireworksView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "confetti":
+      return (
+        <ConfettiView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "marqueeLights":
+      return (
+        <MarqueeLightsView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "sparkFountain":
+      return (
+        <SparkFountainView
           component={component}
           animate={interactive}
           data={data}

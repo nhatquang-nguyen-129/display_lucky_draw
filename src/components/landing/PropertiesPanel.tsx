@@ -2,6 +2,7 @@ import { AnchorEditTarget, ButtonAction, LandingComponent, LandingConfig } from 
 import { Participant, Prize } from "@/types";
 import BackgroundPanel from "./panels/BackgroundPanel";
 import SharedFields from "./panels/SharedFields";
+import { DrawCyclePrizesContext } from "./panels/DrawCycleFields";
 import TextPanel from "./panels/TextPanel";
 import ImagePanel from "./panels/ImagePanel";
 import LuckyWheelPanel from "./panels/LuckyWheelPanel";
@@ -12,6 +13,10 @@ import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
 import ScoreboardPanel from "./panels/ScoreboardPanel";
 import OrbitLightsPanel from "./panels/OrbitLightsPanel";
+import FireworksPanel from "./panels/FireworksPanel";
+import ConfettiPanel from "./panels/ConfettiPanel";
+import MarqueeLightsPanel from "./panels/MarqueeLightsPanel";
+import SparkFountainPanel from "./panels/SparkFountainPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
@@ -80,80 +85,86 @@ export default function PropertiesPanel({
   }
 
   return (
-    <div className="space-y-4 p-3">
-      {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "background" && <BackgroundPanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "luckyWheel" && (
-        <LuckyWheelPanel
-          props={selected.props}
-          participants={participants}
-          columnTypesJson={columnTypesJson}
-          x={selected.x}
-          y={selected.y}
-          width={selected.width}
-          height={selected.height}
-          onChangeComponent={onChangeComponent}
-          onChange={onChangeProps}
+    <DrawCyclePrizesContext.Provider value={prizes}>
+      <div className="space-y-4 p-3">
+        {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "background" && <BackgroundPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "luckyWheel" && (
+          <LuckyWheelPanel
+            props={selected.props}
+            participants={participants}
+            columnTypesJson={columnTypesJson}
+            x={selected.x}
+            y={selected.y}
+            width={selected.width}
+            height={selected.height}
+            onChangeComponent={onChangeComponent}
+            onChange={onChangeProps}
+          />
+        )}
+        {selected.type === "winnerName" && (
+          <LiveTextPanel
+            props={selected.props}
+            x={selected.x}
+            y={selected.y}
+            width={selected.width}
+            height={selected.height}
+            onChangeComponent={onChangeComponent}
+            participants={participants}
+            columnTypesJson={columnTypesJson}
+            onChange={onChangeProps}
+          />
+        )}
+        {selected.type === "prizeImage" && (
+          <LiveImagePanel
+            props={selected.props}
+            prizes={prizes}
+            onChange={onChangeProps}
+            componentId={selected.id}
+            anchorEdit={anchorEdit}
+            onSetAnchorEdit={onSetAnchorEdit}
+          />
+        )}
+        {selected.type === "currentTime" && <CurrentTimePanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "participantCount" && (
+          <ParticipantCountPanel props={selected.props} onChange={onChangeProps} />
+        )}
+        {selected.type === "button" && (
+          <ButtonPanel
+            props={selected.props}
+            participants={participants}
+            columnTypesJson={columnTypesJson}
+            // Action nào (trừ "none") đã bị 1 Button KHÁC trên trang chiếm — tối đa 1 Button/action,
+            // tránh 2 nút cùng "Draw" gây nhầm lẫn vận hành. Key = action, value = tên Button đang giữ.
+            usedActionOwners={Object.fromEntries(
+              config.components
+                .filter(
+                  (c): c is Extract<LandingComponent, { type: "button" }> =>
+                    c.type === "button" && c.id !== selected.id && c.props.action !== "none"
+                )
+                .map((c) => [c.props.action, c.name?.trim() || "Button"])
+            ) as Partial<Record<ButtonAction, string>>}
+            onChange={onChangeProps}
+          />
+        )}
+        {selected.type === "scoreboard" && (
+          <ScoreboardPanel props={selected.props} participants={participants} onChange={onChangeProps} />
+        )}
+        {selected.type === "orbitLights" && <OrbitLightsPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "fireworks" && <FireworksPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "confetti" && <ConfettiPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "marqueeLights" && <MarqueeLightsPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "sparkFountain" && <SparkFountainPanel props={selected.props} onChange={onChangeProps} />}
+        <div className="h-px bg-base-800" />
+        <SharedFields
+          component={selected}
+          onChange={onChangeComponent}
+          onDelete={onDelete}
+          hidePosition={selected.type === "winnerName" || selected.type === "luckyWheel"}
+          hideEffect={selected.type === "winnerName" || selected.type === "luckyWheel"}
         />
-      )}
-      {selected.type === "winnerName" && (
-        <LiveTextPanel
-          props={selected.props}
-          x={selected.x}
-          y={selected.y}
-          width={selected.width}
-          height={selected.height}
-          onChangeComponent={onChangeComponent}
-          participants={participants}
-          columnTypesJson={columnTypesJson}
-          onChange={onChangeProps}
-        />
-      )}
-      {selected.type === "prizeImage" && (
-        <LiveImagePanel
-          props={selected.props}
-          prizes={prizes}
-          onChange={onChangeProps}
-          componentId={selected.id}
-          anchorEdit={anchorEdit}
-          onSetAnchorEdit={onSetAnchorEdit}
-        />
-      )}
-      {selected.type === "currentTime" && <CurrentTimePanel props={selected.props} onChange={onChangeProps} />}
-      {selected.type === "participantCount" && (
-        <ParticipantCountPanel props={selected.props} onChange={onChangeProps} />
-      )}
-      {selected.type === "button" && (
-        <ButtonPanel
-          props={selected.props}
-          participants={participants}
-          columnTypesJson={columnTypesJson}
-          // Action nào (trừ "none") đã bị 1 Button KHÁC trên trang chiếm — tối đa 1 Button/action,
-          // tránh 2 nút cùng "Draw" gây nhầm lẫn vận hành. Key = action, value = tên Button đang giữ.
-          usedActionOwners={Object.fromEntries(
-            config.components
-              .filter(
-                (c): c is Extract<LandingComponent, { type: "button" }> =>
-                  c.type === "button" && c.id !== selected.id && c.props.action !== "none"
-              )
-              .map((c) => [c.props.action, c.name?.trim() || "Button"])
-          ) as Partial<Record<ButtonAction, string>>}
-          onChange={onChangeProps}
-        />
-      )}
-      {selected.type === "scoreboard" && (
-        <ScoreboardPanel props={selected.props} participants={participants} onChange={onChangeProps} />
-      )}
-      {selected.type === "orbitLights" && <OrbitLightsPanel props={selected.props} onChange={onChangeProps} />}
-      <div className="h-px bg-base-800" />
-      <SharedFields
-        component={selected}
-        onChange={onChangeComponent}
-        onDelete={onDelete}
-        hidePosition={selected.type === "winnerName" || selected.type === "luckyWheel"}
-        hideEffect={selected.type === "winnerName" || selected.type === "luckyWheel"}
-      />
-    </div>
+      </div>
+    </DrawCyclePrizesContext.Provider>
   );
 }

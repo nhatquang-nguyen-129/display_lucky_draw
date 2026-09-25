@@ -49,7 +49,8 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
 // nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette. "Effects" = hiệu ứng đồ hoạ TỰ
-// ĐỨNG (component riêng, vẽ bằng Canvas 2D/CSS — xem docs/landing/effects.md), hiện có Orbit Lights.
+// ĐỨNG (component riêng, vẽ bằng Canvas 2D/CSS — xem docs/landing/effects.md), hiện có Orbit Lights,
+// Fireworks, Confetti, Marquee Lights và Spark Fountain.
 // Spotlight KHÔNG thuộc nhóm này — nó là 1 lựa chọn Highlight trong panel Prize Image (xem
 // doc-comment PrizeEffectName trong types.ts).
 export const CATEGORY_ORDER = ["Basic", "Draw", "Live", "Interactive", "Effects"] as const;
@@ -267,6 +268,72 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       revolutionMs: 6000,
       orbitWidth: 35,
       showOrbits: false,
+    }),
+  },
+  fireworks: {
+    label: "Fireworks",
+    description: "Rockets that rise and burst into glowing sparks, launched continuously — animates in Present Mode",
+    category: "Effects",
+    defaultWidth: CANVAS_WIDTH,
+    defaultHeight: CANVAS_HEIGHT,
+    createDefaultProps: () => ({
+      launchFrom: "scattered",
+      // Cùng bộ màu sáng mặc định của Orbit Lights (không dùng "gold" xanh đậm — quá tối trên nền đen).
+      colors: ["#20C7F1", "#FFCA2D", "#FF5C8A"],
+      sparkCount: 90,
+      burstSize: 100,
+      launchHeight: 60,
+      launchIntervalMs: 700,
+    }),
+  },
+  confetti: {
+    label: "Confetti",
+    description: "Colorful paper pieces that burst out and flutter down — animates in Present Mode",
+    category: "Effects",
+    defaultWidth: CANVAS_WIDTH,
+    defaultHeight: CANVAS_HEIGHT,
+    createDefaultProps: () => ({
+      launchFrom: "sides",
+      // "loop" mặc định — "once" chỉ bung đúng 1 đợt lúc mở Present Mode rồi thôi, dễ tưởng là lỗi nếu
+      // chưa bật Trigger with Draw. Bật Trigger with Draw thì nên chuyển sang "once".
+      playMode: "loop",
+      intervalMs: 3000,
+      pieceCount: 150,
+      pieceSize: 18,
+      colors: ["#20C7F1", "#FFCA2D", "#FF5C8A", "#FFFFFF"],
+    }),
+  },
+  marqueeLights: {
+    label: "Marquee Lights",
+    description: "Row of chasing light bulbs around the frame, like a stage sign — animates in Present Mode",
+    category: "Effects",
+    defaultWidth: CANVAS_WIDTH,
+    defaultHeight: CANVAS_HEIGHT,
+    createDefaultProps: () => ({
+      pattern: "chase",
+      stepMs: 120,
+      bulbSize: 10,
+      spacing: 44,
+      cornerRadius: 0,
+      // Vàng highlight + trắng ấm xen kẽ — đúng chất bóng đèn bảng hiệu.
+      colors: ["#FFCA2D", "#FFFFFF"],
+    }),
+  },
+  sparkFountain: {
+    label: "Spark Fountain",
+    description: "Stage cold-spark fountains shooting up from the bottom of the frame — animates in Present Mode",
+    category: "Effects",
+    defaultWidth: CANVAS_WIDTH,
+    defaultHeight: CANVAS_HEIGHT,
+    createDefaultProps: () => ({
+      fountainCount: 2,
+      height: 70,
+      spread: 8,
+      intensity: 250,
+      playMode: "continuous",
+      durationMs: 4000,
+      // Vàng nhạt + vàng cam — màu tia pháo lạnh thật (tia trắng nóng tự xen thêm 25%, không cần chọn).
+      colors: ["#FFE08A", "#FFB300"],
     }),
   },
 };

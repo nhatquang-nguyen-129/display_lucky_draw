@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
+import { Prize } from "@/types";
 import {
   DrawCycleConfig,
   DrawPhaseAction,
@@ -8,13 +9,17 @@ import {
   WinnerTransitionEffect,
 } from "@/lib/landing/types";
 
-// Field shape dùng chung bởi ImageProps/TextProps/BackgroundProps/OrbitLightsProps cho tính năng "Interactions with
+// Field shape dùng chung bởi ImageProps/TextProps/BackgroundProps/OrbitLightsProps/FireworksProps/ConfettiProps/MarqueeLightsProps/SparkFountainProps cho tính năng "Interactions with
 // Draw" — component nào có ĐÚNG 2 field này (đều optional) thì dùng được component này, không cần
 // khai báo interface riêng cho từng loại.
 export interface DrawCycleHostProps {
   syncWithDraw?: boolean;
   drawCycle?: DrawCycleConfig;
 }
+
+// Danh sách prize của session cho dropdown "Prize" — PropertiesPanel.tsx cung cấp 1 lần qua context
+// thay vì luồn prop qua cả 7 panel dùng DrawCycleFields (Text/Image/Background/4 Effects).
+export const DrawCyclePrizesContext = createContext<Prize[]>([]);
 
 interface DrawCycleFieldsProps {
   props: DrawCycleHostProps;
@@ -187,6 +192,8 @@ export default function DrawCycleFields({ props, onChange, allowedStates, defaul
 
   const drawForbidden = forbiddenState(cycle, "draw");
   const redrawForbidden = forbiddenState(cycle, "redraw");
+  const prizes = useContext(DrawCyclePrizesContext);
+  const prizeMissing = !!cycle.prizeId && !prizes.some((p) => p.id === cycle.prizeId);
 
   return (
     <div className="space-y-2">
@@ -203,6 +210,25 @@ export default function DrawCycleFields({ props, onChange, allowedStates, defaul
 
       {props.syncWithDraw && (
         <>
+          <div>
+            <label className={labelClass}>Prize</label>
+            <select
+              className={fieldClass}
+              value={cycle.prizeId ?? ""}
+              onChange={(e) => updateCycle({ prizeId: e.target.value || undefined })}
+            >
+              <option value="">Any prize</option>
+              {prizes.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {/* "Category - Name" — 2 giải cùng tên ở 2 hạng khác nhau vẫn phân biệt được; chưa có
+                      category thì chỉ hiện tên. */}
+                  {p.category?.trim() ? `${p.category.trim()} - ${p.name}` : p.name}
+                </option>
+              ))}
+              {prizeMissing && <option value={cycle.prizeId}>(Deleted prize)</option>}
+            </select>
+          </div>
+
           <details open={openPhase.idle} onToggle={(e) => toggle(e.currentTarget.open, "idle")} className={detailsClass}>
             <summary className={summaryClass}>
               Idle

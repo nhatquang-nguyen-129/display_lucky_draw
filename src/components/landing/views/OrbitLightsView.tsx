@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import {
   DEFAULT_DRAW_CYCLE,
-  isLiveDrawResultId,
+  drawCycleResultId,
   LandingData,
   orbitLightColor,
   OrbitLightsComponent,
@@ -125,8 +125,8 @@ export default function OrbitLightsView({
 }) {
   const { syncWithDraw, drawCycle } = component.props;
   const latest = data?.results[0];
-  // Chỉ 1 lượt Draw LIVE mới tính là mốc Draw/Redraw thật — xem chú thích tương tự trong ImageView.tsx.
-  const liveResultId = isLiveDrawResultId(latest?.id) ? latest!.id : undefined;
+  // Lọc theo Prize đã gán (nếu có) + chỉ lượt LIVE — xem drawCycleResultId trong types.ts.
+  const liveResultId = drawCycleResultId(latest, drawCycle);
   const { shown, transitionClass } = useDrawCycleVisibility(liveResultId, drawCycle ?? DEFAULT_DRAW_CYCLE, resetSeq);
   // Builder LUÔN hiện để còn thấy mà chọn/kéo/resize; lúc ẩn thì unmount hẳn canvas → dừng luôn rAF.
   const visible = !syncWithDraw || builderPreview || shown;
