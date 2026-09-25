@@ -99,6 +99,17 @@ function ScoreboardIcon() {
   );
 }
 
+function OrbitLightsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <ellipse cx="12" cy="12" rx="10" ry="4" />
+      <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)" />
+      <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 function GenericComponentIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" className="h-5 w-5">
@@ -118,6 +129,7 @@ const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   participantCount: ParticipantCountIcon,
   button: ButtonIcon,
   scoreboard: ScoreboardIcon,
+  orbitLights: OrbitLightsIcon,
 };
 
 export default function ComponentTypeIcon({ type }: { type: LandingComponentType }) {

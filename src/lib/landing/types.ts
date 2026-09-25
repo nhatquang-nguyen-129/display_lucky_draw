@@ -735,6 +735,38 @@ export interface ButtonComponent extends BaseComponent {
   props: ButtonProps;
 }
 
+// Orbit Lights — component đầu tiên của nhóm "Effects": N hạt sáng (mặc định 3) bay theo N quỹ đạo
+// elip xoay đều nhau quanh tâm khung (kiểu biểu tượng nguyên tử), mỗi hạt kéo 1 vệt sáng mờ dần phía
+// sau. Quỹ đạo nội tiếp khung x/y/width/height — kéo khung phủ cả canvas là hạt bay quanh toàn màn
+// hình. Vẽ bằng Canvas 2D (Tier 2, xem docs/landing/effects.md), CHỈ chạy animation ở Present Mode —
+// Builder/preview chỉ vẽ 1 khung tĩnh (xem OrbitLightsView.tsx). Mặc định luôn hiện + luôn chạy;
+// bật `syncWithDraw` thì ẩn/hiện theo chu trình Idle/Draw/Redraw y hệt Image/Text (Appear/Disappear).
+export interface OrbitLightsProps {
+  particleCount: number; // số hạt = số quỹ đạo, 1–6
+  color: string; // màu fallback cho hạt chưa có màu riêng trong `colors`
+  // Màu riêng từng hạt (hạt + vệt + quầng sáng + đường quỹ đạo), index = thứ tự hạt. Optional + thiếu
+  // phần tử đều được — hạt nào không có màu ở đây dùng `color` (landing lưu trước khi có field này
+  // giữ nguyên 1 màu chung). Đọc qua orbitLightColor(), không đọc thẳng mảng.
+  colors?: string[];
+  particleSize: number; // bán kính lõi hạt (px artboard)
+  trailLength: number; // độ dài vệt, % của 1 vòng quỹ đạo (0–60)
+  revolutionMs: number; // thời gian bay hết 1 vòng (ms) — càng nhỏ càng nhanh
+  orbitWidth: number; // độ "dày" elip, % trục ngắn/trục dài (10–100, 100 = tròn)
+  showOrbits: boolean; // vẽ mờ đường quỹ đạo phía sau
+  // Cùng model/ý nghĩa với ImageProps.syncWithDraw/drawCycle — undefined/false = luôn hiện.
+  syncWithDraw?: boolean;
+  drawCycle?: DrawCycleConfig;
+}
+
+export function orbitLightColor(props: OrbitLightsProps, index: number): string {
+  return props.colors?.[index] ?? props.color;
+}
+
+export interface OrbitLightsComponent extends BaseComponent {
+  type: "orbitLights";
+  props: OrbitLightsProps;
+}
+
 export type LandingComponent =
   | TextComponent
   | ImageComponent
@@ -745,7 +777,8 @@ export type LandingComponent =
   | CurrentTimeComponent
   | ParticipantCountComponent
   | ButtonComponent
-  | ScoreboardComponent;
+  | ScoreboardComponent
+  | OrbitLightsComponent;
 
 export type LandingComponentType = LandingComponent["type"];
 

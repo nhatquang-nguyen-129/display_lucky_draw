@@ -155,7 +155,7 @@ hay 1 ảnh trang trí generic như Podium (Image): hoàn toàn có thể muốn
 lúc Draw đang diễn ra, tức là ĐẢO NGƯỢC chiều mặc định — model cũ không cấu hình được việc đó.
 
 `useDrawCycleVisibility` (`drawRevealHooks.ts`, dùng bởi `ImageView.tsx`/`TextView.tsx`/
-`BackgroundView.tsx` khi `syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem
+`BackgroundView.tsx`/`OrbitLightsView.tsx` khi `syncWithDraw`, qua component chung `DrawCycleFields.tsx` ở panel — xem
 properties-panel.md) tách đúng 3 mốc THẬT của quy trình quay — **Idle** (chưa Draw lần nào / vừa vào
 Landing, hoặc vừa Reset), **Draw** (1 lượt Draw mới, đang KHÔNG hiện gì trước đó), **Redraw** (1 lượt
 Draw mới, ĐANG hiện kết quả lượt trước). Mỗi mốc có 1 dropdown **Appearance**, nhưng KHÔNG cho tự do

@@ -48,12 +48,11 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
 }
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
-// nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette. "Effects" đã bỏ (Firework/
-// Spotlight không còn là component đứng độc lập — Spotlight giờ là 1 lựa chọn Highlight bình thường
-// ngay trong panel Prize Image, dùng được ở cả 4 giai đoạn Hover/Select/Won/Out of Stock, xem
-// doc-comment PrizeEffectName trong types.ts; Firework đã xoá hẳn, chưa có kiến trúc thay thế) — thêm
-// lại category này nếu sau này có component TỰ ĐỨNG thuộc nhóm "hiệu ứng" khác.
-export const CATEGORY_ORDER = ["Basic", "Draw", "Live", "Interactive"] as const;
+// nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette. "Effects" = hiệu ứng đồ hoạ TỰ
+// ĐỨNG (component riêng, vẽ bằng Canvas 2D/CSS — xem docs/landing/effects.md), hiện có Orbit Lights.
+// Spotlight KHÔNG thuộc nhóm này — nó là 1 lựa chọn Highlight trong panel Prize Image (xem
+// doc-comment PrizeEffectName trong types.ts).
+export const CATEGORY_ORDER = ["Basic", "Draw", "Live", "Interactive", "Effects"] as const;
 export type ComponentCategory = (typeof CATEGORY_ORDER)[number];
 
 export interface ComponentRegistryEntry {
@@ -249,6 +248,25 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       backgroundColor: "#FFFFFF",
       backgroundImageDataUrl: null,
       backgroundImageFit: "cover",
+    }),
+  },
+  orbitLights: {
+    label: "Orbit Lights",
+    description: "Glowing particles with light trails orbiting like an atom — animates in Present Mode",
+    category: "Effects",
+    defaultWidth: CANVAS_WIDTH,
+    defaultHeight: CANVAS_HEIGHT,
+    createDefaultProps: () => ({
+      particleCount: 3,
+      color: "#20C7F1",
+      // 3 hạt 3 màu: teal + highlight vàng thương hiệu + hồng (thay "gold" xanh đậm #2244A5 — quá tối
+      // để làm hạt sáng trên nền đen).
+      colors: ["#20C7F1", "#FFCA2D", "#FF5C8A"],
+      particleSize: 10,
+      trailLength: 30,
+      revolutionMs: 6000,
+      orbitWidth: 35,
+      showOrbits: false,
     }),
   },
 };

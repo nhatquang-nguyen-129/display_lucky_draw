@@ -45,7 +45,8 @@ hẳn, code chờ thêm 1 window CỐ ĐỊNH `MIN_REDRAW_REVEAL_GAP_MS` (1s, ha
 lúc "hiện lại" luôn = `1000 + drawEffect.delayMs` — đảm bảo tối thiểu 1s dù người dùng để Draw's Delay
 = 0, mà KHÔNG cần Properties Panel validate/ràng buộc field nào cả (Draw's Delay vẫn tự do như cũ,
 đúng nghĩa "trễ thêm bao nhiêu sau window 1s đó"). `redrawEffect.delayMs` không liên quan gì tới
-khoảng cách này — nó chỉ quyết định lúc nào bắt đầu ẩn.
+khoảng cách này — nó chỉ quyết định lúc nào bắt đầu ẩn. Panel KHÔNG còn dòng ghi chú giải thích
+window 1s này dưới mục Redraw (đã bỏ ở cả `DrawCycleFields.tsx` lẫn `LiveTextPanel.tsx` để gọn chỗ).
 
 Bug đã sửa cùng lúc: bản trước ĐÃ có 1 window kiểu này nhưng lấy nhầm giá trị — bọc
 `setTimeout(drawEffect.delayMs)` BÊN NGOÀI trước khi gọi `runStep(drawAction, drawEffect)`, trong khi
@@ -163,6 +164,7 @@ panel vẫn LUÔN giữ nút Delete component dù 2 cờ trên có bật hay kh�
 | `CurrentTimePanel.tsx` | Current Time |
 | `ParticipantCountPanel.tsx` | Participant Count |
 | `ButtonPanel.tsx` | Button (chọn action + styling, xem [button-actions.md](./button-actions.md)) — action "Open Link" có thêm **Source**, cùng nhánh 2 (Data Type = URL) như Winner Name's Source |
+| `OrbitLightsPanel.tsx` | Orbit Lights — 1 nhóm Basic options phẳng: Particles (1–6)/Particle size/Lap time (ms)/Color 1…N (1 ô màu cho MỖI hạt, số ô = Particles — `colors[]`, hạt thiếu màu fallback `color`, xem `orbitLightColor()`)/Trail length (%)/Orbit width (%)/Show orbit paths, rồi **Interactions with Draw** dùng chung `DrawCycleFields.tsx` y hệt Image (Appear/Disappear, mặc định tắt = luôn hiện) — lúc ẩn thì unmount canvas, dừng luôn rAF |
 | `ScoreboardPanel.tsx` | Scoreboard — "Columns" là bản multi-select của nhánh 1 (liệt kê MỌI cột thật, không lọc Data Type) nhưng KHÔNG có tiêu chí phụ nào (bảng hiện được bất kỳ cột nào), nên không có khái niệm Eligible/not eligible ở đây — mọi checkbox luôn bật được |
 
 ## Nhóm component (`ComponentPalette.tsx`)
@@ -182,6 +184,7 @@ mỗi dòng (mô tả đầy đủ xem qua tooltip hover), giúp tìm nhanh thay
 | **Live** | Current Time | Đồng hồ thời gian thực |
 | | Participant Count | Số người tham gia trong session |
 | **Interactive** | Button | Chạy 1 action cố định khi bấm ở Present Mode, xem [button-actions.md](./button-actions.md) |
+| **Effects** | Orbit Lights | N hạt sáng (mặc định 3) kéo vệt, bay theo quỹ đạo elip kiểu nguyên tử quanh tâm khung — mặc định phủ cả canvas. Canvas 2D, chỉ chạy animation ở Present Mode, xem [orbit-lights.md](./orbit-lights.md) |
 
 `COMPONENT_REGISTRY` (`componentRegistry.ts`) là nguồn DUY NHẤT "nối dây" 1 loại component vào cả
 Palette lẫn Canvas (tạo instance mặc định khi thả) — xem checklist thêm component mới ở

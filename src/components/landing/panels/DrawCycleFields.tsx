@@ -8,7 +8,7 @@ import {
   WinnerTransitionEffect,
 } from "@/lib/landing/types";
 
-// Field shape dùng chung bởi ImageProps/TextProps/BackgroundProps cho tính năng "Interactions with
+// Field shape dùng chung bởi ImageProps/TextProps/BackgroundProps/OrbitLightsProps cho tính năng "Interactions with
 // Draw" — component nào có ĐÚNG 2 field này (đều optional) thì dùng được component này, không cần
 // khai báo interface riêng cho từng loại.
 export interface DrawCycleHostProps {
@@ -278,20 +278,10 @@ export default function DrawCycleFields({ props, onChange, allowedStates, defaul
                   ))}
                 </select>
               </div>
-              {cycle.redrawAction !== "none" && (
-                <>
-                  {effectFields(cycle.redrawEffect, cycle.redrawAction, (patch) =>
-                    updateCycle({ redrawEffect: { ...(cycle.redrawEffect ?? { effect: "crossfade" }), ...patch } })
-                  )}
-                  {cycle.drawAction !== "none" && (
-                    <p className="text-[10px] text-base-500">
-                      Then switches to the new result using the same effect as Draw above, always at least 1s
-                      after this step finishes (fixed buffer, on top of Draw&rsquo;s own delay) so the two
-                      effects never land on top of each other.
-                    </p>
-                  )}
-                </>
-              )}
+              {cycle.redrawAction !== "none" &&
+                effectFields(cycle.redrawEffect, cycle.redrawAction, (patch) =>
+                  updateCycle({ redrawEffect: { ...(cycle.redrawEffect ?? { effect: "crossfade" }), ...patch } })
+                )}
             </div>
           </details>
         </>
