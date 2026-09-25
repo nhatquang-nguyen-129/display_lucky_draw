@@ -146,3 +146,9 @@ chức sự kiện có sẵn designer/asset dựng animation ngoài.
    xoá hoặc đổi component giữa lúc animation đang chạy, không dọn sẽ leak.
 6. Nếu dùng asset ngoài (Tier 4): xác định rõ lưu base64 trong config hay file riêng + IPC TRƯỚC khi
    code, tránh phải đổi shape dữ liệu giữa chừng.
+
+## 6. Effect đã có — nhóm "Effects" trong Palette
+
+| Component | Tier | File | Ghi chú |
+|---|---|---|---|
+| Orbit Lights (`orbitLights`) | 2 (Canvas 2D) | `views/OrbitLightsView.tsx`, `panels/OrbitLightsPanel.tsx` | N quỹ đạo elip xoay đều trong nửa vòng (3 quỹ đạo lệch 60°), nội tiếp khung x/y/w/h (khung không vuông thì elip giãn theo khung). Vệt = 12 nét LIỀN chồng nhau cùng kết thúc ở hạt, `lighter` + `lineCap: "butt"` — KHÔNG vẽ từng đoạn rời (đầu nét chồng nhau cộng sáng thành chuỗi hạt cườm). 1 hàm `drawFrame` dùng chung cho khung tĩnh (Builder, `elapsedMs = 0`) lẫn rAF (Present Mode). Có "Trigger with Draw" (`syncWithDraw`/`drawCycle`, cùng `useDrawCycleVisibility` với Image). Chi tiết: [orbit-lights.md](./orbit-lights.md) |

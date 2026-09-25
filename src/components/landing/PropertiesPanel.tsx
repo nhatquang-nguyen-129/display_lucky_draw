@@ -11,6 +11,7 @@ import CurrentTimePanel from "./panels/CurrentTimePanel";
 import ParticipantCountPanel from "./panels/ParticipantCountPanel";
 import ButtonPanel from "./panels/ButtonPanel";
 import ScoreboardPanel from "./panels/ScoreboardPanel";
+import OrbitLightsPanel from "./panels/OrbitLightsPanel";
 
 interface PropertiesPanelProps {
   config: LandingConfig;
@@ -144,6 +145,7 @@ export default function PropertiesPanel({
       {selected.type === "scoreboard" && (
         <ScoreboardPanel props={selected.props} participants={participants} onChange={onChangeProps} />
       )}
+      {selected.type === "orbitLights" && <OrbitLightsPanel props={selected.props} onChange={onChangeProps} />}
       <div className="h-px bg-base-800" />
       <SharedFields
         component={selected}
