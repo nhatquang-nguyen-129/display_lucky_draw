@@ -18,7 +18,11 @@ package tự chạy được độc lập:
 ## Distributing to event operators
 
 - **Portable**: copy đúng 1 file `.exe` vào USB/ổ chia sẻ, gửi kèm hướng dẫn "double-click để chạy,
-  không cần cài gì". Không để lại gì trên máy venue sau khi xong việc — xoá file là dọn sạch.
+  không cần cài gì". Hiện tại dữ liệu vẫn nằm ở `%APPDATA%\Lucky Draw Studio\` của máy venue (không
+  theo exe) — xoá exe KHÔNG dọn được dữ liệu đó. Khi mô hình USB mang theo dữ liệu được implement
+  ([portable-usb.md](./portable-usb.md)), copy cả thư mục exe + `lucky-draw.db`, và test thêm: mở từ
+  USB thấy đủ session/participant/prize/landing, quay thử xong tắt app → `lucky-draw.db` trên USB có
+  kết quả.
 - **Installer**: gửi file `Setup.exe`, người dùng tự chạy qua 2 bước (chọn thư mục → cài) rồi mở từ
   Start Menu/biểu tượng Desktop (đã bật `createDesktopShortcut`).
 - **Cảnh báo SmartScreen/Antivirus**: app CHƯA được ký số (code signing) — lần đầu mở trên máy lạ,

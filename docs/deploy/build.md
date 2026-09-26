@@ -52,7 +52,7 @@ Sau khi chạy xong, `release/` chứa (tên file khớp `productName`/`version`
 
 | File | Ý nghĩa |
 |---|---|
-| `Lucky Draw Studio-0.1.0-portable.exe` | File portable — copy đi đâu chạy đó, không cần cài |
+| `Lucky Draw Studio-0.1.0-portable.exe` | File portable — copy đi đâu chạy đó, không cần cài. CHƯA mang theo dữ liệu (DB vẫn ở `%APPDATA%` của máy chạy) — xem [portable-usb.md](./portable-usb.md) |
 | `Lucky Draw Studio-0.1.0-Setup.exe` | Trình cài đặt (Installer) |
 | `win-unpacked/` | Thư mục app đã giải nén thô (dùng để test nhanh, KHÔNG phải file để đưa cho người dùng cuối) |
 
