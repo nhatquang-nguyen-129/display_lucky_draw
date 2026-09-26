@@ -20,6 +20,31 @@ Hệ quả: `DigitRollerTemplate` không còn `.replace(/\D/g, "")` — hiển t
 
 Kích thước ô luôn tính từ khung kéo-thả trên canvas (`component.width`/`height`), không lệ thuộc 1 field "Font size" tách rời — giống hệt cách `WheelTemplate` lấy `size = min(width, height)`. Đây cũng là 1 quyết định sửa lại: ban đầu ô tính từ `fontSize` cố định, khiến khung mặc định (kế thừa 500×500 từ Wheel Circular) to hơn hẳn nội dung thật.
 
+### Spin style (Linear/Fast Start and Slow Stop/Smooth Start and Stop) áp dụng cho CẢ 2 rollStyle
+
+`spinEasing` (dropdown "Spin style" trong `LuckyWheelPanel.tsx`'s khối "Spin") dùng CHUNG 1 field cho
+cả `rollStyle` "flicker" lẫn "reel", nhưng mỗi bên đọc nó theo cách RIÊNG (không phải 1 CSS easing
+string áp thẳng như `WheelTemplate.tsx`):
+
+- **"flicker"** — `ease(progress, spinEasing)` định hình nhịp delay giữa các lần nhấp nháy ký tự
+  TRONG pha "settling" của riêng từng ô (xem `MIN_DELAY`/`MAX_DELAY` đầu file) — pha "waiting" (chưa
+  tới lượt chốt) LUÔN nhấp nháy nhanh cố định, không đổi theo Spin style.
+- **"reel"** — CHỈ ảnh hưởng pha GIẢM TỐC (`td`, ~25-30% cuối animation của riêng ô đó) trong mô hình
+  vật lý 3-pha (`planReelSlot`/`reelRowsTraveled`) — pha tăng tốc (`ta`) LUÔN là ramp tuyến tính cố
+  định, không đổi theo Spin style, giống hệt lý do "waiting" của flicker không đổi. `decelPositionFraction()`
+  là nguyên hàm closed-form của vận tốc `vc * (1 - ease(p, spinEasing))` theo tiến trình `p` của pha
+  decel — dùng LẠI ĐÚNG hàm `ease()` của flicker để 2 rollStyle CÙNG 1 hình dạng easing, chỉ khác cách
+  áp dụng (delay rời rạc vs vận tốc liên tục). `DECEL_AREA_FRACTION` (diện tích TRỌN VẸN dưới đường
+  vận tốc pha decel, theo easing đã chọn — 0.5 cho linear/easeInOut, 0.25 cho easeOut vì phanh nhanh
+  ngay từ đầu) dùng để derive lại `vc` (vận tốc hành trình) cho khớp ĐÚNG `kMax` (tổng số hàng phải
+  lướt qua) bất kể easing nào — thiếu bước derive lại này thì reel sẽ dừng LỆCH khỏi ký tự thật khi
+  đổi Spin style khác "Linear".
+
+**Bug đã sửa (đã gặp thật)**: `planReelSlot`/`reelRowsTraveled` ban đầu KHÔNG nhận `spinEasing` — pha
+decel LUÔN là ramp tuyến tính cứng, đổi dropdown "Spin style" không có tác dụng gì khi `rollStyle` =
+"reel" (chỉ ảnh hưởng "flicker"). Đã wire `spinEasing` vào cả 2 hàm để Spin style thật sự khác biệt ở
+CẢ 2 rollStyle, không chỉ "flicker".
+
 ### Digit Roller trong Quick Draw — quay xong CHỐT Ở "-", không hiện số của người trúng cuối
 
 Quick Draw ra nhiều người trúng NGAY LẬP TỨC không nghỉ giữa các lượt (xem mục "3 chế độ Draw" ở
