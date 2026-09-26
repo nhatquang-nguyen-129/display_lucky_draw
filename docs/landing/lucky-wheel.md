@@ -20,30 +20,35 @@ Hệ quả: `DigitRollerTemplate` không còn `.replace(/\D/g, "")` — hiển t
 
 Kích thước ô luôn tính từ khung kéo-thả trên canvas (`component.width`/`height`), không lệ thuộc 1 field "Font size" tách rời — giống hệt cách `WheelTemplate` lấy `size = min(width, height)`. Đây cũng là 1 quyết định sửa lại: ban đầu ô tính từ `fontSize` cố định, khiến khung mặc định (kế thừa 500×500 từ Wheel Circular) to hơn hẳn nội dung thật.
 
-### Spin style (Linear/Fast Start and Slow Stop/Smooth Start and Stop) áp dụng cho CẢ 2 rollStyle
+### Tốc độ quay — mô hình chung cho CẢ 2 rollStyle, luôn giảm tốc đều
 
-`spinEasing` (dropdown "Spin style" trong `LuckyWheelPanel.tsx`'s khối "Spin") dùng CHUNG 1 field cho
-cả `rollStyle` "flicker" lẫn "reel", nhưng mỗi bên đọc nó theo cách RIÊNG (không phải 1 CSS easing
-string áp thẳng như `WheelTemplate.tsx`):
+Cả `rollStyle` "flicker" lẫn "reel" dùng CHUNG 1 mô hình tốc độ trong `DigitRollerTemplate.tsx` (không
+phải 1 CSS easing string áp thẳng như `WheelTemplate.tsx`), chỉ khác cách hiển thị 1 "bước":
 
-- **"flicker"** — `ease(progress, spinEasing)` định hình nhịp delay giữa các lần nhấp nháy ký tự
-  TRONG pha "settling" của riêng từng ô (xem `MIN_DELAY`/`MAX_DELAY` đầu file) — pha "waiting" (chưa
-  tới lượt chốt) LUÔN nhấp nháy nhanh cố định, không đổi theo Spin style.
-- **"reel"** — CHỈ ảnh hưởng pha GIẢM TỐC (`td`, ~25-30% cuối animation của riêng ô đó) trong mô hình
-  vật lý 3-pha (`planReelSlot`/`reelRowsTraveled`) — pha tăng tốc (`ta`) LUÔN là ramp tuyến tính cố
-  định, không đổi theo Spin style, giống hệt lý do "waiting" của flicker không đổi. `decelPositionFraction()`
-  là nguyên hàm closed-form của vận tốc `vc * (1 - ease(p, spinEasing))` theo tiến trình `p` của pha
-  decel — dùng LẠI ĐÚNG hàm `ease()` của flicker để 2 rollStyle CÙNG 1 hình dạng easing, chỉ khác cách
-  áp dụng (delay rời rạc vs vận tốc liên tục). `DECEL_AREA_FRACTION` (diện tích TRỌN VẸN dưới đường
-  vận tốc pha decel, theo easing đã chọn — 0.5 cho linear/easeInOut, 0.25 cho easeOut vì phanh nhanh
-  ngay từ đầu) dùng để derive lại `vc` (vận tốc hành trình) cho khớp ĐÚNG `kMax` (tổng số hàng phải
-  lướt qua) bất kể easing nào — thiếu bước derive lại này thì reel sẽ dừng LỆCH khỏi ký tự thật khi
-  đổi Spin style khác "Linear".
+- **Mô hình chung** (`planSpinTiming`/`stepsTraveled`): mỗi ô có 3 pha vật lý kết thúc ĐÚNG lúc ô đó
+  chốt (`stopAt[i]`) — tăng tốc đều (`ta`, ~8%), hành trình (`tc`, vận tốc `vc` không đổi), giảm tốc
+  đều về 0 (`td`, ~28%). `unitDistance` (diện tích dưới đồ thị vận tốc chuẩn hoá) dùng để derive `vc`
+  khớp ĐÚNG tổng quãng đường.
+- **"reel"** — 1 bước = cuộn 1 hàng (giá trị thập phân, mượt). `vc = kMax / unitDistance` để dừng ĐÚNG
+  ký tự thật.
+- **"flicker"** — 1 bước = đổi sang 1 ký tự ngẫu nhiên (đổi mỗi khi phần nguyên số bước tăng). `vc`
+  cố định = 1 bước / `FLICKER_STEP_MS` (40ms) ở pha hành trình; hết thời lượng thì chốt ký tự thật.
 
-**Bug đã sửa (đã gặp thật)**: `planReelSlot`/`reelRowsTraveled` ban đầu KHÔNG nhận `spinEasing` — pha
-decel LUÔN là ramp tuyến tính cứng, đổi dropdown "Spin style" không có tác dụng gì khi `rollStyle` =
-"reel" (chỉ ảnh hưởng "flicker"). Đã wire `spinEasing` vào cả 2 hàm để Spin style thật sự khác biệt ở
-CẢ 2 rollStyle, không chỉ "flicker".
+Với `revealTiming` "sequential", ô sau chỉ có tổng thời lượng dài hơn ô trước — VẪN có đủ pha giảm
+tốc riêng.
+
+`WheelTemplate.tsx` (Wheel Circular) cũng giảm tốc đều từ đầu tới lúc dừng — CSS
+`cubic-bezier(0.333, 0.667, 0.667, 1)` (đúng đường cong 2t - t²), không dùng CSS `linear` (vận tốc
+không đổi rồi đứng khựng lại tức khắc).
+
+**Đã bỏ dropdown "Spin style" (`spinEasing`)**: từng có Linear/Fast Start and Slow Stop/Smooth Start
+and Stop (sau đổi thành Slow Start and Fast Stop) đổi hình dạng pha giảm tốc — khi xem thật, khác biệt
+giữa các kiểu không đáng kể nên bỏ hẳn, chỉ giữ giảm tốc đều. Landing cũ còn lưu `spinEasing` trong
+JSON — bị bỏ qua, không cần migration.
+
+**Bug đã sửa (đã gặp thật)**: Flicker từng dùng mô hình riêng 2 pha "waiting"/"settling", trong đó ô
+i>0 chỉ được giảm tốc trong khoảng stagger ~150ms giữa `stopAt[i-1]` và `stopAt[i]` — chỉ ô đầu tiên
+thật sự giảm tốc. Đã gộp Flicker vào mô hình chung với Reel ở trên.
 
 ### Digit Roller trong Quick Draw — quay xong CHỐT Ở "-", không hiện số của người trúng cuối
 

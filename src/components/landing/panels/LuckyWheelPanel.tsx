@@ -80,10 +80,10 @@ const FONT_OPTIONS = [
 // phân biệt được gì) mà là: field đó có ĐỔI KHÁC NHAU tuỳ mốc Idle/Draw/Redraw hay không (model
 // `DrawCycleConfig` generic) — Style của Wheel chỉ có ĐÚNG 1 cấu hình áp dụng MỌI lần reveal, không có
 // khái niệm "khác nhau giữa Idle/Draw/Redraw", nên thuộc Self Interactions y hệt Spin Behavior — gộp
-// CHUNG 1 nhóm DUY NHẤT "Self Interactions" với ĐÚNG 1 <details> tên "Spin": Spin duration/Spin style
+// CHUNG 1 nhóm DUY NHẤT "Self Interactions" với ĐÚNG 1 <details> tên "Spin": Spin duration
 // (LUÔN hiện) + Style của reveal (CHỈ digitRoller, nối ngay bên dưới trong CÙNG khối). Timing/Effect
 // (Reel/flicker) đã bỏ hẳn khỏi Panel — đơn giản hoá tối đa, chỉ còn ĐÚNG 3 field cấu hình được
-// (Duration/Spin style/Style) — luôn dùng giá trị mặc định MỚI cố định (sequential + pop, xem
+// (Duration/Style) — luôn dùng giá trị mặc định MỚI cố định (sequential + pop, xem
 // componentRegistry.ts) cho component tạo mới, landing cũ đã tự chỉnh tay trước đó vẫn giữ nguyên giá
 // trị đã lưu (revealTiming/reelCardEffect/reelNumberEffect/landingEffect vẫn còn trong
 // LuckyWheelProps/DigitRollerTemplate.tsx, chỉ không còn ai chỉnh được qua Panel nữa).
@@ -455,18 +455,6 @@ export default function LuckyWheelPanel({
                 value={props.spinDurationMs}
                 onChange={(e) => onChange({ spinDurationMs: Number(e.target.value) })}
               />
-            </div>
-            <div>
-              <label className={labelClass}>Spin style</label>
-              <select
-                className={fieldClass}
-                value={props.spinEasing}
-                onChange={(e) => onChange({ spinEasing: e.target.value as LuckyWheelProps["spinEasing"] })}
-              >
-                <option value="linear">Linear</option>
-                <option value="easeOut">Fast Start and Slow Stop</option>
-                <option value="easeInOut">Smooth Start and Stop</option>
-              </select>
             </div>
 
             {isDigitRoller && (

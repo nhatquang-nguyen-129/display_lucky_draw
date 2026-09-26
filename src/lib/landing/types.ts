@@ -206,9 +206,9 @@ export interface LuckyWheelProps {
   // (flicker + together + none), không đổi hành vi của landing đã lưu trước đó.
   //
   // Trục 1 — cơ chế hiển thị lúc 1 ô CHƯA chốt xong:
-  // "flicker" = đổi ký tự ngẫu nhiên liên tục theo nhịp (nhịp tự chậm dần theo spinEasing khi tới
-  // lượt chốt), giống máy đánh số cũ. "reel" = cuộn dọc liên tục kiểu bánh xe ký tự/odometer thật,
-  // ký tự rơi từ trên xuống, tự dừng đúng vị trí ký tự thật bằng CSS transition.
+  // "flicker" = đổi ký tự ngẫu nhiên liên tục theo nhịp, giống máy đánh số cũ. "reel" = cuộn dọc
+  // liên tục kiểu bánh xe ký tự/odometer thật, tự dừng đúng vị trí ký tự thật. Cả 2 dùng CHUNG 1 mô
+  // hình tốc độ 3 pha (tăng tốc/hành trình/giảm tốc đều — xem DigitRollerTemplate.tsx).
   rollStyle: "flicker" | "reel";
   // Sub-setting của rollStyle "reel" (KHÔNG phải landingEffect, chỉ có ý nghĩa khi rollStyle =
   // "reel") — 1 ô số hình dung gồm 2 PHẦN TÁCH BIỆT: khung trắng chứa ký tự, và CHÍNH ký tự bên
@@ -216,7 +216,7 @@ export interface LuckyWheelProps {
   // reelCardEffect — hiệu ứng cho KHUNG TRẮNG: "pop" = khung "bật ra" (scale+fade), tạo cảm giác
   // xuất hiện chớp nhoáng. Không đụng gì tới bản thân ký tự bên trong.
   // KHÔNG còn dropdown "Effect" riêng trong Properties Panel nữa (đơn giản hoá — Panel giờ chỉ còn
-  // đúng 3 field: Duration/Spin style/Style, xem LuckyWheelPanel.tsx) — component MỚI tạo luôn dùng
+  // đúng 2 field: Duration/Style, xem LuckyWheelPanel.tsx) — component MỚI tạo luôn dùng
   // combination "pop" (reelCardEffect="pop" + reelNumberEffect="bounce", xem componentRegistry.ts),
   // landing CŨ đã tự chỉnh tay trước khi bỏ dropdown vẫn giữ nguyên giá trị đã lưu (kể cả bật lẻ/
   // không đồng bộ 2 field này từ trước khi panel từng gộp chung 1 dropdown).
@@ -224,16 +224,15 @@ export interface LuckyWheelProps {
   // reelNumberEffect — hiệu ứng cho CHÍNH KÝ TỰ (không đụng khung): "bounce" = ký tự nảy lên nhẹ rồi
   // rơi xuống đúng vị trí giữa, kiểu quả bóng chạm đất, chỉ 1 nhịp nhỏ (không phải hiệu ứng của khung).
   reelNumberEffect: "none" | "bounce";
-  // Trục 2 — thời điểm các ô CHUYỂN SANG PHA CHỐT (settling — bắt đầu giảm tốc dần rồi dừng ở ký tự
-  // thật): "together" = mọi ô vào pha chốt ngay t=0 (chốt cùng lúc, cùng giảm tốc). "sequential" =
-  // ô thứ i CHỈ bắt đầu giảm tốc SAU KHI ô (i-1) đã dừng hẳn + revealStaggerMs — trong lúc chờ tới
-  // lượt, ô đó vẫn nhấp nháy/cuộn NHANH BÌNH THƯỜNG (không giảm tốc theo ô đang chốt). KHÔNG còn
+  // Trục 2 — thời điểm các ô CHỐT ở ký tự thật: "together" = mọi ô dừng cùng lúc (spinDurationMs).
+  // "sequential" = ô thứ i dừng trễ hơn ô (i-1) khoảng ~revealStaggerMs (ngẫu nhiên 70-130%). Mỗi ô
+  // tự có ĐỦ pha giảm tốc riêng, kết thúc đúng lúc ô đó dừng. KHÔNG còn
   // dropdown "Timing" riêng trong Properties Panel nữa (đơn giản hoá, cùng đợt với reelCardEffect ở
   // trên) — component MỚI tạo luôn dùng "sequential" (xem componentRegistry.ts), landing CŨ đã tự
   // chỉnh tay trước đó vẫn giữ nguyên giá trị đã lưu.
   revealTiming: "together" | "sequential";
-  // Chỉ có tác dụng khi revealTiming = "sequential" — khoảng nghỉ (ms) SAU KHI ô này đã dừng hẳn,
-  // trước khi ô kế tiếp bắt đầu giảm tốc. KHÔNG còn ô nhập riêng trong Properties Panel (đơn giản hoá
+  // Chỉ có tác dụng khi revealTiming = "sequential" — khoảng cách (ms) giữa lúc ô này dừng hẳn và
+  // lúc ô kế tiếp dừng. KHÔNG còn ô nhập riêng trong Properties Panel (đơn giản hoá
   // theo yêu cầu "When Draw" chỉ còn đúng 3 dropdown, không có field ms nào) — luôn dùng giá trị đã
   // lưu (mặc định 150, xem componentRegistry.ts), landing cũ từng chỉnh tay vẫn giữ nguyên giá trị đó.
   revealStaggerMs: number;
@@ -247,8 +246,10 @@ export interface LuckyWheelProps {
   fontFamily: string;
   fontColor: string;
   fontSize: number;
+  // Không còn field "spinEasing" (dropdown "Spin style" — đã bỏ vì các kiểu khác nhau không đáng kể
+  // khi xem thật): mọi template luôn giảm tốc ĐỀU tới lúc dừng. Landing cũ có thể còn lưu field này
+  // trong JSON — bị bỏ qua, không đọc ở đâu nữa.
   spinDurationMs: number;
-  spinEasing: "linear" | "easeOut" | "easeInOut";
   // v1 chỉ hỗ trợ đúng 1 hành vi: luôn dừng ở người trúng thật do Draw Engine trả về — không có
   // chế độ quay "chơi" không gắn với kết quả thật. Giữ field lại để sau này có chỗ mở rộng.
   autoStop: true;
