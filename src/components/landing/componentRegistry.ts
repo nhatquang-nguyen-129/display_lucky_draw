@@ -118,7 +118,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       digitCount: 3,
       rollStyle: "flicker",
       // KHÔNG còn dropdown Timing/Effect riêng trong Properties Panel nữa (đơn giản hoá — Panel giờ
-      // chỉ còn Duration/Spin style/Style, xem LuckyWheelPanel.tsx) — luôn dùng ĐÚNG 4 giá trị mặc
+      // chỉ còn Duration/Style, xem LuckyWheelPanel.tsx) — luôn dùng ĐÚNG 4 giá trị mặc
       // định này cho component MỚI tạo, y hệt cách revealStaggerMs (dòng dưới) đã làm trước đó: landing
       // CŨ đã tự chỉnh tay trước khi bỏ dropdown vẫn giữ nguyên giá trị đã lưu, không bị ép đổi lại.
       reelCardEffect: "pop",
@@ -130,7 +130,6 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       fontColor: "#FFFFFF",
       fontSize: 20,
       spinDurationMs: 4000,
-      spinEasing: "easeOut",
       autoStop: true,
     }),
   },

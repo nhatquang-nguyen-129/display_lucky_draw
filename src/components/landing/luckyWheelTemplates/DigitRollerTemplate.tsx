@@ -8,63 +8,53 @@ import {
 } from "@/lib/landing/types";
 import "./digitRollerEffects.css";
 
-// Tốc độ nhấp nháy ký tự lúc "đang quay" (rollStyle "flicker") — chạy từ nhanh (MIN_DELAY) tới chậm
-// (MAX_DELAY) theo đúng đường cong spinEasing đã chọn khi đang ở PHA CHỐT (settling) của riêng ô đó;
-// lúc còn "chờ tới lượt" luôn giữ đúng MIN_DELAY (nhanh, không giảm tốc).
-const MIN_DELAY = 40;
-const MAX_DELAY = 220;
+// Tốc độ hành trình của rollStyle "flicker" — 1 lần đổi ký tự mỗi FLICKER_STEP_MS ở pha hành trình
+// (vận tốc tối đa), rồi thưa dần theo ĐÚNG mô hình chuyển động chung với "reel" (xem SpinTiming/
+// stepsTraveled bên dưới) — Flicker chỉ khác Reel ở cách HIỂN THỊ 1 "bước" (đổi ký tự ngẫu nhiên thay
+// vì cuộn 1 hàng), còn tốc độ theo thời gian (tăng tốc/hành trình/giảm tốc) giống hệt.
+const FLICKER_STEP_MS = 40;
 
-function ease(p: number, easing: LuckyWheelComponent["props"]["spinEasing"]): number {
-  if (easing === "linear") return p;
-  if (easing === "easeOut") return 1 - Math.pow(1 - p, 3);
-  return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
-}
-
-// Quãng đường ĐÃ ĐI trong PHA GIẢM TỐC của rollStyle "reel" (planReelSlot/reelRowsTraveled bên dưới),
-// tính THEO ĐÚNG hình dạng easing đã chọn — dùng chung field "Spin style" với rollStyle "flicker"
-// (ease() ở trên) thay vì Reel tự đứng ngoài, không đọc spinEasing như trước (bug đã gặp thật: đổi
-// Spin style không có tác dụng gì khi Style = Reel). Vận tốc trong pha giảm tốc = vc * (1 - ease(p)) —
-// p=0 (vừa hết pha hành trình) → vận tốc = vc (liên tục với pha trước); p=1 (hết pha giảm tốc) → vận
-// tốc = 0 (dừng đúng khớp target). Hàm dưới đây là NGUYÊN HÀM (closed-form, không tích phân số mỗi
-// khung hình — chạy trong requestAnimationFrame) của vận tốc đó theo p, quy về tỉ lệ 0-1 của "quãng
-// đường TRỌN VẸN cả pha decel nếu p=1" — nhân với `vc * td` ở nơi gọi để ra quãng đường thật (px/hàng).
-// "linear" cho ra ĐÚNG công thức cũ (p - p²/2) — landing cũ/Style=Linear chạy Y HỆT không đổi gì.
-function decelPositionFraction(p: number, easing: LuckyWheelComponent["props"]["spinEasing"]): number {
-  if (easing === "linear") return p - (p * p) / 2;
-  if (easing === "easeOut") return (1 - Math.pow(1 - p, 4)) / 4;
-  return p <= 0.5 ? p - Math.pow(p, 4) : 0.5 - Math.pow(1 - p, 4);
-}
-// F(1) của decelPositionFraction ở trên — diện tích TRỌN VẸN dưới đường vận tốc cả pha decel, theo
-// TỈ LỆ của hình chữ nhật vc*td (0-1). "linear"/"easeInOut" đều = 0.5 (đối xứng quanh (0.5, vc/2) —
-// easeInOut đối xứng điểm quanh (0.5,0.5) nên diện tích "còn lại"/"đã qua" luôn bằng nhau, y hệt
-// linear). "easeOut" giảm tốc RẤT NHANH ngay từ đầu pha decel (bò chậm suốt phần còn lại) nên diện
-// tích nhỏ hơn hẳn (0.25) — dùng để derive lại `vc` trong planReelSlot cho khớp ĐÚNG kMax (tổng quãng
-// đường phải luôn bằng kMax bất kể easing nào, nếu không reel sẽ dừng LỆCH khỏi ký tự thật).
-const DECEL_AREA_FRACTION: Record<LuckyWheelComponent["props"]["spinEasing"], number> = {
-  linear: 0.5,
-  easeOut: 0.25,
-  easeInOut: 0.5,
-};
-
-// --- rollStyle "reel" — máy quay số cơ khí thật, mô phỏng QUÁN TÍNH thật (không phải text scramble,
-// không phải 1 CSS transition/easing string đơn thuần như WheelTemplate.tsx) ---
+// --- Mô hình chuyển động CHUNG cho cả 2 rollStyle — mô phỏng QUÁN TÍNH thật (không phải 1 CSS
+// transition/easing string đơn thuần như WheelTemplate.tsx) ---
 //
-// Mỗi ô là 1 bánh xe độc lập, LUÔN cuộn tuần tự đúng bảng chữ cái của nó (0-9 lặp lại nếu ký tự
-// thật là số, A-Z/a-z lặp lại nếu là chữ). Vị trí cuộn (translateY) được tính lại MỖI KHUNG HÌNH
-// bằng 1 hàm quãng đường theo thời gian có 3 pha vật lý:
-//   - Pha tăng tốc (~8% thời lượng): vận tốc tăng dần ĐỀU từ 0 lên tốc độ hành trình — LUÔN tuyến
-//     tính, KHÔNG đổi theo Spin style (giống cách rollStyle "flicker" giữ pha "waiting" luôn cố định
-//     — Spin style chỉ tạo khác biệt ở pha CUỐI, lúc mắt thật sự để ý "nó dừng như thế nào").
+// Mỗi ô chạy độc lập theo 1 hàm quãng đường ("số bước đã đi") theo thời gian có 3 pha vật lý, kết
+// thúc ĐÚNG lúc ô đó chốt (stopAt của riêng ô — nên với revealTiming "sequential", ô sau chỉ đơn giản
+// có tổng thời lượng dài hơn, VẪN có đủ pha giảm tốc riêng, không bị dồn vào 1 khoảng stagger ~150ms
+// như mô hình "waiting/settling" cũ của flicker — bug đã gặp thật: chỉ ô đầu tiên thật sự giảm tốc):
+//   - Pha tăng tốc (~8% thời lượng): vận tốc tăng dần ĐỀU từ 0 lên tốc độ hành trình.
 //   - Pha hành trình (~60-70%): vận tốc GIỮ NGUYÊN không đổi — đây là phần chiếm phần lớn thời gian.
-//   - Pha giảm tốc (~25-30%): vận tốc giảm dần THEO ĐÚNG hình dạng Spin style đã chọn (`decelPositionFraction`
-//     ở trên, DÙNG CHUNG `ease()` với rollStyle "flicker") về đúng 0 tại ký tự thật — "Linear" giữ
-//     NGUYÊN gia tốc âm không đổi như trước (khoảng cách thời gian giữa các ký tự đi qua dãn ra ĐỀU),
-//     "Fast Start and Slow Stop" phanh RẤT NHANH ngay từ đầu pha decel rồi bò rất chậm phần còn lại,
-//     "Smooth Start and Stop" giảm tốc mượt kiểu S-curve — cả 3 đều đảm bảo vài ký tự cuối đủ chậm để
-//     đọc được, chỉ khác NHỊP giảm tốc.
-// Mỗi ô random nhẹ (8-15 vòng quay đầy đủ, ±10% thời lượng mỗi pha) để không ô nào giống hệt ô nào —
-// tránh cảm giác máy tính. Không dùng filter blur (tốc độ hành trình đã đủ nhanh để mắt không theo
-// kịp từng ký tự mà không cần blur giả tạo).
+//   - Pha giảm tốc (~25-30%): vận tốc giảm ĐỀU (gia tốc âm không đổi) về đúng 0 lúc chốt — khoảng
+//     thời gian giữa các bước dãn ra đều, vài bước cuối đủ chậm để đọc được.
+// Từng có dropdown "Spin style" (Fast Start and Slow Stop/Smooth/Slow Start and Fast Stop) đổi hình
+// dạng pha giảm tốc — đã bỏ hẳn vì khác biệt không đáng kể khi xem thật, chỉ giữ giảm tốc đều.
+// "reel": 1 bước = cuộn 1 hàng trên dải ký tự (giá trị thập phân — cuộn mượt). "flicker": 1 bước = đổi
+// sang 1 ký tự ngẫu nhiên (đổi mỗi khi phần nguyên của số bước tăng).
+// Mỗi ô random nhẹ ±10% thời lượng mỗi pha để không ô nào giống hệt ô nào — tránh cảm giác máy tính.
+
+interface SpinTiming {
+  ta: number; // ms — thời lượng pha tăng tốc
+  tc: number; // ms — thời lượng pha hành trình
+  td: number; // ms — thời lượng pha giảm tốc
+  duration: number; // ta+tc+td — tổng thời lượng animation của riêng ô này
+  // Quãng đường đi được nếu vận tốc hành trình = 1 bước/ms (diện tích dưới đồ thị vận tốc chuẩn hoá):
+  // tam giác (ta) + chữ nhật (tc) + tam giác (td). Chia tổng số bước cho giá trị này ra `vc` khớp đúng đích.
+  unitDistance: number;
+}
+
+function planSpinTiming(duration: number): SpinTiming {
+  const jitter = () => 0.9 + Math.random() * 0.2; // 0.9 - 1.1
+  const accelFrac = 0.08 * jitter();
+  const decelFrac = 0.28 * jitter();
+  const cruiseFrac = Math.max(0.4, 1 - accelFrac - decelFrac);
+  const ta = duration * accelFrac;
+  const td = duration * decelFrac;
+  const tc = duration * cruiseFrac;
+  return { ta, tc, td, duration: ta + tc + td, unitDistance: ta / 2 + tc + td / 2 };
+}
+
+// --- rollStyle "reel" — máy quay số cơ khí thật: mỗi ô là 1 bánh xe, LUÔN cuộn tuần tự đúng bảng chữ
+// cái của nó (0-9 lặp lại nếu ký tự thật là số, A-Z/a-z lặp lại nếu là chữ), 8-15 vòng đầy đủ. Không
+// dùng filter blur (tốc độ hành trình đã đủ nhanh để mắt không theo kịp từng ký tự). ---
 const WHEEL_DIGITS = "0123456789";
 const WHEEL_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const WHEEL_LOWER = "abcdefghijklmnopqrstuvwxyz";
@@ -76,14 +66,18 @@ function wheelFor(ch: string): string {
   return ch || " "; // ký tự đặc biệt/khoảng trắng — không có bảng chữ cái hợp lý, đứng yên luôn
 }
 
-interface ReelPlan {
+// Kế hoạch chuyển động của 1 ô — dùng chung cho cả 2 rollStyle (reel thêm strip/kMax riêng).
+interface SpinMotion {
+  ta: number;
+  tc: number;
+  td: number;
+  vc: number; // bước/ms — vận tốc hành trình (không đổi trong pha tc)
+  duration: number;
+}
+
+interface ReelPlan extends SpinMotion {
   strip: string[]; // strip[0] = ký tự thật (vị trí nghỉ), strip[kMax] = ký tự xa nhất lúc bắt đầu
   kMax: number; // tổng số hàng phải lướt qua — 0 nghĩa là ô này không có bánh xe (đứng yên luôn)
-  ta: number; // ms — thời lượng pha tăng tốc
-  tc: number; // ms — thời lượng pha hành trình
-  td: number; // ms — thời lượng pha giảm tốc
-  vc: number; // hàng/ms — vận tốc hành trình (không đổi trong pha tc)
-  duration: number; // ta+tc+td — tổng thời lượng animation của riêng ô này
 }
 
 /** Random nhẹ 8 vòng quay đầy đủ trở lên (điểm yêu cầu: 8-15 vòng) + jitter ±10% cho từng pha, để
@@ -93,17 +87,8 @@ interface ReelPlan {
  * bug đã gặp thật: ô "đứng hình" ngay ở "-" thay vì quay đủ spinDurationMs), nên phải ép 1 bảng
  * chữ cái nhiều ký tự (digit + "-") để CÓ quãng đường mà cuộn. Không đổi hành vi wheelFor cho lượt
  * quay THẬT (startSpin() không truyền override) — 1 dấu "-" xuất hiện tự nhiên trong dữ liệu thật
- * (vd số điện thoại có định dạng gạch nối) vẫn đứng yên như cũ, không bị ép quay giả tạo.
- * `spinEasing` — CHỈ ảnh hưởng pha GIẢM TỐC (`td`), qua `DECEL_AREA_FRACTION` để derive lại `vc` cho
- * khớp ĐÚNG `kMax` (xem doc-comment DECEL_AREA_FRACTION) — pha tăng tốc (`ta`) LUÔN là ramp tuyến
- * tính cố định bất kể easing nào, y hệt cách rollStyle "flicker" giữ pha "waiting" luôn cố định,
- * không đổi theo Spin style (chỉ pha "settling"/decel mới đổi). */
-function planReelSlot(
-  target: string,
-  duration: number,
-  spinEasing: LuckyWheelComponent["props"]["spinEasing"],
-  alphabetOverride?: string
-): ReelPlan {
+ * (vd số điện thoại có định dạng gạch nối) vẫn đứng yên như cũ, không bị ép quay giả tạo. */
+function planReelSlot(target: string, duration: number, alphabetOverride?: string): ReelPlan {
   const alphabet = alphabetOverride ?? wheelFor(target);
   const L = alphabet.length;
   if (L <= 1) return { strip: [target], kMax: 0, ta: 0, tc: 0, td: 0, vc: 0, duration: 0 };
@@ -114,27 +99,21 @@ function planReelSlot(
   const forward = Array.from({ length: kMax + 1 }, (_, k) => alphabet[k % L]);
   const strip = forward.slice().reverse(); // strip[0] = alphabet[kMax % L] = target ✓
 
-  const jitter = () => 0.9 + Math.random() * 0.2; // 0.9 - 1.1
-  const accelFrac = 0.08 * jitter();
-  const decelFrac = 0.28 * jitter();
-  const cruiseFrac = Math.max(0.4, 1 - accelFrac - decelFrac);
-  const ta = duration * accelFrac;
-  const td = duration * decelFrac;
-  const tc = duration * cruiseFrac;
-  // Tổng quãng đường (kMax hàng) = diện tích dưới đồ thị vận tốc: tam giác (ta, LUÔN 0.5 — accel
-  // không đổi theo easing) + chữ nhật (tc) + phần "decel" theo ĐÚNG hình dạng easing đã chọn
-  // (DECEL_AREA_FRACTION, 0.5 cho linear/easeInOut, 0.25 cho easeOut) — giải ngược ra vc (vận tốc
-  // hành trình không đổi) để quãng đường khớp đúng kMax bất kể easing nào.
-  const vc = kMax / (ta / 2 + tc + td * DECEL_AREA_FRACTION[spinEasing]);
-
-  return { strip, kMax, ta, tc, td, vc, duration: ta + tc + td };
+  // Giải ngược ra vc (vận tốc hành trình không đổi) để tổng quãng đường khớp đúng kMax.
+  const { ta, tc, td, duration: total, unitDistance } = planSpinTiming(duration);
+  return { strip, kMax, ta, tc, td, vc: kMax / unitDistance, duration: total };
 }
 
-/** Số hàng đã lướt qua tính tới thời điểm `elapsed` (ms) kể từ lúc ô này bắt đầu quay — hàm liên
- * tục theo 3 pha ở trên, cho giá trị thập phân (không làm tròn) để chuyển động mượt tuyệt đối.
- * `spinEasing` PHẢI là ĐÚNG giá trị đã truyền vào `planReelSlot` lúc tính `plan.vc` — 2 nơi lệch
- * nhau sẽ khiến quãng đường thật không còn khớp `kMax` (dừng lệch khỏi ký tự thật). */
-function reelRowsTraveled(plan: ReelPlan, elapsed: number, spinEasing: LuckyWheelComponent["props"]["spinEasing"]): number {
+/** rollStyle "flicker" — cùng timing 3 pha như reel, nhưng vận tốc hành trình cố định 1 bước mỗi
+ * FLICKER_STEP_MS (không có đích kMax cần khớp — ô chốt về ký tự thật đúng lúc hết `duration`). */
+function planFlickerSlot(duration: number): SpinMotion {
+  const { ta, tc, td, duration: total } = planSpinTiming(duration);
+  return { ta, tc, td, vc: 1 / FLICKER_STEP_MS, duration: total };
+}
+
+/** Số bước đã đi tính tới thời điểm `elapsed` (ms) kể từ lúc ô này bắt đầu quay — hàm liên tục theo 3
+ * pha ở trên, cho giá trị thập phân (không làm tròn) để chuyển động mượt tuyệt đối. */
+function stepsTraveled(plan: SpinMotion, elapsed: number): number {
   const { ta, tc, td, vc, duration } = plan;
   const t = Math.max(0, Math.min(elapsed, duration));
   if (t <= ta) {
@@ -146,7 +125,7 @@ function reelRowsTraveled(plan: ReelPlan, elapsed: number, spinEasing: LuckyWhee
   const dt = t - ta - tc;
   const tdSafe = Math.max(td, 1);
   const p = Math.min(1, dt / tdSafe);
-  return (vc * ta) / 2 + vc * tc + vc * tdSafe * decelPositionFraction(p, spinEasing);
+  return (vc * ta) / 2 + vc * tc + vc * tdSafe * (p - (p * p) / 2);
 }
 
 function landingEffectClass(effect: LuckyWheelComponent["props"]["landingEffect"]): string {
@@ -163,15 +142,14 @@ function randomChar(): string {
 // Template "digitRoller" — hiện winnerDisplayField của người trúng dưới dạng ô ký tự kiểu máy đánh
 // số/slot-machine thật.
 //
-// rollStyle "flicker": mô hình 2 PHA cho từng ô — "waiting" (chưa tới lượt, nhấp nháy nhanh cố định,
-// không giảm tốc) và "settling" (đang chốt, giảm tốc dần theo spinEasing rồi dừng ở ký tự thật).
-//
-// rollStyle "reel": máy quay số cơ khí thật — xem khối comment lớn phía trên (planReelSlot/
-// reelRowsTraveled). landingEffect (none/bounce/pop) chỉ áp dụng cho "flicker"; "reel" hình dung
+// Cả 2 rollStyle dùng CHUNG mô hình tốc độ 3 pha (planSpinTiming/stepsTraveled — xem
+// khối comment lớn phía trên), chỉ khác cách hiển thị 1 bước:
+// rollStyle "flicker": mỗi bước đổi sang 1 ký tự ngẫu nhiên, hết thời lượng thì chốt ký tự thật.
+// rollStyle "reel": máy quay số cơ khí thật, mỗi bước cuộn 1 hàng (planReelSlot). landingEffect (none/bounce/pop) chỉ áp dụng cho "flicker"; "reel" hình dung
 // gồm 2 PHẦN TÁCH BIỆT — khung trắng (reelCardEffect) và CHÍNH ký tự bên trong (reelNumberEffect) —
 // mỗi phần hiệu ứng riêng, không gộp chung, xem LuckyWheelProps.
 export default function DigitRollerTemplate({ component, data }: { component: LuckyWheelComponent; data?: LandingData }) {
-  const { winnerDisplayField, digitCount, fontFamily, spinDurationMs, spinEasing } = component.props;
+  const { winnerDisplayField, digitCount, fontFamily, spinDurationMs } = component.props;
   // Config cũ (lưu trước khi có các trục cấu hình animation này) không có các field dưới — fallback
   // tái tạo ĐÚNG hành vi gốc ban đầu (flicker + together + none), không đổi hành vi của landing đã
   // lưu từ trước.
@@ -265,7 +243,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
     setSettledCount(0);
 
     if (rollStyle === "reel") {
-      const plans = targetChars.map((t, i) => planReelSlot(t, stopAt[i], spinEasing, reelAlphabetOverride));
+      const plans = targetChars.map((t, i) => planReelSlot(t, stopAt[i], reelAlphabetOverride));
       setReelStrips(plans.map((p) => p.strip));
 
       const startTime = performance.now();
@@ -286,7 +264,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
             settled += 1;
             continue;
           }
-          const rows = reelRowsTraveled(plan, elapsed, spinEasing);
+          const rows = stepsTraveled(plan, elapsed);
           const index = plan.kMax - rows; // giá trị thập phân — cuộn mượt tuyệt đối, không giật khung
           if (el) el.style.transform = `translateY(${-index * cellHeightRef.current}px)`;
           if (elapsed >= plan.duration) {
@@ -311,9 +289,12 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
       };
       abort.rafId = requestAnimationFrame(frame);
     } else {
+      const plans = stopAt.map((d) => planFlickerSlot(d));
       const startTime = performance.now();
       const localChars = [...chars];
-      const nextFlickerAt = Array(count).fill(0);
+      // Phần nguyên số bước đã đi của từng ô — đổi ký tự mỗi khi giá trị này tăng. -1 để đổi ngay
+      // khung hình đầu tiên (báo hiệu đã bắt đầu quay).
+      const lastStep = Array(count).fill(-1);
       let settled = 0;
 
       const frame = () => {
@@ -321,7 +302,7 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
         let charsChanged = false;
 
         for (let i = settled; i < count; i++) {
-          if (elapsed >= stopAt[i]) {
+          if (elapsed >= plans[i].duration) {
             if (i === settled) {
               settled += 1;
               localChars[i] = targetChars[i];
@@ -330,18 +311,11 @@ export default function DigitRollerTemplate({ component, data }: { component: Lu
             continue;
           }
 
-          const settleStart = i === 0 || revealTiming !== "sequential" ? 0 : stopAt[i - 1];
-          const isSettling = elapsed >= settleStart;
-
-          if (elapsed >= nextFlickerAt[i]) {
+          const step = Math.floor(stepsTraveled(plans[i], elapsed));
+          if (step !== lastStep[i]) {
+            lastStep[i] = step;
             localChars[i] = randomChar();
             charsChanged = true;
-            if (isSettling) {
-              const localProgress = Math.min(1, (elapsed - settleStart) / Math.max(1, stopAt[i] - settleStart));
-              nextFlickerAt[i] = elapsed + MIN_DELAY + (MAX_DELAY - MIN_DELAY) * ease(localProgress, spinEasing);
-            } else {
-              nextFlickerAt[i] = elapsed + MIN_DELAY; // "waiting" — nhanh, cố định, không giảm tốc
-            }
           }
         }
 

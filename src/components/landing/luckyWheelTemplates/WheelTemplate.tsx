@@ -11,17 +11,16 @@ import { displayValue } from "./displayValue";
 
 const FULL_TURNS = 5;
 
-const EASING_CSS: Record<LuckyWheelComponent["props"]["spinEasing"], string> = {
-  linear: "linear",
-  easeOut: "cubic-bezier(0.15, 0.85, 0.35, 1)",
-  easeInOut: "ease-in-out",
-};
+// Giảm tốc ĐỀU từ lúc bắt đầu tới lúc dừng (vận tốc giảm tuyến tính về 0 — cùng nghĩa "linear" với
+// pha giảm tốc của DigitRollerTemplate): đường cong vị trí 2t - t², viết CHÍNH XÁC dưới dạng
+// cubic-bezier. KHÔNG dùng CSS "linear" (vận tốc không đổi rồi đứng khựng lại tức khắc ở cuối).
+const SPIN_EASING_CSS = "cubic-bezier(0.333, 0.667, 0.667, 1)";
 
 // Template "wheel" — vòng tròn chia segment theo từng participant, quay và dừng đúng ở người
 // trúng thật (đọc từ LandingData.results, không tự chọn người trúng). Đây là template gốc,
 // tách riêng khỏi LuckyWheelView để dễ thêm template mới mà không đụng vào code template cũ.
 export default function WheelTemplate({ component, data }: { component: LuckyWheelComponent; data?: LandingData }) {
-  const { drawField, displayField, winnerDisplayField, maskSensitiveData, fontFamily, fontColor, fontSize, spinDurationMs, spinEasing } =
+  const { drawField, displayField, winnerDisplayField, maskSensitiveData, fontFamily, fontColor, fontSize, spinDurationMs } =
     component.props;
   const participants = data?.participants ?? [];
   const results = data?.results ?? [];
@@ -102,7 +101,7 @@ export default function WheelTemplate({ component, data }: { component: LuckyWhe
           className="absolute inset-0 overflow-hidden rounded-full border-4 border-gold-500/60 bg-base-900"
           style={{
             transform: `rotate(${rotation}deg)`,
-            transition: spinning ? `transform ${spinDurationMs}ms ${EASING_CSS[spinEasing]}` : undefined,
+            transition: spinning ? `transform ${spinDurationMs}ms ${SPIN_EASING_CSS}` : undefined,
           }}
         >
           {segments.length === 0 ? (
