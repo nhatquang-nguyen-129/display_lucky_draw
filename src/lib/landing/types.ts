@@ -55,14 +55,14 @@ export interface TextProps {
 }
 
 // "Appearance" — trạng thái ĐÍCH của 1 mốc (Idle/Draw/Redraw) trong chu trình đồng bộ Draw. 4 giá trị
-// PEER nhau, dùng CHUNG giữa mọi loại component có `syncWithDraw` (Text/Image CHỈ dùng 2 giá trị đầu
-// qua Panel của chúng — "dim"/"blur" không xuất hiện trong dropdown Appearance của chúng, dù type cho
-// phép — landing cũ chỉ từng lưu "appear"/"disappear" vẫn hợp lệ nguyên vẹn; Background dùng đủ cả 4,
-// xem BackgroundPanel.tsx):
+// PEER nhau, dùng CHUNG giữa mọi loại component có `syncWithDraw` (Text CHỈ dùng 2 giá trị đầu qua
+// Panel của nó — "dim"/"blur" không xuất hiện trong dropdown Appearance của Text, dù type cho phép;
+// Background và Image dùng đủ cả 4, xem BackgroundPanel.tsx/ImagePanel.tsx):
 //   - "appear"/"disappear": nội dung hiện/ẩn hẳn (Text/Image/Background đều dùng được — với
 //     Background, "disappear" nghĩa là ẩn hẳn ảnh nền, lộ ra màu đen của canvas).
-//   - "dim"/"blur": CHỈ Background dùng — 1 lớp filter phủ lên ảnh (không ẩn ảnh, chỉ làm tối/mờ đi),
-//     xem `DrawPhaseEffectConfig.amount` bên dưới cho cường độ.
+//   - "dim"/"blur": CHỈ Background/Image dùng — làm tối/mờ ảnh (không ẩn ảnh), xem
+//     `DrawPhaseEffectConfig.amount` bên dưới cho cường độ. Background vẽ bằng 1 lớp phủ đen, Image
+//     bằng CSS filter brightness()/blur() (giữ nguyên phần PNG trong suốt, xem ImageView.tsx).
 // Idle LUÔN phải có 1 giá trị thật (không có "none" — Idle là trạng thái nghỉ mặc định, không phải 1
 // "hành động").
 export type DrawRestState = "appear" | "disappear" | "dim" | "blur";
@@ -72,17 +72,17 @@ export type DrawRestState = "appear" | "disappear" | "dim" | "blur";
 // hợp lệ: 1 phase KHÔNG được trùng giá trị với phase THẬT (khác "none") gần nhất phía TRƯỚC nó trong
 // chuỗi Idle→Draw→Redraw (Draw so với Idle; Redraw so với Draw NẾU Draw có giá trị thật, ngược lại so
 // với Idle) — vô hiệu hoá (disabled) đúng 1 lựa chọn đó ngay trên dropdown, không cho tự do chọn bừa.
-// Với domain 2 giá trị (Text/Image) điều này ép Draw/Redraw luân phiên NHỊ PHÂN y hệt hành vi cũ
+// Với domain 2 giá trị (Text) điều này ép Draw/Redraw luân phiên NHỊ PHÂN y hệt hành vi cũ
 // (Draw bắt buộc = giá trị còn lại duy nhất, Redraw bắt buộc quay về đúng idleState) — domain 4 giá
-// trị (Background) thì mỗi phase còn NHIỀU lựa chọn hợp lệ hơn (chỉ cấm đúng 1 giá trị vừa dùng ngay
+// trị (Background/Image) thì mỗi phase còn NHIỀU lựa chọn hợp lệ hơn (chỉ cấm đúng 1 giá trị vừa dùng ngay
 // trước, không ép phải quay lại ĐÚNG idleState như bản nhị phân).
 export type DrawPhaseAction = "none" | DrawRestState;
 
 export interface DrawPhaseEffectConfig {
   effect: WinnerTransitionEffect;
   delayMs?: number;
-  // CHỈ có ý nghĩa khi trạng thái ĐÍCH của phase này là "dim" (0-100, %) hoặc "blur" (px) — Text/Image
-  // không bao giờ đọc/ghi field này (Panel của chúng không cho chọn dim/blur). Xem
+  // CHỈ có ý nghĩa khi trạng thái ĐÍCH của phase này là "dim" (0-100, %) hoặc "blur" (px) — Text không
+  // bao giờ đọc/ghi field này (Panel của Text không cho chọn dim/blur). Xem
   // DEFAULT_BACKGROUND_DIM_AMOUNT/DEFAULT_BACKGROUND_BLUR_AMOUNT bên dưới cho giá trị mặc định.
   amount?: number;
 }
@@ -149,7 +149,7 @@ export interface ImageComponent extends BaseComponent {
 }
 
 // Giá trị `amount` mặc định khi 1 phase mới được đổi sang đích "dim"/"blur" mà chưa từng cấu hình gì
-// (xem BackgroundPanel.tsx) — Dim 80% theo đúng yêu cầu, Blur 16px chọn tạm 1 mức vừa phải.
+// (xem BackgroundPanel.tsx/ImagePanel.tsx) — Dim 80% theo đúng yêu cầu, Blur 16px chọn tạm 1 mức vừa phải.
 export const DEFAULT_BACKGROUND_DIM_AMOUNT = 80;
 export const DEFAULT_BACKGROUND_BLUR_AMOUNT = 16;
 

@@ -27,10 +27,6 @@ export default function LiftDirectionTrigger({
         >
           Done — stop editing on canvas
         </button>
-        <p className="text-[10px] leading-snug text-base-500">
-          Drag the yellow arrow away from the fixed center point to set how far (and toward where) it lifts.
-          Hold Shift to snap the angle to straight/45° diagonals.
-        </p>
       </div>
     );
   }
@@ -54,7 +50,6 @@ export default function LiftDirectionTrigger({
             Reset
           </button>
         </div>
-        <p className="text-[10px] leading-snug text-base-500">Direction arrow shown on the canvas. Reset to lift evenly in place.</p>
       </div>
     );
   }
@@ -68,7 +63,6 @@ export default function LiftDirectionTrigger({
       >
         Edit direction on canvas
       </button>
-      <p className="text-[10px] leading-snug text-base-500">No direction set yet — nothing moves until you drag the arrow.</p>
     </div>
   );
 }

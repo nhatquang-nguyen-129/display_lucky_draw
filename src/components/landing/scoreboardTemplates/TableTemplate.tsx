@@ -92,19 +92,22 @@ export default function TableTemplate({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-lg shadow-2xl" style={{ pointerEvents: "auto" }}>
-      {/* Name Bar — kiểu thanh tiêu đề cửa sổ Windows */}
+      {/* Name Bar — kiểu thanh tiêu đề cửa sổ Windows. Title căn GIỮA thanh: grid 3 cột với 2 cột bên
+          cùng rộng như nhau (1fr/1fr) — nút Close nằm ở cột phải mà title vẫn đúng tâm thanh, không bị
+          lệch trái như khi chỉ dùng flex justify-between. */}
       <div
-        className="flex shrink-0 items-center justify-between px-3 py-2"
+        className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center px-3 py-2"
         style={{ backgroundColor: titleBarColor }}
       >
-        <span className="truncate font-bold" style={{ color: headerColor, fontSize: fontSize * 1.1 }}>
+        <span />
+        <span className="truncate text-center font-bold" style={{ color: headerColor, fontSize: fontSize * 1.1 }}>
           {title}
         </span>
         <button
           type="button"
           onClick={() => onClose?.()}
           title="Close"
-          className="rounded p-1 hover:bg-white/20"
+          className="justify-self-end rounded p-1 hover:bg-white/20"
           style={{ color: headerColor }}
         >
           <CloseIcon />

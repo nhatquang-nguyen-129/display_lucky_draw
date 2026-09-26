@@ -25,9 +25,8 @@ interface DrawCycleFieldsProps {
   props: DrawCycleHostProps;
   onChange: (patch: Partial<DrawCycleHostProps>) => void;
   // 4 giá trị Appearance (xem doc-comment DrawRestState trong types.ts) đều DÙNG CHUNG được ở tầng
-  // type, nhưng KHÔNG PHẢI component nào cũng cho chọn cả 4 — Image/Text chỉ truyền 2 giá trị đầu
-  // (hoặc bỏ trống, mặc định đúng y hệt bản trước khi generic hoá component này), Background truyền
-  // đủ cả 4. Đây là CHỖ DUY NHẤT khai báo "domain" — mọi logic validate/label bên dưới tự đọc từ đây,
+  // type, nhưng KHÔNG PHẢI component nào cũng cho chọn cả 4 — Text bỏ trống (mặc định 2 giá trị đầu,
+  // đúng y hệt bản trước khi generic hoá component này), Background/Image truyền đủ cả 4. Đây là CHỖ DUY NHẤT khai báo "domain" — mọi logic validate/label bên dưới tự đọc từ đây,
   // không hardcode 2 giá trị nữa.
   allowedStates?: DrawRestState[];
   // Bộ mặc định nạp lúc bật "Trigger with Draw" lần đầu — mỗi component có 1 bộ hợp lý riêng (Image/

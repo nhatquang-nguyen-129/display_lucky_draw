@@ -43,8 +43,70 @@ const fieldClass =
 const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
 const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
 const detailsClass = "rounded-lg border border-base-800";
-const summaryClass = "cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100";
-const detailsBodyClass = "space-y-3 border-t border-base-800 px-2.5 pb-2.5 pt-2.5";
+const summaryClass = "flex cursor-pointer select-none items-center justify-between px-2.5 py-2 text-xs font-medium text-base-100";
+const detailsBodyClass = "space-y-2 border-t border-base-800 px-2.5 pb-2.5 pt-2.5";
+const arrowLabelClass = "text-[10px] font-normal normal-case text-base-500";
+
+// Effect + Delay trên CÙNG 1 hàng — đúng layout `effectFields` của DrawCycleFields.tsx (Text/Image/
+// Background), để 3 mục Idle/Draw/Redraw của Winner Name nhìn đồng bộ 1 kiểu với các panel đó.
+// Dropdown Appearance CỐ ĐỊNH (disabled, đúng 1 giá trị) cho Draw/Redraw — Winner Name luôn hiện tên
+// mới lúc Draw và ẩn tên cũ lúc Redraw (nội dung đổi theo từng lượt, không có lựa chọn nào khác có
+// nghĩa), nhưng vẫn hiện field này để 3 mục Idle/Draw/Redraw cùng khuôn với DrawCycleFields.tsx.
+const lockedClass = "cursor-not-allowed opacity-70";
+
+function fixedAppearance(label: string) {
+  return (
+    <div>
+      <label className={labelClass}>Appearance</label>
+      <select disabled className={`${fieldClass} ${lockedClass}`} value={label}>
+        <option value={label}>{label}</option>
+      </select>
+    </div>
+  );
+}
+
+function effectDelayRow(
+  effect: WinnerTransitionEffect | undefined,
+  delayMs: number | undefined,
+  onEffect: (effect: WinnerTransitionEffect) => void,
+  onDelay: (delayMs: number | undefined) => void,
+  // Khoá (disabled) thay vì ẩn hẳn — giữ layout cố định, xem chỗ gọi ở mục Idle.
+  locked = false
+) {
+  const cls = locked ? `${fieldClass} ${lockedClass}` : fieldClass;
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div>
+        <label className={labelClass}>Effect</label>
+        <select
+          disabled={locked}
+          className={cls}
+          value={effect ?? "none"}
+          onChange={(e) => onEffect(e.target.value as WinnerTransitionEffect)}
+        >
+          {WINNER_TRANSITION_EFFECTS.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className={labelClass}>Delay (ms)</label>
+        <input
+          type="number"
+          min={0}
+          step={100}
+          placeholder="0"
+          disabled={locked}
+          className={cls}
+          value={delayMs ?? ""}
+          onChange={(e) => onDelay(e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)))}
+        />
+      </div>
+    </div>
+  );
+}
 
 // Cùng khuôn "Basic options" phẳng + "Interactions with Draw" đã dùng cho các panel khác, và đặt tên
 // mục theo ĐÚNG thuật ngữ Idle/Draw/Redraw chung với ImagePanel.tsx/TextPanel.tsx (xem DrawCycleFields
@@ -91,6 +153,7 @@ export default function LiveTextPanel({
   const [revealedOpen, setRevealedOpen] = useState(true);
   const [disappearOpen, setDisappearOpen] = useState(true);
   const [quickDrawOpen, setQuickDrawOpen] = useState(true);
+  const idleState = props.idleState ?? "disappear";
 
   // Mọi cột đang gán Data Type = Name VÀ còn dữ liệu thật trong Participants hiện tại — LỌC THÊM lớp
   // "có dữ liệu thật" (giống hasDataForField trong LuckyWheelPanel.tsx) vì `columnTypesJson` (session.
@@ -229,122 +292,62 @@ export default function LiveTextPanel({
       <div className="space-y-2">
         <span className={groupLabelClass}>Interactions with Draw</span>
         <details open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>Idle</summary>
+          <summary className={summaryClass}>
+            Idle
+            <span className={arrowLabelClass}>on Reset → {idleState === "appear" ? "Appear" : "Disappear"}</span>
+          </summary>
           <div className={detailsBodyClass}>
             <div>
               <label className={labelClass}>Appearance</label>
               <select
                 className={fieldClass}
-                value={props.idleState ?? "disappear"}
+                value={idleState}
                 onChange={(e) => onChange({ idleState: e.target.value as DrawRestState })}
               >
-                <option value="disappear">Disappear</option>
                 <option value="appear">Appear</option>
+                <option value="disappear">Disappear</option>
               </select>
             </div>
-            {(props.idleState ?? "disappear") === "disappear" ? (
-              <>
-                <div>
-                  <label className={labelClass}>Effect</label>
-                  <select
-                    className={fieldClass}
-                    value={props.idleEffect ?? "none"}
-                    onChange={(e) => onChange({ idleEffect: e.target.value as WinnerTransitionEffect })}
-                  >
-                    {WINNER_TRANSITION_EFFECTS.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Delay (ms)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={100}
-                    placeholder="0"
-                    className={fieldClass}
-                    value={props.idleDelayMs ?? ""}
-                    onChange={(e) =>
-                      onChange({
-                        idleDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)),
-                      })
-                    }
-                  />
-                </div>
-                <p className="text-[10px] text-base-500">Hides the name when Reset is pressed while it's showing.</p>
-              </>
-            ) : (
-              <p className="text-[10px] text-base-500">Keeps the name showing — Reset won't clear it.</p>
+            {/* Appear = Reset giữ nguyên tên, không có gì để chạy hiệu ứng (idleEffect/idleDelayMs không
+                bao giờ được đọc, xem useRevealed) — vẫn hiện Effect/Delay nhưng KHOÁ lại cho cùng khuôn
+                với Draw/Redraw, giá trị đã lưu giữ nguyên để dùng lại khi đổi về Disappear. */}
+            {effectDelayRow(
+              props.idleEffect,
+              props.idleDelayMs,
+              (idleEffect) => onChange({ idleEffect }),
+              (idleDelayMs) => onChange({ idleDelayMs }),
+              idleState === "appear"
             )}
           </div>
         </details>
         <details open={revealedOpen} onToggle={(e) => setRevealedOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>Draw</summary>
+          <summary className={summaryClass}>
+            Draw
+            <span className={arrowLabelClass}>→ Appear</span>
+          </summary>
           <div className={detailsBodyClass}>
-            <div>
-              <label className={labelClass}>Effect</label>
-              <select
-                className={fieldClass}
-                value={props.appearEffect ?? "none"}
-                onChange={(e) => onChange({ appearEffect: e.target.value as WinnerTransitionEffect })}
-              >
-                {WINNER_TRANSITION_EFFECTS.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Delay (ms)</label>
-              <input
-                type="number"
-                min={0}
-                step={100}
-                placeholder="0"
-                className={fieldClass}
-                value={props.appearDelayMs ?? ""}
-                onChange={(e) =>
-                  onChange({ appearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
-                }
-              />
-            </div>
+            {fixedAppearance("Appear")}
+            {effectDelayRow(
+              props.appearEffect,
+              props.appearDelayMs,
+              (appearEffect) => onChange({ appearEffect }),
+              (appearDelayMs) => onChange({ appearDelayMs })
+            )}
           </div>
         </details>
         <details open={disappearOpen} onToggle={(e) => setDisappearOpen(e.currentTarget.open)} className={detailsClass}>
-          <summary className={summaryClass}>Redraw</summary>
+          <summary className={summaryClass}>
+            Redraw
+            <span className={arrowLabelClass}>→ Disappear</span>
+          </summary>
           <div className={detailsBodyClass}>
-            <div>
-              <label className={labelClass}>Effect</label>
-              <select
-                className={fieldClass}
-                value={props.disappearEffect ?? "none"}
-                onChange={(e) => onChange({ disappearEffect: e.target.value as WinnerTransitionEffect })}
-              >
-                {WINNER_TRANSITION_EFFECTS.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Delay (ms)</label>
-              <input
-                type="number"
-                min={0}
-                step={100}
-                placeholder="0"
-                className={fieldClass}
-                value={props.disappearDelayMs ?? ""}
-                onChange={(e) =>
-                  onChange({ disappearDelayMs: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })
-                }
-              />
-            </div>
+            {fixedAppearance("Disappear")}
+            {effectDelayRow(
+              props.disappearEffect,
+              props.disappearDelayMs,
+              (disappearEffect) => onChange({ disappearEffect }),
+              (disappearDelayMs) => onChange({ disappearDelayMs })
+            )}
           </div>
         </details>
       </div>
