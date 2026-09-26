@@ -15,7 +15,8 @@ const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-
 // Image là 1 ảnh TĨNH do người dùng tự đặt, không đổi theo từng lượt quay, hợp với model Idle/Draw/
 // Redraw x Appearance chung. "Interactions with Draw" mặc định TẮT (checkbox "Trigger with Draw") —
 // Image vẫn TĨNH/luôn hiện như cũ trừ khi CHỦ ĐỘNG bật, giữ nguyên hành vi mọi landing đã lưu trước
-// khi có tính năng này (xem ImageView.tsx).
+// khi có tính năng này (xem ImageView.tsx). Cho chọn đủ 4 giá trị Appearance (Appear/Disappear/Dim/
+// Blur) giống BackgroundPanel.tsx — Text/Winner Name vẫn chỉ Appear/Disappear.
 export default function ImagePanel({ props, onChange }: ImagePanelProps) {
   function handleFile(file: File) {
     if (file.type !== "image/png") return;
@@ -75,7 +76,7 @@ export default function ImagePanel({ props, onChange }: ImagePanelProps) {
 
       <div className="h-px bg-base-800" />
 
-      <DrawCycleFields props={props} onChange={onChange} />
+      <DrawCycleFields props={props} onChange={onChange} allowedStates={["appear", "disappear", "dim", "blur"]} />
     </div>
   );
 }

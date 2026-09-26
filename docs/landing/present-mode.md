@@ -171,8 +171,8 @@ Draw mới, ĐANG hiện kết quả lượt trước). Mỗi mốc có 1 dropdo
 chọn bừa (bản trước từng cho Idle bật cả Disappear lẫn Appear cùng lúc, tạo ra 2 hiệu ứng ĐỐI LẬP đua
 nhau ngay lúc mới vào trang — vô nghĩa, vì Idle là trạng thái NGHỈ/mặc định ban đầu, chỉ có ĐÚNG 1 kết
 quả cuối). Appearance có 4 giá trị PEER — `appear`/`disappear`/`dim`/`blur` (`DrawRestState` trong
-`types.ts`) — nhưng Image/Text CHỈ cho chọn 2 giá trị đầu qua `allowedStates` truyền vào
-`DrawCycleFields.tsx` (Background truyền đủ cả 4, xem properties-panel.md):
+`types.ts`) — nhưng Text CHỈ cho chọn 2 giá trị đầu qua `allowedStates` truyền vào
+`DrawCycleFields.tsx` (Background/Image truyền đủ cả 4, xem properties-panel.md):
 - **Idle** (`idleState` — `DrawRestState`, KHÔNG có "none" vì Idle luôn phải có 1 dáng vẻ mặc định):
   hiệu ứng đi kèm (`idleEffect`) chạy lúc QUAY VỀ idleState — CHỈ xảy ra khi Reset, KHÔNG BAO GIỜ chạy
   lúc trang vừa mở (chưa từng rời Idle thì không có gì để "quay về" cả — lúc mới vào Landing,

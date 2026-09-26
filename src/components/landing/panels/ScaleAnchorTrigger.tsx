@@ -38,10 +38,6 @@ export default function ScaleAnchorTrigger({
         >
           Done — stop editing on canvas
         </button>
-        <p className="text-[10px] leading-snug text-base-500">
-          Drag the yellow Direction arrow to set how far (and toward where) it zooms — the Anchor pin is fixed
-          now. Hold Shift to snap the angle to straight/45° diagonals.
-        </p>
       </div>
     );
   }
@@ -56,9 +52,6 @@ export default function ScaleAnchorTrigger({
         >
           Click the prize on the canvas to drop it…
         </button>
-        <p className="text-[10px] leading-snug text-base-500">
-          Click anywhere on the prize image in the canvas — the anchor snaps to the nearest visible pixel.
-        </p>
       </div>
     );
   }
@@ -82,9 +75,6 @@ export default function ScaleAnchorTrigger({
             Remove
           </button>
         </div>
-        <p className="text-[10px] leading-snug text-base-500">
-          Anchor at {Math.round(x)}%, {Math.round(y)}% — shown on the canvas. Remove to start over.
-        </p>
       </div>
     );
   }
@@ -98,7 +88,6 @@ export default function ScaleAnchorTrigger({
       >
         Drop anchor point on canvas
       </button>
-      <p className="text-[10px] leading-snug text-base-500">No anchor yet — zoom grows evenly from the middle until you drop one.</p>
     </div>
   );
 }

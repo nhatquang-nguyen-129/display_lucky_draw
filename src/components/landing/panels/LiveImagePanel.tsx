@@ -82,11 +82,6 @@ export default function LiveImagePanel({ props, prizes, onChange, componentId, a
               </option>
             ))}
           </select>
-          <p className="mt-1 text-[10px] leading-snug text-base-500">
-            Always shows this exact prize, no matter what's being drawn — place several of these to
-            match custom artwork, one per prize. Doesn't multiply with quantity — always exactly 1
-            image.
-          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">

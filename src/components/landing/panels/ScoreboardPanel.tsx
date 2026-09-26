@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getScoreboardFieldLabel, SCOREBOARD_FIELDS, ScoreboardField, ScoreboardProps } from "@/lib/landing/types";
 import { Participant } from "@/types";
 import ColorField from "./ColorField";
@@ -41,12 +41,11 @@ function normalizeProps(props: ScoreboardProps) {
 // Name Bar/Table background/font-màu chữ (đều là field tĩnh, không nhóm riêng theo từng mục nhỏ nữa).
 // KHÔNG có nhóm "Self Interactions"/"Interactions with Draw" — Scoreboard thuần hiển thị dữ liệu +
 // style, không có giai đoạn tương tác/hiệu ứng nào (hiện/ẩn do 1 Button "Scoreboard" điều khiển TỪ
-// BÊN NGOÀI, xem ButtonPanel.tsx, không phải cấu hình của chính component này). "Columns" đứng RIÊNG
-// SAU Basic options — không phải field tĩnh (đóng/mở + danh sách cột động theo session) nên không gộp
-// vào nhóm phẳng, cùng vị trí "sau Basic options" như các <details> khác trong LiveImagePanel.tsx.
+// BÊN NGOÀI, xem ButtonPanel.tsx, không phải cấu hình của chính component này). "Columns" là 1
+// dropdown chọn nhiều (ColumnsDropdown, tick bên cạnh cột đang chọn) nằm cuối Basic options — từng là
+// 1 khối <details> checkbox riêng sau Basic options, đã đổi cho gọn và cùng kiểu field với phần còn lại.
 export default function ScoreboardPanel({ props, participants, onChange }: ScoreboardPanelProps) {
   const { titleBarColor, columns, backgroundType, backgroundImageFit } = normalizeProps(props);
-  const [columnsOpen, setColumnsOpen] = useState(false);
 
   // Mọi tên cột optional (extra_data) đang THỰC SỰ xuất hiện ở ít nhất 1 participant trong session
   // này — nối vào sau 6 field cố định, đúng cách LuckyWheelPanel.tsx dò extraColumns.
@@ -172,32 +171,95 @@ export default function ScoreboardPanel({ props, participants, onChange }: Score
             </div>
           </>
         )}
-      </div>
 
-      <div className="h-px bg-base-800" />
-
-      <details
-        open={columnsOpen}
-        onToggle={(e) => setColumnsOpen(e.currentTarget.open)}
-        className="rounded-lg border border-base-800"
-      >
-        <summary className="cursor-pointer select-none px-2.5 py-2 text-xs font-medium text-base-100">
-          Columns ({columns.length} selected)
-        </summary>
-        <div className="max-h-48 space-y-1 overflow-y-auto border-t border-base-800 px-2.5 py-2">
-          {allFields.map((f) => (
-            <label key={f} className="flex items-center gap-1.5 text-xs text-base-200">
-              <input
-                type="checkbox"
-                checked={columns.includes(f)}
-                onChange={(e) => toggleColumn(f, e.target.checked)}
-                className="accent-gold-500"
-              />
-              {getScoreboardFieldLabel(f)}
-            </label>
-          ))}
+        <div>
+          <label className={labelClass}>Columns</label>
+          <ColumnsDropdown
+            allFields={allFields}
+            selected={columns}
+            onToggle={(f) => toggleColumn(f, !columns.includes(f))}
+          />
         </div>
-      </details>
+      </div>
+    </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Dropdown chọn NHIỀU cột — trông như 1 <select> thường (cùng fieldClass), bấm mở ra danh sách, mỗi
+// dòng có dấu tick bên cạnh nếu đang chọn; bấm 1 dòng = bật/tắt cột đó, danh sách VẪN MỞ để chọn tiếp
+// nhiều cột liền. Đóng khi bấm ra ngoài hoặc Esc. <select multiple> gốc của trình duyệt không dùng
+// được (hiện thành 1 listbox cố định, phải giữ Ctrl mới chọn nhiều) nên tự dựng.
+function ColumnsDropdown({
+  allFields,
+  selected,
+  onToggle,
+}: {
+  allFields: ScoreboardField[];
+  selected: ScoreboardField[];
+  onToggle: (field: ScoreboardField) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const summary =
+    selected.length === 0 ? "No columns" : selected.map((f) => getScoreboardFieldLabel(f)).join(", ");
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${fieldClass} flex items-center justify-between gap-2 text-left`}
+      >
+        <span className="truncate">{summary}</span>
+        <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-base-500" fill="currentColor">
+          <path d="M4 6l4 4 4-4z" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-y-auto rounded border border-base-700 bg-base-800 py-1 shadow-lg">
+          {allFields.map((f) => {
+            const checked = selected.includes(f);
+            return (
+              <button
+                key={f}
+                type="button"
+                onClick={() => onToggle(f)}
+                className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs text-base-100 hover:bg-base-700"
+              >
+                <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center ${checked ? "text-gold-500" : ""}`}>
+                  {checked && <CheckIcon />}
+                </span>
+                <span className="truncate">{getScoreboardFieldLabel(f)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

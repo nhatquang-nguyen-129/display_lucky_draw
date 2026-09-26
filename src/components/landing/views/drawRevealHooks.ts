@@ -230,13 +230,13 @@ type FiredPhase = "idle" | "draw" | "redraw";
  * (`config.idleState`) — Draw/Redraw có thêm lựa chọn "none" (không làm gì) ngoài giá trị bị ràng
  * buộc (Panel đã đảm bảo hợp lệ, xem ImagePanel.tsx/BackgroundPanel.tsx) — chỉ còn Effect + Delay cho
  * từng bước có action thật — dùng cho ImageView.tsx/TextView.tsx (chỉ đọc `shown`/`transitionClass`,
- * domain 2 giá trị appear/disappear) VÀ BackgroundView.tsx (đọc thêm `activeState`/`activeAmount`,
- * domain đủ 4 giá trị appear/disappear/dim/blur).
+ * domain 2 giá trị appear/disappear) VÀ BackgroundView.tsx/ImageView.tsx (đọc thêm `activeState`/
+ * `activeAmount`, domain đủ 4 giá trị appear/disappear/dim/blur).
  *
  * `shown` = có "hiện" gì đó hay không (mọi giá trị KHÁC "disappear" đều tính là hiện — dim/blur vẫn
  * hiện ảnh, chỉ phủ thêm filter, không phải ẩn hẳn). `activeState`/`activeAmount` = giá trị/cường độ
- * ĐANG active ngay lúc này (chỉ BackgroundView.tsx cần đọc 2 field này để biết vẽ filter nào — Text/
- * Image luôn chỉ dao động appear/disappear nên bỏ qua). `transitionClass` = class hiệu ứng ĐANG chạy,
+ * ĐANG active ngay lúc này (chỉ BackgroundView.tsx/ImageView.tsx cần đọc 2 field này để biết vẽ filter
+ * nào — Text luôn chỉ dao động appear/disappear nên bỏ qua). `transitionClass` = class hiệu ứng ĐANG chạy,
  * "" nếu đứng yên. Ẩn đi KHÔNG tắt `shown` ngay — giữ `shown = true` suốt TRANSITION_MS để hiệu ứng
  * biến mất kịp chạy hết trên nội dung thật, chỉ tắt hẳn sau khi hết hiệu ứng (đối xứng với hiện ra:
  * bật `shown = true` NGAY rồi mới chạy hiệu ứng xuất hiện đè lên). `redrawAction !== "none"` chạy
