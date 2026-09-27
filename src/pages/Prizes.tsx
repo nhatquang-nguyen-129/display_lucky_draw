@@ -131,7 +131,7 @@ export default function Prizes() {
     const prize = items.find((p) => p.id === selectedId);
     if (!prize) return;
     if (!confirm(`Delete prize "${prize.name}"? This cannot be undone.`)) return;
-    await window.api.prizes.delete(prize.id);
+    await window.api.prizes.delete(activeSessionId!, prize.id);
     setSelectedId(null);
     refresh();
   }

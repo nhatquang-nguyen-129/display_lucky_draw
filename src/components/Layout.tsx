@@ -2,6 +2,7 @@ import { Outlet, useMatch } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TabBar from "./TabBar";
 import { SessionProvider } from "@/context/SessionContext";
+import SessionConflictDialog from "./SessionConflictDialog";
 
 export default function Layout() {
   // Landing Page Builder cần toàn bộ chiều rộng/cao cho canvas 3 cột — không dùng khung
@@ -34,6 +35,7 @@ export default function Layout() {
           </main>
         </div>
       </div>
+      <SessionConflictDialog />
     </SessionProvider>
   );
 }

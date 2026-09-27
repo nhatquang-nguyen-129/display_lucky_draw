@@ -21,7 +21,7 @@ export default function TabBar() {
   async function handleCloseTab(e: React.MouseEvent, id: string, name: string) {
     e.stopPropagation();
     const ok = confirm(
-      `Close session "${name}"? All participants, prizes, and draw results in this session will be deleted — this cannot be undone.`
+      `Close session "${name}"? Its data file (participants, prizes, landing page, draw results) will be moved to the data/.trash folder — move it back into data/ to restore it.`
     );
     if (ok) await closeTab(id);
   }
@@ -98,6 +98,18 @@ export default function TabBar() {
           </button>
         )}
       </div>
+      {/* Mỗi session = 1 file trong data/ (xem electron/db.ts) — mở thư mục để copy file session sang
+          máy khác / dán file từ máy khác vào (tab mới tự hiện khi quay lại app). */}
+      <button
+        onClick={() => window.api.sessions.openDataFolder()}
+        title="Open the data folder — each session is one .db file you can copy to another machine"
+        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+        Data folder
+      </button>
     </div>
   );
 }

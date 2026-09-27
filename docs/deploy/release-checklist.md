@@ -22,9 +22,10 @@ chạy được độc lập.
 
 ## Phân phối
 
-- **Portable** (khuyến nghị): copy sẵn NGUYÊN thư mục đã giải nén (kèm `data/lucky-draw.db` đã chuẩn
-  bị) vào USB, hoặc gửi file zip kèm hướng dẫn "giải nén rồi mở app bên trong, luôn copy cả thư mục".
-  Chi tiết: [portable.md](./portable.md).
+- **Portable** (khuyến nghị): copy sẵn NGUYÊN thư mục đã giải nén (kèm các file session đã chuẩn bị
+  trong `data/`) vào USB, hoặc gửi file zip kèm hướng dẫn "giải nén rồi mở app bên trong, luôn copy cả
+  thư mục". Chỉ cần gửi thêm 1 session cho máy đã có app: gửi đúng 1 file session, người nhận đặt vào
+  `data/` (nút **Data folder**). Chi tiết: [portable.md](./portable.md).
 - **Installer**: gửi `Setup.exe` (Windows); trên Mac gửi bản portable kèm hướng dẫn kéo `.app` vào
   Applications. Chi tiết: [installer.md](./installer.md).
 - **Cảnh báo lần đầu mở trên máy lạ**: app chưa ký số chính thức, nên Windows hiện SmartScreen (**More

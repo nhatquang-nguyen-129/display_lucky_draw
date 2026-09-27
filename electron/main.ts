@@ -1,7 +1,17 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { randomUUID } from "crypto";
-import { db } from "./db";
+import {
+  closeAll,
+  createSession,
+  DATA_DIR,
+  deleteSession,
+  getDb,
+  listConflicts,
+  listSessions,
+  renameSession,
+  resolveConflict,
+} from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
@@ -23,8 +33,12 @@ let mainWindow: BrowserWindow | null = null;
 // sổ). "Untitled Session" cho id lạ/đã bị xoá thay vì để trống — không nên xảy ra bình thường (nút mở
 // cửa sổ luôn đi kèm 1 sessionId đang hiện hữu) nhưng vẫn cần 1 fallback không trông như lỗi.
 function getSessionName(sessionId: string): string {
-  const row = db.prepare(`SELECT name FROM sessions WHERE id = ?`).get(sessionId) as { name: string } | undefined;
-  return row?.name ?? "Untitled Session";
+  try {
+    const row = getDb(sessionId).prepare(`SELECT name FROM sessions WHERE id = ?`).get(sessionId) as { name: string } | undefined;
+    return row?.name ?? "Untitled Session";
+  } catch {
+    return "Untitled Session";
+  }
 }
 
 function createMainWindow() {
@@ -311,10 +325,10 @@ app.on("second-instance", () => {
   mainWindow.focus();
 });
 
-// Đóng DB khi thoát để SQLite gộp hết -wal vào lucky-draw.db — bản thư mục cần file .db đầy đủ để
-// copy đi máy khác. Chỉ bản đóng gói, dev giữ nguyên như cũ.
+// Đóng mọi file session khi thoát (xem db.ts — mỗi session 1 file, journal_mode DELETE nên file đã
+// đầy đủ sau mỗi lần ghi; đóng cho sạch lock file).
 app.on("will-quit", () => {
-  if (app.isPackaged && db.open) db.close();
+  closeAll();
 });
 
 /* ---------------- IPC: Participants (thuộc về 1 session) ---------------- */
@@ -322,7 +336,7 @@ app.on("will-quit", () => {
 type ExtraData = Record<string, string>;
 
 ipcMain.handle("participants:list", (_e, sessionId: string) => {
-  return db
+  return getDb(sessionId)
     .prepare(
       `SELECT * FROM participants WHERE session_id = ? AND status != 'removed' ORDER BY sort_order ASC, created_at DESC`
     )
@@ -334,7 +348,7 @@ ipcMain.handle("participants:list", (_e, sessionId: string) => {
 // "removed" = chênh lệch do dọn dữ liệu đầu vào sai. Draw Engine đã tự lọc status = 'active' nên
 // người bị 'removed' không bao giờ được quay.
 ipcMain.handle("participants:stats", (_e, sessionId: string) => {
-  const row = db
+  const row = getDb(sessionId)
     .prepare(
       `SELECT
          COUNT(*) AS original,
@@ -347,7 +361,7 @@ ipcMain.handle("participants:stats", (_e, sessionId: string) => {
 });
 
 function nextSortOrder(sessionId: string): number {
-  const row = db
+  const row = getDb(sessionId)
     .prepare(`SELECT MAX(sort_order) as maxOrder FROM participants WHERE session_id = ?`)
     .get(sessionId) as { maxOrder: number | null };
   return (row.maxOrder ?? -1) + 1;
@@ -360,7 +374,7 @@ ipcMain.handle(
     data: { sessionId: string; name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }
   ) => {
     const id = randomUUID();
-    db.prepare(
+    getDb(data.sessionId).prepare(
       `INSERT INTO participants (id, session_id, name, code, phone, email, extra_data, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
@@ -381,6 +395,7 @@ ipcMain.handle(
   (
     _e,
     data: {
+      sessionId: string;
       id: string;
       name: string;
       code?: string | null;
@@ -389,7 +404,7 @@ ipcMain.handle(
       extra?: ExtraData;
     }
   ) => {
-    db.prepare(
+    getDb(data.sessionId).prepare(
       `UPDATE participants SET name = ?, code = ?, phone = ?, email = ?, extra_data = ? WHERE id = ?`
     ).run(
       data.name,
@@ -409,6 +424,7 @@ ipcMain.handle(
     sessionId: string,
     rows: Array<{ name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }>
   ) => {
+    const db = getDb(sessionId);
     const insert = db.prepare(
       `INSERT OR IGNORE INTO participants (id, session_id, name, code, phone, email, extra_data, sort_order, source)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'import')`
@@ -445,11 +461,12 @@ ipcMain.handle(
 
 // Soft-delete: giữ hàng lại để đối chiếu với số liệu gốc (xem participants:stats). Draw Engine lọc
 // status = 'active' nên hàng 'removed' tự động không vào vòng quay; participants:list cũng ẩn nó đi.
-ipcMain.handle("participants:delete", (_e, id: string) => {
-  db.prepare(`UPDATE participants SET status = 'removed' WHERE id = ?`).run(id);
+ipcMain.handle("participants:delete", (_e, sessionId: string, id: string) => {
+  getDb(sessionId).prepare(`UPDATE participants SET status = 'removed' WHERE id = ?`).run(id);
 });
 
-ipcMain.handle("participants:bulkDelete", (_e, ids: string[]) => {
+ipcMain.handle("participants:bulkDelete", (_e, sessionId: string, ids: string[]) => {
+  const db = getDb(sessionId);
   const del = db.prepare(`UPDATE participants SET status = 'removed' WHERE id = ? AND status != 'removed'`);
   const tx = db.transaction((items: string[]) => {
     let deleted = 0;
@@ -460,7 +477,8 @@ ipcMain.handle("participants:bulkDelete", (_e, ids: string[]) => {
 });
 
 // Ghi lại thứ tự dòng sau khi kéo-thả sắp xếp trong Data Editor — orderedIds đã đúng thứ tự mong muốn.
-ipcMain.handle("participants:reorder", (_e, orderedIds: string[]) => {
+ipcMain.handle("participants:reorder", (_e, sessionId: string, orderedIds: string[]) => {
+  const db = getDb(sessionId);
   const update = db.prepare(`UPDATE participants SET sort_order = ? WHERE id = ?`);
   const tx = db.transaction((ids: string[]) => {
     ids.forEach((id, index) => update.run(index, id));
@@ -471,7 +489,7 @@ ipcMain.handle("participants:reorder", (_e, orderedIds: string[]) => {
 /* ---------------- IPC: Prizes (thuộc về 1 session) ---------------- */
 
 ipcMain.handle("prizes:list", (_e, sessionId: string) => {
-  return db.prepare(`SELECT * FROM prizes WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
+  return getDb(sessionId).prepare(`SELECT * FROM prizes WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
 });
 
 interface PrizeInput {
@@ -490,7 +508,7 @@ interface PrizeInput {
 
 ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
   const id = randomUUID();
-  db.prepare(
+  getDb(data.sessionId).prepare(
     `INSERT INTO prizes (
       id, session_id, code, name, category, status, quantity, remaining, weight,
       allow_duplicate_with_other_prizes, allow_duplicate_with_same_prize, max_win_count, display_image
@@ -514,6 +532,7 @@ ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
 });
 
 ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
+  const db = getDb(data.sessionId);
   const existing = db.prepare(`SELECT quantity, remaining FROM prizes WHERE id = ?`).get(data.id) as
     | { quantity: number; remaining: number }
     | undefined;
@@ -545,42 +564,44 @@ ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
   );
 });
 
-ipcMain.handle("prizes:delete", (_e, id: string) => {
-  db.prepare(`DELETE FROM prizes WHERE id = ?`).run(id);
+ipcMain.handle("prizes:delete", (_e, sessionId: string, id: string) => {
+  getDb(sessionId).prepare(`DELETE FROM prizes WHERE id = ?`).run(id);
 });
 
 /* ---------------- IPC: Sessions (= tab, đơn vị chứa 1 sự kiện quay số độc lập) ---------------- */
 
-ipcMain.handle("sessions:list", () => {
-  return db.prepare(`SELECT * FROM sessions ORDER BY created_at ASC`).all();
-});
+// Mỗi session = 1 file trong data/ (xem db.ts) — mỗi lần gọi quét lại thư mục, nên file vừa copy vào
+// data/ lúc app đang mở tự hiện thành tab mới (renderer gọi lại khi cửa sổ chính được focus).
+ipcMain.handle("sessions:list", () => listSessions());
+
+// Session nào đang có ≥ 2 bản (cùng id, khác file) trong data/ — renderer hiện hộp thoại cho chọn.
+ipcMain.handle("sessions:conflicts", () => listConflicts());
+ipcMain.handle("sessions:resolveConflict", (_e, data: { sessionId: string; keepFile: string }) =>
+  resolveConflict(data.sessionId, data.keepFile)
+);
+ipcMain.handle("sessions:openDataFolder", () => shell.openPath(DATA_DIR));
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.
 ipcMain.handle("sessions:get", (_e, id: string) => {
-  return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null;
+  try {
+    return getDb(id).prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null;
+  } catch {
+    return null; // session không còn (file bị xoá/chuyển đi)
+  }
 });
 
 ipcMain.handle(
   "sessions:create",
-  (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => {
-    const id = randomUUID();
-    db.prepare(
-      `INSERT INTO sessions (id, name, allow_duplicate_prize, exclude_previous_winners, status)
-       VALUES (?, ?, ?, ?, 'draft')`
-    ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, data.excludePreviousWinners === false ? 0 : 1);
-    return id;
-  }
+  (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => createSession(data)
 );
 
-ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => {
-  db.prepare(`UPDATE sessions SET name = ? WHERE id = ?`).run(data.name, data.id);
-});
+ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => renameSession(data.id, data.name));
 
 ipcMain.handle(
   "sessions:updateOptions",
   (_e, data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) => {
-    db.prepare(`UPDATE sessions SET allow_duplicate_prize = ?, exclude_previous_winners = ? WHERE id = ?`).run(
+    getDb(data.id).prepare(`UPDATE sessions SET allow_duplicate_prize = ?, exclude_previous_winners = ? WHERE id = ?`).run(
       data.allowDuplicatePrize ? 1 : 0,
       data.excludePreviousWinners ? 1 : 0,
       data.id
@@ -593,7 +614,7 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateColumnTypes",
   (_e, data: { id: string; columnTypes: Record<string, string> }) => {
-    db.prepare(`UPDATE sessions SET participant_column_types = ? WHERE id = ?`).run(
+    getDb(data.id).prepare(`UPDATE sessions SET participant_column_types = ? WHERE id = ?`).run(
       JSON.stringify(data.columnTypes),
       data.id
     );
@@ -605,7 +626,7 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateColumnLabels",
   (_e, data: { id: string; columnLabels: Record<string, string> }) => {
-    db.prepare(`UPDATE sessions SET participant_column_labels = ? WHERE id = ?`).run(
+    getDb(data.id).prepare(`UPDATE sessions SET participant_column_labels = ? WHERE id = ?`).run(
       JSON.stringify(data.columnLabels),
       data.id
     );
@@ -616,24 +637,15 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateLandingConfig",
   (_e, data: { id: string; landingConfig: unknown }) => {
-    db.prepare(`UPDATE sessions SET landing_config = ? WHERE id = ?`).run(
+    getDb(data.id).prepare(`UPDATE sessions SET landing_config = ? WHERE id = ?`).run(
       JSON.stringify(data.landingConfig),
       data.id
     );
   }
 );
 
-// Xoá tab: xoá luôn toàn bộ participants/prizes/kết quả quay thuộc riêng session đó
-// (an toàn vì dữ liệu này KHÔNG được chia sẻ với session khác trong mô hình mới)
-ipcMain.handle("sessions:delete", (_e, id: string) => {
-  const tx = db.transaction(() => {
-    db.prepare(`DELETE FROM draw_results WHERE session_id = ?`).run(id);
-    db.prepare(`DELETE FROM participants WHERE session_id = ?`).run(id);
-    db.prepare(`DELETE FROM prizes WHERE session_id = ?`).run(id);
-    db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
-  });
-  tx();
-});
+// Xoá tab = chuyển file của session vào data/.trash/ (không xoá hẳn — có đường lấy lại, xem db.ts).
+ipcMain.handle("sessions:delete", (_e, id: string) => deleteSession(id));
 
 // Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,
 // xem useLandingData.ts), phải luôn khớp đúng "ai đã thật sự trúng" như hành vi trước khi có cột
@@ -650,6 +662,7 @@ ipcMain.handle("sessions:drawHistory", (_e, sessionId: string) => {
 });
 
 function resolveDrawRows(sessionId: string, extraWhere: string): any[] {
+  const db = getDb(sessionId);
   const rows = db
     .prepare(
       `SELECT dr.*,

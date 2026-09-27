@@ -6,13 +6,18 @@ import { randomUUID } from "crypto";
 import { app, dialog } from "electron";
 
 /**
- * Chọn thư mục chứa lucky-draw.db — xem docs/deploy/portable.md + installer.md.
+ * Lưu trữ theo SESSION: mỗi session (tab) là ĐÚNG 1 file SQLite trong thư mục `data/` — copy 1 file là
+ * mang theo nguyên 1 session (participants, prizes, landing, lịch sử quay) sang máy khác. Xem
+ * docs/architecture/database-schema.md mục "Lưu trữ theo session".
  *
- * - Dev (`!app.isPackaged`), bản Setup Windows (NSIS, có "Uninstall *.exe" cạnh exe), bản portable
- *   exe Windows (có PORTABLE_EXECUTABLE_DIR), app macOS đã kéo vào Applications (= "cài đặt" kiểu
- *   Mac): giữ nguyên `userData` như cũ.
- * - Bản thư mục (giải nén từ file zip): `data\` cạnh exe (Windows) / cạnh `.app` bundle (macOS) —
- *   copy nguyên thư mục app sang máy khác là mang theo luôn toàn bộ dữ liệu.
+ * Thư mục `data/`:
+ * - Bản thư mục/portable (giải nén từ zip): `data/` cạnh exe (Windows) / cạnh `.app` (macOS).
+ * - Dev, bản Setup Windows, app macOS trong Applications: `<userData>/data/`.
+ *
+ * Mỗi file giữ NGUYÊN schema 4 bảng (kể cả cột session_id) nhưng chỉ chứa đúng 1 dòng `sessions` —
+ * mọi câu SQL cũ dùng lại được y nguyên, chỉ đổi từ 1 kết nối chung sang `getDb(sessionId)`.
+ * Định danh = `sessions.id` (UUID) BÊN TRONG file, không phải tên file — tên file
+ * (`<tên-session>__<8 ký tự đầu id>.db`) chỉ để người dùng dễ nhận biết, trùng tên session không sao.
  */
 const IS_MAC = process.platform === "darwin";
 
@@ -47,7 +52,9 @@ function failFolderBuild(message: string): never {
   process.exit(1);
 }
 
-function resolveDbDir(): string {
+// Thư mục chứa `lucky-draw.db` KIỂU CŨ (1 file cho mọi session, trước khi tách theo session) — chính
+// là chỗ `data/` của bản thư mục, hoặc thẳng `userData` ở các trường hợp còn lại.
+function resolveLegacyDir(): string {
   const baseDir = folderBuildBaseDir();
   if (!baseDir) return app.getPath("userData");
 
@@ -73,25 +80,24 @@ function resolveDbDir(): string {
         "Lucky Draw Studio from the extracted folder. Otherwise your data will not be saved."
     );
   }
+  return path.join(baseDir, "data");
+}
 
-  const dataDir = path.join(baseDir, "data");
+function ensureWritableDir(dir: string) {
   try {
-    fs.mkdirSync(dataDir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
     // Ghi thử + xoá 1 file dò — đáng tin hơn fs.accessSync (chỉ đọc bit quyền) với USB/ổ mạng.
-    const probe = path.join(dataDir, `.write-test-${process.pid}`);
+    const probe = path.join(dir, `.write-test-${process.pid}`);
     fs.writeFileSync(probe, "");
     fs.unlinkSync(probe);
   } catch {
     failFolderBuild(
-      `Cannot write to the data folder:\n${dataDir}\n\n` +
+      `Cannot write to the data folder:\n${dir}\n\n` +
         "Move the Lucky Draw Studio folder to a writable location (e.g. Desktop, Documents or a USB " +
         "drive without write protection), then run it again." +
-        (IS_MAC
-          ? "\n\nOn a Mac, USB drives formatted as NTFS are read-only — use an exFAT-formatted drive."
-          : "")
+        (IS_MAC ? "\n\nOn a Mac, USB drives formatted as NTFS are read-only — use an exFAT-formatted drive." : "")
     );
   }
-  return dataDir;
 }
 
 // Chặn mở 2 app đóng gói cùng lúc (2 process cùng ghi 1 file DB) — phải xin lock TRƯỚC khi mở DB,
@@ -102,15 +108,25 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
   process.exit(0);
 }
 
-const dbDir = resolveDbDir();
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+const LEGACY_DIR = resolveLegacyDir();
+export const DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
+const TRASH_DIR = path.join(DATA_DIR, ".trash");
+ensureWritableDir(DATA_DIR);
 
-const dbPath = path.join(dbDir, "lucky-draw.db");
-export const db = new Database(dbPath);
+/* ---------------- Schema + migration (áp cho TỪNG file) ---------------- */
 
-db.pragma("journal_mode = WAL");
+type DB = Database.Database;
 
-db.exec(`
+function columnsOf(db: DB, table: string): string[] {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+}
+
+function addColumnIfMissing(db: DB, table: string, name: string, ddl: string) {
+  if (!columnsOf(db, table).includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+
+function ensureSchema(db: DB) {
+  db.exec(`
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -163,40 +179,40 @@ CREATE TABLE IF NOT EXISTS draw_results (
   confirmed INTEGER NOT NULL DEFAULT 1
 );
 `);
+  migrateToPerSessionData(db);
+  migratePrizeFields(db);
+  migrateParticipantSortOrder(db);
+  // Cột cấu hình Data Editor ở sessions — JSON text, per-session (xem docs/participants/schema.md).
+  // participant_duplicate_columns không còn được đọc/ghi, giữ để không phá DB cũ.
+  addColumnIfMissing(db, "sessions", "participant_column_types", "participant_column_types TEXT");
+  addColumnIfMissing(db, "sessions", "participant_duplicate_columns", "participant_duplicate_columns TEXT");
+  addColumnIfMissing(db, "sessions", "participant_column_labels", "participant_column_labels TEXT");
+  // draw_results.confirmed — lượt pick chưa Confirm ghi confirmed = 0 (xem drawEngine.ts). DEFAULT 1
+  // cho dữ liệu cũ vì mọi dòng có trước migration này đều đã đi qua commitDraw.
+  addColumnIfMissing(db, "draw_results", "confirmed", "confirmed INTEGER NOT NULL DEFAULT 1");
+}
 
 /**
- * Migration: chuyển từ mô hình cũ (participants/prizes dùng chung toàn app)
- * sang mô hình mới (mỗi session/tab sở hữu participants + prizes riêng, độc lập).
- * An toàn để chạy nhiều lần — chỉ thực hiện đúng 1 lần khi phát hiện schema cũ,
- * không làm mất dữ liệu đã nhập trước đó (tự gom vào 1 session mặc định).
+ * Migration cũ nhất: từ mô hình participants/prizes dùng chung toàn app sang mỗi session sở hữu
+ * participants + prizes riêng. Chỉ còn tác dụng với file DB rất cũ (được tách ra theo session ngay
+ * sau đó, xem splitMultiSessionFile). An toàn chạy nhiều lần.
  */
-function migrateToPerSessionData() {
-  const participantCols = db.prepare(`PRAGMA table_info(participants)`).all() as { name: string }[];
-  const hasParticipantSession = participantCols.some((c) => c.name === "session_id");
+function migrateToPerSessionData(db: DB) {
+  const participantCols = columnsOf(db, "participants");
+  const hasParticipantSession = participantCols.includes("session_id");
+  const hasPrizeSession = columnsOf(db, "prizes").includes("session_id");
 
-  const prizeCols = db.prepare(`PRAGMA table_info(prizes)`).all() as { name: string }[];
-  const hasPrizeSession = prizeCols.some((c) => c.name === "session_id");
+  addColumnIfMissing(db, "sessions", "landing_config", "landing_config TEXT");
+  addColumnIfMissing(db, "participants", "extra_data", "extra_data TEXT");
 
-  const sessionCols = db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[];
-  if (!sessionCols.some((c) => c.name === "landing_config")) {
-    db.exec(`ALTER TABLE sessions ADD COLUMN landing_config TEXT`);
-  }
-  if (!participantCols.some((c) => c.name === "extra_data")) {
-    db.exec(`ALTER TABLE participants ADD COLUMN extra_data TEXT`);
-  }
-
-  if (hasParticipantSession && hasPrizeSession) return; // đã ở schema mới, không cần làm gì thêm
+  if (hasParticipantSession && hasPrizeSession) return;
 
   const tx = db.transaction(() => {
     const defaultId = randomUUID();
-    db.prepare(`INSERT INTO sessions (id, name, status) VALUES (?, ?, 'draft')`).run(
-      defaultId,
-      "Default session (legacy data)"
-    );
+    db.prepare(`INSERT INTO sessions (id, name, status) VALUES (?, ?, 'draft')`).run(defaultId, "Default session (legacy data)");
 
     if (!hasParticipantSession) {
-      // Tạo lại bảng thay vì chỉ ALTER, vì cần bỏ UNIQUE global trên "code" —
-      // giờ mỗi session độc lập, 2 session khác nhau được phép trùng mã người chơi.
+      // Tạo lại bảng thay vì chỉ ALTER, vì cần bỏ UNIQUE global trên "code".
       db.exec(`
         CREATE TABLE participants_new (
           id TEXT PRIMARY KEY,
@@ -219,8 +235,6 @@ function migrateToPerSessionData() {
 
     if (!hasPrizeSession) {
       db.exec(`ALTER TABLE prizes ADD COLUMN session_id TEXT`);
-
-      // Nếu có bảng session_prizes cũ (many-to-many), dùng nó để gán prize về đúng session
       const hasSessionPrizesTable = db
         .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='session_prizes'`)
         .get();
@@ -232,125 +246,369 @@ function migrateToPerSessionData() {
         const assigned = new Set<string>();
         const updatePrize = db.prepare(`UPDATE prizes SET session_id = ? WHERE id = ?`);
         for (const link of links) {
-          if (assigned.has(link.prize_id)) continue; // giải bị gán >1 session trước đây -> giữ session đầu tiên
+          if (assigned.has(link.prize_id)) continue;
           updatePrize.run(link.session_id, link.prize_id);
           assigned.add(link.prize_id);
         }
         db.exec(`DROP TABLE session_prizes`);
       }
-      // Giải nào chưa có session_id (không có link cũ) -> gán vào session mặc định
       db.prepare(`UPDATE prizes SET session_id = ? WHERE session_id IS NULL`).run(defaultId);
     }
   });
   tx();
 }
 
-migrateToPerSessionData();
-
-/**
- * Migration: thêm các cột thiết kế giải thưởng mới vào DB cũ đã tồn tại trước đó
- * (code, category, status, 2 cờ trùng lặp, max_win_count, display_image).
- * An toàn khi chạy nhiều lần — chỉ ALTER cột nào thực sự chưa có, giữ nguyên
- * quantity/remaining/weight đang có sẵn.
- */
-function migratePrizeFields() {
-  const cols = (db.prepare(`PRAGMA table_info(prizes)`).all() as { name: string }[]).map((c) => c.name);
-  const addIfMissing = (name: string, ddl: string) => {
-    if (!cols.includes(name)) db.exec(`ALTER TABLE prizes ADD COLUMN ${ddl}`);
-  };
-  addIfMissing("code", "code TEXT");
-  addIfMissing("category", "category TEXT");
-  addIfMissing("status", "status TEXT NOT NULL DEFAULT 'active'");
-  addIfMissing("allow_duplicate_with_other_prizes", "allow_duplicate_with_other_prizes INTEGER NOT NULL DEFAULT 1");
-  addIfMissing("allow_duplicate_with_same_prize", "allow_duplicate_with_same_prize INTEGER NOT NULL DEFAULT 0");
-  addIfMissing("max_win_count", "max_win_count INTEGER NOT NULL DEFAULT 1");
-  addIfMissing("display_image", "display_image TEXT");
+/** Thêm các cột thiết kế giải thưởng vào DB cũ (chỉ ALTER cột thật sự chưa có). */
+function migratePrizeFields(db: DB) {
+  addColumnIfMissing(db, "prizes", "code", "code TEXT");
+  addColumnIfMissing(db, "prizes", "category", "category TEXT");
+  addColumnIfMissing(db, "prizes", "status", "status TEXT NOT NULL DEFAULT 'active'");
+  addColumnIfMissing(db, "prizes", "allow_duplicate_with_other_prizes", "allow_duplicate_with_other_prizes INTEGER NOT NULL DEFAULT 1");
+  addColumnIfMissing(db, "prizes", "allow_duplicate_with_same_prize", "allow_duplicate_with_same_prize INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(db, "prizes", "max_win_count", "max_win_count INTEGER NOT NULL DEFAULT 1");
+  addColumnIfMissing(db, "prizes", "display_image", "display_image TEXT");
 }
 
-migratePrizeFields();
-
-/**
- * Migration: thêm sort_order cho participants (phục vụ kéo-thả sắp xếp dòng trong Data Editor).
- * Backfill theo thứ tự đang hiển thị hiện tại (created_at DESC) để không gây xáo trộn bất ngờ
- * cho dữ liệu đã có sẵn trước khi tính năng này tồn tại.
- */
-function migrateParticipantSortOrder() {
-  const cols = (db.prepare(`PRAGMA table_info(participants)`).all() as { name: string }[]).map((c) => c.name);
-  if (!cols.includes("sort_order")) {
-    db.exec(`ALTER TABLE participants ADD COLUMN sort_order INTEGER`);
-  }
-  const needsBackfill = db
-    .prepare(`SELECT COUNT(*) as cnt FROM participants WHERE sort_order IS NULL`)
-    .get() as { cnt: number };
+/** sort_order cho participants (kéo-thả sắp xếp dòng trong Data Editor), backfill theo created_at DESC. */
+function migrateParticipantSortOrder(db: DB) {
+  addColumnIfMissing(db, "participants", "sort_order", "sort_order INTEGER");
+  const needsBackfill = db.prepare(`SELECT COUNT(*) as cnt FROM participants WHERE sort_order IS NULL`).get() as {
+    cnt: number;
+  };
   if (needsBackfill.cnt > 0) {
     const rows = db.prepare(`SELECT id FROM participants ORDER BY created_at DESC`).all() as { id: string }[];
     const update = db.prepare(`UPDATE participants SET sort_order = ? WHERE id = ?`);
-    const tx = db.transaction(() => {
-      rows.forEach((r, i) => update.run(i, r.id));
-    });
-    tx();
+    db.transaction(() => rows.forEach((r, i) => update.run(i, r.id)))();
   }
 }
 
-migrateParticipantSortOrder();
+/* ---------------- Mở file ---------------- */
+
+// journal_mode = DELETE (không dùng WAL): mỗi lần ghi xong, file .db đã tự chứa đủ dữ liệu — người dùng
+// copy riêng file .db đi lúc nào cũng an toàn, không sợ phần mới nhất còn nằm trong file -wal.
+function openFile(file: string, readonly = false): DB {
+  const db = new Database(file, readonly ? { readonly: true, fileMustExist: true } : undefined);
+  if (!readonly) {
+    db.pragma("journal_mode = DELETE");
+    ensureSchema(db);
+  }
+  return db;
+}
+
+/** Tên file từ tên session — bỏ dấu tiếng Việt, ký tự lạ thành "-", tối đa 40 ký tự. */
+function slugify(name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[đĐ]/g, (c) => (c === "đ" ? "d" : "D"))
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return slug || "Session";
+}
+
+function fileNameFor(name: string, id: string): string {
+  return `${slugify(name)}__${id.slice(0, 8)}.db`;
+}
+
+// Tránh ghi đè file có sẵn (vd 2 session trùng tên VÀ trùng 8 ký tự đầu id — gần như không thể, nhưng
+// rẻ để chặn): thêm hậu tố -2, -3...
+function uniquePath(dir: string, fileName: string): string {
+  let target = path.join(dir, fileName);
+  const ext = path.extname(fileName);
+  const base = fileName.slice(0, -ext.length);
+  for (let n = 2; fs.existsSync(target); n++) target = path.join(dir, `${base}-${n}${ext}`);
+  return target;
+}
+
+function sameFile(a: string, b: string): boolean {
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+// Chuyển 1 file vào data/.trash/ thay vì xoá hẳn — có đường lấy lại nếu bấm nhầm.
+function moveToTrash(file: string) {
+  fs.mkdirSync(TRASH_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = uniquePath(TRASH_DIR, `${path.basename(file, ".db")}__deleted-${stamp}.db`);
+  fs.renameSync(file, target);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (fs.existsSync(file + suffix)) fs.renameSync(file + suffix, target + suffix);
+  }
+}
+
+/* ---------------- Tách file nhiều session (DB kiểu cũ) ---------------- */
+
+const SESSION_TABLES = ["sessions", "participants", "prizes", "draw_results"] as const;
 
 /**
- * Migration: thêm participant_column_types vào sessions — lưu mapping "cột nào thuộc loại
- * dữ liệu chuẩn hoá nào" (vd cột lạ "Số ĐT liên hệ" được gán type "phone" để Validate/Clean
- * áp đúng quy tắc). JSON dạng { [tênCột]: "phone" | "name" | "email" | "text" ... }.
+ * Tách 1 file chứa NHIỀU session (lucky-draw.db kiểu cũ, hoặc file đó bị copy thẳng vào data/) thành
+ * từng file theo session trong data/, rồi đổi tên file gốc thành `*.migrated-<thời điểm>.bak` — KHÔNG
+ * xoá, luôn còn bản sao lưu nguyên vẹn. Copy theo danh sách cột của file đích (ATTACH + INSERT … SELECT
+ * đúng tên cột) nên không phụ thuộc thứ tự cột của 2 file.
  */
-function migrateSessionColumnTypes() {
-  const cols = (db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name);
-  if (!cols.includes("participant_column_types")) {
-    db.exec(`ALTER TABLE sessions ADD COLUMN participant_column_types TEXT`);
+function splitMultiSessionFile(source: string) {
+  const src = openFile(source); // ensureSchema: đưa file cũ lên schema hiện tại trước khi copy
+  const sessions = src.prepare(`SELECT id, name FROM sessions`).all() as { id: string; name: string }[];
+  src.pragma("wal_checkpoint(TRUNCATE)");
+  src.close();
+
+  for (const s of sessions) {
+    const target = uniquePath(DATA_DIR, fileNameFor(s.name, s.id));
+    const dst = openFile(target);
+    dst.prepare(`ATTACH DATABASE ? AS src`).run(source);
+    dst.transaction(() => {
+      for (const table of SESSION_TABLES) {
+        const cols = columnsOf(dst, table)
+          .map((c) => `"${c}"`)
+          .join(", ");
+        const key = table === "sessions" ? "id" : "session_id";
+        dst.prepare(`INSERT INTO main.${table} (${cols}) SELECT ${cols} FROM src.${table} WHERE ${key} = ?`).run(s.id);
+      }
+    })();
+    dst.exec(`DETACH DATABASE src`);
+    dst.close();
   }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backup = `${source}.migrated-${stamp}.bak`;
+  fs.renameSync(source, backup);
+  for (const suffix of ["-wal", "-shm"]) {
+    if (fs.existsSync(source + suffix)) fs.renameSync(source + suffix, backup + suffix);
+  }
+  console.log(`[db] Split ${source} into ${sessions.length} session file(s); original kept as ${backup}`);
 }
 
-migrateSessionColumnTypes();
+/* ---------------- Registry: session id → file đang dùng ---------------- */
+
+interface Entry {
+  file: string;
+  db: DB;
+}
+
+const entries = new Map<string, Entry>();
+// Các BẢN KHÁC của 1 session đang dùng (cùng id, khác file) — chờ người dùng chọn giữ bản nào.
+const conflictFiles = new Map<string, Set<string>>();
+
+function readSessionIds(file: string): { id: string; name: string }[] | null {
+  try {
+    const db = openFile(file, true);
+    try {
+      return db.prepare(`SELECT id, name FROM sessions`).all() as { id: string; name: string }[];
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null; // không phải DB hợp lệ / thiếu bảng sessions → bỏ qua
+  }
+}
 
 /**
- * Migration: thêm participant_duplicate_columns vào sessions — danh sách cột (tên) dùng để
- * xác định trùng lặp trong Data Editor. JSON dạng string[]. Nhiều cột nghĩa là phải trùng
- * TẤT CẢ các cột đó cùng lúc mới tính là trùng (compound key), thay cho quy tắc cũ mặc định
- * luôn tính trùng theo SĐT.
+ * Quét lại data/: mở file mới xuất hiện, bỏ đăng ký file đã biến mất, phát hiện bản trùng. Gọi lúc
+ * khởi động và mỗi lần renderer lấy danh sách session (cửa sổ chính được focus lại) — copy file vào
+ * data/ trong lúc app đang mở cũng tự hiện tab mới.
  */
-function migrateSessionDuplicateColumns() {
-  const cols = (db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name);
-  if (!cols.includes("participant_duplicate_columns")) {
-    db.exec(`ALTER TABLE sessions ADD COLUMN participant_duplicate_columns TEXT`);
+export function rescan() {
+  // File đã đăng ký nhưng bị xoá/đổi tên ngoài app.
+  for (const [id, entry] of entries) {
+    if (!fs.existsSync(entry.file)) {
+      entry.db.close();
+      entries.delete(id);
+    }
+  }
+  for (const [id, files] of conflictFiles) {
+    for (const f of files) if (!fs.existsSync(f)) files.delete(f);
+    if (files.size === 0) conflictFiles.delete(id);
+  }
+
+  const known = new Set<string>();
+  for (const e of entries.values()) known.add(e.file.toLowerCase());
+  for (const files of conflictFiles.values()) for (const f of files) known.add(f.toLowerCase());
+
+  // Mới nhất trước — lúc khởi động, bản sửa gần nhất của 1 session được đăng ký làm bản dùng mặc định.
+  const files = fs
+    .readdirSync(DATA_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".db") && !f.startsWith("."))
+    .map((f) => path.join(DATA_DIR, f))
+    .filter((f) => !known.has(f.toLowerCase()))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+
+  for (const file of files) {
+    const rows = readSessionIds(file);
+    if (!rows || rows.length === 0) continue;
+    if (rows.length > 1) {
+      splitMultiSessionFile(file);
+      rescan(); // file tách ra là file mới trong data/ — quét lại để đăng ký
+      return;
+    }
+    const { id } = rows[0];
+    if (entries.has(id)) {
+      if (!conflictFiles.has(id)) conflictFiles.set(id, new Set());
+      conflictFiles.get(id)!.add(file);
+    } else {
+      entries.set(id, { file, db: openFile(file) });
+    }
   }
 }
 
-migrateSessionDuplicateColumns();
+// Khởi động: tách lucky-draw.db kiểu cũ (nếu còn) rồi quét data/.
+const legacyFile = path.join(LEGACY_DIR, "lucky-draw.db");
+if (fs.existsSync(legacyFile)) splitMultiSessionFile(legacyFile);
+rescan();
 
-/**
- * Migration: thêm participant_column_labels vào sessions — nhãn HIỂN THỊ tùy biến cho từng cột trong
- * Data Editor (JSON dạng { [tênCột]: "Nhãn" }). Với cột lõi name/phone/code/email đây chỉ là nhãn,
- * dữ liệu vẫn nằm ở cột SQL tương ứng. An toàn khi chạy nhiều lần — chỉ ADD COLUMN khi chưa có,
- * không đụng dữ liệu cũ (session cũ = NULL = dùng nhãn mặc định).
- */
-function migrateSessionColumnLabels() {
-  const cols = (db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name);
-  if (!cols.includes("participant_column_labels")) {
-    db.exec(`ALTER TABLE sessions ADD COLUMN participant_column_labels TEXT`);
+/* ---------------- API cho main.ts / drawEngine.ts ---------------- */
+
+export function getDb(sessionId: string): DB {
+  const entry = entries.get(sessionId);
+  if (!entry) throw new Error(`Session not found: ${sessionId}`);
+  return entry.db;
+}
+
+export function hasSession(sessionId: string): boolean {
+  return entries.has(sessionId);
+}
+
+export function listSessions(): any[] {
+  rescan();
+  const rows = [...entries.values()]
+    .map((e) => e.db.prepare(`SELECT * FROM sessions LIMIT 1`).get())
+    .filter(Boolean) as { created_at: string }[];
+  return rows.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+}
+
+export function createSession(data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }): string {
+  const id = randomUUID();
+  const file = uniquePath(DATA_DIR, fileNameFor(data.name, id));
+  const db = openFile(file);
+  db.prepare(
+    `INSERT INTO sessions (id, name, allow_duplicate_prize, exclude_previous_winners, status) VALUES (?, ?, ?, ?, 'draft')`
+  ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, data.excludePreviousWinners === false ? 0 : 1);
+  entries.set(id, { file, db });
+  return id;
+}
+
+/** Đổi tên session + đổi tên file theo. Đổi tên file lỗi (bị khoá…) thì giữ tên file cũ — định danh
+ *  nằm trong file nên không ảnh hưởng gì. */
+export function renameSession(id: string, name: string) {
+  const entry = entries.get(id);
+  if (!entry) throw new Error(`Session not found: ${id}`);
+  entry.db.prepare(`UPDATE sessions SET name = ? WHERE id = ?`).run(name, id);
+
+  const desired = path.join(DATA_DIR, fileNameFor(name, id));
+  if (sameFile(desired, entry.file)) return;
+  const target = uniquePath(DATA_DIR, path.basename(desired));
+  entry.db.close();
+  try {
+    fs.renameSync(entry.file, target);
+    entry.file = target;
+  } catch (e) {
+    console.warn(`[db] Could not rename ${entry.file}:`, e);
+  }
+  entry.db = openFile(entry.file);
+}
+
+/** Xoá tab = chuyển file vào data/.trash/ (không xoá hẳn). */
+export function deleteSession(id: string) {
+  const entry = entries.get(id);
+  if (!entry) return;
+  entry.db.close();
+  entries.delete(id);
+  moveToTrash(entry.file);
+}
+
+export interface SessionCopyInfo {
+  file: string; // tên file (không kèm thư mục)
+  modifiedAt: string; // ISO
+  participants: number;
+  prizes: number;
+  confirmedDraws: number;
+  inUse: boolean; // bản app đang dùng
+  recommended: boolean; // bản sửa gần nhất
+}
+
+export interface SessionConflict {
+  sessionId: string;
+  name: string;
+  copies: SessionCopyInfo[];
+}
+
+function copyInfo(file: string, inUse: boolean, db?: DB): Omit<SessionCopyInfo, "recommended"> {
+  // Bản chưa dùng mở READ-ONLY: không chạy migration lên nó (sẽ đổi mtime — chính là tiêu chí "bản mới
+  // nhất"). File cũ có thể thiếu cột (vd confirmed) → đếm lỗi thì trả 0.
+  const handle = db ?? openFile(file, true);
+  try {
+    const count = (sql: string) => {
+      try {
+        return (handle.prepare(sql).get() as { n: number }).n;
+      } catch {
+        return 0;
+      }
+    };
+    return {
+      file: path.basename(file),
+      modifiedAt: fs.statSync(file).mtime.toISOString(),
+      participants: count(`SELECT COUNT(*) AS n FROM participants WHERE status != 'removed'`),
+      prizes: count(`SELECT COUNT(*) AS n FROM prizes`),
+      confirmedDraws: count(`SELECT COUNT(*) AS n FROM draw_results WHERE confirmed = 1`),
+      inUse,
+    };
+  } finally {
+    if (!db) handle.close();
   }
 }
 
-migrateSessionColumnLabels();
+/** Session nào đang có ≥ 2 file cùng id trong data/ — renderer hiện hộp thoại cho người dùng chọn. */
+export function listConflicts(): SessionConflict[] {
+  rescan();
+  const out: SessionConflict[] = [];
+  for (const [sessionId, others] of conflictFiles) {
+    const entry = entries.get(sessionId);
+    if (!entry || others.size === 0) continue;
+    const copies = [
+      copyInfo(entry.file, true, entry.db),
+      ...[...others].map((f) => copyInfo(f, false)),
+    ];
+    const newest = copies.reduce((a, b) => (a.modifiedAt >= b.modifiedAt ? a : b));
+    const name = (entry.db.prepare(`SELECT name FROM sessions LIMIT 1`).get() as { name: string }).name;
+    out.push({ sessionId, name, copies: copies.map((c) => ({ ...c, recommended: c === newest })) });
+  }
+  return out;
+}
 
-/**
- * Migration: thêm confirmed vào draw_results — trước đây bảng này CHỈ chứa lượt đã Confirm (ghi lúc
- * commitDraw), lượt bị Redo bỏ qua không để lại dấu vết gì. Giờ mỗi lần pickWinner() cho Landing Page
- * (draw:pick) đều ghi ngay 1 dòng confirmed = 0, rồi commitDraw() chỉ UPDATE lên confirmed = 1 — nhờ
- * vậy Dashboard có đủ lịch sử "đã quay nhưng không Confirm" (xem drawEngine.ts, docs/architecture/
- * draw-engine.md). DEFAULT 1 cho dữ liệu cũ vì mọi dòng có sẵn trước migration này chắc chắn đã từng
- * đi qua commitDraw (luồng cũ không có cách nào ghi dòng chưa confirm).
- */
-function migrateDrawResultsConfirmed() {
-  const cols = (db.prepare(`PRAGMA table_info(draw_results)`).all() as { name: string }[]).map((c) => c.name);
-  if (!cols.includes("confirmed")) {
-    db.exec(`ALTER TABLE draw_results ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1`);
+/** Giữ đúng 1 bản (`keepFile`, tên file) của session, các bản còn lại chuyển vào data/.trash/. */
+export function resolveConflict(sessionId: string, keepFile: string) {
+  const entry = entries.get(sessionId);
+  const others = conflictFiles.get(sessionId);
+  if (!entry || !others) return;
+  const all = [entry.file, ...others];
+  const keep = all.find((f) => sameFile(path.basename(f), keepFile));
+  if (!keep) throw new Error(`File not found: ${keepFile}`);
+
+  if (!sameFile(keep, entry.file)) {
+    entry.db.close();
+    moveToTrash(entry.file);
+    entries.set(sessionId, { file: keep, db: openFile(keep) });
+  }
+  for (const f of others) if (!sameFile(f, keep) && fs.existsSync(f)) moveToTrash(f);
+  conflictFiles.delete(sessionId);
+
+  // Bản giữ lại thường mang tên kiểu "... (2).db" do Windows/Finder tự đặt lúc copy — đổi về tên chuẩn
+  // (tên chuẩn giờ đã trống vì các bản khác vừa vào .trash).
+  const kept = entries.get(sessionId)!;
+  const name = (kept.db.prepare(`SELECT name FROM sessions LIMIT 1`).get() as { name: string }).name;
+  const desired = path.join(DATA_DIR, fileNameFor(name, sessionId));
+  if (!sameFile(desired, kept.file) && !fs.existsSync(desired)) {
+    kept.db.close();
+    try {
+      fs.renameSync(kept.file, desired);
+      kept.file = desired;
+    } catch (e) {
+      console.warn(`[db] Could not rename ${kept.file}:`, e);
+    }
+    kept.db = openFile(kept.file);
   }
 }
 
-migrateDrawResultsConfirmed();
+export function closeAll() {
+  for (const e of entries.values()) if (e.db.open) e.db.close();
+}

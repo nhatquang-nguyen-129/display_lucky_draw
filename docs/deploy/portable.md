@@ -20,8 +20,8 @@ cài đặt, không cần quyền Admin. Kết quả quay ghi ngược vào thư
 
 1. **"App" = 1 thư mục, dữ liệu nằm TRONG thư mục đó.** Người dùng chỉ cần nhớ 1 quy tắc: *luôn copy
    nguyên thư mục, không tách file ra*.
-2. **Dữ liệu chỉ có ĐÚNG 1 bản** (`data/lucky-draw.db`). Không có "bản mẫu" gói sẵn trong app để tự
-   khôi phục. Nếu có, xoá/quên copy file db thì app lặng lẽ quay về bản mẫu: trông vẫn đủ
+2. **Dữ liệu chỉ có ĐÚNG 1 bản** (các file session trong `data/`). Không có "bản mẫu" gói sẵn trong app
+   để tự khôi phục. Nếu có, xoá/quên copy file db thì app lặng lẽ quay về bản mẫu: trông vẫn đủ
    participant/prize nhưng mất danh sách người đã trúng, và người đã trúng có thể trúng lại. Với app
    quay số, đây là lỗi công bằng.
 3. **Không bao giờ âm thầm lưu dữ liệu sang chỗ khác.** Chạy sai chỗ (thư mục tạm, chỗ không ghi được)
@@ -29,12 +29,13 @@ cài đặt, không cần quyền Admin. Kết quả quay ghi ngược vào thư
    dùng tưởng dữ liệu vẫn nằm trong thư mục app.
 4. **Không ảnh hưởng bản dev.** Mọi logic riêng của bản đóng gói đều chặn bằng `app.isPackaged`.
 5. **Trải nghiệm Windows và macOS giống nhau nhất có thể**: cùng cấu trúc thư mục, cùng hành vi khi
-   đóng cửa sổ/mở lần 2/chạy sai chỗ. File `lucky-draw.db` **dùng chung được** giữa 2 hệ điều hành
-   (SQLite cùng định dạng).
+   đóng cửa sổ/mở lần 2/chạy sai chỗ. File session **dùng chung được** giữa 2 hệ điều hành (SQLite
+   cùng định dạng).
 
 ### Vì sao làm được đơn giản
 
-Toàn bộ dữ liệu app nằm trong **đúng 1 file SQLite**, không có file ảnh rời:
+Toàn bộ dữ liệu của 1 session nằm trong **đúng 1 file SQLite** (mỗi session 1 file trong `data/`), không có
+file ảnh rời:
 
 | Dữ liệu | Nằm ở đâu trong DB |
 |---|---|
@@ -44,8 +45,8 @@ Toàn bộ dữ liệu app nằm trong **đúng 1 file SQLite**, không có file
 | Landing page: component, ảnh nền, ảnh PNG | `sessions.landing_config` (JSON, ảnh nhúng base64) |
 | Kết quả quay | bảng `draw_results` |
 
-Nên "mang dữ liệu theo app" chỉ là **đổi đường dẫn của đúng 1 file** (`electron/db.ts`), không đổi
-schema, không cần migration. Schema: [`docs/architecture/database-schema.md`](../architecture/database-schema.md).
+Nên "mang dữ liệu theo app" chỉ là **đặt thư mục `data/` cạnh app**, và mang 1 session riêng lẻ sang máy khác
+chỉ là copy 1 file. Cơ chế lưu theo session, tên file, bản trùng: [`docs/architecture/database-schema.md`](../architecture/database-schema.md#lưu-trữ-theo-session--mỗi-session-là-1-file).
 
 ### Các phương án đã loại
 
@@ -58,18 +59,18 @@ schema, không cần migration. Schema: [`docs/architecture/database-schema.md`]
 
 ## 2. Thực thi kỹ thuật
 
-### Chọn thư mục DB — `resolveDbDir()` (`electron/db.ts`)
+### Chọn thư mục `data/` — `electron/db.ts`
 
-`folderBuildBaseDir()` xác định app có đang chạy ở "bản thư mục" không, rồi `resolveDbDir()` trả thư
-mục chứa `lucky-draw.db`:
+`folderBuildBaseDir()` xác định app có đang chạy ở "bản thư mục" không, từ đó ra `DATA_DIR` — thư mục
+`data/` chứa các file session:
 
-| Trường hợp | Nhận biết | Thư mục DB |
+| Trường hợp | Nhận biết | Thư mục `data/` |
 |---|---|---|
-| Dev (`npm run electron:dev`) | `!app.isPackaged` | `userData` (không đổi) |
-| Windows: bản cài đặt | Có `Uninstall *.exe` cạnh exe | `userData` (xem [installer.md](./installer.md)) |
-| Windows: file exe portable (target cũ, nếu build lại) | Có biến `PORTABLE_EXECUTABLE_DIR` | `userData` |
-| macOS: app đã kéo vào Applications | Thư mục chứa `.app` là `/Applications` hoặc `~/Applications` | `userData` (xem [installer.md](./installer.md)) |
-| Linux | | `userData` (chưa hỗ trợ bản thư mục) |
+| Dev (`npm run electron:dev`) | `!app.isPackaged` | `<userData>/data/` |
+| Windows: bản cài đặt | Có `Uninstall *.exe` cạnh exe | `<userData>/data/` (xem [installer.md](./installer.md)) |
+| Windows: file exe portable (target cũ, nếu build lại) | Có biến `PORTABLE_EXECUTABLE_DIR` | `<userData>/data/` |
+| macOS: app đã kéo vào Applications | Thư mục chứa `.app` là `/Applications` hoặc `~/Applications` | `<userData>/data/` (xem [installer.md](./installer.md)) |
+| Linux | | `<userData>/data/` (chưa hỗ trợ bản thư mục) |
 | **Windows: bản thư mục** | Còn lại | **`<thư mục chứa exe>\data\`** |
 | **macOS: bản thư mục** | Còn lại | **`<thư mục chứa .app>/data/`** |
 
@@ -92,9 +93,8 @@ Chỉ áp dụng cho bản thư mục, kiểm tra theo thứ tự trước khi m
 - **Chặn mở 2 app cùng lúc**: `app.requestSingleInstanceLock()` ở đầu `db.ts`, TRƯỚC khi mở DB (vì
   `main.ts` import `db.ts` trước mọi dòng code khác). Instance thứ 2 thoát ngay, cửa sổ đang chạy được
   đưa lên trước (`second-instance` trong `main.ts`). Không có 2 process cùng ghi 1 file DB.
-- **Đóng DB khi thoát** (`will-quit` trong `main.ts`) để dữ liệu trong `-wal` gộp hết vào
-  `lucky-draw.db`. Lúc app đang chạy, cạnh `lucky-draw.db` có thêm `-wal`/`-shm` (SQLite chế độ WAL):
-  bình thường.
+- **Đóng mọi file session khi thoát** (`will-quit` trong `main.ts`). File session dùng
+  `journal_mode = DELETE` nên ghi xong là đủ dữ liệu, không có file `-wal` đi kèm.
 - **Đóng cửa sổ cuối cùng là thoát app**, trên cả macOS (`window-all-closed`). Mặc định trên Mac app
   vẫn chạy ngầm; bản đóng gói cố tình khác để DB được đóng ngay, người dùng tưởng đã tắt rồi rút USB
   cũng không hỏng dữ liệu. Bản dev trên Mac giữ hành vi mặc định.
@@ -124,7 +124,8 @@ rồi `codesign --verify`. Chi tiết ở mục [Ký số](#ký-số-code-signin
 Lucky Draw Studio\               ← thư mục mẹ có sẵn trong Lucky Draw Studio-<version>-win.zip
 ├── Lucky Draw Studio.exe        ← double-click để chạy
 ├── data\
-│   └── lucky-draw.db            ← TOÀN BỘ dữ liệu (tự tạo lần chạy đầu nếu chưa có)
+│   ├── Hoi-cho__3f9a1c2e.db     ← 1 file = 1 session (participant, prize, landing, lịch sử quay)
+│   └── Minigame__8b20d7aa.db
 └── resources\ locales\ *.dll …  ← file của app, không động vào
 ```
 
@@ -144,19 +145,14 @@ lần `npm run package` sau sẽ ghi đè, nên đừng để dữ liệu thật
 **Cách sạch nhất: chuẩn bị luôn bằng bản thư mục.**
 
 1. Giải nén `…-win.zip` (chuột phải → **Extract All**) ra máy mình hoặc thẳng lên USB.
-2. Chạy `Lucky Draw Studio.exe` → `data\lucky-draw.db` tự sinh ra.
+2. Chạy `Lucky Draw Studio.exe`, tạo session (tab) → mỗi session tự có 1 file trong `data\`.
 3. Nhập participant, prize, dựng landing, quay thử nếu cần (**Reset session** trước khi mang đi).
-4. **Tắt hẳn app** để dữ liệu gộp hết vào `lucky-draw.db`.
+4. Tắt app (không bắt buộc với dữ liệu — file luôn đủ sau mỗi lần ghi — nhưng nên tắt trước khi copy).
 5. Copy nguyên thư mục lên USB (nếu chưa làm ở bước 1).
 
-**Nếu đã có dữ liệu từ bản dev hoặc bản cài đặt:**
-
-1. **Tắt hẳn** app dev/cài đặt.
-2. Vào `%APPDATA%\lucky-draw-app\` (gõ vào thanh địa chỉ Explorer), copy `lucky-draw.db`, **kèm cả
-   `lucky-draw.db-wal` nếu có**. Bản dev không đóng DB khi thoát, phần dữ liệu mới nhất có thể còn nằm
-   trong `-wal`; copy thiếu sẽ mất phần đó.
-3. Dán vào `data\` của bản thư mục (tạo thư mục `data` nếu chưa có). Mở app 1 lần rồi tắt để `-wal`
-   được gộp vào `lucky-draw.db`.
+**Mang 1 session từ máy khác / từ bản dev hoặc bản cài đặt:** copy đúng file session đó (nút **Data
+folder** ở góc phải thanh tab mở thư mục `data` của bản đang chạy) vào `data\` của bản thư mục — tab
+tự hiện khi mở app hoặc khi quay lại cửa sổ app. Bản dev/cài đặt dùng `%APPDATA%\lucky-draw-app\data\`.
 
 ### Mở trên máy khác
 
@@ -166,7 +162,7 @@ lần `npm run package` sau sẽ ghi đè, nên đừng để dữ liệu thật
 - **SmartScreen** lần đầu (app chưa ký số): "Windows protected your PC" → **More info → Run anyway**.
   Một số phần mềm diệt virus có thể báo nhầm vì cùng lý do.
 - Cách an toàn nhất khi gửi cho người vận hành: **copy sẵn thư mục đã giải nén** (kèm
-  `data\lucky-draw.db`) vào USB, họ không phải giải nén gì.
+  các file session trong `data\`) vào USB, họ không phải giải nén gì.
 
 ### Lỗi thường gặp (Windows)
 
@@ -174,7 +170,8 @@ lần `npm run package` sau sẽ ghi đè, nên đừng để dữ liệu thật
 |---|---|---|
 | "The app is running from a temporary folder" | Mở exe ngay trong file zip chưa giải nén | Chuột phải zip → Extract All, chạy exe trong thư mục đã giải nén |
 | "Cannot write to the data folder" | Ổ chỉ-đọc, USB khoá write-protect, thư mục không có quyền ghi | Chuyển nguyên thư mục sang chỗ ghi được (Desktop, Documents, USB không khoá) |
-| App mở ra TRỐNG dù đã chuẩn bị dữ liệu | `lucky-draw.db` không nằm đúng `data\` cạnh exe; app lặng lẽ tạo DB rỗng mới | Tắt app, đặt đúng file vào `data\lucky-draw.db` |
+| App mở ra thiếu tab / TRỐNG dù đã chuẩn bị dữ liệu | File session không nằm đúng `data\` cạnh exe | Bấm **Data folder** để xem app đang đọc thư mục nào, đặt file session vào đó |
+| Hiện hộp thoại "Different copies of the same session" | Có ≥ 2 file của cùng 1 session (copy qua lại, mỗi bên sửa riêng) | Chọn bản muốn giữ (mặc định gợi ý bản mới nhất), bản còn lại vào `data\.trash\` |
 | SmartScreen chặn hẳn, không có nút "Run anyway" | Policy công ty chặn app chưa ký số | Cần chứng chỉ code signing, ngoài phạm vi hiện tại |
 
 ## 4. macOS
@@ -185,7 +182,7 @@ lần `npm run package` sau sẽ ghi đè, nên đừng để dữ liệu thật
 Lucky Draw Studio/                  ← thư mục mẹ có sẵn trong Lucky Draw Studio-<version>-mac.zip
 ├── Lucky Draw Studio.app           ← double-click để mở (Finder hiện như 1 file, thật ra là thư mục)
 └── data/
-    └── lucky-draw.db               ← TOÀN BỘ dữ liệu (tự tạo lần mở đầu nếu chưa có)
+    └── <tên-session>__<mã>.db       ← 1 file = 1 session
 ```
 
 `data/` nằm **cạnh** `.app`, không nằm trong bundle.
@@ -263,21 +260,22 @@ Copy qua USB bằng Finder từ máy build (file chưa từng bị gắn cờ) t
 ### Chuẩn bị dữ liệu
 
 Như Windows: giải nén zip (double-click trong Finder), mở app, nhập dữ liệu, **thoát app** (đóng cửa
-sổ hoặc Cmd+Q), copy nguyên thư mục. Có dữ liệu sẵn từ bản dev/cài đặt trên Mac: copy `lucky-draw.db`
-(kèm `-wal` nếu có) từ `~/Library/Application Support/lucky-draw-app/` vào `data/`. Có dữ liệu từ
-bản Windows: copy `data\lucky-draw.db` sang `data/` của bản Mac.
+sổ hoặc Cmd+Q), copy nguyên thư mục. Mang 1 session từ bản dev/cài đặt trên Mac
+(`~/Library/Application Support/lucky-draw-app/data/`) hoặc từ bản Windows: copy đúng file session đó vào
+`data/`.
 
 ### Checklist test trên Mac
 
 - [ ] Giải nén `…-mac.zip` → ra đúng 1 thư mục `Lucky Draw Studio/`.
-- [ ] Mở `Lucky Draw Studio.app` → app lên, không bật DevTools; có `data/lucky-draw.db` cạnh `.app`.
+- [ ] Mở `Lucky Draw Studio.app`, tạo 1 session → app lên, không bật DevTools; có `data/<tên>__<mã>.db` cạnh `.app`.
 - [ ] Import participant/prize, dựng landing, quay thử, mở Present Mode/Landing Builder: hiển thị và
       hiệu ứng như bản Windows.
-- [ ] Đóng cửa sổ (nút đỏ) → app thoát hẳn (không còn chấm dưới icon Dock); `data/` chỉ còn
-      `lucky-draw.db`.
+- [ ] Đóng cửa sổ (nút đỏ) → app thoát hẳn (không còn chấm dưới icon Dock); `data/` chỉ có các file
+      `.db` (không có `-wal`/`-journal`).
 - [ ] Double-click app lần 2 khi đang mở → chỉ đưa cửa sổ cũ lên trước.
 - [ ] Copy nguyên thư mục sang chỗ khác (USB exFAT) → mở thấy đủ dữ liệu.
-- [ ] Copy `lucky-draw.db` từ bản Windows vào `data/` → mở thấy đúng dữ liệu.
+- [ ] Copy 1 file session từ bản Windows vào `data/` → mở thấy đúng session đó.
+- [ ] Copy thêm 1 bản khác của cùng session (vd `… - Copy.db`) → hiện hộp thoại chọn bản ngay khi mở app.
 - [ ] Kéo riêng `.app` vào `/Applications` rồi mở → dùng `~/Library/Application Support/lucky-draw-app/`,
       KHÔNG tạo `data/` trong Applications.
 
@@ -295,19 +293,19 @@ Lỗi lúc **build** trên Mac (gộp universal, `codesign`, `npm ci`): [trouble
 ## 5. Vận hành tại venue (cả 2 hệ điều hành)
 
 - **Test trước ngày sự kiện (bắt buộc)**: mở từ đúng USB sẽ mang đi, trên máy khác nếu có, **tự mắt
-  xác nhận** thấy đủ session/participant/prize/landing. App trống = `lucky-draw.db` không nằm đúng
-  `data/` (app tạo file rỗng mới, không báo lỗi).
+  xác nhận** thấy đủ session/participant/prize/landing. Thiếu tab = file session không nằm đúng
+  `data/`.
 - **Không rút USB khi app đang chạy**, có thể hỏng file DB. Tắt app trước, rồi mới rút.
-- **Luôn giữ 1 bản sao `data/lucky-draw.db`** ở nơi khác trước khi đi. USB hỏng/mất là mất cả dữ liệu
+- **Luôn giữ 1 bản sao các file trong `data/`** ở nơi khác trước khi đi. USB hỏng/mất là mất cả dữ liệu
   lẫn kết quả.
 - USB chậm (USB 2.0 cũ) có thể làm app mở chậm hơn. Test trước với đúng USB sẽ mang đi.
-- **Chromium profile vẫn nằm ở máy venue**: chỉ `lucky-draw.db` được chuyển vào `data/`, còn Local
+- **Chromium profile vẫn nằm ở máy venue**: chỉ dữ liệu session nằm trong `data/`, còn Local
   Storage/Cache của Chromium vẫn ghi vào `userData` của máy đang chạy. Hệ quả: app không nhớ tab mở
   cuối cùng khi sang máy khác (`localStorage` ở `SessionContext.tsx`, vô hại), và máy venue còn sót
   vài file cache nhỏ (không chứa participant/prize); muốn dọn sạch thì tự xoá thư mục đó.
 - **Máy chạy cả bản dev lẫn bản thư mục**: dùng chung Chromium profile nhưng KHÁC file DB.
 
-**Sau sự kiện**: tắt app → cầm USB về. `data/lucky-draw.db` đã có đủ kết quả quay (`draw_results`),
+**Sau sự kiện**: tắt app → cầm USB về. File session trong `data/` đã có đủ kết quả quay (`draw_results`),
 mở bằng chính bản thư mục đó để xem lại/xuất kết quả.
 
 ## 6. Việc còn lại
@@ -316,5 +314,5 @@ mở bằng chính bản thư mục đó để xem lại/xuất kết quả.
   Nếu gộp universal lỗi, chuyển sang chỉ build arm64 (xem [troubleshooting.md](./troubleshooting.md)).
 - **Tuỳ nhu cầu**: code signing Windows / Apple Developer ID + notarization để hết cảnh báo
   SmartScreen/Gatekeeper.
-- **Linux**: chưa có bản thư mục (`db.ts` luôn dùng `userData` = `~/.config/lucky-draw-app/`).
+- **Linux**: chưa có bản thư mục (`db.ts` luôn dùng `~/.config/lucky-draw-app/data/`).
   electron-builder đóng gói được `AppImage`/`deb` nếu cần, build trên Linux.

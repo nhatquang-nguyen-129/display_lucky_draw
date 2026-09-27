@@ -29,7 +29,7 @@ Tech stack + lý do chọn từng công nghệ: `CLAUDE.md` mục "Định hư�
 electron/
   main.ts                 # Main process: tạo BrowserWindow, đăng ký MỌI ipcMain.handle
   preload.ts              # contextBridge: "cửa" duy nhất renderer được phép gọi ra main process
-  db.ts                   # Chọn vị trí file DB (dev/Setup/portable), mở SQLite + TOÀN BỘ migration
+  db.ts                   # Kho session: mỗi session 1 file trong data/, getDb(sessionId), bản trùng, TOÀN BỘ migration
   drawEngine.ts           # Thuật toán chọn người trúng (pickWinner/commitDraw/drawOne)
   participantFields.ts    # Resolve cột theo Data Type phía main (bản song song của src/, xem docs/participants/column-mapping.md)
   config/appConfig.ts     # Tên app, nhãn môi trường, tiêu đề cửa sổ
