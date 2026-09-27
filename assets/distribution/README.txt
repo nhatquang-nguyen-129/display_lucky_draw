@@ -6,7 +6,7 @@ App quay số trúng thưởng chạy hoàn toàn Offline không cần Internet.
 --------------------------
 
 Lucky Draw Studio-{{version}}-win.zip     BẢN PORTABLE không cần cài đặt và khuyên dùng
-Lucky Draw Studio-{{version}}-Setup.exe   BẢN CÀI ĐẶT chưa cho máy cố định dùng lâu dài
+Lucky Draw Studio-{{version}}-Setup.exe   BẢN CÀI ĐẶT dùng cho máy cố định dùng lâu dài
 Lucky Draw Studio-{{version}}-mac.zip     Bản portable cho macOS
 
 Các File/Folder còn lại (win-unpacked, mac-universal, latest.yml, *.blockmap,
@@ -52,7 +52,7 @@ LƯU Ý CHUNG
 - Lần đầu mở trên thiết bị mới, Windows có thể hiện "Windows protected your PC", điều này
   có nghĩa là Windows đang chặn các App thiếu chữ ký số "Code Signing Certificate" từ nhà 
   phát triển chưa đăng ký "Unknown Publisher", bấm "More info" rồi chọn "Run anyway".
-- Nếu App hiển thị Popup báo đang có có 2 Versions của cùng 1 Session thì chọn bản muốn giữ
+- Nếu App hiển thị Popup báo đang có 2 Versions của cùng 1 Session thì chọn bản muốn giữ
   trong đó App sẽ tự động gợi ý Version mới nhất, bản còn lại được chuyển vào data\.trash và
   có thể khôi phục lại sau này.
 - Nếu xoá 1 Session Tab, App sẽ chỉ chuyển File .db vào data\.trash và có thể lấy lại được.
