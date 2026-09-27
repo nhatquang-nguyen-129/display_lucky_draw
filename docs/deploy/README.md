@@ -7,7 +7,7 @@ KHÔNG cần cài Node/Git/source code gì cả.
 | File | Nội dung |
 |---|---|
 | [build.md](./build.md) | Cấu hình `electron-builder` đã có sẵn, chạy `npm run package`, vị trí file output trong `release/` |
-| [portable-usb.md](./portable-usb.md) | **(Kế hoạch, chưa implement)** 1 USB mang theo cả app lẫn toàn bộ dữ liệu (participant/prize/landing) — DB nằm cạnh file exe portable |
+| [portable-app.md](./portable-app.md) | **(Kế hoạch, chưa implement)** 1 gói mang theo cả app lẫn toàn bộ dữ liệu (participant/prize/landing) trên CẢ Windows lẫn macOS — DB nằm cạnh app portable |
 | [release-checklist.md](./release-checklist.md) | Checklist test bản đóng gói trước khi phát cho người vận hành + cách phân phối (Portable/Installer, cảnh báo SmartScreen) |
 | [troubleshooting.md](./troubleshooting.md) | Bảng triệu chứng → nguyên nhân → cách xử lý khi build/đóng gói lỗi |
 | [other-platforms.md](./other-platforms.md) | macOS/Linux — ngoài phạm vi chính, ghi chú ngắn nếu cần sau này |
@@ -27,9 +27,10 @@ Vì app này chạy 1-lần-1-sự-kiện trên máy tại chỗ (thường khô
 quyền admin), **Portable EXE là lựa chọn an toàn và đơn giản hơn**. Repo đã cấu hình sẵn để build ra
 CẢ HAI (xem [build.md](./build.md)) — vẫn có Installer nếu bạn cần dùng máy cố định lâu dài.
 
-**Lưu ý dữ liệu**: hiện tại cả 2 bản đều lưu dữ liệu ở `%APPDATA%\Lucky Draw Studio\` của máy đang
-chạy — copy riêng file portable sang máy khác sẽ mở ra app trống. Hướng đi đã chốt là để DB nằm cạnh
-file exe portable, cầm 1 USB là có sẵn cả app lẫn dữ liệu — xem [portable-usb.md](./portable-usb.md).
+**Lưu ý dữ liệu**: hiện tại cả 2 bản đều lưu dữ liệu ở thư mục hồ sơ riêng của hệ điều hành
+(`%APPDATA%\Lucky Draw Studio\` trên Windows) của máy đang chạy — copy riêng file portable sang máy
+khác sẽ mở ra app trống. Hướng đi đã chốt là để DB nằm cạnh app portable (cả Windows lẫn macOS), cầm
+1 USB là có sẵn cả app lẫn dữ liệu — xem [portable-app.md](./portable-app.md).
 
 ## Prerequisites
 
