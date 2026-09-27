@@ -297,8 +297,11 @@ app.whenReady().then(() => {
   });
 });
 
+// macOS mặc định giữ app chạy khi đóng hết cửa sổ — bản đóng gói thì thoát hẳn giống Windows: đóng
+// cửa sổ là DB được đóng/gộp -wal ngay (xem will-quit), rút USB sau đó không hỏng dữ liệu. Dev giữ
+// nguyên hành vi Mac.
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin" || app.isPackaged) app.quit();
 });
 
 // Chỉ bản đóng gói (lock xin ở db.ts): double-click mở app lần 2 → đưa cửa sổ đang chạy lên trước.
