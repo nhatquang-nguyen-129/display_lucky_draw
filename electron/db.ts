@@ -1,13 +1,75 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { randomUUID } from "crypto";
-import { app } from "electron";
+import { app, dialog } from "electron";
 
-const userDataPath = app.getPath("userData");
-if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
+/**
+ * Chọn thư mục chứa lucky-draw.db — xem docs/deploy/portable-app.md.
+ *
+ * - Dev (`!app.isPackaged`), bản Setup (NSIS, có "Uninstall *.exe" cạnh exe), bản portable exe
+ *   (có PORTABLE_EXECUTABLE_DIR) và macOS: giữ nguyên `userData` như cũ.
+ * - Bản thư mục (win-unpacked / giải nén từ file zip): `<thư mục chứa exe>\data\` — copy nguyên thư
+ *   mục app sang máy khác là mang theo luôn toàn bộ dữ liệu.
+ */
+function isFolderBuild(exeDir: string): boolean {
+  if (!app.isPackaged || process.platform !== "win32") return false;
+  if (process.env.PORTABLE_EXECUTABLE_DIR) return false;
+  const isInstalled = fs.readdirSync(exeDir).some((f) => /^Uninstall .+\.exe$/i.test(f));
+  return !isInstalled;
+}
 
-const dbPath = path.join(userDataPath, "lucky-draw.db");
+// Bản thư mục mà chạy từ thư mục tạm (mở exe ngay trong file zip chưa giải nén — Windows tự bung ra
+// %TEMP%) hoặc từ chỗ không ghi được thì dữ liệu sẽ mất/không lưu được — chặn hẳn, KHÔNG âm thầm
+// fallback về userData (người dùng sẽ tưởng dữ liệu vẫn nằm trong thư mục app).
+function failFolderBuild(message: string): never {
+  dialog.showErrorBox("Lucky Draw Studio", message);
+  process.exit(1);
+}
+
+function resolveDbDir(): string {
+  const exeDir = path.dirname(process.execPath);
+  if (!isFolderBuild(exeDir)) return app.getPath("userData");
+
+  const tmpDir = path.resolve(os.tmpdir()).toLowerCase();
+  if (path.resolve(exeDir).toLowerCase().startsWith(tmpDir + path.sep)) {
+    failFolderBuild(
+      "The app is running from a temporary folder (probably straight from inside a .zip file).\n\n" +
+        "Please extract the whole folder first (right-click the .zip → Extract All), then run " +
+        "Lucky Draw Studio.exe from the extracted folder. Otherwise your data will not be saved."
+    );
+  }
+
+  const dataDir = path.join(exeDir, "data");
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    // Ghi thử + xoá 1 file dò — đáng tin hơn fs.accessSync (chỉ đọc bit quyền) với USB/ổ mạng.
+    const probe = path.join(dataDir, `.write-test-${process.pid}`);
+    fs.writeFileSync(probe, "");
+    fs.unlinkSync(probe);
+  } catch {
+    failFolderBuild(
+      `Cannot write to the data folder:\n${dataDir}\n\n` +
+        "Move the Lucky Draw Studio folder to a writable location (e.g. Desktop, Documents or a USB " +
+        "drive without write protection), then run it again."
+    );
+  }
+  return dataDir;
+}
+
+// Chặn mở 2 app đóng gói cùng lúc (2 process cùng ghi 1 file DB) — phải xin lock TRƯỚC khi mở DB,
+// nên đặt ở đây thay vì main.ts (main.ts import db.ts trước mọi dòng code khác). Instance thứ 2 thoát
+// luôn, instance đang chạy tự focus lại cửa sổ (xem "second-instance" trong main.ts). Chỉ áp dụng bản
+// đóng gói — dev vẫn mở song song được như cũ.
+if (app.isPackaged && !app.requestSingleInstanceLock()) {
+  process.exit(0);
+}
+
+const dbDir = resolveDbDir();
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
+const dbPath = path.join(dbDir, "lucky-draw.db");
 export const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");

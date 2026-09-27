@@ -25,7 +25,7 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 ## Lệnh hay dùng
 
 - `npm run electron:dev` — chạy dev (Vite + Electron song song). Sửa file trong `electron/` phải tắt bật lại lệnh này, không hot-reload như phần renderer.
-- `npm run package` — build production qua electron-builder, output vào `release/`.
+- `npm run package` — build production qua electron-builder, output vào `release/`: `…-win.zip` (bản thư mục/portable, có thư mục mẹ, tự nén bằng `electron/make-portable-zip.mjs`) + `…-Setup.exe` (Installer). Xem `docs/deploy/`.
 - `npx electron-rebuild` — bắt buộc chạy lại mỗi khi `npm install` xong hoặc đổi version Electron, vì `better-sqlite3` là native module, không rebuild sẽ lỗi `NODE_MODULE_VERSION mismatch`.
 
 ## Kiến trúc quan trọng — đọc trước khi sửa
@@ -39,6 +39,8 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 - **Không dùng Prettier/ESLint tự động chưa cấu hình** — format theo style đang có trong file lân cận (2 space, dấu `"`, không dùng `;` cuối JSX attribute).
 - **UI luôn tiếng Anh** (đã pivot toàn bộ, quyết định để giữ đơn giản, không xây i18n) — comment code vẫn tiếng Việt.
 - **Landing Builder không có hệ tín hiệu/Trigger Graph** (đã bỏ hẳn — từng có 1 kiến trúc Signal Emitter/Receiver + màn hình nối dây riêng, gỡ bỏ vì quá phức tạp so với nhu cầu thực tế của 1 app quay số đơn thuần). Button (`src/components/landing/views/ButtonView.tsx`) chạy đúng 1 **action cố định** chọn từ dropdown trong `ButtonPanel.tsx` (Draw/Confirm/Reset session/Show-hide Scoreboard/Open link) — bấm là gọi THẲNG 1 hàm của `DrawSequenceActions` (`useDrawSequence.ts`), không qua tín hiệu/trung gian nào. Không có action "Redraw/Discard" riêng — đã GỘP vào "Draw": bấm Draw lúc đang có candidate chờ Confirm (`sequence.isPending`) tự chạy `sequence.redo()` thay vì pick() mới. Lucky Wheel tự phát hiện có candidate mới bằng cách dò `results[0].id` đổi (xem `WheelTemplate.tsx`/`DigitRollerTemplate.tsx`), không cần ai "ra lệnh" nó quay. Thêm loại component mới xem checklist 4 bước ở đầu `src/lib/landing/types.ts`; chi tiết đầy đủ về Button action xem `docs/landing/button-actions.md` (mục lục toàn bộ Landing Builder: `docs/landing/README.md`).
+
+- **Vị trí file DB phụ thuộc cách chạy** (`resolveDbDir()` đầu `electron/db.ts`): dev và bản Setup dùng `%APPDATA%\lucky-draw-app\`; bản thư mục (giải nén từ zip) dùng `data\` cạnh exe để copy thư mục là mang theo dữ liệu. Mọi logic "bản đóng gói" (vị trí DB, single-instance lock, đóng DB khi thoát) phải chặn bằng `app.isPackaged` để không đổi hành vi bản dev. Chi tiết: `docs/deploy/portable-app.md`.
 
 - **Tài liệu kiến trúc đầy đủ** (schema DB toàn bộ 4 bảng, IPC 3 lớp có sơ đồ, mô hình session/tab, multi-window, thuật toán Draw Engine, roadmap) nằm ở `docs/architecture/` — đọc trước khi làm việc lớn đụng tới nhiều phần của app cùng lúc. Data Editor/Import: `docs/participants/`. Landing Builder/Lucky Wheel/Effect: `docs/landing/`.
 

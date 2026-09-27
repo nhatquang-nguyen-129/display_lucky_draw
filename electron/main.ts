@@ -301,6 +301,19 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+// Chỉ bản đóng gói (lock xin ở db.ts): double-click mở app lần 2 → đưa cửa sổ đang chạy lên trước.
+app.on("second-instance", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
+
+// Đóng DB khi thoát để SQLite gộp hết -wal vào lucky-draw.db — bản thư mục cần file .db đầy đủ để
+// copy đi máy khác. Chỉ bản đóng gói, dev giữ nguyên như cũ.
+app.on("will-quit", () => {
+  if (app.isPackaged && db.open) db.close();
+});
+
 /* ---------------- IPC: Participants (thuộc về 1 session) ---------------- */
 
 type ExtraData = Record<string, string>;

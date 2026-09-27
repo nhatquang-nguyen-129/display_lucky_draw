@@ -6,23 +6,25 @@ Trước khi đưa file cho người vận hành sự kiện, LUÔN test trên 1
 (hoặc ít nhất tạo 1 user Windows mới, hoặc tắt hẳn kết nối tới `node_modules` của repo) để chắc chắn
 package tự chạy được độc lập:
 
-- [ ] Double-click file portable (hoặc chạy Installer rồi mở app từ Start Menu) — app mở lên bình
-      thường, không có cửa sổ DevTools nào tự bật (chỉ bật ở `NODE_ENV=development`, package production
-      không bật).
-- [ ] Tạo 1 session mới, import participants/prizes, thử quay số — xác nhận SQLite hoạt động (xem
-      [`docs/local/database-and-testing.md`](../local/database-and-testing.md) để biết vị trí file
-      `.db` tạo ra sau lần mở đầu tiên).
+- [ ] Giải nén file `…-win.zip` rồi double-click `Lucky Draw Studio.exe` (hoặc chạy Installer rồi mở
+      app từ Start Menu) — app mở lên bình thường, không có cửa sổ DevTools nào tự bật (chỉ bật ở
+      `NODE_ENV=development`, package production không bật).
+- [ ] Bản thư mục: sau lần mở đầu tiên có `data\lucky-draw.db` cạnh exe. (Installer: DB ở
+      `%APPDATA%\lucky-draw-app\`, xem [`docs/local/database-and-testing.md`](../local/database-and-testing.md).)
+- [ ] Tạo 1 session mới, import participants/prizes, thử quay số — xác nhận SQLite hoạt động.
 - [ ] Mở Landing Builder/Present Mode — xác nhận render/hiệu ứng bình thường như lúc dev.
-- [ ] Đóng app, mở lại — xác nhận dữ liệu vừa tạo vẫn còn (SQLite ghi đúng chỗ, không bị mất khi thoát).
+- [ ] Đóng app, mở lại — xác nhận dữ liệu vừa tạo vẫn còn. Sau khi đóng, `data\` chỉ còn
+      `lucky-draw.db` (không còn `-wal`/`-shm`).
+- [ ] Double-click exe lần 2 khi app đang mở — chỉ cửa sổ cũ được đưa lên trước, không mở thêm app.
+- [ ] Bản thư mục: copy nguyên thư mục sang chỗ khác (hoặc USB), mở từ đó — thấy đủ dữ liệu cũ.
 
 ## Distributing to event operators
 
-- **Portable**: copy đúng 1 file `.exe` vào USB/ổ chia sẻ, gửi kèm hướng dẫn "double-click để chạy,
-  không cần cài gì". Hiện tại dữ liệu vẫn nằm ở `%APPDATA%\Lucky Draw Studio\` của máy venue (không
-  theo exe) — xoá exe KHÔNG dọn được dữ liệu đó. Khi mô hình mang theo dữ liệu được implement
-  ([portable-app.md](./portable-app.md), cả Windows lẫn macOS), copy cả app + `lucky-draw.db`, và test thêm: mở từ
-  USB thấy đủ session/participant/prize/landing, quay thử xong tắt app → `lucky-draw.db` trên USB có
-  kết quả.
+- **Bản thư mục** (khuyến nghị): copy NGUYÊN thư mục app (đã giải nén, đã có `data\lucky-draw.db`
+  chuẩn bị sẵn) vào USB, hoặc gửi file zip kèm hướng dẫn "Giải nén (chuột phải → Extract All) rồi
+  double-click `Lucky Draw Studio.exe`, không cần cài gì — luôn copy cả thư mục, không tách file ra".
+  Mở exe ngay trong zip chưa giải nén → app báo lỗi và thoát (chủ đích, tránh mất dữ liệu). Chi tiết
+  quy trình chuẩn bị/vận hành: [portable-app.md](./portable-app.md).
 - **Installer**: gửi file `Setup.exe`, người dùng tự chạy qua 2 bước (chọn thư mục → cài) rồi mở từ
   Start Menu/biểu tượng Desktop (đã bật `createDesktopShortcut`).
 - **Cảnh báo SmartScreen/Antivirus**: app CHƯA được ký số (code signing) — lần đầu mở trên máy lạ,
