@@ -1,4 +1,7 @@
-# Prize Image — ảnh đại diện 1 giải + hiệu ứng Spotlight "Won"
+# Prize (`prizeImage`) — nhóm Draw
+
+Ảnh đại diện ĐÚNG 1 giải, click để chọn giải đó cho Draw, kèm hệ hiệu ứng 4 giai đoạn (Hover/Select/
+Won/Out of Stock) và Spotlight. Mặc định 300×300.
 
 > Đọc trước khi sửa `src/components/landing/views/PrizeImageView.tsx`,
 > `src/components/landing/views/prizeEffectTransform.ts`,
@@ -6,7 +9,22 @@
 > `src/components/landing/panels/LiveImagePanel.tsx`/`PrizeEffectPicker.tsx`, hoặc phần
 > `PrizeInteractions`/`LiveImageProps` trong `src/lib/landing/types.ts`.
 
-## 1. Prize Image là gì, khác Prize Gallery/Lucky Wheel ở đâu
+## Properties Panel (`LiveImagePanel.tsx`)
+
+**Basic options**: **Prize** (`prizeId`, chọn 1 giải của session, "— none selected —" khi chưa chọn),
+**Fit** (Cover/Contain/Stretch), **Border radius** (12).
+
+**Self Interactions**: 4 mục `PrizeEffectPicker` giống hệt nhau — **Hover**, **Select**, **Won**, **Out of
+Stock** (mục 3). Mỗi mục theo thứ tự: **Appearance** (None/Disappear) → **Focus** → **Highlight** →
+**Motion**; mỗi nhóm 1 dropdown effect + field phụ theo effect: **Color**, **Size/Amount** (nhãn đổi theo
+effect, vd "Dim amount (%)", "Pulse amount (%)"), **Anchor & direction** / **Direction** (Scale Up/Lift —
+nút thả/sửa điểm neo trực tiếp trên canvas, xem `ScaleAnchorTrigger.tsx`/`LiftDirectionTrigger.tsx`/
+`ScaleAnchorOverlay.tsx`), **Delay (ms)** (chỉ Spotlight).
+
+Mặc định: Select = Focus Scale Up 10% từ giữa (gần nhất hành vi zoom-khi-chọn cũ); Out of Stock =
+Highlight Dim 58%; Hover/Won = None.
+
+## 1. Prize Image là gì, khác Lucky Wheel ở đâu
 
 Prize Image (`component.type === "prizeImage"`, `LiveImageProps` trong `types.ts`) là 1 ảnh đại diện
 **ĐÚNG 1 giải CỐ ĐỊNH** do người dựng trang tự chọn (`props.prizeId`) — **không đổi theo kết quả
@@ -130,7 +148,7 @@ thật) chiếu thẳng từ trên xuống 1 vật thể:
 Tất cả nằm trong `PrizeImageView.tsx`, đọc `component.width/height/x/y` (khung Prize Image thật, kể
 cả phần đã zoom bởi `onSelect`'s `scaleUp` đang active — bù bằng `activeFocusScaleFraction`, xem
 doc-comment đầu file) — không có Canvas/WebGL nào, thuần CSS (đúng Tier 1 trong
-[effects.md](./effects.md), vì đây là 1 lớp phủ tĩnh không cần particle/vật lý khung hình).
+[builder.md mục 11](../builder.md#11-kỹ-thuật-đồ-hoạ--chọn-tier-nào-cho-hiệu-ứng), vì đây là 1 lớp phủ tĩnh không cần particle/vật lý khung hình).
 
 **(1) Chùm sáng hình nón, đáy elip** — `computeSpotlightClipPath()` trong `prizeEffectTransform.ts`.
 `clip-path: polygon(...)` chỉ vẽ được cạnh THẲNG nên đáy ban đầu là 1 đường ngang cắt cụt (nhìn giả,
@@ -240,6 +258,6 @@ qua `key` remount riêng; persistent: mỗi lần CHUYỂN sang active), tắt N
 | `src/components/landing/panels/PrizeEffectPicker.tsx` | UI chọn Focus/Highlight/Motion cho 1 giai đoạn — dropdown Highlight có Spotlight (+ Delay) và Dim (+ Amount %) |
 | `src/components/landing/componentRegistry.ts` | Default props khi tạo Prize Image mới (`prizeImage` entry, `onOutOfStock` mặc định Dim 58%) |
 
-Xem thêm: [effects.md](./effects.md) (trần kỹ thuật hiệu ứng, tier nào dùng khi nào),
-[button-actions.md](./button-actions.md) (nút Draw đọc `selectedPrizeId` do Prize Image set),
-[README.md](./README.md) (mục lục toàn bộ Landing Builder).
+Xem thêm: [builder.md mục 11](../builder.md#11-kỹ-thuật-đồ-hoạ--chọn-tier-nào-cho-hiệu-ứng) (tier kỹ thuật
+hiệu ứng), [button.md](./button.md) (nút Draw đọc `selectedPrizeId` do Prize set; Multiple/Quick Draw bắt
+buộc đã chọn giải), [presentation.md](../presentation.md) (luồng quay, `spinning` khoá đổi giải).

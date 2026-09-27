@@ -2,8 +2,10 @@
 
 File `electron/drawEngine.ts` — phần **nhạy cảm nhất về tính công bằng**, không tự ý đổi thuật toán nếu không được yêu cầu rõ (xem `CLAUDE.md` mục "Việc cần hỏi lại trước khi làm").
 
+**Nguyên tắc kiến trúc: Draw Engine tách biệt hoàn toàn khỏi phần hiển thị.** "Chọn ai trúng" (random có trọng số, loại trừ theo luật) và "hiển thị lên màn hình cho khán giả xem" là 2 việc độc lập: Draw Engine không biết gì về UI; UI (Landing Page, Dashboard) chỉ đọc kết quả Draw Engine trả về, không bao giờ tự tính toán ai trúng.
+
 Tách làm 4 hàm, tách để phục vụ luồng Button Draw/Confirm/Redo trên Landing Page (xem
-[`docs/landing/button-actions.md`](../landing/button-actions.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
+[`docs/landing/components/button.md`](../landing/components/button.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
 
 ```ts
 pickWinner(opts): DrawCandidate           // CHỌN, KHÔNG ghi DB
@@ -49,3 +51,35 @@ batch CŨ còn ghi thẳng cột SQL `name`/`phone`/... (trước khi đổi h�
 bao giờ tới lượt kiểm tra cột `extra_data` thật (vd `full_name`) đang chứa tên thật. Sửa bằng cách
 thêm `AND status != 'removed'` vào cả 2 câu `SELECT` trên, khớp đúng ý định gốc của comment "tính trên
 TOÀN BỘ participants của session... để khớp đúng những gì Data Editor đang hiện".
+
+## Dashboard — nơi đọc lịch sử quay
+
+`src/pages/Dashboard.tsx` — không có tiêu đề lớn/mô tả riêng (trùng nhãn sidebar là dư thừa). CHỈ 1
+thanh chỉ số duy nhất ("Overall") theo session đang active, dựng bằng `StatSection`/`Stat`
+(`src/components/StatSection.tsx`): 1 tiêu đề nhỏ + 1 lưới **cố định 6 cột** (2 cột màn hẹp, 3 cột màn
+vừa, 6 cột màn rộng — dàn thành đúng 1 hàng), các ô ngăn nhau bằng khe `gap-px` lộ nền container thành
+đường kẻ mảnh (không dùng viền/`divide-*` — tránh kẻ lệch khi số ô không chia hết cho số cột), hover
+đổi màu nhẹ.
+
+| Section | Ô | Nguồn |
+|---|---|---|
+| Overall | Participants (original) · Participants (current) · Total prizes · Awarded prizes · Total draws · Confirmed draws | `participants:stats`/`participants.list`/`prizes.list`/`sessions.drawHistory` |
+
+Mỗi section PHẢI giữ đúng bội số cột ở MỌI breakpoint (2/3/6) — nếu lệch, ô trống cuối hàng sẽ lộ mảng
+nền kẻ (không có filler tự động). Trước đây có 3 section riêng (Participants/Prizes/Draw, 4 ô/section)
+— đã gộp thành 1 thanh "Overall" duy nhất theo yêu cầu rút gọn.
+
+Bên dưới thanh "Overall" là **1 bảng duy nhất** — **Draw ▸ History** — đọc `sessions.drawHistory` (IPC
+riêng, KHÁC `sessions.results` — xem mục [`confirmed`](#confirmed--lịch-sử-cho-dashboard-không-ảnh-hưởng-thuật-toán-chọn)
+ở trên): log đầy đủ từng lượt quay thực tế (mới nhất trước, `ORDER BY drawn_at DESC` từ `main.ts`) —
+Time/Prize/Participant/Status, kể cả lượt bị Redo (`confirmed = 0`, chip xám "Not confirmed") mà
+`sessions.results` (nguồn Present Mode) không bao giờ trả về. Đây là nguồn dữ liệu chi tiết DUY NHẤT
+của phần Draw — không có bảng tổng hợp phụ nào khác; "Total draws"/"Confirmed draws" ở thanh "Overall"
+đều suy ra từ chính bảng này.
+
+Soft-delete participants (`status: "active" | "removed"`, xem
+[database-schema.md](./database-schema.md) và [participants/schema.md](../participants/schema.md))
+là nền tảng cho bộ số liệu original/current này — xoá 1 dòng trong Data Editor chỉ đánh dấu
+`removed`, không `DELETE` thật, nên Dashboard vẫn đếm lại được số liệu gốc. **Hệ quả**: dữ liệu xoá
+TRƯỚC khi cơ chế soft-delete tồn tại không tính vào "original" — con số chỉ đúng từ lúc thêm cơ chế
+này trở đi.
