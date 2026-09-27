@@ -6,7 +6,7 @@
 //              (giữ đúng symlink/metadata của .app bundle — zip thường làm hỏng bundle).
 // Không thêm dependency. Bỏ qua thư mục data\ (dữ liệu lúc chạy thử bản build không được lọt vào bản
 // phân phối). Xem docs/deploy/portable.md.
-import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -74,4 +74,14 @@ if (process.platform === "win32") {
   );
 } else {
   console.log("make-portable-zip: bỏ qua (chỉ hỗ trợ Windows/macOS)");
+}
+
+// README.txt hướng dẫn nhanh cho người nhận file — nguồn ở assets/distribution/README.txt (release/ bị xoá
+// và sinh lại mỗi lần build nên không sửa tay ở đó). Điền version, CRLF + BOM để Notepad mọi bản
+// Windows hiện đúng tiếng Việt.
+const readmeSrc = join(root, "assets", "distribution", "README.txt");
+if (existsSync(readmeSrc)) {
+  const text = readFileSync(readmeSrc, "utf8").replace(/\{\{version\}\}/g, pkg.version).replace(/\r?\n/g, "\r\n");
+  writeFileSync(join(releaseDir, "README.txt"), "﻿" + text, "utf8");
+  console.log(`make-portable-zip: ${join(releaseDir, "README.txt")}`);
 }
