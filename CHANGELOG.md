@@ -4,6 +4,18 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [Unreleased]
 
+### Luật trùng giải — chỉ còn ở cấp giải, sửa "Allow duplicate" không có tác dụng
+
+Chi tiết: `docs/architecture/draw-engine.md` mục "Luật trùng lặp — CHỈ ở cấp giải".
+
+- Sửa: **Allow duplicate with itself** + **Max wins per person** giờ thật sự cho 1 người trúng lại chính
+  giải đó tới Max lần; **Allow duplicate with other prizes** cho người đã trúng giải khác trúng tiếp giải
+  này. Trước đây cờ session `exclude_previous_winners` (luôn bật, không có UI) loại mọi người đã trúng,
+  và kiểm tra "other prizes" đếm nhầm cả chính giải đó.
+- Không tick cả 2 (mặc định giải mới) = mỗi người 1 giải, 1 lần. Mặc định "other prizes" đổi thành tắt.
+- Session cũ: migration 1 lần (`user_version` 0 → 1) tắt 2 tuỳ chọn trên các giải của session đang bật
+  cờ cũ → kết quả quay y như trước. Sửa lại hint trong Prize form cho đúng nghĩa.
+
 ### Lưu trữ theo session — mỗi session là 1 file
 
 Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".

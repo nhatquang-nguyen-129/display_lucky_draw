@@ -523,7 +523,7 @@ ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
     data.quantity,
     data.quantity, // remaining = quantity lúc mới tạo
     data.weight,
-    data.allowDuplicateWithOtherPrizes ?? true ? 1 : 0,
+    data.allowDuplicateWithOtherPrizes ? 1 : 0,
     data.allowDuplicateWithSamePrize ? 1 : 0,
     data.maxWinCount ?? 1,
     data.displayImage ?? null
@@ -556,7 +556,7 @@ ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
     data.quantity,
     newRemaining,
     data.weight,
-    data.allowDuplicateWithOtherPrizes ?? true ? 1 : 0,
+    data.allowDuplicateWithOtherPrizes ? 1 : 0,
     data.allowDuplicateWithSamePrize ? 1 : 0,
     data.maxWinCount ?? 1,
     data.displayImage ?? null,

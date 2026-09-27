@@ -190,6 +190,28 @@ CREATE TABLE IF NOT EXISTS draw_results (
   // draw_results.confirmed — lượt pick chưa Confirm ghi confirmed = 0 (xem drawEngine.ts). DEFAULT 1
   // cho dữ liệu cũ vì mọi dòng có trước migration này đều đã đi qua commitDraw.
   addColumnIfMissing(db, "draw_results", "confirmed", "confirmed INTEGER NOT NULL DEFAULT 1");
+  migratePrizeLevelRules(db);
+}
+
+/**
+ * Chuyển luật trùng lặp từ cấp session sang HẲN cấp giải (xem pickWinner trong drawEngine.ts). Cờ cũ
+ * `sessions.exclude_previous_winners = 1` (bật sẵn cho mọi session, không có UI để tắt) loại mọi người đã
+ * trúng, che mất 2 tuỳ chọn "Allow duplicate" của từng giải. Để session cũ GIỮ NGUYÊN hành vi, tắt cả 2
+ * tuỳ chọn trên mọi giải của session đó — tương đương chính xác "mỗi người trúng tối đa 1 giải, 1 lần" —
+ * rồi hạ cờ về 0. Chạy đúng 1 lần mỗi file (đánh dấu bằng PRAGMA user_version), nên sau đó người tổ chức
+ * tự bật tuỳ chọn nào thì tuỳ chọn đó có hiệu lực, không bị ghi đè lại. File DB kiểu cũ nhiều session
+ * được migrate TRƯỚC khi tách (splitMultiSessionFile mở file nguồn qua openFile → ensureSchema).
+ */
+function migratePrizeLevelRules(db: DB) {
+  if ((db.pragma("user_version", { simple: true }) as number) >= 1) return;
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE prizes SET allow_duplicate_with_other_prizes = 0, allow_duplicate_with_same_prize = 0, max_win_count = 1
+       WHERE session_id IN (SELECT id FROM sessions WHERE exclude_previous_winners = 1)`
+    ).run();
+    db.prepare(`UPDATE sessions SET exclude_previous_winners = 0`).run();
+    db.pragma("user_version = 1");
+  })();
 }
 
 /**
@@ -482,7 +504,7 @@ export function createSession(data: { name: string; allowDuplicatePrize?: boolea
   const db = openFile(file);
   db.prepare(
     `INSERT INTO sessions (id, name, allow_duplicate_prize, exclude_previous_winners, status) VALUES (?, ?, ?, ?, 'draft')`
-  ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, data.excludePreviousWinners === false ? 0 : 1);
+  ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, 0); // exclude_previous_winners: không còn dùng, xem migratePrizeLevelRules
   entries.set(id, { file, db });
   return id;
 }

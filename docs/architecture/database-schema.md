@@ -74,7 +74,7 @@ erDiagram
     text id PK
     text name
     integer allow_duplicate_prize
-    integer exclude_previous_winners
+    integer exclude_previous_winners "KHÔNG CÒN DÙNG — luôn 0, xem Migration"
     text landing_config "JSON — LandingConfig"
     text participant_column_types "JSON — { col: ColumnType }"
     text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
@@ -127,6 +127,16 @@ An toàn khi chạy lại nhiều lần (luôn kiểm tra cột đã tồn tại
 `DROP`/mất dữ liệu cũ. Khi cần đổi CẤU TRÚC bảng (không chỉ thêm cột — vd bỏ ràng buộc `UNIQUE` toàn
 cục), pattern là: tạo bảng `_new`, `INSERT … SELECT` copy dữ liệu cũ sang, `DROP` bảng cũ, `RENAME` bảng
 mới về tên cũ (xem `migrateToPerSessionData`).
+
+Migration đổi **dữ liệu** (không phải thêm cột) không kiểm tra được bằng "cột đã có chưa" → đánh dấu bằng
+`PRAGMA user_version` của từng file, chạy đúng 1 lần. Hiện có:
+
+| `user_version` | Hàm | Việc |
+|---|---|---|
+| 0 → 1 | `migratePrizeLevelRules` | Bỏ luật cấp session `exclude_previous_winners`: session nào đang bật thì tắt cả 2 tuỳ chọn "Allow duplicate" + `max_win_count = 1` trên mọi giải của nó (= đúng hành vi cũ: mỗi người 1 giải 1 lần), rồi đặt cờ về 0. Xem `docs/architecture/draw-engine.md`. |
+
+Thêm migration dữ liệu mới: viết hàm `if (user_version >= N) return` + làm việc + `user_version = N`
+trong 1 transaction, gọi cuối `ensureSchema`.
 
 **Trước khi sửa `db.ts`**: luôn hỏi lại người dùng nếu thay đổi liên quan tới schema hoặc cách lưu file —
 không được viết migration phá dữ liệu người dùng đã có (`CLAUDE.md` mục "Việc cần hỏi lại trước khi làm").
