@@ -112,7 +112,7 @@ export default function Participants() {
         )
       )
         return;
-      await window.api.participants.bulkDelete(items.map((p) => p.id));
+      await window.api.participants.bulkDelete(activeSessionId!, items.map((p) => p.id));
     }
 
     await window.api.participants.bulkImport(activeSessionId, normalized);
@@ -128,7 +128,7 @@ export default function Participants() {
       )
     )
       return;
-    await window.api.participants.bulkDelete(items.map((p) => p.id));
+    await window.api.participants.bulkDelete(activeSessionId!, items.map((p) => p.id));
     refresh();
   }
 

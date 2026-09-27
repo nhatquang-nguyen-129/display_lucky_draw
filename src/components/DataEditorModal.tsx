@@ -764,7 +764,7 @@ export default function DataEditorModal({ open, sessionId, session, onSaved, onS
     if (!silent) setError(null);
     try {
       const removedIds = originalRows.filter((o) => !history.state.rows.some((r) => r.id === o.id)).map((o) => o.id);
-      if (removedIds.length) await window.api.participants.bulkDelete(removedIds);
+      if (removedIds.length) await window.api.participants.bulkDelete(sessionId, removedIds);
 
       const finalOrderIds: string[] = [];
       for (const row of history.state.rows) {
@@ -781,14 +781,14 @@ export default function DataEditorModal({ open, sessionId, session, onSaved, onS
         } else {
           const orig = originalRows.find((o) => o.id === row.id);
           if (!(orig && sameRow(orig, row))) {
-            await window.api.participants.update({ id: row.id, ...payload });
+            await window.api.participants.update({ sessionId, id: row.id, ...payload });
           }
         }
         finalOrderIds.push(realId);
       }
       // Ghi lại thứ tự dòng hiện tại (kể cả khi không kéo-thả gì — giữ ổn định) để không bị mất
       // sau khi reload từ DB, và để id thật của dòng vừa tạo cũng nằm đúng vị trí.
-      await window.api.participants.reorder(finalOrderIds);
+      await window.api.participants.reorder(sessionId, finalOrderIds);
 
       await load();
       setLastSavedAt(new Date());

@@ -8,7 +8,7 @@ npm run electron:dev
 
 Lệnh này: build main process (`build:electron` → `dist-electron/`) → khởi động Vite dev server
 (`http://localhost:5173`) → mở Electron với `NODE_ENV=development` (tự bật DevTools, tiêu đề cửa sổ có
-tiền tố `[dev]`). Dữ liệu dev lưu ở `userData` — vị trí: [testing.md](./testing.md#vị-trí-file-sqlite).
+tiền tố `[dev]`). Dữ liệu dev lưu ở `<userData>/data/` (mỗi session 1 file) — vị trí: [testing.md](./testing.md#vị-trí-dữ-liệu).
 
 ## Quy tắc quan trọng
 

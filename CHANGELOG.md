@@ -4,6 +4,26 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [Unreleased]
 
+### Lưu trữ theo session — mỗi session là 1 file
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".
+
+- Mỗi session (tab) là 1 file SQLite `<tên-session>__<8 ký tự mã>.db` trong `data/` (bản portable:
+  cạnh app; dev/cài đặt: `<userData>/data/`). Copy 1 file sang `data/` máy khác là có y nguyên session
+  đó (participants, prizes, landing, lịch sử quay). Định danh theo mã bên trong file — trùng tên
+  session không sao.
+- File dùng `journal_mode = DELETE` (bỏ WAL): không có `-wal`, copy file lúc nào cũng đủ dữ liệu.
+- Tự tách `lucky-draw.db` kiểu cũ (và file nhiều session bất kỳ trong `data/`) thành từng file lúc khởi
+  động; file gốc giữ lại thành `*.migrated-<thời điểm>.bak`.
+- Có ≥ 2 file của cùng 1 session: hộp thoại **"Different copies of the same session"** hiện ngay khi mở
+  app — gợi ý bản sửa gần nhất, người dùng tự chọn; bản không chọn vào `data/.trash/`.
+- Copy file vào `data/` lúc app đang mở: quay lại cửa sổ app là tab mới tự hiện. Nút **Data folder**
+  ở góc phải thanh tab mở thư mục `data/`.
+- Xoá tab = chuyển file vào `data/.trash/` thay vì xoá hẳn dữ liệu.
+- IPC: bỏ kết nối DB chung, dùng `getDb(sessionId)`; `participants:update/delete/bulkDelete/reorder`,
+  `prizes:update/delete` nhận thêm `sessionId`; thêm `sessions:conflicts`, `sessions:resolveConflict`,
+  `sessions:openDataFolder`.
+
 ### macOS — bản thư mục (portable) giống Windows (chờ build/test trên Mac thật)
 
 Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS), `docs/deploy/installer.md`.

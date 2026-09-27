@@ -14,6 +14,7 @@ const api = {
       extra?: Record<string, string>;
     }) => ipcRenderer.invoke("participants:create", data),
     update: (data: {
+      sessionId: string;
       id: string;
       name: string;
       code?: string | null;
@@ -22,9 +23,10 @@ const api = {
       extra?: Record<string, string>;
     }) => ipcRenderer.invoke("participants:update", data),
     bulkImport: (sessionId: string, rows: any[]) => ipcRenderer.invoke("participants:bulkImport", sessionId, rows),
-    delete: (id: string) => ipcRenderer.invoke("participants:delete", id),
-    bulkDelete: (ids: string[]) => ipcRenderer.invoke("participants:bulkDelete", ids),
-    reorder: (orderedIds: string[]) => ipcRenderer.invoke("participants:reorder", orderedIds),
+    delete: (sessionId: string, id: string) => ipcRenderer.invoke("participants:delete", sessionId, id),
+    bulkDelete: (sessionId: string, ids: string[]) => ipcRenderer.invoke("participants:bulkDelete", sessionId, ids),
+    reorder: (sessionId: string, orderedIds: string[]) =>
+      ipcRenderer.invoke("participants:reorder", sessionId, orderedIds),
   },
   prizes: {
     list: (sessionId: string) => ipcRenderer.invoke("prizes:list", sessionId),
@@ -55,7 +57,7 @@ const api = {
       maxWinCount?: number;
       displayImage?: string | null;
     }) => ipcRenderer.invoke("prizes:update", data),
-    delete: (id: string) => ipcRenderer.invoke("prizes:delete", id),
+    delete: (sessionId: string, id: string) => ipcRenderer.invoke("prizes:delete", sessionId, id),
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list"),
@@ -74,6 +76,10 @@ const api = {
     delete: (id: string) => ipcRenderer.invoke("sessions:delete", id),
     results: (sessionId: string) => ipcRenderer.invoke("sessions:results", sessionId),
     drawHistory: (sessionId: string) => ipcRenderer.invoke("sessions:drawHistory", sessionId),
+    conflicts: () => ipcRenderer.invoke("sessions:conflicts"),
+    resolveConflict: (data: { sessionId: string; keepFile: string }) =>
+      ipcRenderer.invoke("sessions:resolveConflict", data),
+    openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

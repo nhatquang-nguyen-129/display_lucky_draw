@@ -25,8 +25,10 @@ cố định dùng lâu dài. Cách build: [build.md](./build.md).
 
 1. **Dữ liệu tách khỏi app.** App nằm ở thư mục cài đặt, dữ liệu nằm trong `userData` của người dùng.
    Cài lại, cập nhật lên bản mới, hay gỡ cài đặt đều **không đụng tới dữ liệu**.
-2. **Dữ liệu ở đúng chỗ bản dev đang dùng** (`userData` = `…/lucky-draw-app/`), không thêm vị trí thứ
-   ba. Hệ quả cần biết: trên máy dev, bản cài đặt và bản dev **dùng CHUNG 1 file DB**.
+2. **Dữ liệu ở đúng chỗ bản dev đang dùng** (`<userData>/data/`, `userData` = `…/lucky-draw-app/`),
+   không thêm vị trí thứ ba. Hệ quả cần biết: trên máy dev, bản cài đặt và bản dev **dùng CHUNG các file
+   session**. Mỗi session là 1 file, cách lưu y hệt bản portable — xem
+   [`docs/architecture/database-schema.md`](../architecture/database-schema.md#lưu-trữ-theo-session--mỗi-session-là-1-file).
 3. **Không cần quyền Admin theo mặc định** (Windows cài cho riêng người dùng hiện tại).
 4. Hành vi lúc chạy giống hệt bản portable: chặn mở 2 app, đóng DB khi thoát, đóng cửa sổ cuối là
    thoát (cả trên Mac). Xem [portable.md](./portable.md#hành-vi-chung-của-bản-đóng-gói-appispackaged).
@@ -35,22 +37,22 @@ cố định dùng lâu dài. Cách build: [build.md](./build.md).
 
 ### Nhận biết "đang chạy bản cài đặt" — `electron/db.ts`
 
-`folderBuildBaseDir()` trả `null` (tức dùng `userData`) khi:
+`folderBuildBaseDir()` trả `null` (tức dùng `<userData>/data/`) khi:
 
 | Hệ điều hành | Nhận biết |
 |---|---|
 | Windows | Thư mục chứa exe có file `Uninstall *.exe`. NSIS luôn ghi uninstaller `Uninstall ${productName}.exe` vào thư mục cài (`templates/nsis/common.nsh`); bản portable không bao giờ có file này |
 | macOS | Thư mục chứa `.app` là `/Applications` hoặc `~/Applications` |
 
-Bảng đầy đủ mọi trường hợp: [portable.md](./portable.md#chọn-thư-mục-db--resolvedbdir-electrondbts).
+Bảng đầy đủ mọi trường hợp: [portable.md](./portable.md#chọn-thư-mục-data--electrondbts).
 
 ### Vì sao thư mục dữ liệu tên `lucky-draw-app`, không phải `Lucky Draw Studio`
 
 `userData` của Electron lấy theo tên app lúc được đọc lần đầu. `db.ts` đọc nó ngay khi main process
 nạp module, TRƯỚC `app.setName("Lucky Draw Studio")` trong `main.ts`, và `package.json` không có
 `productName` ở cấp gốc, nên tên là `name` = `lucky-draw-app`. Đổi tên thư mục này sẽ làm người dùng
-cũ "mất" dữ liệu (app mở file DB rỗng ở thư mục mới), nên nếu muốn đổi phải kèm migration copy DB cũ
-sang.
+cũ "mất" dữ liệu (app đọc thư mục `data/` rỗng ở chỗ mới), nên nếu muốn đổi phải kèm migration copy các
+file session cũ sang.
 
 ### Cấu hình NSIS (`package.json` → `build.nsis`)
 
@@ -89,8 +91,8 @@ sang.
 
 ### Vị trí dữ liệu
 
-`%APPDATA%\lucky-draw-app\lucky-draw.db` (gõ `%APPDATA%\lucky-draw-app` vào thanh địa chỉ Explorer),
-dù cài ở chế độ nào. Mỗi user Windows có dữ liệu riêng.
+`%APPDATA%\lucky-draw-app\data\` — mỗi session 1 file `<tên>__<mã>.db` — dù cài ở chế độ nào. Mở nhanh
+bằng nút **Data folder** ở góc phải thanh tab. Mỗi user Windows có dữ liệu riêng.
 
 ### Cập nhật, gỡ cài đặt
 
@@ -101,8 +103,8 @@ dù cài ở chế độ nào. Mỗi user Windows có dữ liệu riêng.
 
 ### Chuyển dữ liệu giữa bản cài đặt và bản portable
 
-Tắt app, rồi copy `lucky-draw.db` (kèm `lucky-draw.db-wal` nếu có) giữa `%APPDATA%\lucky-draw-app\` và
-`data\` của bản portable.
+Copy file session cần chuyển giữa `%APPDATA%\lucky-draw-app\data\` và `data\` của bản portable (nút
+**Data folder** mở đúng thư mục của bản đang chạy). Tab tự hiện khi mở app hoặc quay lại cửa sổ app.
 
 ## 4. macOS
 
@@ -119,8 +121,8 @@ Applications, cho ra kết quả y hệt cách dưới, mà thêm 1 bước buil
 
 ### Vị trí dữ liệu
 
-`~/Library/Application Support/lucky-draw-app/lucky-draw.db` (Finder → Go → Go to Folder, dán đường
-dẫn). App trong Applications KHÔNG tạo `data/` cạnh nó.
+`~/Library/Application Support/lucky-draw-app/data/` — mỗi session 1 file (nút **Data folder**, hoặc
+Finder → Go → Go to Folder). App trong Applications KHÔNG tạo `data/` cạnh nó.
 
 ### Cập nhật, gỡ cài đặt
 
@@ -130,15 +132,14 @@ dẫn). App trong Applications KHÔNG tạo `data/` cạnh nó.
 
 ### Chuyển dữ liệu giữa bản cài đặt và bản portable
 
-Thoát app, copy `lucky-draw.db` (kèm `-wal` nếu có) giữa
-`~/Library/Application Support/lucky-draw-app/` và `data/` của bản portable. File DB dùng chung được
-với bản Windows.
+Copy file session giữa `~/Library/Application Support/lucky-draw-app/data/` và `data/` của bản
+portable. File session dùng chung được với bản Windows.
 
 ## 5. Checklist test
 
 - [ ] **Windows**: cài chế độ "Only for me" không cần Admin; app mở từ Start Menu và shortcut Desktop;
-      dữ liệu ghi vào `%APPDATA%\lucky-draw-app\`; KHÔNG có thư mục `data\` trong thư mục cài.
+      dữ liệu ghi vào `%APPDATA%\lucky-draw-app\data\`; KHÔNG có thư mục `data\` trong thư mục cài.
 - [ ] **Windows**: cài đè bản mới → dữ liệu còn; gỡ cài đặt → app mất khỏi Start Menu, dữ liệu vẫn còn.
-- [ ] **macOS**: app trong Applications dùng `~/Library/Application Support/lucky-draw-app/`, không
+- [ ] **macOS**: app trong Applications dùng `~/Library/Application Support/lucky-draw-app/data/`, không
       tạo `data/` trong Applications.
 - [ ] Cả 2: mở app lần 2 chỉ đưa cửa sổ cũ lên trước; đóng cửa sổ là app thoát.

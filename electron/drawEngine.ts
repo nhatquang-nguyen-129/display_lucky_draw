@@ -1,5 +1,5 @@
 import { randomUUID, randomInt } from "crypto";
-import { db } from "./db";
+import { getDb } from "./db";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 
 export interface DrawOptions {
@@ -51,6 +51,7 @@ export interface PickWinnerOptions extends DrawOptions {
  * loại participant vừa bị từ chối và BẮT BUỘC quay lại đúng giải cũ, không random giải lại.
  */
 export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeId }: PickWinnerOptions): DrawCandidate {
+  const db = getDb(sessionId);
   const session = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId) as any;
   if (!session) throw new Error("Draw session not found");
 
@@ -191,6 +192,7 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
  * prizes.remaining (chỉ trừ lúc commitDraw) và KHÔNG tính vào bất kỳ quy tắc loại trừ nào trong
  * pickWinner() (mọi query ở đó đều lọc confirmed = 1). */
 export function recordPendingDraw(candidate: DrawCandidate, sessionId: string): void {
+  const db = getDb(sessionId);
   db.prepare(
     `INSERT INTO draw_results (id, session_id, participant_id, prize_id, rng_seed, confirmed) VALUES (?, ?, ?, ?, ?, 0)`
   ).run(randomUUID(), sessionId, candidate.participantId, candidate.prizeId, candidate.seed);
@@ -202,6 +204,7 @@ export function recordPendingDraw(candidate: DrawCandidate, sessionId: string): 
  * (đường đi cũ drawOne() — quay xong ăn ngay, không qua bước xem trước/recordPendingDraw) thì tự
  * insert thẳng 1 dòng confirmed = 1 — không bao giờ để mất 1 lượt đã Confirm thật. */
 export function commitDraw(candidate: DrawCandidate, sessionId: string): void {
+  const db = getDb(sessionId);
   const tx = db.transaction(() => {
     const updated = db
       .prepare(`UPDATE draw_results SET confirmed = 1 WHERE session_id = ? AND rng_seed = ? AND confirmed = 0`)
@@ -229,6 +232,7 @@ export function drawOne(opts: DrawOptions): DrawResult {
  * quay lần nào. Dùng cho Button action "reset" trên Landing Page — không khôi phục được, phía
  * renderer phải tự hỏi xác nhận trước khi gọi (xem ButtonView.tsx). */
 export function resetSession(sessionId: string): void {
+  const db = getDb(sessionId);
   const tx = db.transaction(() => {
     db.prepare(`DELETE FROM draw_results WHERE session_id = ?`).run(sessionId);
     db.prepare(`UPDATE prizes SET remaining = quantity WHERE session_id = ?`).run(sessionId);

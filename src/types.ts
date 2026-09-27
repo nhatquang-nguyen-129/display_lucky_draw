@@ -45,6 +45,24 @@ export interface Session {
   created_at: string;
 }
 
+// 1 session có ≥ 2 file cùng id trong data/ (vd copy qua lại giữa 2 máy, mỗi bên sửa riêng) — khớp
+// SessionConflict/SessionCopyInfo trong electron/db.ts.
+export interface SessionCopyInfo {
+  file: string; // tên file trong data/
+  modifiedAt: string; // ISO
+  participants: number;
+  prizes: number;
+  confirmedDraws: number;
+  inUse: boolean; // bản app đang dùng
+  recommended: boolean; // bản sửa gần nhất
+}
+
+export interface SessionConflict {
+  sessionId: string;
+  name: string;
+  copies: SessionCopyInfo[];
+}
+
 export interface DrawResultRow {
   id: string;
   session_id: string;
@@ -89,6 +107,7 @@ declare global {
           data: Partial<Participant> & { sessionId: string; name: string; extra?: Record<string, string> }
         ) => Promise<string>;
         update: (data: {
+          sessionId: string;
           id: string;
           name: string;
           code?: string | null;
@@ -100,9 +119,9 @@ declare global {
           sessionId: string,
           rows: (Partial<Participant> & { extra?: Record<string, string> })[]
         ) => Promise<number>;
-        delete: (id: string) => Promise<void>;
-        bulkDelete: (ids: string[]) => Promise<number>;
-        reorder: (orderedIds: string[]) => Promise<void>;
+        delete: (sessionId: string, id: string) => Promise<void>;
+        bulkDelete: (sessionId: string, ids: string[]) => Promise<number>;
+        reorder: (sessionId: string, orderedIds: string[]) => Promise<void>;
       };
       prizes: {
         list: (sessionId: string) => Promise<Prize[]>;
@@ -133,7 +152,7 @@ declare global {
           maxWinCount?: number;
           displayImage?: string | null;
         }) => Promise<void>;
-        delete: (id: string) => Promise<void>;
+        delete: (sessionId: string, id: string) => Promise<void>;
       };
       sessions: {
         list: () => Promise<Session[]>;
@@ -155,6 +174,11 @@ declare global {
         delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
         drawHistory: (sessionId: string) => Promise<DrawHistoryRow[]>;
+        // Mỗi session = 1 file trong data/ — session có ≥ 2 bản (cùng id, khác file) chờ người dùng chọn
+        // giữ bản nào (xem electron/db.ts, SessionConflictDialog.tsx).
+        conflicts: () => Promise<SessionConflict[]>;
+        resolveConflict: (data: { sessionId: string; keepFile: string }) => Promise<void>;
+        openDataFolder: () => Promise<string>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;
