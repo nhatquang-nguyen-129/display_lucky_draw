@@ -19,8 +19,8 @@ package tự chạy được độc lập:
 
 - **Portable**: copy đúng 1 file `.exe` vào USB/ổ chia sẻ, gửi kèm hướng dẫn "double-click để chạy,
   không cần cài gì". Hiện tại dữ liệu vẫn nằm ở `%APPDATA%\Lucky Draw Studio\` của máy venue (không
-  theo exe) — xoá exe KHÔNG dọn được dữ liệu đó. Khi mô hình USB mang theo dữ liệu được implement
-  ([portable-usb.md](./portable-usb.md)), copy cả thư mục exe + `lucky-draw.db`, và test thêm: mở từ
+  theo exe) — xoá exe KHÔNG dọn được dữ liệu đó. Khi mô hình mang theo dữ liệu được implement
+  ([portable-app.md](./portable-app.md), cả Windows lẫn macOS), copy cả app + `lucky-draw.db`, và test thêm: mở từ
   USB thấy đủ session/participant/prize/landing, quay thử xong tắt app → `lucky-draw.db` trên USB có
   kết quả.
 - **Installer**: gửi file `Setup.exe`, người dùng tự chạy qua 2 bước (chọn thư mục → cài) rồi mở từ
