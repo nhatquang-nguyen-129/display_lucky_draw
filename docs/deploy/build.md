@@ -1,16 +1,49 @@
-# Build configuration & chạy đóng gói
+# Build — đóng gói Lucky Draw Studio ra file phân phối
 
-## Build configuration đã có sẵn
+Nối tiếp [`docs/local/`](../local/setup.md) (setup môi trường, chạy được `npm run electron:dev`).
+Kết quả là file đưa cho người vận hành sự kiện dùng, KHÔNG cần cài Node/Git/source code.
 
-Mỗi lần `npm run package` ra 2 bản phân phối cho Windows: **bản thư mục** (file zip, tự nén bằng
-`electron/make-portable-zip.mjs`, xem bước 3 bên dưới) và **Installer** (target `nsis` của
-electron-builder). `package.json`'s `build` field (đọc bởi `electron-builder`):
+## Chọn định dạng phân phối
+
+| | [Portable](./portable.md) (định dạng chính) | [Installer](./installer.md) |
+|---|---|---|
+| Windows | `…-win.zip`: giải nén ra thư mục `Lucky Draw Studio\` | `…-Setup.exe` |
+| macOS | `…-mac.zip`: giải nén ra thư mục `Lucky Draw Studio/` | Kéo `.app` từ bản portable vào Applications |
+| Dữ liệu | `data/` trong thư mục app, đi theo app | Thư mục hồ sơ người dùng, gắn với máy |
+| Phù hợp | Máy mượn tại venue, cầm USB đi | Máy cố định dùng lâu dài |
+
+App thường chạy 1-lần-1-sự-kiện trên máy tại chỗ (không phải máy của mình, không chắc có quyền
+Admin) và cần mang theo dữ liệu chuẩn bị sẵn, nên **portable là lựa chọn mặc định**.
+
+## Yêu cầu trước khi build
+
+- **Build TRÊN ĐÚNG hệ điều hành đích**: ra bản Windows thì build trên Windows, bản Mac thì build trên
+  Mac. `npm run package` luôn build cho hệ điều hành đang chạy. Lý do: `better-sqlite3` là native
+  module, biên dịch ra binary khớp đúng hệ điều hành + kiến trúc CPU của máy build. Cross-build về lý
+  thuyết electron-builder hỗ trợ một phần, nhưng rủi ro build "tưởng xong" mà app không mở được ở máy
+  khác (lỗi chỉ lộ ra lúc mở app thật), không đáng đánh đổi cho app dùng trực tiếp tại sự kiện. Script
+  nén cũng dùng công cụ có sẵn của từng hệ điều hành (`tar.exe` / `codesign` + `ditto`).
+- **Windows**: đã làm xong [`docs/local/setup.md`](../local/setup.md)
+  (Node.js 20 LTS, `npm install`, Native Build Tools) và `npm run electron:dev` chạy được
+  ([`docs/local/run-dev.md`](../local/run-dev.md)).
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`), Node.js 20 LTS, `npm ci`. Các bước
+  đầy đủ: [portable.md → Build trên Mac](./portable.md#build-trên-mac).
+- **Icon**: `assets/icon/app-icon.png` (1254×1254). electron-builder tự convert sang `.ico` (Windows)
+  và `.icns` (macOS). Nếu icon Windows ra xấu, chuẩn bị thêm `assets/icon/app-icon.ico` (đa kích cỡ
+  16/32/48/256px) và trỏ `build.win.icon` sang file đó. Không bắt buộc.
+
+## Cấu hình (`package.json` → `build`)
 
 ```json
+"mac": {
+  "target": [{ "target": "dir", "arch": ["universal"] }],
+  "category": "public.app-category.productivity",
+  "identity": null,
+  "hardenedRuntime": false,
+  "gatekeeperAssess": false
+},
 "win": {
-  "target": [
-    { "target": "nsis", "arch": ["x64"] }
-  ]
+  "target": [{ "target": "nsis", "arch": ["x64"] }]
 },
 "nsis": {
   "oneClick": false,
@@ -20,50 +53,56 @@ electron-builder). `package.json`'s `build` field (đọc bởi `electron-builde
 }
 ```
 
-- KHÔNG dùng target `zip` của electron-builder — zip đó bung thẳng ~18 file lẻ ra chỗ giải nén (không
-  có thư mục mẹ), dễ vương vãi ra Desktop.
-- `oneClick: false` + `allowToChangeInstallationDirectory: true` — Installer hiện đúng 2 màn hình hỏi
-  (chọn thư mục cài + xác nhận), không cài âm thầm 1-click, người dùng biết rõ đang cài gì vào đâu.
-- Không cần sửa gì thêm — mục này chỉ để biết cấu hình đang có, xem tiếp bên dưới để build.
+- **Bản portable không dùng target có sẵn của electron-builder.** electron-builder chỉ xuất thư mục
+  app (`win-unpacked/`; `dir` trên Mac), rồi `electron/make-portable-zip.mjs` tự nén thành zip có thư
+  mục mẹ. Lý do: [portable.md → Các phương án đã loại](./portable.md#các-phương-án-đã-loại).
+- `mac`: universal (Mac chip M + Intel), không ký bằng Developer ID, script tự ký ad-hoc. Lý do:
+  [portable.md → Ký số](./portable.md#ký-số-code-signing).
+- `nsis`: giải thích từng tuỳ chọn ở [installer.md](./installer.md#cấu-hình-nsis-packagejson--buildnsis).
 
-## Build the package
+## Build
 
 ```bash
 npm run package
 ```
 
-Lệnh này chạy tuần tự:
+Chạy tuần tự:
 
-1. `npm run build` — biên dịch renderer (`tsc -b && vite build`, ra `dist/`) và main process
+1. `npm run build`: biên dịch renderer (`tsc -b && vite build`, ra `dist/`) và main process
    (`npm run build:electron`, ra `dist-electron/`). `build:electron` còn chạy `electron/write-pkg.mjs`
-   ghi `dist-electron/package.json` = `{"type":"commonjs"}` — BẮT BUỘC, vì `package.json` gốc có
-   `"type": "module"`; thiếu file này thì `main.js` (output CommonJS của tsc) bị hiểu nhầm là ESM và app
-   đóng gói crash ngay khi mở.
-2. `electron-builder` — đóng gói `dist/` + `dist-electron/` + `node_modules` (dependencies production,
-   gồm cả `better-sqlite3` đã tự rebuild lại đúng bản Electron dùng để đóng gói — electron-builder tự
-   làm bước này, không cần chạy tay `electron-rebuild` lại lần nữa trước khi package) thành file thực
-   thi, ghi ra thư mục `release/` (thư mục app `win-unpacked/` + Installer).
-3. `node electron/make-portable-zip.mjs` — nén `release/win-unpacked/` thành
-   `${productName}-${version}-win.zip` với thư mục mẹ `Lucky Draw Studio\` bên trong, bỏ qua
-   `win-unpacked\data\` (dữ liệu chạy thử). Dùng `tar.exe` có sẵn của Windows 10/11 (không thêm
-   dependency); tạm đổi tên `win-unpacked` → `Lucky Draw Studio` trong lúc nén rồi đổi lại.
+   ghi `dist-electron/package.json` = `{"type":"commonjs"}`. BẮT BUỘC: `package.json` gốc có
+   `"type": "module"`, thiếu file này thì `main.js` (output CommonJS của tsc) bị hiểu nhầm là ESM và
+   app đóng gói crash ngay khi mở.
+2. `electron-builder`: đóng gói `dist/` + `dist-electron/` + dependencies production (gồm
+   `better-sqlite3` được tự rebuild đúng bản Electron, không cần chạy tay `electron-rebuild`) vào
+   `release/`.
+3. `node electron/make-portable-zip.mjs`: tạo zip portable. Chi tiết:
+   [portable.md → Đóng gói](./portable.md#đóng-gói--electronmake-portable-zipmjs).
 
-Lần build đầu có thể mất vài phút (electron-builder tải `electron` prebuilt binary cho Windows nếu
-chưa có sẵn trong cache `~/.cache/electron` hoặc `%LOCALAPPDATA%\electron\Cache`). Các lần sau nhanh
-hơn nhiều nhờ cache.
+Lần build đầu mất vài phút (tải Electron prebuilt vào cache; bản Mac universal tải cho cả 2 kiến
+trúc). Các lần sau nhanh hơn nhiều.
 
-## Locate output files
+## Output trong `release/`
 
-Sau khi chạy xong, `release/` chứa (tên file khớp `productName`/`version` trong `package.json`):
+Tên file khớp `productName`/`version` trong `package.json`. `release/` không commit vào Git (có sẵn
+trong `.gitignore`).
+
+**Windows**
 
 | File | Ý nghĩa |
 |---|---|
-| `Lucky Draw Studio-1.0.0-win.zip` | **Bản thư mục** (~120 MB) — giải nén ra được thư mục `Lucky Draw Studio\`, chạy `Lucky Draw Studio.exe` bên trong, không cần cài, dữ liệu nằm ở `data\` cạnh exe — xem [portable-app.md](./portable-app.md) |
-| `Lucky Draw Studio-1.0.0-Setup.exe` | Trình cài đặt (Installer), dữ liệu ở `%APPDATA%\lucky-draw-app\` |
-| `win-unpacked/` | Thư mục app chưa nén (cùng nội dung với file zip) — test nhanh được, nhưng bị ghi đè ở lần build sau, đừng để dữ liệu thật ở đây |
-| `builder-debug.yml`, `latest.yml`, `*.blockmap`, `.icon-ico/` | File phụ của electron-builder (debug, auto-update, icon convert) — không dùng, bỏ qua |
+| `Lucky Draw Studio-<version>-win.zip` | **Bản portable** (~120 MB) |
+| `Lucky Draw Studio-<version>-Setup.exe` | **Installer** (~85 MB) |
+| `win-unpacked/` | Thư mục app chưa nén, cùng nội dung với zip. Test nhanh được, bị ghi đè ở lần build sau |
+| `builder-debug.yml`, `latest.yml`, `*.blockmap`, `.icon-ico/` | File phụ của electron-builder (debug, auto-update, icon convert), bỏ qua |
 
-`release/` không commit vào Git (build output, tự sinh lại được) — đã có sẵn trong `.gitignore`.
+**macOS**
 
-Bước tiếp theo: [release-checklist.md](./release-checklist.md) — test bản đóng gói trước khi phát
-cho người vận hành sự kiện.
+| File | Ý nghĩa |
+|---|---|
+| `Lucky Draw Studio-<version>-mac.zip` | **Bản portable** (universal) |
+| `mac-universal/Lucky Draw Studio.app` | App chưa nén. Test nhanh được, bị ghi đè ở lần build sau |
+| `builder-debug.yml` | Log cấu hình electron-builder, bỏ qua |
+
+Bước tiếp theo: [release-checklist.md](./release-checklist.md). Build lỗi:
+[troubleshooting.md](./troubleshooting.md).

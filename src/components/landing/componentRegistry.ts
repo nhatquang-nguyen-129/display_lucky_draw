@@ -49,7 +49,7 @@ function defaultPrizeStage(group?: "focus" | "highlight" | "motion", effect: Pri
 
 // Nhóm hiển thị trong ComponentPalette.tsx (menu "Add component") — CHỈ ảnh hưởng thứ tự/cách gom
 // nhóm khi kéo-thả. Thứ tự mảng này = thứ tự nhóm hiện trên Palette. "Effects" = hiệu ứng đồ hoạ TỰ
-// ĐỨNG (component riêng, vẽ bằng Canvas 2D/CSS — xem docs/landing/effects.md), hiện có Orbit Lights,
+// ĐỨNG (component riêng, vẽ bằng Canvas 2D/CSS — xem docs/landing/builder.md mục 11), hiện có Orbit Lights,
 // Fireworks, Confetti, Marquee Lights và Spark Fountain.
 // Spotlight KHÔNG thuộc nhóm này — nó là 1 lựa chọn Highlight trong panel Prize Image (xem
 // doc-comment PrizeEffectName trong types.ts).

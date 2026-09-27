@@ -23,7 +23,9 @@ interface BaseComponent {
   // Tên hiển thị do người dùng tự đặt (optional) — chỉ dùng làm nhãn thay thế trong LayersPanel.tsx
   // khi trang có nhiều component CÙNG loại (vd 2 Button đều tên mặc định "Button" thì khó phân biệt
   // trong danh sách Layers). Rỗng/undefined thì tự dùng nhãn loại component (vd "Button", "Text")
-  // làm fallback — xem SharedFields.tsx (nơi sửa) và componentLabelOf() trong LayersPanel.tsx (nơi đọc).
+  // làm fallback. Hiện KHÔNG có ô sửa tay trong Properties Panel — chỉ tự đặt lúc thả component mới
+  // (handleDropNewComponent trong LandingBuilderWindow.tsx: Button, nhóm Effects), đọc ở labelOf()
+  // trong LayersPanel.tsx.
   name?: string;
   x: number;
   y: number;
@@ -131,7 +133,7 @@ export interface ImageProps {
   // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = hiện/ẩn theo đúng chu trình đã
   // cấu hình ở `drawCycle` bên dưới (xem doc-comment DrawCycleConfig ở trên) — dùng cho 1 ảnh PNG cần
   // tự đồng bộ với quy trình quay (vd Podium tách khỏi Background để không bị dim theo, xem
-  // docs/landing/properties-panel.md) mà không cần tạo hẳn 1 loại component riêng. Cùng hệ hiệu ứng
+  // docs/landing/components/image.md) mà không cần tạo hẳn 1 loại component riêng. Cùng hệ hiệu ứng
   // (WinnerTransitionEffect) với Winner Name/Text nhưng KHÁC hook (ImageView.tsx dùng
   // useDrawCycleVisibility, không phải useRevealed — xem drawRevealHooks.ts).
   syncWithDraw?: boolean;
@@ -301,14 +303,14 @@ export const WINNER_TRANSITION_EFFECTS: WinnerTransitionEffect[] = [
 //          restore winner cũ" (xem memory ghi lại quyết định này).
 //   2. Bấm Draw LẦN ĐẦU (đang Idle → có candidate): sau đúng `appearDelayMs` tính TỪ LÚC BẤM DRAW,
 //      `appearEffect` chạy để hiện tên người trúng.
-//   3. Bấm Draw LẦN TIẾP THEO (đang hiện tên của lượt trước): tên CŨ đứng yên tại chỗ cho tới đúng
-//      `disappearDelayMs` tính TỪ LÚC BẤM DRAW đó thì `disappearEffect` mới chạy để làm nó biến mất;
-//      ĐỘC LẬP (không xếp hàng chờ nhau), tên MỚI cũng hiện ra sau đúng `appearDelayMs` tính từ CÙNG
-//      mốc bấm Draw này — cả 2 field Delay đều đo từ đúng 1 sự kiện (bấm Draw/có candidate mới,
-//      resultId đổi), không cộng dồn/không phụ thuộc gì vào thời lượng Lucky Wheel quay xong hẳn
-//      (khác model cũ — bỏ hẳn, vì công thức thật của từng hiệu ứng quay, đặc biệt Reel/Flicker của
-//      DigitRoller, không tính đúng tuyệt đối được, xem wheelRevealDurationMs) — người dùng tự canh 2
-//      mốc thời gian này bằng mắt cho khớp hiệu ứng quay thật trên trang.
+//   3. Bấm Draw LẦN TIẾP THEO (đang hiện tên của lượt trước): CHUỖI tuần tự — tên CŨ đứng yên tại chỗ
+//      cho tới đúng `disappearDelayMs` tính TỪ LÚC BẤM DRAW đó thì `disappearEffect` chạy để làm nó
+//      biến mất; ẩn xong mới chờ thêm 1 window CỐ ĐỊNH `MIN_REDRAW_REVEAL_GAP_MS` (1s) rồi tính tiếp
+//      `appearDelayMs` trước khi tên MỚI hiện (xem useRevealed trong drawRevealHooks.ts — bản cũ đo 2
+//      mốc ĐỘC LẬP cùng gốc, `appearDelayMs` nhỏ khiến tên mới hiện đè lúc tên cũ còn ẩn dở). Không
+//      phụ thuộc thời lượng Lucky Wheel quay xong hẳn (khác model cũ — bỏ hẳn, vì công thức thật của
+//      từng hiệu ứng quay, đặc biệt Reel/Flicker của DigitRoller, không tính đúng tuyệt đối được, xem
+//      wheelRevealDurationMs) — người dùng tự canh các mốc này bằng mắt cho khớp hiệu ứng quay thật.
 // 4 field ĐỘC LẬP nhau (không còn 1 field `transitionEffect` dùng chung cho cả 2 chiều như trước).
 export interface WinnerNameProps extends LiveTextProps {
   appearEffect: WinnerTransitionEffect;
@@ -351,7 +353,7 @@ export interface WinnerNameProps extends LiveTextProps {
 // ngay TRONG PrizeEffectOverlay.tsx như glow/sweep) bị bỏ hẳn vì không ra hướng đẹp (nhìn như hình khối
 // phẳng lì). Vòng 2: dựng LẠI hoàn toàn bằng kỹ thuật khác (nón đáy ELIP + mask theo silhouette ảnh +
 // drop-shadow, toàn bộ CSS thuần — xem doc-comment `PrizeWonAmbientEffect` CŨ, đã xoá, và
-// docs/landing/prize.md mục 4) — LÚC ĐẦU gắn cứng CHỈ cho `onWon` qua field `wonAmbientEffect` riêng
+// docs/landing/components/prize.md mục 4) — LÚC ĐẦU gắn cứng CHỈ cho `onWon` qua field `wonAmbientEffect` riêng
 // (TÁCH HẲN khỏi hệ 3-nhóm này), rồi sau đó GỘP LẠI vào đây làm 1 lựa chọn Highlight bình thường, dùng
 // được cho CẢ 4 giai đoạn — không còn field `wonAmbientEffect`/`wonAmbientDelayMs` riêng nữa. Vì cần
 // `component.x/y/width/height` (vượt ra khỏi khung chính nó, kéo lên tận đỉnh canvas) mà
@@ -765,7 +767,7 @@ export interface ButtonComponent extends BaseComponent {
 // Orbit Lights — component đầu tiên của nhóm "Effects": N hạt sáng (mặc định 3) bay theo N quỹ đạo
 // elip xoay đều nhau quanh tâm khung (kiểu biểu tượng nguyên tử), mỗi hạt kéo 1 vệt sáng mờ dần phía
 // sau. Quỹ đạo nội tiếp khung x/y/width/height — kéo khung phủ cả canvas là hạt bay quanh toàn màn
-// hình. Vẽ bằng Canvas 2D (Tier 2, xem docs/landing/effects.md), CHỈ chạy animation ở Present Mode —
+// hình. Vẽ bằng Canvas 2D (Tier 2, xem docs/landing/builder.md mục 11), CHỈ chạy animation ở Present Mode —
 // Builder/preview chỉ vẽ 1 khung tĩnh (xem OrbitLightsView.tsx). Mặc định luôn hiện + luôn chạy;
 // bật `syncWithDraw` thì ẩn/hiện theo chu trình Idle/Draw/Redraw y hệt Image/Text (Appear/Disappear).
 export interface OrbitLightsProps {
@@ -1267,7 +1269,7 @@ export interface DrawSequenceActions {
   // có ý nghĩa gì khác.
   resetSeq: number;
   // Popup xác nhận chung — dùng cho action "confirm"/"reset" của Button (2 action ghi dữ liệu THẬT,
-  // VĨNH VIỄN, xem docs/landing/button-actions.md), tránh bấm nhầm giữa lúc trình chiếu trực tiếp.
+  // VĨNH VIỄN, xem docs/landing/components/button.md), tránh bấm nhầm giữa lúc trình chiếu trực tiếp.
   // ButtonView.tsx gọi requestConfirm(message, action) THAY VÌ chạy action ngay — action thật (vd
   // sequence.confirm()) chỉ chạy SAU KHI resolveConfirmPrompt(true) từ nút "Confirm" trên popup (vẽ
   // ở LandingRenderer.tsx, đọc confirmPrompt). resolveConfirmPrompt(false) (nút Cancel/bấm ra ngoài)

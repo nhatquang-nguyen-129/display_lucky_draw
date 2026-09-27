@@ -108,7 +108,7 @@ function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, props: O
 }
 
 // `animate` CHỈ true ở Present Mode thật — Builder/LandingPage.tsx chỉ vẽ 1 khung tĩnh (quy ước chung
-// của mọi effect, xem docs/landing/effects.md mục 2), tránh chạy rAF liên tục lúc đang kéo-thả.
+// của mọi effect, xem docs/landing/presentation.md mục 2), tránh chạy rAF liên tục lúc đang kéo-thả.
 // data/builderPreview/resetSeq CHỈ dùng khi `props.syncWithDraw` bật — cùng cơ chế ImageView.tsx.
 export default function OrbitLightsView({
   component,

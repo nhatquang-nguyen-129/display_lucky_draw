@@ -1,87 +1,56 @@
-# Chạy môi trường dev
+# Run dev — chạy app ở chế độ phát triển
 
-`npm run electron:dev` build main process Electron, khởi động Vite dev server
-(`http://localhost:5173`), rồi mở app kèm DevTools (chế độ development).
+Yêu cầu: đã làm xong [setup.md](./setup.md).
 
-## Windows
-
-1. **Giải phóng port 5173** nếu đang bị chiếm (Vite có thể chạy fail, hoặc Electron nối nhầm vào dev
-   server cũ):
-
-```powershell
-Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue |
-  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-```
-
-2. **Rebuild native module** nếu vừa cài dependency, đổi version Node.js, đổi Electron, hoặc vừa cài
-   lại sạch `node_modules` (xem [install-dependencies.md](./install-dependencies.md) mục 5):
-
-```powershell
-npx electron-rebuild
-```
-
-Bỏ qua bước này có thể gây lỗi `NODE_MODULE_VERSION mismatch` hoặc `The module was compiled against
-a different Node.js version.`
-
-3. **Chạy dev**:
-
-```powershell
+```bash
 npm run electron:dev
 ```
 
-4. **Nếu app thoát ngay lúc mở** với lỗi `TypeError: Cannot read properties of undefined (reading
-   'getPath')` (ném ra tại `dist-electron/db.js`) — shell đang có biến `ELECTRON_RUN_AS_NODE=1`. Đây
-   là mặc định trong **VS Code integrated terminal** và mọi terminal do 1 extension VS Code mở ra.
-   Xoá biến rồi chạy lại:
+Lệnh này: build main process (`build:electron` → `dist-electron/`) → khởi động Vite dev server
+(`http://localhost:5173`) → mở Electron với `NODE_ENV=development` (tự bật DevTools, tiêu đề cửa sổ có
+tiền tố `[dev]`). Dữ liệu dev lưu ở `userData` — vị trí: [testing.md](./testing.md#vị-trí-file-sqlite).
+
+## Quy tắc quan trọng
+
+- **Sửa file trong `electron/` phải tắt rồi chạy lại** `npm run electron:dev` — main process không
+  hot-reload, chỉ renderer (`src/`) mới có. Quên bước này thì app vẫn chạy nhưng dùng bản `main.js`/
+  `preload.js` CŨ → lỗi kiểu `window.api.xxx is not a function` dù code nguồn đã đúng.
+- Sau `npm install` hoặc đổi version Electron/Node → `npx electron-rebuild` trước khi chạy
+  ([setup.md mục 5](./setup.md#5-rebuild-native-module-cho-electron)).
+
+## Lỗi thường gặp
+
+| Triệu chứng | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| App thoát ngay, lỗi `TypeError: Cannot read properties of undefined (reading 'getPath')` tại `dist-electron/db.js` | Shell có biến `ELECTRON_RUN_AS_NODE=1` → Electron chạy như Node thường, `require("electron").app` là `undefined`. Hay gặp ở terminal/tiến trình do extension VS Code mở ra | Xoá biến rồi chạy lại (lệnh bên dưới), hoặc chạy từ Windows Terminal/PowerShell/Terminal độc lập ngoài VS Code |
+| `NODE_MODULE_VERSION mismatch` / `compiled against a different Node.js version` | Chưa rebuild `better-sqlite3` sau khi cài | `npx electron-rebuild` |
+| Vite báo port 5173 đang bận, hoặc Electron nối nhầm dev server cũ | Tiến trình dev lần trước còn sót | Giải phóng port (bên dưới) |
+| Windows: `Ctrl+C` xong vẫn còn `electron.exe`/`node.exe` giữ port hoặc khoá `dist-electron/` | Windows không đảm bảo `Ctrl+C` dọn tiến trình con như `concurrently -k` làm được trên macOS/Linux | Tắt tay (bên dưới) |
+
+**Xoá `ELECTRON_RUN_AS_NODE`**:
 
 ```powershell
+# Windows PowerShell
 Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 npm run electron:dev
 ```
 
-   Hoặc đơn giản hơn: chạy `npm run electron:dev` từ 1 cửa sổ **Windows Terminal / PowerShell** độc
-   lập thay vì terminal tích hợp của VS Code.
+```bash
+# macOS / Linux / Git Bash
+unset ELECTRON_RUN_AS_NODE && npm run electron:dev
+```
 
-5. **Sửa file trong `electron/` phải tắt bật lại** `npm run electron:dev` — main process KHÔNG
-   hot-reload (chỉ renderer mới có). Trên Windows, `Ctrl+C` không phải lúc nào cũng dừng hết tiến
-   trình con — `electron.exe`/`node.exe` còn sót có thể giữ port 5173 hoặc khoá file trong
-   `dist-electron/`. Tắt chúng trước khi chạy lại:
+**Giải phóng port 5173 / tắt tiến trình còn sót**:
 
 ```powershell
+# Windows PowerShell
+Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 taskkill /F /IM electron.exe 2>$null
 taskkill /F /IM node.exe 2>$null
 ```
 
-Vị trí file SQLite + cách reset dữ liệu: [database-and-testing.md](./database-and-testing.md).
-
-## macOS
-
-1. **Giải phóng port 5173** nếu đang bị chiếm:
-
 ```bash
+# macOS / Linux
 lsof -ti:5173 | xargs kill -9
 ```
-
-2. **Rebuild native module** nếu vừa cài dependency, đổi version Node.js, đổi Electron, hoặc vừa cài
-   lại sạch `node_modules`:
-
-```bash
-npx electron-rebuild
-```
-
-Bỏ qua bước này có thể gây lỗi `NODE_MODULE_VERSION mismatch` hoặc `The module was compiled against
-a different Node.js version.`
-
-3. **Chạy dev**:
-
-```bash
-npm run electron:dev
-```
-
-4. **Sửa file trong `electron/` phải tắt bật lại** `npm run electron:dev` — main process KHÔNG
-   hot-reload (chỉ renderer mới có). Dừng bằng `Ctrl+C` trên macOS thường dọn sạch cả tiến trình Vite
-   lẫn Electron cùng lúc (`concurrently -k`) — không cần `taskkill` thủ công như Windows.
-
-Vị trí file SQLite + cách reset dữ liệu: [database-and-testing.md](./database-and-testing.md). Xem
-thêm [platform-differences.md](./platform-differences.md) để tra nhanh mọi khác biệt Windows/macOS
-trong 1 bảng.

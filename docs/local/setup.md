@@ -1,247 +1,134 @@
-# Cài đặt môi trường local
+# Setup — cài môi trường dev
 
-Thứ tự bắt buộc: **Node.js (qua NVM) → `npm install` → Python 3.11 + Native Build Tools → `electron-rebuild`**. 3 mục cuối tồn tại vì `better-sqlite3` là **native module** — cần biên dịch/rebuild đúng theo runtime của Electron, không phải Node.js thường.
+Từ máy trống tới lúc chạy được `npm run electron:dev`. Bước tiếp theo: [run-dev.md](./run-dev.md).
+Kiểm tra thay đổi + vị trí DB: [testing.md](./testing.md). Build bản phát hành:
+[`docs/deploy/build.md`](../deploy/build.md). Kiến trúc code (đọc SAU khi đã chạy được app):
+[`docs/architecture/ipc-and-windows.md`](../architecture/ipc-and-windows.md).
 
-## 1. Node.js 20 LTS (qua NVM)
+## Tổng quan
 
-- Dùng **Node.js 20 LTS** để dev và test.
-- Khuyến nghị dùng **NVM (Node Version Manager)** thay vì cài Node.js trực tiếp — dễ chuyển đổi giữa nhiều version Node.js đã cài.
+| Bước | Việc | Khi nào cần làm lại |
+|---|---|---|
+| 1 | Cài Git, clone repo | Máy mới |
+| 2 | Node.js 20 LTS (qua NVM) | Máy mới / đổi version Node |
+| 3 | `npm install` | Sau khi pull có đổi `package.json`/`package-lock.json` |
+| 4 | Python 3.11 + Native Build Tools | Máy mới — chỉ cần khi `better-sqlite3` phải tự biên dịch (mục 4) |
+| 5 | `npx electron-rebuild` | Sau mọi lần `npm install`, đổi version Electron/Node |
 
-### macOS
+Lý do có bước 4–5: `better-sqlite3` là **native module** (C++), phải khớp đúng runtime Node đóng gói
+sẵn trong Electron — khác Node.js hệ thống.
 
-```bash
-brew install nvm
+## 1. Git & clone
 
-mkdir -p ~/.nvm
-
-echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc
-echo '[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"' >> ~/.zshrc
-
-source ~/.zshrc
-
-nvm install 20
-nvm use 20
-```
-
-### Windows
-
-Download the NodeJS NVM installer `nvm-setup.exe`:
+Cài Git từ <https://git-scm.com/downloads>, kiểm tra `git --version`, rồi:
 
 ```bash
-https://github.com/coreybutler/nvm-windows/releases
+git clone https://github.com/nhatquang-nguyen-129/display_lucky_draw.git
+cd display_lucky_draw
 ```
 
-Close all Command Prompt, PowerShell, VS Code windows and open a new terminal.
+## 2. Node.js 20 LTS qua NVM
+
+Dùng NVM để chuyển version Node dễ dàng. Luôn dùng **Node 20** (khớp máy build Windows/Mac).
+
+**Windows** — tải `nvm-setup.exe` từ <https://github.com/coreybutler/nvm-windows/releases>, cài xong
+**đóng hết** Command Prompt/PowerShell/VS Code rồi mở terminal mới:
 
 ```powershell
 nvm version
-```
-
-```powershell
 nvm install 20
 nvm use 20
+node -v; npm -v
 ```
 
-```powershell
-node -v
-npm -v
+**macOS**:
+
+```bash
+brew install nvm
+mkdir -p ~/.nvm
+echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc
+echo '[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"' >> ~/.zshrc
+source ~/.zshrc
+nvm install 20 && nvm use 20
+node -v && npm -v
 ```
 
-### Linux
+**Linux**:
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-
 source ~/.bashrc
+nvm install 20 && nvm use 20
 ```
 
-```bash
-nvm install 20
-nvm use 20
-```
-
-```bash
-node -v
-npm -v
-```
-
-## 2. Project dependencies (`npm install`)
-
-`nvm install`/`nvm use` chỉ cài **Node.js** và **npm**. Chạy `npm install` để tải mọi dependency khai báo trong `package.json` (Electron, React, Vite, TypeScript...) vào `node_modules/`:
+## 3. Cài dependencies
 
 ```bash
 npm install
 ```
 
-Kiểm tra đã cài xong:
+Tải mọi dependency trong `package.json` (Electron, React, Vite, TypeScript…) vào `node_modules/`.
+Muốn cài ĐÚNG version đã khoá trong `package-lock.json` (máy mới, CI, máy build) thì dùng `npm ci`.
+
+### Cài lại sạch khi gặp lỗi lạ
+
+Xoá `node_modules/` rồi cài lại theo lock file. **Không xoá `package-lock.json`** — xoá sẽ làm npm
+tự chọn lại version mới, có thể lệch với máy khác.
 
 ```bash
-npm list --depth=0
-```
-
-`node_modules/` phải tồn tại sau bước này.
-
-### Cài lại sạch khi gặp xung đột dependency
-
-Cần làm khi: vừa đổi version Node.js, vừa update dependency, hoặc gặp lỗi lạ sau `npm install`.
-
-**macOS / Linux**:
-
-```bash
-rm -rf node_modules
-rm package-lock.json
-
-npm install
-```
-
-**Windows PowerShell**:
-
-```powershell
-Remove-Item -Recurse -Force node_modules
-Remove-Item -Force package-lock.json
-
-npm install
-```
-
-Hoặc dùng alias PowerShell:
-
-```powershell
-rm -Recurse -Force node_modules
-rm -Force package-lock.json
-
-npm install
-```
-
-> **Lưu ý (chỉ Windows)**
->
-> Đóng app Electron không phải lúc nào cũng dừng hết tiến trình nền. `electron.exe`, `node.exe`, hoặc `npm.exe` có thể vẫn chạy và khoá file trong `node_modules`, gây lỗi:
->
-> - `Access is denied`
-> - `EBUSY: resource busy or locked`
-> - `The process cannot access the file because it is being used by another process`
->
-> Trước khi cài lại sạch, tắt hết tiến trình dev còn sót:
->
-> ```powershell
-> taskkill /F /IM electron.exe
-> taskkill /F /IM node.exe
-> taskkill /F /IM npm.exe
-> ```
->
-> Nếu đang mở Visual Studio Code, nên đóng hẳn app (không chỉ đóng cửa sổ project) trước khi xoá `node_modules`.
-
-Sau khi cài lại dependency, rebuild native module (xem mục 4).
-
-## 3. Python 3.11
-
-`node-gyp` (dùng để build native module) cần đúng Python 3.11 — bản mới hơn/cũ hơn có thể gây lỗi build.
-
-- Download the official installer:
-
-```bash
-https://www.python.org/downloads/release/python-311/
-```
-
-### Windows
-
-Enable **`Add Python to PATH`** during the installation.
-
-```bash
-python --version
-```
-
-Nếu máy có nhiều version Python, chỉ định tạm thời Python 3.11 trước khi cài dependency:
-
-```powershell
-$env:PYTHON="C:\Users\ADMIN\AppData\Local\Programs\Python\Python311\python.exe"
+# macOS / Linux
+rm -rf node_modules && npm ci
 ```
 
 ```powershell
-echo $env:PYTHON
-Test-Path $env:PYTHON
+# Windows PowerShell
+Remove-Item -Recurse -Force node_modules; npm ci
 ```
 
-Kết quả mong đợi: `True`.
+**Windows — lỗi `Access is denied` / `EBUSY` / `being used by another process` khi xoá**:
+`electron.exe`/`node.exe` còn chạy ngầm đang khoá file. Tắt hết rồi xoá lại (đóng hẳn VS Code nếu
+vẫn lỗi):
 
-### macOS
-
-Dùng installer chính thức từ Python.org.
-
-```bash
-python3.11 --version
+```powershell
+taskkill /F /IM electron.exe
+taskkill /F /IM node.exe
 ```
 
-Nếu máy có nhiều version Python, export Python 3.11 trước khi install:
+Cài lại xong nhớ làm bước 5.
+
+## 4. Python 3.11 + Native Build Tools (dự phòng)
+
+Script cài của `better-sqlite3` là `prebuild-install || node-gyp rebuild`: **thường tải được bản dựng
+sẵn** khớp Electron nên không biên dịch gì. Chỉ khi không tải được (mạng chặn, tổ hợp version chưa có
+bản dựng sẵn) mới tự biên dịch bằng `node-gyp` — lúc đó cần 2 thứ dưới. Nên cài sẵn trên máy dev để
+không bị kẹt.
+
+| | Windows | macOS | Ubuntu/Debian |
+|---|---|---|---|
+| Python 3.11 | Installer từ python.org, bật **Add Python to PATH** | Installer từ python.org (`python3.11 --version`) | Package manager |
+| Build tools | Visual Studio Build Tools, feature **Desktop development with C++** | `xcode-select --install` | `sudo apt install -y build-essential python3 python3-pip git` |
+
+Python 3.11: <https://www.python.org/downloads/release/python-311/> — bản mới hơn/cũ hơn có thể làm
+`node-gyp` lỗi. Máy có nhiều bản Python thì trỏ riêng 3.11 trước khi `npm install`/`electron-rebuild`:
+
+```powershell
+# Windows — kiểm tra đường dẫn đúng: Test-Path $env:PYTHON phải ra True
+$env:PYTHON = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
+```
 
 ```bash
+# macOS
 export PYTHON=$(which python3.11)
 ```
 
-```bash
-echo $PYTHON
-```
-
-Kết quả mong đợi (1 trong 2 dạng tuỳ cách cài):
-
-```text
-/usr/local/bin/python3.11
-```
-
-```text
-/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11
-```
-
-### Linux
-
-Cài qua package manager nếu có sẵn Python 3.11.
-
-## 4. Native Build Tools
-
-Cần thiết để biên dịch native Node.js module như `better-sqlite3`.
-
-- **macOS**: cài Xcode Command Line Tools
-
-```bash
-xcode-select --install
-```
-
-- **Windows**: cài Visual Studio Build Tools, chọn feature **Desktop development with C++**
-
-```bash
-https://visualstudio.microsoft.com/downloads/
-```
-
-- **Ubuntu/Debian**: cài `build-essential`
-
-```bash
-sudo apt update
-
-sudo apt install -y \
-build-essential \
-python3 \
-python3-pip \
-git
-```
-
 ## 5. Rebuild native module cho Electron
-
-Sau khi cài/cài lại dependency, rebuild toàn bộ native module theo đúng runtime Node.js đóng gói sẵn trong Electron (khác Node.js hệ thống):
 
 ```bash
 npx electron-rebuild
 ```
 
-Bắt buộc chạy lại mỗi khi: `npm install` xong, đổi version Electron, hoặc vừa cài lại sạch
-`node_modules`. Bỏ qua bước này sẽ gây lỗi:
+(`electron-rebuild` có sẵn trong `node_modules/.bin`, đến từ `@electron/rebuild` mà electron-builder kéo
+theo.) Bắt buộc sau MỌI lần `npm install`/`npm ci`, đổi version Electron, hoặc cài lại sạch. Bỏ qua sẽ
+gặp `NODE_MODULE_VERSION mismatch` / `The module was compiled against a different Node.js version`.
 
-```text
-NODE_MODULE_VERSION mismatch
-```
-
-hoặc:
-
-```text
-The module was compiled against a different Node.js version.
-```
-
-Bước tiếp theo: [run-dev.md](./run-dev.md) — chạy `npm run electron:dev`.
+Không cần chạy tay trước `npm run package` — electron-builder tự rebuild lúc đóng gói.

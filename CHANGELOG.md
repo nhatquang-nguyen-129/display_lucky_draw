@@ -2,13 +2,31 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### macOS — bản thư mục (portable) giống Windows (chờ build/test trên Mac thật)
+
+Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS), `docs/deploy/installer.md`.
+
+- `npm run package` trên Mac ra `Lucky Draw Studio-<version>-mac.zip` (universal: Intel + chip M):
+  thư mục mẹ `Lucky Draw Studio/` chứa `Lucky Draw Studio.app`, dữ liệu ở `data/` cạnh `.app`
+  (không ghi vào trong bundle). Kéo riêng `.app` vào Applications thì dùng
+  `~/Library/Application Support/lucky-draw-app/` như app cài đặt.
+- `electron/make-portable-zip.mjs` trên Mac: ký ad-hoc toàn bộ `.app` (`codesign --sign -`, không cần
+  Apple Developer ID) rồi nén bằng `ditto`. electron-builder không ký (`identity: null`,
+  `hardenedRuntime: false`).
+- App báo lỗi rồi thoát khi bị macOS App Translocation (app còn cờ quarantine) — kèm lệnh `xattr`
+  để sửa; báo rõ USB NTFS là chỉ-đọc trên Mac.
+- Bản đóng gói trên Mac thoát hẳn khi đóng cửa sổ cuối cùng (giống Windows) để DB được đóng ngay.
+  Bản dev giữ hành vi Mac mặc định.
+
 ## [1.0.0] — 2026-09-27
 
 Bản production đầu tiên.
 
 ### Đóng gói & phân phối (Windows)
 
-Chi tiết: `docs/deploy/` (đặc biệt `portable-app.md`, `build.md`).
+Chi tiết: `docs/deploy/` (đặc biệt `portable.md`, `installer.md`, `build.md`).
 
 - **Bản thư mục (portable) mang theo dữ liệu**: `npm run package` ra
   `Lucky Draw Studio-<version>-win.zip`. Giải nén được đúng 1 thư mục `Lucky Draw Studio\`, database
@@ -37,7 +55,7 @@ chỉ sửa bug, không đổi hành vi/giao diện nếu không có yêu cầu 
 
 File liên quan: `src/components/landing/luckyWheelTemplates/` (`WheelTemplate.tsx`,
 `DigitRollerTemplate.tsx`), `src/components/landing/panels/LuckyWheelPanel.tsx`,
-`LuckyWheelProps` trong `src/lib/landing/types.ts`. Chi tiết kỹ thuật: `docs/landing/lucky-wheel.md`.
+`LuckyWheelProps` trong `src/lib/landing/types.ts`. Chi tiết kỹ thuật: `docs/landing/components/lucky-wheel.md`.
 
 **Hành vi đã chốt**
 
