@@ -10,6 +10,9 @@ Database tạo tự động ở lần chạy đầu tiên — chưa từng chạ
 | macOS | `~/Library/Application Support/lucky-draw-app/lucky-draw.db` |
 | Linux | `~/.config/lucky-draw-app/lucky-draw.db` |
 
+Bảng trên áp dụng cho bản dev và bản Setup. Bản thư mục (giải nén từ file `…-win.zip`) lưu ở
+`data\lucky-draw.db` ngay trong thư mục app — xem [`docs/deploy/portable-app.md`](../deploy/portable-app.md).
+
 Mở thư mục chứa DB trên Windows:
 
 ```powershell

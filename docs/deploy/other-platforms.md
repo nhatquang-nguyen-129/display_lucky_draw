@@ -6,6 +6,6 @@ codebase — thêm khối `"mac"`/`"linux"` tương ứng vào `build` trong `pa
 hệ điều hành đó (cùng lý do ở [README.md](./README.md) mục Prerequisites — native module
 `better-sqlite3`).
 
-macOS đã có thiết kế cụ thể hơn cho mục "portable mang theo dữ liệu" (config `mac` gợi ý, cách dò thư
-mục chứa `.app` bundle, Gatekeeper) — xem [portable-app.md](./portable-app.md). Linux (`AppImage`) chưa
+macOS đã có thiết kế (chưa implement) cho mục "portable mang theo dữ liệu" (config `mac` gợi ý, cách
+dò thư mục chứa `.app` bundle, Gatekeeper) — xem [portable-app.md](./portable-app.md#macos-kế-hoạch-chưa-implement). Linux (`AppImage`) chưa
 có thiết kế nào, ngoài phạm vi tài liệu hiện tại.

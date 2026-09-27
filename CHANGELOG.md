@@ -2,7 +2,33 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased] — bản production sắp tới
+## [1.0.0] — 2026-09-27
+
+Bản production đầu tiên.
+
+### Đóng gói & phân phối (Windows)
+
+Chi tiết: `docs/deploy/` (đặc biệt `portable-app.md`, `build.md`).
+
+- **Bản thư mục (portable) mang theo dữ liệu**: `npm run package` ra
+  `Lucky Draw Studio-<version>-win.zip`. Giải nén được đúng 1 thư mục `Lucky Draw Studio\`, database
+  nằm ở `data\lucky-draw.db` ngay trong thư mục đó. Copy nguyên thư mục sang máy khác là mang theo
+  toàn bộ participant/prize/landing/kết quả quay.
+  - Zip có sẵn thư mục mẹ (tự nén bằng `electron/make-portable-zip.mjs` qua `tar.exe` của Windows,
+    thay target `zip` của electron-builder vốn bung file lẻ), bỏ qua `data\` của `win-unpacked`.
+  - App báo lỗi rồi thoát nếu chạy từ thư mục tạm (mở exe ngay trong zip chưa giải nén) hoặc thư mục
+    `data\` không ghi được — không âm thầm lưu dữ liệu vào chỗ khác.
+- **Bỏ file `.exe` portable 1-file**: tự giải nén ra `%TEMP%` mỗi lần chạy và xoá khi tắt, nên
+  không giữ được dữ liệu cạnh app.
+- **Installer (Setup.exe)** giữ nguyên, dữ liệu vẫn ở `%APPDATA%\lucky-draw-app\`.
+- **Chặn mở 2 app cùng lúc** (bản đóng gói): mở lần 2 chỉ đưa cửa sổ đang chạy lên trước, không có 2
+  process cùng ghi 1 file DB.
+- **Đóng DB khi thoát** (bản đóng gói) để dữ liệu `-wal` gộp hết vào `lucky-draw.db`.
+- **Sửa** `npm run build` không tạo `dist-electron/package.json` (`{"type":"commonjs"}`) — build từ
+  bản clone sạch sẽ ra app crash ngay khi mở.
+- Bản dev (`npm run electron:dev`) không đổi gì: DB vẫn ở `%APPDATA%\lucky-draw-app\`.
+- Tài liệu: sửa đường dẫn DB sai (`Lucky Draw Studio\` → `lucky-draw-app\`), thêm troubleshooting lỗi
+  symlink `winCodeSign` khi build trên Windows không bật Developer Mode.
 
 ### Lucky Wheel — ĐÃ CHỐT cho production
 
