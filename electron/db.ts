@@ -6,42 +6,75 @@ import { randomUUID } from "crypto";
 import { app, dialog } from "electron";
 
 /**
- * Chọn thư mục chứa lucky-draw.db — xem docs/deploy/portable-app.md.
+ * Chọn thư mục chứa lucky-draw.db — xem docs/deploy/portable.md + installer.md.
  *
- * - Dev (`!app.isPackaged`), bản Setup (NSIS, có "Uninstall *.exe" cạnh exe), bản portable exe
- *   (có PORTABLE_EXECUTABLE_DIR) và macOS: giữ nguyên `userData` như cũ.
- * - Bản thư mục (win-unpacked / giải nén từ file zip): `<thư mục chứa exe>\data\` — copy nguyên thư
- *   mục app sang máy khác là mang theo luôn toàn bộ dữ liệu.
+ * - Dev (`!app.isPackaged`), bản Setup Windows (NSIS, có "Uninstall *.exe" cạnh exe), bản portable
+ *   exe Windows (có PORTABLE_EXECUTABLE_DIR), app macOS đã kéo vào Applications (= "cài đặt" kiểu
+ *   Mac): giữ nguyên `userData` như cũ.
+ * - Bản thư mục (giải nén từ file zip): `data\` cạnh exe (Windows) / cạnh `.app` bundle (macOS) —
+ *   copy nguyên thư mục app sang máy khác là mang theo luôn toàn bộ dữ liệu.
  */
-function isFolderBuild(exeDir: string): boolean {
-  if (!app.isPackaged || process.platform !== "win32") return false;
-  if (process.env.PORTABLE_EXECUTABLE_DIR) return false;
-  const isInstalled = fs.readdirSync(exeDir).some((f) => /^Uninstall .+\.exe$/i.test(f));
-  return !isInstalled;
+const IS_MAC = process.platform === "darwin";
+
+// Thư mục đặt `data\` của bản thư mục, hoặc null = dùng userData.
+function folderBuildBaseDir(): string | null {
+  if (!app.isPackaged) return null;
+
+  if (process.platform === "win32") {
+    if (process.env.PORTABLE_EXECUTABLE_DIR) return null;
+    const exeDir = path.dirname(process.execPath);
+    const isInstalled = fs.readdirSync(exeDir).some((f) => /^Uninstall .+\.exe$/i.test(f));
+    return isInstalled ? null : exeDir;
+  }
+
+  if (IS_MAC) {
+    // execPath = .../Lucky Draw Studio.app/Contents/MacOS/Lucky Draw Studio → lùi 3 cấp ra bundle.
+    // KHÔNG ghi vào bên trong bundle (Gatekeeper coi bundle bị sửa, vỡ chữ ký) — ghi cạnh bundle.
+    const bundleDir = path.resolve(process.execPath, "..", "..", "..");
+    if (!bundleDir.endsWith(".app")) return null;
+    const parentDir = path.dirname(bundleDir);
+    const applicationsDirs = ["/Applications", path.join(os.homedir(), "Applications")];
+    return applicationsDirs.includes(parentDir) ? null : parentDir;
+  }
+
+  return null;
 }
 
-// Bản thư mục mà chạy từ thư mục tạm (mở exe ngay trong file zip chưa giải nén — Windows tự bung ra
-// %TEMP%) hoặc từ chỗ không ghi được thì dữ liệu sẽ mất/không lưu được — chặn hẳn, KHÔNG âm thầm
-// fallback về userData (người dùng sẽ tưởng dữ liệu vẫn nằm trong thư mục app).
+// Bản thư mục mà chạy từ chỗ tạm/không ghi được thì dữ liệu sẽ mất/không lưu được — chặn hẳn, KHÔNG
+// âm thầm fallback về userData (người dùng sẽ tưởng dữ liệu vẫn nằm trong thư mục app).
 function failFolderBuild(message: string): never {
   dialog.showErrorBox("Lucky Draw Studio", message);
   process.exit(1);
 }
 
 function resolveDbDir(): string {
-  const exeDir = path.dirname(process.execPath);
-  if (!isFolderBuild(exeDir)) return app.getPath("userData");
+  const baseDir = folderBuildBaseDir();
+  if (!baseDir) return app.getPath("userData");
 
-  const tmpDir = path.resolve(os.tmpdir()).toLowerCase();
-  if (path.resolve(exeDir).toLowerCase().startsWith(tmpDir + path.sep)) {
+  // macOS App Translocation: app còn cờ quarantine (giải nén từ zip tải về/AirDrop) bị macOS âm thầm
+  // chạy từ 1 bản sao chỉ-đọc ở đường dẫn ngẫu nhiên → không thấy `data/` thật cạnh app.
+  if (IS_MAC && process.execPath.includes("/AppTranslocation/")) {
     failFolderBuild(
-      "The app is running from a temporary folder (probably straight from inside a .zip file).\n\n" +
-        "Please extract the whole folder first (right-click the .zip → Extract All), then run " +
-        "Lucky Draw Studio.exe from the extracted folder. Otherwise your data will not be saved."
+      "macOS is running the app from a protected temporary copy, so it cannot find or save the data " +
+        "folder next to it.\n\n" +
+        "Fix (once per copy): open Terminal, type\n\n" +
+        "    xattr -dr com.apple.quarantine \n\n" +
+        "(with a space at the end), drag the Lucky Draw Studio folder into the Terminal window, " +
+        "press Return, then open the app again."
     );
   }
 
-  const dataDir = path.join(exeDir, "data");
+  // Windows: mở exe ngay trong file zip chưa giải nén → Windows tự bung ra %TEMP%.
+  const tmpDir = path.resolve(os.tmpdir()).toLowerCase();
+  if (path.resolve(baseDir).toLowerCase().startsWith(tmpDir + path.sep)) {
+    failFolderBuild(
+      "The app is running from a temporary folder (probably straight from inside a .zip file).\n\n" +
+        "Please extract the whole folder first (right-click the .zip → Extract All), then run " +
+        "Lucky Draw Studio from the extracted folder. Otherwise your data will not be saved."
+    );
+  }
+
+  const dataDir = path.join(baseDir, "data");
   try {
     fs.mkdirSync(dataDir, { recursive: true });
     // Ghi thử + xoá 1 file dò — đáng tin hơn fs.accessSync (chỉ đọc bit quyền) với USB/ổ mạng.
@@ -52,7 +85,10 @@ function resolveDbDir(): string {
     failFolderBuild(
       `Cannot write to the data folder:\n${dataDir}\n\n` +
         "Move the Lucky Draw Studio folder to a writable location (e.g. Desktop, Documents or a USB " +
-        "drive without write protection), then run it again."
+        "drive without write protection), then run it again." +
+        (IS_MAC
+          ? "\n\nOn a Mac, USB drives formatted as NTFS are read-only — use an exFAT-formatted drive."
+          : "")
     );
   }
   return dataDir;
