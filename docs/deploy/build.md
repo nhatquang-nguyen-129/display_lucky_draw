@@ -93,6 +93,7 @@ trong `.gitignore`).
 |---|---|
 | `Lucky Draw Studio-<version>-win.zip` | **Bản portable** (~120 MB) |
 | `Lucky Draw Studio-<version>-Setup.exe` | **Installer** (~85 MB) |
+| `README.txt` | Hướng dẫn nhanh cho người nhận file (bản nào dùng khi nào, cách cài/chạy, dữ liệu ở đâu). Nguồn: `assets/distribution/README.txt` (`{{version}}` tự điền), script nén tự copy vào — sửa ở nguồn, không sửa trong `release/` |
 | `win-unpacked/` | Thư mục app chưa nén, cùng nội dung với zip. Test nhanh được, bị ghi đè ở lần build sau |
 | `builder-debug.yml`, `latest.yml`, `*.blockmap`, `.icon-ico/` | File phụ của electron-builder (debug, auto-update, icon convert), bỏ qua |
 
@@ -102,6 +103,7 @@ trong `.gitignore`).
 |---|---|
 | `Lucky Draw Studio-<version>-mac.zip` | **Bản portable** (universal) |
 | `mac-universal/Lucky Draw Studio.app` | App chưa nén. Test nhanh được, bị ghi đè ở lần build sau |
+| `README.txt` | Hướng dẫn nhanh cho người nhận file (bản nào dùng khi nào, cách cài/chạy, dữ liệu ở đâu). Nguồn: `assets/distribution/README.txt` (`{{version}}` tự điền), script nén tự copy vào — sửa ở nguồn, không sửa trong `release/` |
 | `builder-debug.yml` | Log cấu hình electron-builder, bỏ qua |
 
 Bước tiếp theo: [release-checklist.md](./release-checklist.md). Build lỗi:
