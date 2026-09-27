@@ -2,18 +2,44 @@ import { useEffect, useState } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import Button from "@/components/Button";
-import Modal from "@/components/Modal";
-import DataEditorModal from "@/components/DataEditorModal";
 import { useSession } from "@/context/SessionContext";
 import { Participant } from "@/types";
+import { computeActiveParticipantCoreFields, getParticipantField } from "@/lib/landing/types";
+
+const CORE_COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
+
+// Poll participants list mỗi 2s, CÙNG khoảng với LandingPage.tsx's CONFIG_POLL_MS — Data Editor giờ
+// là 1 cửa sổ Electron RIÊNG (xem DataEditorWindow.tsx, mở qua window.api.dataEditor.open), 1 process
+// khác hẳn nên Save ở đó không hề đụng tới state của trang preview này, phải tự poll để phản ánh đúng
+// bản mới nhất — giống hệt cách LandingPage.tsx poll landing_config cho Landing Builder.
+const PARTICIPANTS_POLL_MS = 2000;
 
 export default function Participants() {
   const { activeSessionId, activeSession } = useSession();
   const [items, setItems] = useState<Participant[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [showEditor, setShowEditor] = useState(false);
-  const [form, setForm] = useState({ name: "", code: "", phone: "", email: "" });
-  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  // Preview RAW, giống hệt cột đang hiện trong Data Editor trước khi gán nhãn — không còn ép cứng 4
+  // cột Name/Code/Phone/Email (import generic để trống chúng cho tới khi được gán Data Type, xem
+  // docs/participants/column-mapping.md). Core field chỉ hiện nếu đang có dữ liệu thật (dữ liệu cũ
+  // trước khi đổi thiết kế); phần còn lại lấy nguyên tên cột trong extra_data, đúng thứ tự xuất hiện.
+  const activeCoreFields = Array.from(computeActiveParticipantCoreFields(items));
+  const extraColumns: string[] = [];
+  const seenExtra = new Set<string>();
+  items.forEach((p) => {
+    if (!p.extra_data) return;
+    try {
+      Object.keys(JSON.parse(p.extra_data) as Record<string, string>).forEach((k) => {
+        if (!seenExtra.has(k)) {
+          seenExtra.add(k);
+          extraColumns.push(k);
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+  });
+  const previewColumns = [...activeCoreFields, ...extraColumns];
 
   const refresh = () => {
     if (activeSessionId) window.api.participants.list(activeSessionId).then(setItems);
@@ -22,31 +48,32 @@ export default function Participants() {
 
   useEffect(() => {
     refresh();
-    setImportMsg(null);
+    setImportError(null);
+    const interval = setInterval(refresh, PARTICIPANTS_POLL_MS);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
-
-  async function handleAdd() {
-    if (!form.name.trim() || !activeSessionId) return;
-    await window.api.participants.create({ ...form, sessionId: activeSessionId });
-    setForm({ name: "", code: "", phone: "", email: "" });
-    setShowAdd(false);
-    refresh();
-  }
-
-  async function handleDelete(id: string) {
-    await window.api.participants.delete(id);
-    refresh();
-  }
 
   async function handleImportFile() {
     if (!activeSessionId) return;
     const result = await window.api.dialog.openAndReadFile();
     if (!result) return;
+    if (result.error) {
+      setImportError(result.error);
+      return;
+    }
+    setImportError(null);
 
     let rows: any[] = [];
     if (result.ext === "csv") {
-      const parsed = Papa.parse(result.text!, { header: true, skipEmptyLines: true });
+      // Excel xuất CSV UTF-8 thường kèm BOM ở đầu file, khiến header cột đầu tiên
+      // bị dính ﻿ nếu không bỏ trước khi parse.
+      const text = result.text!.replace(/^﻿/, "");
+      const parsed = Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h) => h.trim(),
+      });
       rows = parsed.data as any[];
     } else {
       const binary = atob(result.base64!);
@@ -57,149 +84,127 @@ export default function Participants() {
       rows = XLSX.utils.sheet_to_json(sheet);
     }
 
-    // Danh sách tên cột đã được xử lý thành field chuẩn — mọi cột KHÔNG nằm trong đây
-    // sẽ tự động gom vào extra_data (không bị mất, hiển thị được ở Data Editor).
-    const CORE_KEYS = new Set([
-      "name", "Name", "Họ tên", "Tên", "full_name",
-      "code", "Code", "Mã",
-      "phone", "Phone", "SĐT", "Số điện thoại", "phone_number",
-      "email", "Email",
-    ]);
+    // Import KHÔNG đoán cột nào là tên/sđt/email — mọi cột trong file vào thẳng extra_data y
+    // nguyên tên gốc. Việc gán cột nào đóng vai trò Name/Phone/Code/Email là thao tác thủ công của
+    // người dùng, làm SAU khi đã import xong, qua dropdown "Data type" trên header cột trong Data
+    // Editor (xem docs/participants/column-mapping.md). Chỉ bỏ qua dòng trắng hoàn toàn (mọi cột đều rỗng).
+    const normalized = rows
+      .map((r) => {
+        const extra: Record<string, string> = {};
+        Object.keys(r).forEach((key) => {
+          const value = r[key];
+          if (value !== undefined && value !== null && String(value).trim() !== "") {
+            extra[key.trim()] = String(value).trim();
+          }
+        });
+        return { name: "", extra: Object.keys(extra).length ? extra : undefined };
+      })
+      .filter((r) => r.extra);
 
-    const normalized = rows.map((r) => {
-      const name = r.name ?? r.Name ?? r.full_name ?? r["Họ tên"] ?? r["Tên"] ?? "";
-      const code = r.code ?? r.Code ?? r["Mã"] ?? undefined;
-      const phone = r.phone ?? r.Phone ?? r.phone_number ?? r["SĐT"] ?? r["Số điện thoại"] ?? undefined;
-      const email = r.email ?? r.Email ?? undefined;
+    // Đã có sẵn dữ liệu (nút hiện là "Replace" thay vì "Import", xem header bên dưới) — file mới
+    // XOÁ HẲN dữ liệu cũ rồi mới nạp, không cộng dồn. Hỏi xác nhận SAU KHI đã chọn xong file (không
+    // hỏi trước khi mở dialog) — huỷ dialog chọn file thì không cần hỏi gì cả; từ chối xác nhận thì
+    // giữ nguyên dữ liệu cũ, không xoá gì.
+    if (items.length > 0) {
+      if (
+        !confirm(
+          `Replace all ${items.length} existing participants in session "${activeSession?.name}" with ${normalized.length} rows from this file? This cannot be undone.`
+        )
+      )
+        return;
+      await window.api.participants.bulkDelete(activeSessionId!, items.map((p) => p.id));
+    }
 
-      const extra: Record<string, string> = {};
-      Object.keys(r).forEach((key) => {
-        if (CORE_KEYS.has(key)) return;
-        const value = r[key];
-        if (value !== undefined && value !== null && String(value).trim() !== "") {
-          extra[key] = String(value);
-        }
-      });
+    await window.api.participants.bulkImport(activeSessionId, normalized);
+    setImportError(null);
+    refresh();
+  }
 
-      return { name, code, phone, email, extra: Object.keys(extra).length ? extra : undefined };
-    });
-
-    const inserted = await window.api.participants.bulkImport(activeSessionId, normalized);
-    setImportMsg(`Đã nhập ${inserted}/${normalized.length} người chơi từ file.`);
+  async function handleClearAll() {
+    if (items.length === 0) return;
+    if (
+      !confirm(
+        `Delete all ${items.length} participants in session "${activeSession?.name}"? This cannot be undone — use this when you want to re-import a fresh file.`
+      )
+    )
+      return;
+    await window.api.participants.bulkDelete(activeSessionId!, items.map((p) => p.id));
     refresh();
   }
 
   if (!activeSession) {
     return (
       <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
-        Chưa có phiên nào đang mở. Bấm "+ Thêm tab" ở thanh trên cùng để tạo phiên đầu tiên.
+        No session open yet. Click "+ Add tab" at the top bar to create your first session.
       </p>
     );
   }
 
   return (
-    <div>
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-medium text-base-100">Người chơi</h1>
-          <p className="mt-1 text-sm text-base-400">
-            {items.length} người chơi trong phiên "{activeSession.name}"
-          </p>
-        </div>
+    <div className="flex h-full flex-col">
+      <header className="mb-6 flex flex-shrink-0 items-center justify-between">
+        <p className="text-sm text-base-400">
+          {items.length} participants in session "{activeSession.name}"
+        </p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setShowEditor(true)}>
-            Data Editor
+          <Button variant="secondary" onClick={() => window.api.dataEditor.open(activeSessionId!)}>
+            Edit
           </Button>
           <Button variant="secondary" onClick={handleImportFile}>
-            Nhập file CSV/Excel
+            {items.length === 0 ? "Import" : "Replace"}
           </Button>
-          <Button onClick={() => setShowAdd(true)}>+ Thêm thủ công</Button>
+          <Button variant="danger" onClick={handleClearAll} disabled={items.length === 0}>
+            Delete
+          </Button>
         </div>
       </header>
 
-      {importMsg && (
-        <div className="mb-4 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm text-teal-400">
-          {importMsg}
+      {importError && (
+        <div className="mb-4 flex-shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          {importError}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-base-800">
+      {/* Bảng preview — chỉ để xem nhanh, không có thao tác sửa/xoá từng dòng. Cột hiện RAW y hệt
+          Data Editor (không ép cứng Name/Code/Phone/Email) — overflow-auto (dọc lẫn ngang) vì file
+          import có thể có rất nhiều cột (vd Google Form) và nhiều dòng; đây là vùng scroll DUY NHẤT
+          của trang, phần header phía trên (Data Editor/Import/Delete all) đứng yên (xem Layout.tsx,
+          isFullHeight). Mọi chỉnh sửa (kể cả thêm thủ công, gán Data Type) đều thực hiện trong Data
+          Editor để tránh 2 nơi thao tác cùng dữ liệu. */}
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-base-800">
         <table className="w-full text-left text-sm">
-          <thead className="bg-base-900 text-xs uppercase tracking-wide text-base-400">
+          <thead className="sticky top-0 z-10 bg-base-900 text-xs uppercase tracking-wide text-base-400">
             <tr>
-              <th className="px-4 py-3 font-medium">Tên</th>
-              <th className="px-4 py-3 font-medium">Mã</th>
-              <th className="px-4 py-3 font-medium">SĐT</th>
-              <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Nguồn</th>
-              <th className="px-4 py-3"></th>
+              {previewColumns.map((col) => (
+                <th key={col} className="whitespace-nowrap px-4 py-3 font-medium">
+                  {CORE_COLUMN_LABELS[col] ?? col}
+                </th>
+              ))}
+              <th className="whitespace-nowrap px-4 py-3 font-medium">Source</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-base-800 bg-base-950">
             {items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-base-500">
-                  Chưa có người chơi nào. Nhập file hoặc thêm thủ công để bắt đầu.
+                <td colSpan={previewColumns.length + 1} className="px-4 py-8 text-center text-base-500">
+                  No participants yet. Import a file to get started, or open the Data Editor to add manually.
                 </td>
               </tr>
             ) : (
               items.map((p) => (
                 <tr key={p.id} className="text-base-200">
-                  <td className="px-4 py-3">{p.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-base-400">{p.code ?? "—"}</td>
-                  <td className="px-4 py-3 text-base-400">{p.phone ?? "—"}</td>
-                  <td className="px-4 py-3 text-base-400">{p.email ?? "—"}</td>
-                  <td className="px-4 py-3 text-xs text-base-500">{p.source}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => handleDelete(p.id)} className="text-xs text-danger-500 hover:underline">
-                      Xoá
-                    </button>
-                  </td>
+                  {previewColumns.map((col) => (
+                    <td key={col} className="whitespace-nowrap px-4 py-3 text-base-400">
+                      {getParticipantField(p, col) || "—"}
+                    </td>
+                  ))}
+                  <td className="whitespace-nowrap px-4 py-3 text-xs text-base-500">{p.source}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-
-      <Modal open={showAdd} title="Thêm người chơi" onClose={() => setShowAdd(false)}>
-        <div className="space-y-3">
-          <input
-            className="w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-base-100 outline-none focus:border-gold-500"
-            placeholder="Họ tên *"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-          <input
-            className="w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-base-100 outline-none focus:border-gold-500"
-            placeholder="Mã người chơi (tuỳ chọn)"
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
-          />
-          <input
-            className="w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-base-100 outline-none focus:border-gold-500"
-            placeholder="Số điện thoại"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          />
-          <input
-            className="w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-base-100 outline-none focus:border-gold-500"
-            placeholder="Email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-          <Button className="w-full" onClick={handleAdd}>
-            Thêm người chơi
-          </Button>
-        </div>
-      </Modal>
-
-      <DataEditorModal
-        open={showEditor}
-        sessionId={activeSessionId!}
-        onClose={() => setShowEditor(false)}
-        onSaved={refresh}
-      />
     </div>
   );
 }

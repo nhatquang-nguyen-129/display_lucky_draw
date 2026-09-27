@@ -1,3 +1,5 @@
+import { LandingConfig } from "@/lib/landing/types";
+
 export interface Participant {
   id: string;
   session_id: string;
@@ -6,6 +8,7 @@ export interface Participant {
   phone: string | null;
   email: string | null;
   extra_data: string | null; // JSON string chứa các cột optional (vd facebook_post, note)
+  sort_order: number | null;
   source: string;
   status: string;
   created_at: string;
@@ -36,7 +39,28 @@ export interface Session {
   exclude_previous_winners: 0 | 1;
   status: string;
   landing_config: string | null;
+  participant_column_types: string | null; // JSON: { [tênCột]: "phone" | "name" | "email" | "text" | "code" | "url" }
+  participant_duplicate_columns: string | null; // JSON string[]: các cột xác định trùng lặp (compound key)
+  participant_column_labels: string | null; // JSON: { [tênCột]: "Nhãn hiển thị" } — cột lõi chỉ đổi nhãn
   created_at: string;
+}
+
+// 1 session có ≥ 2 file cùng id trong data/ (vd copy qua lại giữa 2 máy, mỗi bên sửa riêng) — khớp
+// SessionConflict/SessionCopyInfo trong electron/db.ts.
+export interface SessionCopyInfo {
+  file: string; // tên file trong data/
+  modifiedAt: string; // ISO
+  participants: number;
+  prizes: number;
+  confirmedDraws: number;
+  inUse: boolean; // bản app đang dùng
+  recommended: boolean; // bản sửa gần nhất
+}
+
+export interface SessionConflict {
+  sessionId: string;
+  name: string;
+  copies: SessionCopyInfo[];
 }
 
 export interface DrawResultRow {
@@ -45,9 +69,32 @@ export interface DrawResultRow {
   participant_id: string;
   prize_id: string;
   participant_name: string;
+  participant_code: string | null;
+  participant_phone: string | null;
+  participant_email: string | null;
   prize_name: string;
+  prize_code: string | null;
+  prize_display_image: string | null;
   drawn_at: string;
   rng_seed: string;
+}
+
+// Toàn bộ lịch sử quay (kể cả confirmed = 0 — đã pick nhưng bị Redo/bỏ dở, không commit) — CHỈ dùng
+// cho Dashboard (sessions:drawHistory). Khác DrawResultRow thường (sessions:results) là nguồn dữ liệu
+// SỐNG cho Present Mode, luôn lọc sẵn confirmed = 1 ở phía main process — xem docs/architecture/
+// draw-engine.md.
+export interface DrawHistoryRow extends DrawResultRow {
+  confirmed: 0 | 1;
+}
+
+// Ứng viên đã pickWinner() nhưng CHƯA commitDraw() — dùng cho luồng Button Draw/Confirm/Redo trên
+// Landing Page (xem electron/drawEngine.ts:DrawCandidate, cùng shape, khai báo riêng cho renderer).
+export interface DrawCandidate {
+  participantId: string;
+  participantName: string;
+  prizeId: string;
+  prizeName: string;
+  seed: string;
 }
 
 declare global {
@@ -55,10 +102,12 @@ declare global {
     api: {
       participants: {
         list: (sessionId: string) => Promise<Participant[]>;
+        stats: (sessionId: string) => Promise<{ original: number; current: number; removed: number }>;
         create: (
           data: Partial<Participant> & { sessionId: string; name: string; extra?: Record<string, string> }
         ) => Promise<string>;
         update: (data: {
+          sessionId: string;
           id: string;
           name: string;
           code?: string | null;
@@ -70,8 +119,9 @@ declare global {
           sessionId: string,
           rows: (Partial<Participant> & { extra?: Record<string, string> })[]
         ) => Promise<number>;
-        delete: (id: string) => Promise<void>;
-        bulkDelete: (ids: string[]) => Promise<number>;
+        delete: (sessionId: string, id: string) => Promise<void>;
+        bulkDelete: (sessionId: string, ids: string[]) => Promise<number>;
+        reorder: (sessionId: string, orderedIds: string[]) => Promise<void>;
       };
       prizes: {
         list: (sessionId: string) => Promise<Prize[]>;
@@ -102,10 +152,11 @@ declare global {
           maxWinCount?: number;
           displayImage?: string | null;
         }) => Promise<void>;
-        delete: (id: string) => Promise<void>;
+        delete: (sessionId: string, id: string) => Promise<void>;
       };
       sessions: {
         list: () => Promise<Session[]>;
+        get: (id: string) => Promise<Session | null>;
         create: (data: {
           name: string;
           allowDuplicatePrize?: boolean;
@@ -117,23 +168,45 @@ declare global {
           allowDuplicatePrize: boolean;
           excludePreviousWinners: boolean;
         }) => Promise<void>;
+        updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) => Promise<void>;
+        updateColumnLabels: (data: { id: string; columnLabels: Record<string, string> }) => Promise<void>;
+        updateLandingConfig: (data: { id: string; landingConfig: LandingConfig }) => Promise<void>;
         delete: (id: string) => Promise<void>;
         results: (sessionId: string) => Promise<DrawResultRow[]>;
+        drawHistory: (sessionId: string) => Promise<DrawHistoryRow[]>;
+        // Mỗi session = 1 file trong data/ — session có ≥ 2 bản (cùng id, khác file) chờ người dùng chọn
+        // giữ bản nào (xem electron/db.ts, SessionConflictDialog.tsx).
+        conflicts: () => Promise<SessionConflict[]>;
+        resolveConflict: (data: { sessionId: string; keepFile: string }) => Promise<void>;
+        openDataFolder: () => Promise<string>;
       };
       draw: {
-        one: (sessionId: string) => Promise<{
-          participantId: string;
-          participantName: string;
-          prizeId: string;
-          prizeName: string;
-          seed: string;
-        }>;
+        one: (sessionId: string) => Promise<DrawCandidate>;
+        pick: (data: {
+          sessionId: string;
+          excludeParticipantIds?: string[];
+          lockedPrizeId?: string;
+        }) => Promise<DrawCandidate>;
+        commit: (data: { candidate: DrawCandidate; sessionId: string }) => Promise<void>;
+        resetSession: (sessionId: string) => Promise<void>;
       };
       present: {
         open: (sessionId: string) => Promise<void>;
+        toggleFullscreen: () => Promise<boolean>;
+        onFullscreenChange: (cb: (isFullscreen: boolean) => void) => () => void;
+      };
+      landingBuilder: {
+        open: (sessionId: string) => Promise<void>;
+        reportDirty: (dirty: boolean) => void;
+      };
+      dataEditor: {
+        open: (sessionId: string) => Promise<void>;
       };
       dialog: {
-        openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string } | null>;
+        openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
+      };
+      shell: {
+        openExternal: (url: string) => Promise<void>;
       };
       editor: {
         reportDirty: (dirty: boolean) => void;

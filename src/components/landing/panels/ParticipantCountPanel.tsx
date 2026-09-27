@@ -1,0 +1,213 @@
+import { ParticipantCountProps } from "@/lib/landing/types";
+import ColorField from "./ColorField";
+
+interface ParticipantCountPanelProps {
+  props: ParticipantCountProps;
+  onChange: (patch: Partial<ParticipantCountProps>) => void;
+}
+
+const fieldClass =
+  "w-full rounded border border-base-700 bg-base-800 px-2 py-1 text-xs text-base-100 outline-none focus:border-gold-500";
+const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500";
+const groupLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-base-400";
+
+const FONT_OPTIONS = [
+  { value: "Inter, ui-sans-serif, sans-serif", label: "Sans (default)" },
+  { value: "Georgia, serif", label: "Serif" },
+  { value: "'Courier New', monospace", label: "Monospace" },
+];
+
+// Config cũ (trước khi tách Label/Count) chỉ có fontSize/color dùng chung — fallback đọc lại field
+// đó nếu field mới chưa có (landing đã lưu từ trước), xem comment ở types.ts.
+//
+// 1 nhóm "Basic options" phẳng DUY NHẤT — gộp cả Label/Count/Align lẫn 3 khối style con (Label text/
+// Count number/Background) trước đây tách riêng, cùng hướng đã gộp Data binding + Display vào Basic
+// options ở LuckyWheelPanel.tsx. Participant Count KHÔNG có giai đoạn tương tác/hiệu ứng nào nên
+// không có nhóm "Self Interactions"/"Interactions with Draw".
+function legacyStyle(props: ParticipantCountProps) {
+  return props as unknown as { fontSize?: number; color?: string };
+}
+
+export default function ParticipantCountPanel({ props, onChange }: ParticipantCountPanelProps) {
+  const legacy = legacyStyle(props);
+  const labelFontFamily = props.labelFontFamily ?? FONT_OPTIONS[0].value;
+  const labelFontSize = props.labelFontSize ?? legacy.fontSize ?? 24;
+  const labelColor = props.labelColor ?? legacy.color ?? "#FFFFFF";
+  const countFontFamily = props.countFontFamily ?? FONT_OPTIONS[0].value;
+  const countFontSize = props.countFontSize ?? legacy.fontSize ?? 24;
+  const countColor = props.countColor ?? legacy.color ?? "#FFFFFF";
+  const backgroundType = props.backgroundType ?? "none";
+
+  function handleImageFile(file: File) {
+    if (file.type !== "image/png" && file.type !== "image/jpeg") return;
+    const reader = new FileReader();
+    reader.onload = () => onChange({ backgroundImageDataUrl: reader.result as string });
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="space-y-3">
+      <span className={groupLabelClass}>Basic options</span>
+      <div>
+        <label className={labelClass}>Label</label>
+        <input className={fieldClass} value={props.label} onChange={(e) => onChange({ label: e.target.value })} />
+      </div>
+      <div>
+        <label className={labelClass}>Count</label>
+        <select
+          className={fieldClass}
+          value={props.mode}
+          onChange={(e) => onChange({ mode: e.target.value as ParticipantCountProps["mode"] })}
+        >
+          <option value="total">Total Participants</option>
+          <option value="remainingEligible">Not Yet Won (Approximate)</option>
+        </select>
+      </div>
+      <div>
+        <label className={labelClass}>Align</label>
+        <select
+          className={fieldClass}
+          value={props.align}
+          onChange={(e) => onChange({ align: e.target.value as ParticipantCountProps["align"] })}
+        >
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2">
+          <label className={labelClass}>Font</label>
+          <select
+            className={fieldClass}
+            value={labelFontFamily}
+            onChange={(e) => onChange({ labelFontFamily: e.target.value })}
+          >
+            {FONT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Font size</label>
+          <input
+            type="number"
+            className={fieldClass}
+            value={labelFontSize}
+            onChange={(e) => onChange({ labelFontSize: Number(e.target.value) })}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Color</label>
+          <ColorField value={labelColor} onChange={(labelColor) => onChange({ labelColor })} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2">
+          <label className={labelClass}>Font</label>
+          <select
+            className={fieldClass}
+            value={countFontFamily}
+            onChange={(e) => onChange({ countFontFamily: e.target.value })}
+          >
+            {FONT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Font size</label>
+          <input
+            type="number"
+            className={fieldClass}
+            value={countFontSize}
+            onChange={(e) => onChange({ countFontSize: Number(e.target.value) })}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Color</label>
+          <ColorField value={countColor} onChange={(countColor) => onChange({ countColor })} />
+        </div>
+      </div>
+
+      <div>
+        <label className={labelClass}>Background</label>
+        <select
+          className={fieldClass}
+          value={backgroundType}
+          onChange={(e) => onChange({ backgroundType: e.target.value as ParticipantCountProps["backgroundType"] })}
+        >
+          <option value="none">None (Transparent)</option>
+          <option value="color">Solid Color</option>
+          <option value="image">Image</option>
+        </select>
+      </div>
+      {backgroundType === "color" && (
+        <div>
+          <label className={labelClass}>Background color</label>
+          <ColorField
+            value={props.backgroundColor}
+            onChange={(backgroundColor) => onChange({ backgroundColor })}
+            className="h-8"
+          />
+        </div>
+      )}
+      {backgroundType === "image" && (
+        <>
+          <div>
+            <label className={labelClass}>Image (PNG, JPG)</label>
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              className="text-xs text-base-300"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImageFile(file);
+              }}
+            />
+            {props.backgroundImageDataUrl && (
+              <button
+                onClick={() => onChange({ backgroundImageDataUrl: null })}
+                className="mt-1 text-left text-[11px] text-danger-500 hover:underline"
+              >
+                Remove image
+              </button>
+            )}
+          </div>
+          <div>
+            <label className={labelClass}>Fit</label>
+            <select
+              className={fieldClass}
+              value={props.backgroundImageFit}
+              onChange={(e) =>
+                onChange({ backgroundImageFit: e.target.value as ParticipantCountProps["backgroundImageFit"] })
+              }
+            >
+              <option value="cover">Cover</option>
+              <option value="contain">Contain</option>
+              <option value="stretch">Stretch</option>
+            </select>
+          </div>
+        </>
+      )}
+      {backgroundType !== "none" && (
+        <div>
+          <label className={labelClass}>Corner radius</label>
+          <input
+            type="number"
+            min={0}
+            className={fieldClass}
+            value={props.borderRadius}
+            onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

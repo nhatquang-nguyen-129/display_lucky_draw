@@ -1,0 +1,101 @@
+# Changelog
+
+Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
+
+## [Unreleased]
+
+### Lưu trữ theo session — mỗi session là 1 file
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".
+
+- Mỗi session (tab) là 1 file SQLite `<tên-session>__<8 ký tự mã>.db` trong `data/` (bản portable:
+  cạnh app; dev/cài đặt: `<userData>/data/`). Copy 1 file sang `data/` máy khác là có y nguyên session
+  đó (participants, prizes, landing, lịch sử quay). Định danh theo mã bên trong file — trùng tên
+  session không sao.
+- File dùng `journal_mode = DELETE` (bỏ WAL): không có `-wal`, copy file lúc nào cũng đủ dữ liệu.
+- Tự tách `lucky-draw.db` kiểu cũ (và file nhiều session bất kỳ trong `data/`) thành từng file lúc khởi
+  động; file gốc giữ lại thành `*.migrated-<thời điểm>.bak`.
+- Có ≥ 2 file của cùng 1 session: hộp thoại **"Different copies of the same session"** hiện ngay khi mở
+  app — gợi ý bản sửa gần nhất, người dùng tự chọn; bản không chọn vào `data/.trash/`.
+- Copy file vào `data/` lúc app đang mở: quay lại cửa sổ app là tab mới tự hiện. Nút **Data folder**
+  ở góc phải thanh tab mở thư mục `data/`.
+- Xoá tab = chuyển file vào `data/.trash/` thay vì xoá hẳn dữ liệu.
+- IPC: bỏ kết nối DB chung, dùng `getDb(sessionId)`; `participants:update/delete/bulkDelete/reorder`,
+  `prizes:update/delete` nhận thêm `sessionId`; thêm `sessions:conflicts`, `sessions:resolveConflict`,
+  `sessions:openDataFolder`.
+
+### macOS — bản thư mục (portable) giống Windows (chờ build/test trên Mac thật)
+
+Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS), `docs/deploy/installer.md`.
+
+- `npm run package` trên Mac ra `Lucky Draw Studio-<version>-mac.zip` (universal: Intel + chip M):
+  thư mục mẹ `Lucky Draw Studio/` chứa `Lucky Draw Studio.app`, dữ liệu ở `data/` cạnh `.app`
+  (không ghi vào trong bundle). Kéo riêng `.app` vào Applications thì dùng
+  `~/Library/Application Support/lucky-draw-app/` như app cài đặt.
+- `electron/make-portable-zip.mjs` trên Mac: ký ad-hoc toàn bộ `.app` (`codesign --sign -`, không cần
+  Apple Developer ID) rồi nén bằng `ditto`. electron-builder không ký (`identity: null`,
+  `hardenedRuntime: false`).
+- App báo lỗi rồi thoát khi bị macOS App Translocation (app còn cờ quarantine) — kèm lệnh `xattr`
+  để sửa; báo rõ USB NTFS là chỉ-đọc trên Mac.
+- Bản đóng gói trên Mac thoát hẳn khi đóng cửa sổ cuối cùng (giống Windows) để DB được đóng ngay.
+  Bản dev giữ hành vi Mac mặc định.
+
+## [1.0.0] — 2026-09-27
+
+Bản production đầu tiên.
+
+### Đóng gói & phân phối (Windows)
+
+Chi tiết: `docs/deploy/` (đặc biệt `portable.md`, `installer.md`, `build.md`).
+
+- **Bản thư mục (portable) mang theo dữ liệu**: `npm run package` ra
+  `Lucky Draw Studio-<version>-win.zip`. Giải nén được đúng 1 thư mục `Lucky Draw Studio\`, database
+  nằm ở `data\lucky-draw.db` ngay trong thư mục đó. Copy nguyên thư mục sang máy khác là mang theo
+  toàn bộ participant/prize/landing/kết quả quay.
+  - Zip có sẵn thư mục mẹ (tự nén bằng `electron/make-portable-zip.mjs` qua `tar.exe` của Windows,
+    thay target `zip` của electron-builder vốn bung file lẻ), bỏ qua `data\` của `win-unpacked`.
+  - App báo lỗi rồi thoát nếu chạy từ thư mục tạm (mở exe ngay trong zip chưa giải nén) hoặc thư mục
+    `data\` không ghi được — không âm thầm lưu dữ liệu vào chỗ khác.
+- **Bỏ file `.exe` portable 1-file**: tự giải nén ra `%TEMP%` mỗi lần chạy và xoá khi tắt, nên
+  không giữ được dữ liệu cạnh app.
+- **Installer (Setup.exe)** giữ nguyên, dữ liệu vẫn ở `%APPDATA%\lucky-draw-app\`.
+- **Chặn mở 2 app cùng lúc** (bản đóng gói): mở lần 2 chỉ đưa cửa sổ đang chạy lên trước, không có 2
+  process cùng ghi 1 file DB.
+- **Đóng DB khi thoát** (bản đóng gói) để dữ liệu `-wal` gộp hết vào `lucky-draw.db`.
+- **Sửa** `npm run build` không tạo `dist-electron/package.json` (`{"type":"commonjs"}`) — build từ
+  bản clone sạch sẽ ra app crash ngay khi mở.
+- Bản dev (`npm run electron:dev`) không đổi gì: DB vẫn ở `%APPDATA%\lucky-draw-app\`.
+- Tài liệu: sửa đường dẫn DB sai (`Lucky Draw Studio\` → `lucky-draw-app\`), thêm troubleshooting lỗi
+  symlink `winCodeSign` khi build trên Windows không bật Developer Mode.
+
+### Lucky Wheel — ĐÃ CHỐT cho production
+
+Code Lucky Wheel (Wheel Circular + Digit Roller) ở trạng thái này là bản dùng cho production. Từ đây
+chỉ sửa bug, không đổi hành vi/giao diện nếu không có yêu cầu rõ ràng.
+
+File liên quan: `src/components/landing/luckyWheelTemplates/` (`WheelTemplate.tsx`,
+`DigitRollerTemplate.tsx`), `src/components/landing/panels/LuckyWheelPanel.tsx`,
+`LuckyWheelProps` trong `src/lib/landing/types.ts`. Chi tiết kỹ thuật: `docs/landing/components/lucky-wheel.md`.
+
+**Hành vi đã chốt**
+
+- 2 template: **Wheel Circular** (vòng tròn chia segment theo participant) và **Digit Roller** (ô ký
+  tự kiểu máy quay số, Style **Flicker** hoặc **Reel**).
+- Luôn dừng ở người trúng thật do Draw Engine trả về (`results[0]`), chỉ tự quay với kết quả live của
+  lượt Draw hiện tại, không quay lại tới winner cũ đọc từ DB.
+- Trường hiển thị (Source) resolve qua Data Type của cột, không đọc cứng `participant.name`/`phone`.
+- Quick Draw: Digit Roller đứng yên ở `-` trong lúc chạy, xong thì quay đúng 1 lượt và chốt ở `-`.
+- Properties Panel, mục **Spin**: chỉ còn **Spin duration** và **Style** (Style chỉ có ở Digit
+  Roller). Component mới tạo luôn dùng dừng lần lượt từng ô (`sequential`) + hiệu ứng `pop`.
+- Tốc độ quay: mọi template luôn **giảm tốc đều** tới lúc dừng.
+  - Digit Roller (cả Flicker lẫn Reel) dùng chung 1 mô hình 3 pha: tăng tốc (~8%) → chạy đều → giảm
+    tốc đều (~28% cuối) của riêng từng ô. Flicker đổi ký tự khoảng mỗi 40ms lúc chạy đều.
+  - Wheel Circular chậm dần đều từ lúc bắt đầu tới lúc dừng, không dừng khựng.
+
+**Thay đổi trong đợt chốt này**
+
+- **Bỏ** dropdown **Spin style** (Linear / Fast Start and Slow Stop / Smooth Start and Stop): đã thử
+  các kiểu, khác biệt khi xem thật không đáng kể, chỉ giữ giảm tốc đều. Landing cũ còn lưu
+  `spinEasing` được bỏ qua, không cần migration.
+- **Sửa** Digit Roller Flicker khi dừng lần lượt từng ô: trước đây chỉ ô đầu tiên giảm tốc, các ô
+  sau chạy nhanh rồi dừng đột ngột. Giờ ô nào cũng có đủ pha giảm tốc riêng, giống Reel.

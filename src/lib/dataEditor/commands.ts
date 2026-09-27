@@ -2,7 +2,7 @@ import { Command } from "./history";
 import { EditorRow, EditorState, getCell, isCoreField, makeEmptyRow, withCell } from "./types";
 import { maskPhone, PhoneMaskPattern } from "./transforms";
 
-/* ==================== COMPOSITE ==================== */
+/* COMPOSITE */
 
 /** Gộp nhiều command thành 1 bước Undo/Redo duy nhất — dùng cho Quick Actions. */
 export function combineCommands(label: string, commands: (Command | null)[]): Command | null {
@@ -15,7 +15,27 @@ export function combineCommands(label: string, commands: (Command | null)[]): Co
   };
 }
 
-/* ==================== EDIT ==================== */
+export function reorderRowsCommand(state: EditorState, fromIndex: number, toIndex: number): Command | null {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return null;
+  if (fromIndex >= state.rows.length || toIndex >= state.rows.length) return null;
+  return {
+    label: "Reorder rows",
+    execute: (s) => {
+      const rows = [...s.rows];
+      const [moved] = rows.splice(fromIndex, 1);
+      rows.splice(toIndex, 0, moved);
+      return { ...s, rows };
+    },
+    undo: (s) => {
+      const rows = [...s.rows];
+      const [moved] = rows.splice(toIndex, 1);
+      rows.splice(fromIndex, 0, moved);
+      return { ...s, rows };
+    },
+  };
+}
+
+/* EDIT */
 
 export function editCellCommand(state: EditorState, rowId: string, col: string, newValue: string): Command | null {
   const row = state.rows.find((r) => r.id === rowId);
@@ -23,7 +43,7 @@ export function editCellCommand(state: EditorState, rowId: string, col: string, 
   const oldValue = getCell(row, col);
   if (oldValue === newValue) return null;
   return {
-    label: `Sửa ô "${col}"`,
+    label: `Edit cell "${col}"`,
     execute: (s) => ({ ...s, rows: s.rows.map((r) => (r.id === rowId ? withCell(r, col, newValue) : r)) }),
     undo: (s) => ({ ...s, rows: s.rows.map((r) => (r.id === rowId ? withCell(r, col, oldValue) : r)) }),
   };
@@ -32,7 +52,7 @@ export function editCellCommand(state: EditorState, rowId: string, col: string, 
 export function insertRowCommand(atIndex: number): Command {
   const newRow = makeEmptyRow();
   return {
-    label: "Thêm dòng",
+    label: "Add row",
     execute: (s) => {
       const rows = [...s.rows];
       rows.splice(Math.max(0, Math.min(atIndex, rows.length)), 0, newRow);
@@ -46,6 +66,21 @@ export function addRowCommand(): Command {
   return insertRowCommand(Number.MAX_SAFE_INTEGER);
 }
 
+/** Chèn nhiều dòng trống cùng lúc tại 1 vị trí — 1 bước Undo duy nhất, dùng cho right-click "Chèn N dòng". */
+export function insertRowsCommand(atIndex: number, count: number): Command {
+  const newRows = Array.from({ length: count }, () => makeEmptyRow());
+  const newIds = new Set(newRows.map((r) => r.id));
+  return {
+    label: `Insert ${count} row(s)`,
+    execute: (s) => {
+      const rows = [...s.rows];
+      rows.splice(Math.max(0, Math.min(atIndex, rows.length)), 0, ...newRows);
+      return { ...s, rows };
+    },
+    undo: (s) => ({ ...s, rows: s.rows.filter((r) => !newIds.has(r.id)) }),
+  };
+}
+
 export function deleteRowsCommand(state: EditorState, rowIds: string[]): Command | null {
   const idSet = new Set(rowIds);
   const removed = state.rows
@@ -53,7 +88,7 @@ export function deleteRowsCommand(state: EditorState, rowIds: string[]): Command
     .filter((r) => idSet.has(r.row.id));
   if (removed.length === 0) return null;
   return {
-    label: `Xoá ${removed.length} dòng`,
+    label: `Delete ${removed.length} row(s)`,
     execute: (s) => ({ ...s, rows: s.rows.filter((r) => !idSet.has(r.id)) }),
     undo: (s) => {
       const rows = [...s.rows];
@@ -68,7 +103,7 @@ export function deleteRowsCommand(state: EditorState, rowIds: string[]): Command
 
 export function addColumnCommand(name: string): Command {
   return {
-    label: `Thêm cột "${name}"`,
+    label: `Add column "${name}"`,
     execute: (s) => ({ ...s, columns: [...s.columns, name] }),
     undo: (s) => ({
       columns: s.columns.filter((c) => c !== name),
@@ -80,11 +115,58 @@ export function addColumnCommand(name: string): Command {
   };
 }
 
+/** Sinh tên cột mới không trùng cột đã có — "Column 1", "Column 2", "Column 3"... LUÔN đánh số ngay
+ * từ cột đầu tiên (không có "Column" trơn không số) — dùng CHUNG cho mọi nơi tự sinh cột trống: right-
+ * click "Insert column", Edit > Add > Add Column..., và Add Row... lúc bàn hoàn toàn trống (xem
+ * addFirstRow/applyAddPrompt trong DataEditorModal.tsx). */
+export function nextColumnNames(existing: string[], count: number): string[] {
+  const taken = new Set(existing);
+  const names: string[] = [];
+  let n = 1;
+  while (names.length < count) {
+    const candidate = `Column ${n}`;
+    if (!taken.has(candidate)) {
+      names.push(candidate);
+      taken.add(candidate);
+    }
+    n++;
+  }
+  return names;
+}
+
+/** Chèn nhiều cột trống cùng lúc — 1 bước Undo duy nhất, dùng cho right-click "Chèn N cột". */
+export function insertColumnsCommand(names: string[]): Command {
+  return {
+    label: `Insert ${names.length} column(s)`,
+    execute: (s) => ({ ...s, columns: [...s.columns, ...names] }),
+    undo: (s) => ({
+      columns: s.columns.filter((c) => !names.includes(c)),
+      rows: s.rows.map((r) => {
+        const extra = { ...r.extra };
+        names.forEach((n) => delete extra[n]);
+        return { ...r, extra };
+      }),
+    }),
+  };
+}
+
 export function removeColumnCommand(state: EditorState, name: string): Command {
+  // Cột lõi (name/phone/code/email): cột SQL cố định, không drop được — "xoá cột" = clear sạch giá trị
+  // về "" ở mọi dòng (Save sẽ ghi name="" / phone|code|email=NULL). Việc ẩn cột khỏi editor do
+  // component tự quản (droppedCoreCols), ở đây chỉ lo dữ liệu để Undo khôi phục lại được.
+  if (isCoreField(name)) {
+    const before = new Map(state.rows.map((r) => [r.id, r[name]]));
+    return {
+      label: `Delete column "${name}" (clears all values)`,
+      execute: (s) => ({ ...s, rows: s.rows.map((r) => ({ ...r, [name]: "" })) }),
+      undo: (s) => ({ ...s, rows: s.rows.map((r) => ({ ...r, [name]: before.get(r.id) ?? "" })) }),
+    };
+  }
   const before = new Map(state.rows.map((r) => [r.id, r.extra[name]]));
   return {
-    label: `Xoá cột "${name}"`,
+    label: `Delete column "${name}"`,
     execute: (s) => ({
+      ...s,
       columns: s.columns.filter((c) => c !== name),
       rows: s.rows.map((r) => {
         const { [name]: _drop, ...rest } = r.extra;
@@ -92,6 +174,7 @@ export function removeColumnCommand(state: EditorState, name: string): Command {
       }),
     }),
     undo: (s) => ({
+      ...s,
       columns: [...s.columns, name],
       rows: s.rows.map((r) => {
         const v = before.get(r.id);
@@ -108,7 +191,7 @@ export function renameColumnCommand(oldName: string, newName: string): Command {
     return { ...rest, [to]: v };
   };
   return {
-    label: `Đổi tên cột "${oldName}" → "${newName}"`,
+    label: `Rename column "${oldName}" → "${newName}"`,
     execute: (s) => ({
       columns: s.columns.map((c) => (c === oldName ? newName : c)),
       rows: s.rows.map((r) => ({ ...r, extra: rename(r.extra, oldName, newName) })),
@@ -145,7 +228,7 @@ export function pasteBlockCommand(
   if (changes.length === 0) return null;
 
   return {
-    label: `Dán dữ liệu (${changes.length} ô)`,
+    label: `Paste data (${changes.length} cells)`,
     execute: (s) => ({
       ...s,
       rows: s.rows.map((r) => {
@@ -163,7 +246,7 @@ export function pasteBlockCommand(
   };
 }
 
-/* ==================== CLEAN ==================== */
+/* CLEAN */
 
 /** Khung dùng chung cho mọi thao tác Clean áp lên 1 cột — chỉ ghi lại Ô THỰC SỰ thay đổi. */
 export function batchTransformCommand(
@@ -179,7 +262,38 @@ export function batchTransformCommand(
   if (changes.length === 0) return null;
   const changeMap = new Map(changes.map((c) => [c.id, c]));
   return {
-    label: `${label} (${changes.length} dòng)`,
+    label: `${label} (${changes.length} row(s))`,
+    execute: (s) => ({
+      ...s,
+      rows: s.rows.map((r) => {
+        const c = changeMap.get(r.id);
+        return c ? withCell(r, col, c.after) : r;
+      }),
+    }),
+    undo: (s) => ({
+      ...s,
+      rows: s.rows.map((r) => {
+        const c = changeMap.get(r.id);
+        return c ? withCell(r, col, c.before) : r;
+      }),
+    }),
+  };
+}
+
+/**
+ * Áp 1 danh sách before/after ĐÃ TÍNH SẴN (vd popup preview Normalize sau khi người dùng tick chọn
+ * dòng nào muốn áp) — khác batchTransformCommand ở chỗ không tự tính lại transform, chỉ ghi thẳng
+ * đúng những dòng được truyền vào.
+ */
+export function applyChangesCommand(
+  label: string,
+  col: string,
+  changes: { rowId: string; before: string; after: string }[]
+): Command | null {
+  if (changes.length === 0) return null;
+  const changeMap = new Map(changes.map((c) => [c.rowId, c]));
+  return {
+    label: `${label} (${changes.length} row(s))`,
     execute: (s) => ({
       ...s,
       rows: s.rows.map((r) => {
@@ -210,12 +324,16 @@ export function findEmptyRowIds(state: EditorState): string[] {
     .map((r) => r.id);
 }
 
+export function findEmptyColumns(state: EditorState): string[] {
+  return state.columns.filter((col) => state.rows.every((r) => !r.extra[col]?.trim()));
+}
+
 export function removeEmptyColumnsCommand(state: EditorState): Command | null {
-  const emptyCols = state.columns.filter((col) => state.rows.every((r) => !r.extra[col]?.trim()));
+  const emptyCols = findEmptyColumns(state);
   if (emptyCols.length === 0) return null;
   const before = new Map(emptyCols.map((col) => [col, new Map(state.rows.map((r) => [r.id, r.extra[col]]))]));
   return {
-    label: `Xoá ${emptyCols.length} cột rỗng`,
+    label: `Delete ${emptyCols.length} empty column(s)`,
     execute: (s) => ({
       columns: s.columns.filter((c) => !emptyCols.includes(c)),
       rows: s.rows.map((r) => {
@@ -238,16 +356,29 @@ export function removeEmptyColumnsCommand(state: EditorState): Command | null {
   };
 }
 
-/** Giữ dòng "đầy đủ thông tin nhất" mỗi nhóm trùng SĐT, xoá phần còn lại — tái dùng deleteRowsCommand. */
-export function findDuplicatePhoneIdsToRemove(state: EditorState): string[] {
+export interface DuplicateGroup {
+  rows: EditorRow[];
+  /** Dòng "đầy đủ thông tin nhất" trong nhóm, tick sẵn cho popup chọn dòng giữ lại — người dùng
+   * vẫn có thể tự chọn dòng khác trước khi Confirm. */
+  defaultKeepId: string;
+}
+
+/**
+ * Nhóm các dòng trùng theo compound key trên duplicateColumns (cột người dùng đang chọn trên
+ * bảng). Mỗi nhóm kèm sẵn defaultKeepId (dòng đầy đủ thông tin nhất) để popup Remove Duplicated
+ * Rows tick sẵn — người dùng vẫn tự chọn dòng khác muốn giữ lại trước khi Confirm.
+ */
+export function findDuplicateGroups(state: EditorState, duplicateColumns: string[]): DuplicateGroup[] {
+  if (duplicateColumns.length === 0) return [];
   const groups = new Map<string, EditorRow[]>();
   state.rows.forEach((r) => {
-    const key = r.phone.replace(/\D/g, "");
-    if (!key) return;
+    const values = duplicateColumns.map((col) => getCell(r, col).trim());
+    if (values.every((v) => !v)) return;
+    const key = values.join("\u0001");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(r);
   });
-  const toRemove: string[] = [];
+  const result: DuplicateGroup[] = [];
   groups.forEach((rows) => {
     if (rows.length < 2) return;
     const scored = rows.map((row) => ({
@@ -256,12 +387,20 @@ export function findDuplicatePhoneIdsToRemove(state: EditorState): string[] {
         .length,
     }));
     scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.row.created_at.localeCompare(b.row.created_at)));
-    scored.slice(1).forEach((s) => toRemove.push(s.row.id));
+    result.push({ rows, defaultKeepId: scored[0].row.id });
   });
-  return toRemove;
+  return result;
 }
 
-/* ==================== GENERATE ==================== */
+/** Dùng cho status bar/issue count (validate.ts) — không cần chọn thủ công, luôn lấy theo
+ * defaultKeepId (dòng đầy đủ thông tin nhất). */
+export function findDuplicateIdsToRemove(state: EditorState, duplicateColumns: string[]): string[] {
+  return findDuplicateGroups(state, duplicateColumns).flatMap((g) =>
+    g.rows.filter((r) => r.id !== g.defaultKeepId).map((r) => r.id)
+  );
+}
+
+/* GENERATE */
 
 function setColumnValuesCommand(
   state: EditorState,
@@ -284,34 +423,36 @@ function setColumnValuesCommand(
   };
 }
 
-export function generateIdCommand(
+/** Generate ID (Sequential + Prefix) và Running Number (Plain/Zero-padded + Start) đã GỘP LÀM 1 —
+ * cùng bản chất "đếm tuần tự từ `startAt`, có thể đệm số 0, có thể có tiền tố". Prefix rỗng = đúng
+ * hành vi Running Number cũ; có Prefix = đúng hành vi Generate ID cũ (Random đã bỏ hẳn, xem lịch sử
+ * commit "Merge Generate ID into Generate Number" — không gian ký tự-số cũ khó customize thêm field
+ * cho vừa "độ dài mong muốn" mà không nhồi thêm 1 field riêng, không đáng, xem thảo luận trong đó).
+ *
+ * "plain" = đếm thường 1, 2, 3...10...100 (độ dài số tăng dần tự nhiên). "padded" = đệm số 0 để MỌI
+ * dòng cùng số chữ số, tính theo giá trị LỚN NHẤT thực tế sẽ xuất hiện (startAt + số dòng - 1) — vd
+ * bắt đầu từ 1, 999 dòng → giá trị lớn nhất là 999 (3 chữ số) → 001, 002...999. Prefix không tính
+ * vào độ rộng đệm — chỉ đệm phần SỐ, prefix luôn giữ nguyên trước nó (vd "KH" + "001" = "KH001"). */
+export function generateNumberCommand(
   state: EditorState,
   col: string,
-  mode: "sequential" | "random",
+  mode: "plain" | "padded",
   prefix: string
 ): Command {
-  return setColumnValuesCommand(state, `Generate ID → "${col}" (${state.rows.length} dòng)`, col, (_row, i) =>
-    mode === "sequential"
-      ? `${prefix}${String(i + 1).padStart(4, "0")}`
-      : `${prefix}${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-  );
+  const startAt = 1;
+  const maxValue = startAt + Math.max(0, state.rows.length - 1);
+  const digitWidth = String(Math.max(1, maxValue)).length;
+  return setColumnValuesCommand(state, `Generate Number → "${col}"`, col, (_row, i) => {
+    const value = startAt + i;
+    const numberPart = mode === "padded" ? String(value).padStart(digitWidth, "0") : String(value);
+    return `${prefix}${numberPart}`;
+  });
 }
 
-export function runningNumberCommand(state: EditorState, col: string, startAt: number): Command {
-  return setColumnValuesCommand(state, `Running Number → "${col}"`, col, (_row, i) => String(startAt + i));
-}
-
-export function displayPhoneCommand(state: EditorState, col: string, pattern: PhoneMaskPattern): Command {
-  return setColumnValuesCommand(state, `Display Phone → "${col}"`, col, (row) => maskPhone(row.phone, pattern));
-}
-
-export function combineColumnsCommand(
-  state: EditorState,
-  newCol: string,
-  sourceCols: string[],
-  separator: string
-): Command {
-  return setColumnValuesCommand(state, `Combine columns → "${newCol}"`, newCol, (row) =>
-    sourceCols.map((c) => getCell(row, c)).filter(Boolean).join(separator)
-  );
+/** `sourceCol` đọc theo cột nào đang được Data Editor gán Data Type = Phone (xem
+ * DataEditorModal.tsx's phoneColumns/displayPhoneSourceCol) — KHÔNG đọc cứng `row.phone` như trước
+ * (vi phạm nguyên tắc "không có field cố định", xem CLAUDE.md), vì 1 session có thể có nhiều hơn 1
+ * cột kiểu Phone và/hoặc cột Phone thật nằm ở `extra` chứ không phải cột SQL `phone`. */
+export function displayPhoneCommand(state: EditorState, col: string, sourceCol: string, pattern: PhoneMaskPattern): Command {
+  return setColumnValuesCommand(state, `Display Phone → "${col}"`, col, (row) => maskPhone(getCell(row, sourceCol), pattern));
 }

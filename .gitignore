@@ -1,74 +1,110 @@
+```gitignore
 # Dependencies
 node_modules/
 
-# Build Output
+# Distribution
 dist/
+dist-electron/
 build/
 out/
 release/
+coverage/
 
-# Electron package
-electron/
-*.asar
-
-# Data
-data/*
-!data/.gitkeep
-
-# Ignore all subfolders inside projects
-projects/*/
-!projects/.gitkeep
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Package Manager
-.pnpm-store/
-.npm/
-
-# Yarn
-.yarn/
-.yarn/cache/
-.yarn/unplugged/
-.yarn/build-state.yml
-.yarn/install-state.gz
+# Electron Builder
+*.blockmap
+latest*.yml
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.zip
+*.7z
+*.tar.gz
 
 # Cache
-.cache/
 .vite/
+.cache/
 .parcel-cache/
 .eslintcache
 
-# TypeScript
-*.tsbuildinfo
-
 # Logs
-*.log
 logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# OS
-.DS_Store
-Thumbs.db
+# Environment
+.env
+.env.*
+!.env.example
 
-# IDE
+# Local SQLite Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 
-.vscode/
-.idea/
-
-# Temporary
-*.tmp
+# Local Storage / Runtime Data
+data/
+storage/
+userdata/
+app-data/
 tmp/
 temp/
+tmp-*/
+temp-*/
 
-# Binaries
-*.exe
-*.dll
-*.so
-*.dmg
-*.app
+# Test Output
+coverage/
+playwright-report/
+test-results/
+reports/
+artifacts/
+screenshots/
+generated/
+exports/
+
+# TypeScript
+*.tsbuildinfo
+
+# MacOS temporary files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# Windows OS temporary files
+Thumbs.db
+Desktop.ini
+
+# Linux OS temporary files
+*~
+
+# IDE extensions
+.vscode/
+.idea/
+*.iml
+
+# Editor
+*.swp
+*.swo
+
+# Misc
+*.pid
+*.seed
+*.orig
+
+# Keep important project files
+!.gitignore
+!.env.example
+```

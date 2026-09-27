@@ -1,0 +1,380 @@
+import {
+  availableParticipantColumns,
+  DrawSequenceActions,
+  isLiveDrawResultId,
+  LandingComponent,
+  LandingComponentType,
+  LandingConfig,
+  LandingData,
+  hasMissingPrizeBinding,
+  missingColumnBindings,
+} from "@/lib/landing/types";
+import Button from "@/components/Button";
+import "./landingEffects.css";
+import EscapeKeyHandler from "./views/EscapeKeyHandler";
+import TextView from "./views/TextView";
+import ImageView from "./views/ImageView";
+import BackgroundView from "./views/BackgroundView";
+import LuckyWheelView from "./views/LuckyWheelView";
+import WinnerNameView from "./views/WinnerNameView";
+import PrizeImageView from "./views/PrizeImageView";
+import CurrentTimeView from "./views/CurrentTimeView";
+import ParticipantCountView from "./views/ParticipantCountView";
+import ButtonView from "./views/ButtonView";
+import ScoreboardView from "./views/ScoreboardView";
+import OrbitLightsView from "./views/OrbitLightsView";
+import FireworksView from "./views/FireworksView";
+import ConfettiView from "./views/ConfettiView";
+import MarqueeLightsView from "./views/MarqueeLightsView";
+import SparkFountainView from "./views/SparkFountainView";
+import DrawModeCountPopup from "./views/DrawModeCountPopup";
+import HoldToConfirmButton from "./views/HoldToConfirmButton";
+
+interface LandingRendererProps {
+  config: LandingConfig;
+  data?: LandingData;
+  scale: number;
+  // Chỉ true ở Present Mode thật — Builder canvas không truyền (mặc định false) nên Button luôn
+  // disabled ở đó, tránh bấm nhầm chạy quay số thật lúc đang chỉnh sửa (xem ButtonView.tsx).
+  interactive?: boolean;
+  sequence?: DrawSequenceActions;
+  // Mặc định LUÔN true (kể cả không truyền) — clip nội dung đúng khung width/height thật, tuyệt đối
+  // bắt buộc ở Present Mode VÀ ở LandingPage.tsx (preview read-only trong cửa sổ chính, phải giống
+  // hệt buổi trình chiếu thật). CHỈ LandingCanvas.tsx (preview bên trong chính màn hình Builder, nơi
+  // người dùng đang kéo-thả) truyền `clip={false}` — để 1 component đang đặt ở "bàn nháp" ngoài
+  // khung thật (xem PASTEBOARD_MARGIN_RATIO) vẫn thấy được nội dung/màu sắc thật của nó thay vì bị
+  // cắt mất, trong khi Present Mode/LandingPage.tsx vẫn clip bình thường, không ảnh hưởng gì.
+  clip?: boolean;
+}
+
+// Các loại component "động" đơn giản (không tự quản lý animation state như luckyWheel) được remount
+// mỗi khi có kết quả quay MỚI, để hiệu ứng entrance (fadeIn/slideUp...) tự bắn lại — không cần thêm
+// timer/JS nào khác. luckyWheel KHÔNG nằm trong danh sách này vì nó tự quản lý animation quay liên
+// tục qua state nội bộ, remount sẽ làm mất góc quay hiện tại. winnerName CŨNG không còn nằm trong
+// danh sách này nữa (tự quản lý ẩn/hiện + Appear/Disappear qua drawRevealHooks.ts, xem
+// WinnerNameView.tsx) — remount sẽ HUỶ MẤT NGAY DOM node cũ đúng lúc results[0].id đổi (xem
+// effectiveData trong useDrawSequence.ts, đổi id NGAY lúc pick(), trước khi Wheel quay xong), không
+// còn cơ hội nào để chạy disappearEffect.
+const REMOUNT_ON_RESULT_TYPES = new Set<LandingComponentType>(["prizeImage"]);
+
+// Painter thuần, chỉ đọc — không có state, không có tương tác. Dùng chung nguyên vẹn bởi
+// LandingCanvas (lớp nền trong Builder) và PresentMode (toàn màn hình) để 2 nơi không bao giờ
+// lệch pixel nhau — chỉ có 1 hàm biết cách vẽ mỗi loại component (renderComponent bên dưới).
+
+export default function LandingRenderer({ config, data, scale, interactive, sequence, clip = true }: LandingRendererProps) {
+  const { width, height } = config.canvas;
+  // Ở Present Mode thật (interactive), Scoreboard KHÔNG vẽ trong vòng lặp per-component bình thường
+  // ở khung x/y/width/height của nó — nó là 1 popup canh giữa màn hình, chỉ hiện khi được 1 Button
+  // "showScoreboard" bật lên (xem khối riêng sau vòng lặp bên dưới). Ở Builder (không interactive)
+  // thì NGƯỢC LẠI vẫn để nó nằm trong vòng lặp bình thường, vẽ đúng tại x/y như mọi component khác —
+  // để khung chọn/kéo-thả/resize của LandingCanvas.tsx (tính hoàn toàn độc lập từ x/y/width/height,
+  // không biết gì về cách LandingRenderer vẽ) luôn khớp với vị trí hiển thị thật, tránh lặp lại đúng
+  // bug "khung kéo-thả lệch khỏi nội dung thật" đã từng gặp với Digit Roller. Riêng field
+  // `hiddenInBuilder` (bật/tắt qua LayersPanel.tsx, lưu thẳng trong config) ẩn hẳn 1 component khỏi
+  // Builder bất kể loại gì — CHỈ áp dụng khi KHÔNG interactive, Present Mode luôn bỏ qua field này.
+  const sorted = [...config.components]
+    .sort((a, b) => a.zIndex - b.zIndex)
+    .filter((c) => !(interactive && c.type === "scoreboard"))
+    .filter((c) => !(!interactive && c.hiddenInBuilder));
+  const scoreboards = config.components.filter(
+    (c): c is Extract<LandingComponent, { type: "scoreboard" }> => c.type === "scoreboard"
+  );
+  // `clip={false}` là tín hiệu RIÊNG LandingCanvas.tsx đã dùng sẵn để tự nhận diện "đây là canvas kéo
+  // thả của Builder" (xem doc-comment `clip` trong LandingRendererProps) — dùng LẠI đúng tín hiệu này
+  // cho WinnerNameView/TextView thay vì suy luận qua `interactive`, vì LandingPage.tsx (preview
+  // read-only ở cửa sổ chính) CŨNG không interactive nhưng phải hiện đúng trạng thái ẩn/hiện thật như
+  // Present Mode thật, không được lẫn với chữ giữ chỗ chỉ dành riêng cho Builder.
+  const builderPreview = clip === false;
+  // Trong canvas Builder (builderPreview): nếu 1 component đang bind vào cột Participant đã bị xoá
+  // trong Data Editor thì gắn cờ cảnh báo lên nó — xem missingColumnBindings. Không tính ở Present
+  // Mode để không làm rối buổi quay thật (cùng tinh thần với các badge chỉ-hiện-trong-Builder khác).
+  const availableCols = builderPreview ? availableParticipantColumns(data?.participants ?? []) : null;
+  // Cùng tinh thần: Trigger with Draw gán 1 prize đã bị xoá → không bao giờ kích hoạt, báo trong Builder.
+  // Chỉ kiểm khi đã có danh sách prize (data chưa nạp xong thì không báo oan).
+  const prizeIds = builderPreview && data?.prizes ? new Set(data.prizes.map((p) => p.id)) : null;
+
+  return (
+    <div
+      className={`relative ${clip ? "overflow-hidden" : ""}`}
+      style={{
+        width,
+        height,
+        transform: `scale(${scale})`,
+        transformOrigin: "top left",
+        // Nền mặc định LUÔN đen — phần canvas không được component Background nào (loại "background",
+        // xem BackgroundView.tsx) phủ tới thì giữ nguyên màu này, không còn config màu/letterbox riêng.
+        backgroundColor: "#000000",
+      }}
+    >
+      {sorted.map((component) => {
+        // Chỉ remount theo dòng kết quả LIVE (id "pending-*" — 1 lượt Draw đang diễn ra trong phiên
+        // Present này). Kết quả cũ đọc từ DB khi mở lại 1 phiên đã quay dở luôn quy về "idle" nên
+        // component không tự bắn lại entrance effect lúc mount.
+        const resultKey = isLiveDrawResultId(data?.results[0]?.id) ? data!.results[0]!.id : "idle";
+        const key = REMOUNT_ON_RESULT_TYPES.has(component.type) ? `${component.id}-${resultKey}` : component.id;
+        const missingCols = availableCols ? missingColumnBindings(component, availableCols) : [];
+        const missingPrize = prizeIds ? hasMissingPrizeBinding(component, prizeIds) : false;
+        return (
+          <div
+            key={key}
+            className={`landing-effect-${component.effect} absolute`}
+            style={{
+              left: component.x,
+              top: component.y,
+              width: component.width,
+              height: component.height,
+              // Component nào cũng có khung kéo-thả (x/y/width/height) THƯỜNG to hơn hẳn nội dung
+              // thật vẽ ra (vd Text/Wheel canh giữa trong khung, phần trống xung quanh) — mặc định
+              // KHÔNG bắt click trên khung, chỉ nội dung thật mới bắt (tránh 1 component to đè lên,
+              // nuốt mất click của component khác nằm dưới/cạnh nó — đã gặp thật với Wheel đè lên
+              // Button). "button" là loại DUY NHẤT thực sự cần bắt click ở Present Mode, tự bật lại
+              // pointer-events: auto cho đúng khung của nó — xem ButtonView.tsx.
+              pointerEvents: "none",
+            }}
+          >
+            {renderComponent(component, data, interactive, sequence, builderPreview)}
+            {missingCols.length > 0 && (
+              <div
+                className="absolute -top-2 left-0 z-10 max-w-full truncate rounded bg-danger-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow"
+                style={{ pointerEvents: "none" }}
+                title={`Column(s) not found: ${missingCols.join(", ")} — deleted in the Data Editor`}
+              >
+                ⚠ Column not found: {missingCols.join(", ")}
+              </div>
+            )}
+            {missingPrize && (
+              <div
+                className="absolute -top-2 left-0 z-10 max-w-full truncate rounded bg-danger-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow"
+                style={{ pointerEvents: "none" }}
+                title="The prize bound in Trigger with Draw was deleted — this component will never trigger"
+              >
+                ⚠ Prize not found
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* CHỈ ở Present Mode thật (interactive) và khi sequence.scoreboardVisible đang bật (1 Button
+          "showScoreboard" đã được bấm) — vẽ đè lên trên cùng, canh giữa toàn bộ canvas, phủ 1 lớp
+          nền tối phía sau để rõ đây là 1 cửa sổ phụ. Kích cỡ khung bên trong CỐ ĐỊNH bằng đúng
+          width/height đã kéo-thả cho nó, không dùng x/y ở đây (x/y chỉ có ý nghĩa cho vị trí hiển
+          thị TĨNH lúc chỉnh sửa trong Builder, xem nhánh trong `sorted` ở trên). */}
+      {interactive &&
+        sequence?.scoreboardVisible &&
+        scoreboards.map((c) => (
+          <div
+            key={c.id}
+            className="absolute inset-0 flex items-center justify-center bg-black/60"
+            style={{ pointerEvents: "auto" }}
+          >
+            {/* Popup Confirm/Reset (bên dưới) đè LÊN TRÊN Scoreboard (z-50 so với không z-index ở
+                đây) nếu vô tình mở cùng lúc — Esc lúc đó chỉ nên đóng đúng popup ĐANG NỔI TRÊN CÙNG,
+                không đóng cả 2 cùng lúc, nên bỏ qua handler này khi confirmPrompt cũng đang mở. */}
+            {!sequence.confirmPrompt && <EscapeKeyHandler onEscape={sequence.hideScoreboard} />}
+            <div style={{ width: c.width, height: c.height }}>
+              <ScoreboardView component={c} data={data} onClose={sequence.hideScoreboard} />
+            </div>
+          </div>
+        ))}
+
+      {/* Popup xác nhận cho action "confirm"/"reset" của Button (ghi dữ liệu THẬT, VĨNH VIỄN — xem
+          docs/landing/components/button.md) — CHỈ ở Present Mode thật, khi sequence.confirmPrompt đang
+          có giá trị (ButtonView.tsx gọi sequence.requestConfirm() thay vì chạy action ngay). Click
+          nền tối (ngoài thẻ) hoặc bấm Esc = Cancel, giống hành vi đóng modal thông thường. z-50 để
+          LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. `confirmPrompt.holdMs` (action
+          "reset" — xem CONFIRM_HOLD_MS trong ButtonView.tsx) đổi nút "Confirm" bấm 1 phát thành GIỮ
+          đủ số ms đó (HoldToConfirmButton.tsx) — nặng tay hơn hẳn xoá SẠCH cả session nên cần khó bấm
+          nhầm hơn "confirm" 1 người trúng. KHÔNG có dòng phụ tự sinh "Press and hold for Xs" nữa (đã
+          bỏ, gộp thẳng vào đúng 1 câu `message` cho gọn) — action nào dùng `holdMs` sau này PHẢI tự
+          nói rõ luôn việc "giữ nút" trong `CONFIRM_MESSAGES` của action đó, không có dòng nào tự thêm
+          vào giúp nữa. */}
+      {interactive && sequence?.confirmPrompt && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+          style={{ pointerEvents: "auto" }}
+          onClick={() => sequence.resolveConfirmPrompt(false)}
+        >
+          <EscapeKeyHandler onEscape={() => sequence.resolveConfirmPrompt(false)} />
+          <div
+            className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-medium text-base-100">{sequence.confirmPrompt.message}</p>
+            <div className="mt-5 flex justify-center gap-3">
+              <Button variant="secondary" onClick={() => sequence.resolveConfirmPrompt(false)}>
+                Cancel
+              </Button>
+              {sequence.confirmPrompt.holdMs ? (
+                <HoldToConfirmButton
+                  holdMs={sequence.confirmPrompt.holdMs}
+                  onConfirm={() => sequence.resolveConfirmPrompt(true)}
+                >
+                  {sequence.confirmPrompt.confirmLabel ?? "Confirm"}
+                </HoldToConfirmButton>
+              ) : (
+                <Button variant="danger" onClick={() => sequence.resolveConfirmPrompt(true)}>
+                  {sequence.confirmPrompt.confirmLabel ?? "Confirm"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup nhập số lượng khi chọn "Multiple Draw"/"Quick Draw" trong dropdown cạnh nút Draw (xem
+          DrawMenu trong ButtonView.tsx) — CHỈ ở Present Mode thật, khi sequence.drawModePrompt đang
+          có giá trị (ButtonView.tsx gọi sequence.selectDrawMode() thay vì tự vẽ popup cục bộ, xem
+          doc-comment DrawModeCountPopup.tsx). Xác nhận popup này chỉ ARM chế độ + số lượng — nút Draw
+          chính mới thật sự chạy khi được bấm. */}
+      {interactive && sequence?.drawModePrompt && (
+        <DrawModeCountPopup
+          mode={sequence.drawModePrompt.mode}
+          prizeName={sequence.drawModePrompt.prizeName}
+          max={sequence.drawModePrompt.max}
+          initialValue={Math.min(sequence.drawCount ?? sequence.drawModePrompt.max, sequence.drawModePrompt.max)}
+          onCancel={sequence.closeDrawModePrompt}
+          onConfirm={sequence.confirmDrawModePrompt}
+        />
+      )}
+
+      {/* Popup thông báo dùng CHUNG — CHỈ ở Present Mode thật, khi sequence.infoPrompt đang có giá trị.
+          Nguồn: notifyOutOfStock() (PrizeImageView.tsx, click 1 ảnh giải đã xám),
+          hoặc trực tiếp trong useDrawSequence.ts's pick()/confirm() (bấm Draw mà chưa chọn giải trên
+          trang có UI chọn giải, hoặc bấm Confirm mà chưa có ai được quay). Dismiss-only (chỉ có nút
+          OK, không có lựa chọn Confirm/Cancel nào khác) — click nền tối hoặc Esc cũng đóng, cùng kiểu
+          với popup confirmPrompt ở trên. */}
+      {interactive && sequence?.infoPrompt && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+          style={{ pointerEvents: "auto" }}
+          onClick={sequence.dismissInfoPrompt}
+        >
+          <EscapeKeyHandler onEscape={sequence.dismissInfoPrompt} />
+          <div
+            className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-medium text-base-100">{sequence.infoPrompt}</p>
+            <div className="mt-5 flex justify-center">
+              <Button onClick={sequence.dismissInfoPrompt}>OK</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup loading nhỏ — CHỈ ở Present Mode thật, khi sequence.busy đang true (1 hành động ghi DB
+          thật đang chạy — Confirm/Reset, GỒM CẢ bước nạp lại data NGAY sau đó, xem
+          useDrawSequence.ts). KHÔNG dismiss được (không onClick, không Esc) — che hẳn pointer-events
+          của mọi thứ bên dưới trong lúc chờ, đúng ý "đợi xong mới mở lại giao diện". Sửa đúng bug đã
+          gặp: bấm Reset xong bấm chọn giải NGAY trong lúc data trong bộ nhớ chưa kịp cập nhật
+          remaining mới, bị báo "hết hàng" sai — giờ không bấm được gì cho tới khi data đã mới thật.
+          z-[60] để luôn nổi trên mọi popup khác (hiếm khi trùng thời điểm, chỉ để chắc chắn). */}
+      {interactive && sequence?.busy && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40" style={{ pointerEvents: "auto" }}>
+          <div className="flex items-center gap-3 rounded-xl bg-base-950 px-5 py-4 shadow-2xl">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-base-700 border-t-gold-500" />
+            <p className="text-sm font-medium text-base-100">Please wait…</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderComponent(
+  component: LandingComponent,
+  data?: LandingData,
+  interactive?: boolean,
+  sequence?: DrawSequenceActions,
+  builderPreview?: boolean
+) {
+  switch (component.type) {
+    case "text":
+      return <TextView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />;
+    case "image":
+      return (
+        <ImageView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
+      );
+    case "background":
+      return (
+        <BackgroundView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
+      );
+    case "luckyWheel":
+      return <LuckyWheelView component={component} data={data} />;
+    case "winnerName":
+      return (
+        <WinnerNameView
+          component={component}
+          data={data}
+          builderPreview={builderPreview}
+          quickDrawActive={interactive && !!sequence?.quickDrawResult}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "prizeImage":
+      return <PrizeImageView component={component} data={data} sequence={interactive ? sequence : undefined} />;
+    case "currentTime":
+      return <CurrentTimeView component={component} />;
+    case "participantCount":
+      return <ParticipantCountView component={component} data={data} />;
+    case "button":
+      return <ButtonView component={component} data={data} sequence={interactive ? sequence : undefined} />;
+    case "scoreboard":
+      // Chỉ tới đây khi KHÔNG interactive (Builder) — ở Present Mode, scoreboard đã bị lọc khỏi
+      // `sorted` phía trên và vẽ riêng như overlay canh giữa, xem khối sau vòng lặp map() chính.
+      return <ScoreboardView component={component} data={data} />;
+    case "orbitLights":
+      return (
+        <OrbitLightsView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "fireworks":
+      return (
+        <FireworksView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "confetti":
+      return (
+        <ConfettiView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "marqueeLights":
+      return (
+        <MarqueeLightsView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    case "sparkFountain":
+      return (
+        <SparkFountainView
+          component={component}
+          animate={interactive}
+          data={data}
+          builderPreview={builderPreview}
+          resetSeq={sequence?.resetSeq}
+        />
+      );
+    default:
+      return null;
+  }
+}

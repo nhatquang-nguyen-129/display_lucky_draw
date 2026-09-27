@@ -1,15 +1,15 @@
 {
   "name": "lucky-draw-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && tsc -p electron/tsconfig.json",
+    "build": "tsc -b && vite build && npm run build:electron",
     "electron:dev": "npm run build:electron && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
     "build:electron": "tsc -p electron/tsconfig.json && node electron/write-pkg.mjs",
-    "package": "npm run build && electron-builder"
+    "package": "npm run build && electron-builder && node electron/make-portable-zip.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
@@ -46,10 +46,38 @@
       "dist-electron/**/*"
     ],
     "extraResources": [
-      { "from": "assets/icon/app-icon.png", "to": "app-icon.png" }
+      {
+        "from": "assets/icon/app-icon.png",
+        "to": "app-icon.png"
+      }
     ],
     "directories": {
       "output": "release"
+    },
+    "mac": {
+      "target": [
+        { "target": "dir", "arch": ["universal"] }
+      ],
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-${version}-Setup.exe"
     }
   }
 }

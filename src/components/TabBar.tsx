@@ -21,7 +21,7 @@ export default function TabBar() {
   async function handleCloseTab(e: React.MouseEvent, id: string, name: string) {
     e.stopPropagation();
     const ok = confirm(
-      `Đóng phiên "${name}"? Toàn bộ người chơi, giải thưởng và kết quả quay thuộc phiên này sẽ bị xoá — không thể hoàn tác.`
+      `Close session "${name}"? Its data file (participants, prizes, landing page, draw results) will be moved to the data/.trash folder — move it back into data/ to restore it.`
     );
     if (ok) await closeTab(id);
   }
@@ -47,7 +47,7 @@ export default function TabBar() {
               key={s.id}
               onClick={() => switchTab(s.id)}
               onDoubleClick={() => startRename(s.id, s.name)}
-              title="Nhấp đúp để đổi tên"
+              title="Double-click to rename"
               className={`group flex max-w-[200px] shrink-0 cursor-pointer items-center gap-2 rounded-t-lg border border-b-0 px-3 py-2 text-sm transition-colors ${
                 active
                   ? "border-base-800 bg-base-950 text-base-100"
@@ -69,7 +69,7 @@ export default function TabBar() {
               )}
               <button
                 onClick={(e) => handleCloseTab(e, s.id, s.name)}
-                title="Đóng phiên này"
+                title="Close this session"
                 className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
               >
                 ×
@@ -77,27 +77,39 @@ export default function TabBar() {
             </div>
           );
         })}
-      </div>
 
-      {adding ? (
-        <input
-          autoFocus
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onBlur={handleAddTab}
-          onKeyDown={(e) => e.key === "Enter" && handleAddTab()}
-          placeholder="Tên phiên mới..."
-          className="mb-1 w-40 rounded-md border border-gold-500/50 bg-base-950 px-2 py-1.5 text-sm text-base-100 outline-none"
-        />
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          title="Thêm phiên mới"
-          className="mb-1 shrink-0 rounded-md px-3 py-1.5 text-base-400 hover:bg-base-800 hover:text-base-100"
-        >
-          + Thêm tab
-        </button>
-      )}
+        {adding ? (
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onBlur={handleAddTab}
+            onKeyDown={(e) => e.key === "Enter" && handleAddTab()}
+            placeholder="New session name..."
+            className="mb-1 w-40 shrink-0 rounded-md border border-gold-500/50 bg-base-950 px-2 py-1.5 text-sm text-base-100 outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            title="Add new session"
+            className="mb-1 flex shrink-0 h-7 w-7 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
+          >
+            +
+          </button>
+        )}
+      </div>
+      {/* Mỗi session = 1 file trong data/ (xem electron/db.ts) — mở thư mục để copy file session sang
+          máy khác / dán file từ máy khác vào (tab mới tự hiện khi quay lại app). */}
+      <button
+        onClick={() => window.api.sessions.openDataFolder()}
+        title="Open the data folder — each session is one .db file you can copy to another machine"
+        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+        Data folder
+      </button>
     </div>
   );
 }

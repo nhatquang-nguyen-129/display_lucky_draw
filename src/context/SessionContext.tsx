@@ -40,6 +40,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Mỗi session = 1 file trong data/ (xem electron/db.ts) — người dùng có thể copy file session vào
+  // data/ trong lúc app đang mở; quay lại cửa sổ app (focus) là quét lại, tab mới tự hiện.
+  useEffect(() => {
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
+
   useEffect(() => {
     if (activeSessionId) localStorage.setItem(LAST_ACTIVE_KEY, activeSessionId);
   }, [activeSessionId]);
@@ -89,6 +97,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 export function useSession() {
   const ctx = useContext(SessionContext);
-  if (!ctx) throw new Error("useSession() phải được gọi bên trong <SessionProvider>");
+  if (!ctx) throw new Error("useSession() must be called inside a <SessionProvider>");
   return ctx;
 }
