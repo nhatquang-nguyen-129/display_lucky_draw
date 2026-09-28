@@ -190,7 +190,24 @@ CREATE TABLE IF NOT EXISTS draw_results (
   // draw_results.confirmed — lượt pick chưa Confirm ghi confirmed = 0 (xem drawEngine.ts). DEFAULT 1
   // cho dữ liệu cũ vì mọi dòng có trước migration này đều đã đi qua commitDraw.
   addColumnIfMissing(db, "draw_results", "confirmed", "confirmed INTEGER NOT NULL DEFAULT 1");
+  // Khoá session (chặn sửa/xoá Participant/Prize, mở Data Editor/Presentation/Builder) — không phải
+  // bảo mật, chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay xong. Không có password/khôi phục.
+  addColumnIfMissing(db, "sessions", "locked", "locked INTEGER NOT NULL DEFAULT 0");
   migratePrizeLevelRules(db);
+}
+
+export function setSessionLocked(sessionId: string, locked: boolean) {
+  getDb(sessionId).prepare(`UPDATE sessions SET locked = ? WHERE id = ?`).run(locked ? 1 : 0, sessionId);
+}
+
+// Gọi ở ĐẦU mọi IPC handler sửa/xoá dữ liệu hoặc mở cửa sổ Data Editor/Presentation/Builder — xem
+// docs/deploy (Session Lock). Throw để ipcRenderer.invoke ở phía renderer reject, dù nút bấm tương
+// ứng đã bị disable khi khoá (đây là lớp chặn thật, không chỉ ẩn nút).
+export function assertSessionUnlocked(sessionId: string) {
+  const row = getDb(sessionId).prepare(`SELECT locked FROM sessions WHERE id = ?`).get(sessionId) as
+    | { locked: number }
+    | undefined;
+  if (row?.locked) throw new Error("Session is locked");
 }
 
 /**

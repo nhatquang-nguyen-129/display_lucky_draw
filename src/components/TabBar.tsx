@@ -1,12 +1,20 @@
 import { useState } from "react";
 import { useSession } from "@/context/SessionContext";
+import { Session } from "@/types";
+import SessionLockMenu from "./SessionLockMenu";
 
 export default function TabBar() {
-  const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab } = useSession();
+  const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, refresh } = useSession();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
+
+  function handleContextMenu(e: React.MouseEvent, s: Session) {
+    e.preventDefault();
+    setLockMenu({ session: s, x: e.clientX, y: e.clientY });
+  }
 
   function startRename(id: string, currentName: string) {
     setEditingId(id);
@@ -47,7 +55,8 @@ export default function TabBar() {
               key={s.id}
               onClick={() => switchTab(s.id)}
               onDoubleClick={() => startRename(s.id, s.name)}
-              title="Double-click to rename"
+              onContextMenu={(e) => handleContextMenu(e, s)}
+              title="Double-click to rename, right-click to lock/unlock"
               className={`group flex max-w-[200px] shrink-0 cursor-pointer items-center gap-2 rounded-t-lg border border-b-0 px-3 py-2 text-sm transition-colors ${
                 active
                   ? "border-base-800 bg-base-950 text-base-100"
@@ -65,7 +74,22 @@ export default function TabBar() {
                   className="w-28 bg-transparent text-sm text-base-100 outline-none"
                 />
               ) : (
-                <span className="truncate">{s.name}</span>
+                <span className="flex items-center gap-1.5 truncate">
+                  {s.locked === 1 && (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-3.5 w-3.5 shrink-0 text-base-400"
+                    >
+                      <title>Session is locked</title>
+                      <rect x="5" y="11" width="14" height="9" rx="1.5" />
+                      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                    </svg>
+                  )}
+                  <span className="truncate">{s.name}</span>
+                </span>
               )}
               <button
                 onClick={(e) => handleCloseTab(e, s.id, s.name)}
@@ -110,6 +134,16 @@ export default function TabBar() {
         </svg>
         Data folder
       </button>
+
+      {lockMenu && (
+        <SessionLockMenu
+          session={lockMenu.session}
+          x={lockMenu.x}
+          y={lockMenu.y}
+          onClose={() => setLockMenu(null)}
+          onChanged={refresh}
+        />
+      )}
     </div>
   );
 }

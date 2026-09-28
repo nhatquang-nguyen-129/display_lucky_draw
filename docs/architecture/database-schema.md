@@ -79,6 +79,7 @@ erDiagram
     text participant_column_types "JSON — { col: ColumnType }"
     text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
     text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
+    integer locked "1 = khoá sửa/xoá + mở Data Editor/Presentation/Builder, xem architecture/session-lock.md"
   }
   PARTICIPANTS {
     text id PK

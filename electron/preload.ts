@@ -65,6 +65,7 @@ const api = {
     create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
       ipcRenderer.invoke("sessions:create", data),
     rename: (data: { id: string; name: string }) => ipcRenderer.invoke("sessions:rename", data),
+    setLocked: (data: { id: string; locked: boolean }) => ipcRenderer.invoke("sessions:setLocked", data),
     updateOptions: (data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) =>
       ipcRenderer.invoke("sessions:updateOptions", data),
     updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) =>

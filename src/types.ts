@@ -43,6 +43,9 @@ export interface Session {
   participant_duplicate_columns: string | null; // JSON string[]: các cột xác định trùng lặp (compound key)
   participant_column_labels: string | null; // JSON: { [tênCột]: "Nhãn hiển thị" } — cột lõi chỉ đổi nhãn
   created_at: string;
+  // Khoá session — không phải bảo mật (không password), chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay
+  // xong. Xem sessions.setLocked, assertSessionUnlocked trong electron/db.ts.
+  locked: 0 | 1;
 }
 
 // 1 session có ≥ 2 file cùng id trong data/ (vd copy qua lại giữa 2 máy, mỗi bên sửa riêng) — khớp
@@ -163,6 +166,7 @@ declare global {
           excludePreviousWinners?: boolean;
         }) => Promise<string>;
         rename: (data: { id: string; name: string }) => Promise<void>;
+        setLocked: (data: { id: string; locked: boolean }) => Promise<void>;
         updateOptions: (data: {
           id: string;
           allowDuplicatePrize: boolean;

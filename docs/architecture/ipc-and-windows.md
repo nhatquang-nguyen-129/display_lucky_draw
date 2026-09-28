@@ -93,6 +93,10 @@ quả.
 
 **Quy tắc bắt buộc**: bất kỳ IPC handler hay câu SQL mới nào đụng tới `participants`/`prizes` đều phải lọc theo `session_id` — quên bước này từng gây lỗi thật ở `Dashboard.tsx`/`Prizes.tsx` (hiện dữ liệu của TẤT CẢ session thay vì chỉ session đang active).
 
+Session còn có thể bị **khoá** (`sessions.locked`, chuột phải vào tab để đổi) — chặn sửa/xoá
+participant/prize và mở Data Editor/Presentation/Builder, không phải bảo mật (không password), chỉ
+tránh thao tác nhầm sau khi đã quay xong. Xem [`session-lock.md`](./session-lock.md).
+
 ## Kiến trúc đa cửa sổ (multi-window)
 
 4 loại `BrowserWindow`, cùng dùng chung 1 `preload.js` (nên `window.api` giống hệt nhau ở cả 4):

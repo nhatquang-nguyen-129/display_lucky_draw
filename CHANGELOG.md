@@ -2,6 +2,21 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Session Lock — khoá session sau khi quay xong
+
+Chi tiết: `docs/architecture/session-lock.md`.
+
+- Thêm: khoá/mở khoá từng session (chuột phải vào tab) để tránh nhầm lẫn chỉnh sửa sau khi đã có kết
+  quả cuối — KHÔNG phải bảo mật, không có password, không có khôi phục.
+- Session khoá: chặn hẳn mở Data Editor/Presentation/Builder, và mọi thao tác Add/Edit/Delete/Import
+  trên Participant/Prize (8 nút liên quan bị disable, Dashboard vẫn xem được bình thường).
+- Mở khoá bắt buộc giữ nút 3 giây (tránh 1 cú bấm nhầm gỡ khoá).
+- Chặn thật nằm ở tầng IPC (`assertSessionUnlocked()`, `electron/main.ts`), không chỉ ẩn nút ở
+  renderer — gọi thẳng API bị khoá qua DevTools console vẫn bị từ chối.
+- Cột mới `sessions.locked` (migration additive, không ảnh hưởng session cũ — mặc định chưa khoá).
+
 ## [1.0.1] — 2026-09-28
 
 ### Luật trùng giải — chỉ còn ở cấp giải, sửa "Allow duplicate" không có tác dụng
