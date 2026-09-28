@@ -2,7 +2,7 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.0.1] — 2026-09-28
 
 ### Luật trùng giải — chỉ còn ở cấp giải, sửa "Allow duplicate" không có tác dụng
 
@@ -36,21 +36,33 @@ Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo sessio
   `prizes:update/delete` nhận thêm `sessionId`; thêm `sessions:conflicts`, `sessions:resolveConflict`,
   `sessions:openDataFolder`.
 
-### macOS — bản thư mục (portable) giống Windows (chờ build/test trên Mac thật)
+### macOS — bản thư mục (portable), đã test trên Mac thật — ký ad-hoc mặc định KHÔNG chạy được
 
-Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS), `docs/deploy/installer.md`.
+Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS, đặc biệt "Ký số"), `docs/deploy/installer.md`.
 
 - `npm run package` trên Mac ra `Lucky Draw Studio-<version>-mac.zip` (universal: Intel + chip M):
   thư mục mẹ `Lucky Draw Studio/` chứa `Lucky Draw Studio.app`, dữ liệu ở `data/` cạnh `.app`
   (không ghi vào trong bundle). Kéo riêng `.app` vào Applications thì dùng
   `~/Library/Application Support/lucky-draw-app/` như app cài đặt.
-- `electron/make-portable-zip.mjs` trên Mac: ký ad-hoc toàn bộ `.app` (`codesign --sign -`, không cần
-  Apple Developer ID) rồi nén bằng `ditto`. electron-builder không ký (`identity: null`,
-  `hardenedRuntime: false`).
+- **Test trên Mac thật (MacBook Pro M-series, macOS 26.6.2) xác nhận**: ký ad-hoc mặc định
+  (`identity: null`) bị macOS **AMFI chặn cứng lúc chạy** (`Code=-423`), không phải chỉ cảnh báo
+  Gatekeeper bấm "Run Anyway" được như dự tính ban đầu — app tự thoát trong 1-2s, không cửa sổ,
+  không dialog.
+- **Cách chạy được, MIỄN PHÍ** (không cần Apple Developer ID $99/năm): ký lại `.app` bằng 1 chứng chỉ
+  "Apple Development" tạo qua Xcode + Apple ID thường, cộng thêm cài chứng chỉ trung gian WWDR đúng
+  thế hệ (G3) — **chỉ có tác dụng trên đúng máy Mac đã tạo chứng chỉ đó**. Chi tiết đầy đủ + cách xử
+  lý tạm thời khi chuyển sang máy Mac khác: `docs/deploy/portable.md` mục "Ký số" và "Mở trên Mac khác
+  chưa có chứng chỉ".
+- Muốn 1 bản chạy thẳng trên MỌI Mac tại venue mà không cần cấu hình gì trước vẫn cần Apple Developer
+  ID + notarization thật sự — chưa làm.
+- `sudo spctl --add` (từng dự tính là phương án tạm) đã bị Apple khai tử trên macOS hiện tại, loại
+  khỏi danh sách lựa chọn.
 - App báo lỗi rồi thoát khi bị macOS App Translocation (app còn cờ quarantine) — kèm lệnh `xattr`
   để sửa; báo rõ USB NTFS là chỉ-đọc trên Mac.
 - Bản đóng gói trên Mac thoát hẳn khi đóng cửa sổ cuối cùng (giống Windows) để DB được đóng ngay.
   Bản dev giữ hành vi Mac mặc định.
+- Checklist chức năng đầy đủ qua UI (tạo session, import, quay, landing, Present Mode…) **chưa test
+  bằng tay** — mới xác nhận app khởi động và giữ tiến trình ổn định.
 
 ## [1.0.0] — 2026-09-27
 
