@@ -1,6 +1,6 @@
 # Spark Fountain (`sparkFountain`) — nhóm Effects
 
-Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](../builder.md#khuôn-chung-của-nhóm-effects).
+Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](./builder.md#khuôn-chung-của-nhóm-effects).
 
 Pháo lạnh sân khấu: N cột tia lửa phun thẳng lên từ đáy khung rồi rơi lả tả, tắt dần — hình ảnh quen
 thuộc lúc công bố giải ở sự kiện thật. Cùng khuôn Fireworks (`createShow()` step/draw tách rời,

@@ -15,7 +15,7 @@ Nhãn/tiêu đề tĩnh do người dựng trang tự gõ. Mặc định 400×80
 | Align | `align` | left | left / center / right |
 
 **Interactions with Draw** — `DrawCycleFields` với domain **Appear/Disappear** (không có Dim/Blur).
-Tắt (mặc định) = luôn hiện. Model đầy đủ: [presentation.md mục 4](../presentation.md#4-interactions-with-draw--model-idledrawredraw).
+Tắt (mặc định) = luôn hiện. Model đầy đủ: [presentation.md mục 4](./presentation.md#4-interactions-with-draw--model-idledrawredraw).
 
 ## Hành vi
 

@@ -2,7 +2,7 @@
 
 Đọc trước khi sửa `src/pages/LandingBuilderWindow.tsx`, `src/components/landing/` (trừ `views/`),
 hoặc `src/lib/landing/types.ts`. Phần chạy thật trước khán giả: [presentation.md](./presentation.md).
-Từng loại component: thư mục [`components/`](./components/) (bảng ở [mục 5](#5-add-component--danh-sách-component)).
+Từng loại component: 1 file `<component>.md` ngay trong thư mục này (bảng ở [mục 5](#5-add-component--danh-sách-component)).
 
 ## 1. Tổng quan
 
@@ -96,21 +96,21 @@ mặc định, tâm tại điểm thả, tự chọn nó và mở Properties Pan
 
 | Nhóm | Component | Tài liệu |
 |---|---|---|
-| **Basic** | Text | [components/text.md](./components/text.md) |
-| | Image | [components/image.md](./components/image.md) |
-| | Background (tối đa 1/trang) | [components/background.md](./components/background.md) |
-| **Draw** | Lucky Wheel (tối đa 1/trang) | [components/lucky-wheel.md](./components/lucky-wheel.md) |
-| | Winner | [components/winner.md](./components/winner.md) |
-| | Prize | [components/prize.md](./components/prize.md) |
-| | Scoreboard (tối đa 1/trang) | [components/scoreboard.md](./components/scoreboard.md) |
-| **Live** | Current Time | [components/current-time.md](./components/current-time.md) |
-| | Participant Count | [components/participant-count.md](./components/participant-count.md) |
-| **Interactive** | Button | [components/button.md](./components/button.md) |
-| **Effects** | Orbit Lights | [components/orbit-lights.md](./components/orbit-lights.md) |
-| | Fireworks | [components/fireworks.md](./components/fireworks.md) |
-| | Confetti | [components/confetti.md](./components/confetti.md) |
-| | Marquee Lights | [components/marquee-lights.md](./components/marquee-lights.md) |
-| | Spark Fountain | [components/spark-fountain.md](./components/spark-fountain.md) |
+| **Basic** | Text | [components/text.md](./text.md) |
+| | Image | [components/image.md](./image.md) |
+| | Background (tối đa 1/trang) | [components/background.md](./background.md) |
+| **Draw** | Lucky Wheel (tối đa 1/trang) | [components/lucky-wheel.md](./lucky-wheel.md) |
+| | Winner | [components/winner.md](./winner.md) |
+| | Prize | [components/prize.md](./prize.md) |
+| | Scoreboard (tối đa 1/trang) | [components/scoreboard.md](./scoreboard.md) |
+| **Live** | Current Time | [components/current-time.md](./current-time.md) |
+| | Participant Count | [components/participant-count.md](./participant-count.md) |
+| **Interactive** | Button | [components/button.md](./button.md) |
+| **Effects** | Orbit Lights | [components/orbit-lights.md](./orbit-lights.md) |
+| | Fireworks | [components/fireworks.md](./fireworks.md) |
+| | Confetti | [components/confetti.md](./confetti.md) |
+| | Marquee Lights | [components/marquee-lights.md](./marquee-lights.md) |
+| | Spark Fountain | [components/spark-fountain.md](./spark-fountain.md) |
 
 **Giới hạn 1 cái/trang** (`handleDropNewComponent`): Background, Lucky Wheel, Scoreboard — thả cái
 thứ 2 thì hiện thông báo lớn giữa màn hình ("Can't create more … — a page can only have 1.", tự tắt
@@ -218,7 +218,7 @@ bước lưu nguyên 1 **snapshot**. Tối đa 100 bước.
   thầm ghi đè DB.
 - **`landing_config` KHÔNG phải nơi duy nhất bị đổi khi vận hành trang**: action Confirm/Reset của
   Button ghi thẳng `draw_results`/`prizes.remaining`, ngoài JSON này và **không bị Discard hoàn tác** —
-  xem [components/button.md](./components/button.md).
+  xem [components/button.md](./button.md).
 
 ## 10. Thêm 1 loại component mới
 
@@ -239,7 +239,7 @@ Kèm theo:
 - Ô màu dùng `ColorField`; dropdown chọn cột theo đúng 1 trong 2 nhánh Source ở mục 7.
 - Cơ chế "khi nào chạy": hoặc Button gọi thẳng 1 hàm, hoặc tự phát hiện qua `LandingData` đổi (như
   Lucky Wheel dò `results[0].id`). Không dựng lại tầng tín hiệu trung gian nào (Trigger Graph đã bỏ).
-- Viết tài liệu `docs/landing/components/<ten-component>.md` + thêm 1 dòng vào bảng mục 5.
+- Viết tài liệu `docs/landing/<ten-component>.md` + thêm 1 dòng vào bảng mục 5.
 
 ## 11. Kỹ thuật đồ hoạ — chọn tier nào cho hiệu ứng
 
@@ -299,7 +299,7 @@ Effect mới cùng nhóm theo đúng khuôn này:
 | Component Spotlight đứng riêng, component Firework gắn giải | Spotlight thành 1 lựa chọn Highlight của Prize; pháo hoa thành component Fireworks của nhóm Effects |
 | Nền trang toàn cục ("Page settings", màu nền/letterbox, "Dim background while Revealed") | Background là component bình thường; phần không phủ luôn đen; dim nền qua Interactions with Draw của Background |
 | Effect Sunburst, Twinkle Stars, Falling Petals | Là nền trang trí êm dịu, không có không khí "trúng thưởng" |
-| Ô Label của Button; dropdown Spin style/Timing/Effect của Lucky Wheel | Xem [button.md](./components/button.md), [lucky-wheel.md](./components/lucky-wheel.md) |
+| Ô Label của Button; dropdown Spin style/Timing/Effect của Lucky Wheel | Xem [button.md](./button.md), [lucky-wheel.md](./lucky-wheel.md) |
 
 ## 13. File liên quan
 

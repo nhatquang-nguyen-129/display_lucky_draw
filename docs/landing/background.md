@@ -27,7 +27,7 @@ cũ không migrate — canvas tự đen.
 **Self Interactions** — tiêu đề giữ sẵn chỗ, chưa có mục nào.
 
 **Interactions with Draw** — `DrawCycleFields` với đủ 4 Appearance **Appear/Disappear/Dim/Blur**.
-Model đầy đủ: [presentation.md mục 4](../presentation.md#4-interactions-with-draw--model-idledrawredraw).
+Model đầy đủ: [presentation.md mục 4](./presentation.md#4-interactions-with-draw--model-idledrawredraw).
 
 ## Hành vi
 

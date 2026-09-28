@@ -45,7 +45,7 @@ Draw, không tắt được).
 ### Chọn field — nhánh 1 của quy tắc Source
 
 Draw/Display/Source không lọc theo Data Type (Draw Engine chỉ cần 1 chuỗi làm khoá/hiển thị) —
-[builder.md mục 7](../builder.md#dropdown-source-chọn-cột-participant--đúng-1-trong-2-nhánh). Danh sách =
+[builder.md mục 7](./builder.md#dropdown-source-chọn-cột-participant--đúng-1-trong-2-nhánh). Danh sách =
 4 nhãn chung Name/Phone/Email/Code (CHỈ khi cột SQL lõi cùng tên có dữ liệu thật,
 `computeActiveParticipantCoreFields`) + mọi cột `extra_data` đang xuất hiện. Nhãn "ảo" đang lưu (cột lõi
 rỗng) thì panel tự chuyển sang cột thật đầu tiên.

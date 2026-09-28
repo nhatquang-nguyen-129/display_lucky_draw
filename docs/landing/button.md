@@ -4,7 +4,7 @@ Nút bấm thật trên màn hình trình chiếu, cho người vận hành đi�
 Present Mode. Mặc định 220×64. Chỉ bấm được ở Present Mode (Builder canvas không có `sequence`).
 
 > Code trong `src/lib/landing/types.ts`, `LandingRenderer.tsx`, `views/ButtonView.tsx` trỏ thẳng tới
-> file này (comment "xem docs/landing/components/button.md") khi nhắc tới việc Confirm/Reset ghi dữ
+> file này (comment "xem docs/landing/button.md") khi nhắc tới việc Confirm/Reset ghi dữ
 > liệu thật — đổi tên/chuyển file thì cập nhật lại các comment đó.
 
 ## Properties Panel (`ButtonPanel.tsx`)
@@ -49,9 +49,9 @@ option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `conf
 | **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **Source** — mở URL của winner GẦN NHẤT, báo popup (`sequence.showInfoPrompt`) nếu chưa có winner/winner đó không có link |
 
 **Chi tiết Open Link**: **Source** (`ButtonProps.urlField`) là ví dụ nhánh 2 của quy tắc "Source
-picker" ở [builder.md mục 7](../builder.md#dropdown-source-chọn-cột-participant--đúng-1-trong-2-nhánh) — CHỈ liệt kê cột đã gán Data
+picker" ở [builder.md mục 7](./builder.md#dropdown-source-chọn-cột-participant--đúng-1-trong-2-nhánh) — CHỈ liệt kê cột đã gán Data
 Type = "url" ở Data Editor (`listParticipantColumnsForType`, xem
-[`docs/participants/column-mapping.md`](../../participants/column-mapping.md)) VÀ còn dữ liệu thật,
+[`docs/participants/column-mapping.md`](../participants/column-mapping.md)) VÀ còn dữ liệu thật,
 KHÁC hẳn Draw/Display field của Lucky Wheel (nhánh 1, field nào cũng dùng được). Chưa có cột nào gán
 Data Type URL → hiện `<select disabled>` placeholder "Set a column's Data Type to URL first.", không
 dropdown rỗng hay cho chọn nhầm 1 cột Name/Phone làm URL. Bấm mà chưa có winner, hoặc winner đó không
@@ -93,7 +93,7 @@ bỏ hẳn field thừa này thay vì giữ 1 ô nhập ít ai cần sửa.
 > `landing_config`.**
 >
 > Mọi thứ khác trên trang (Text, Lucky Wheel, styling của Button...) — toàn bộ "trạng thái" chỉ nằm
-> trong khối JSON `landing_config` (xem [builder.md mục 9](../builder.md#9-save--discard--lưu-trữ)). Sửa gì, kéo
+> trong khối JSON `landing_config` (xem [builder.md mục 9](./builder.md#9-save--discard--lưu-trữ)). Sửa gì, kéo
 > gì, xoá gì ở Builder cũng chỉ đổi khối JSON đó — bấm **nút Discard** ở toolbar là quay lại y nguyên
 > bản đã Save gần nhất, không có gì mất thật.
 >
@@ -126,7 +126,7 @@ mới thật sự chạy `resetSession()`.
 
 Sau khi Reset chạy xong, Winner Name/Text (khi `syncWithDraw`) tự về đúng trạng thái Idle NGAY LẬP
 TỨC qua `DrawSequenceActions.resetSeq` — xem mục "3 trạng thái Idle/Revealed/Disappear" ở
-[winner.md](./winner.md) và [presentation.md mục 3](../presentation.md#3-luồng-quay--usedrawsequencets).
+[winner.md](./winner.md) và [presentation.md mục 3](./presentation.md#3-luồng-quay--usedrawsequencets).
 
 Lucky Wheel KHÔNG cần Button nào ra lệnh — nó tự phát hiện `results[0].id` vừa đổi (candidate mới,
 dù là lượt Draw đầu hay 1 lượt "quay lại" từ chính action Draw đó — xem trên) và tự bắt đầu quay (xem
@@ -189,7 +189,7 @@ vẫn bị bỏ mất, nên case này CŨNG phải hỏi — bỏ hẳn phân bi
 
 ## Bug đã sửa: "Button nhìn trong suốt" trong Builder
 
-`ButtonView.tsx` ban đầu dùng `disabled:opacity-40` — vì `disabled` LUÔN true trong Builder (không có `sequence`, xem [presentation.md mục 2](../presentation.md#2-pipeline-render--builder-preview-present-mode)), Button luôn hiện mờ 40%, trông như trong suốt. Sửa bằng cách TÁCH 2 khái niệm: "không bấm được vì đang ở Builder" (vẫn hiện FULL độ đậm) khác với "tạm thời không bấm được ở Present Mode thật vì sai phase/busy" (mới thật sự làm mờ) — qua 1 cờ riêng `showFaded = !!sequence && disabled`, không gắn opacity trực tiếp vào thuộc tính HTML `disabled`.
+`ButtonView.tsx` ban đầu dùng `disabled:opacity-40` — vì `disabled` LUÔN true trong Builder (không có `sequence`, xem [presentation.md mục 2](./presentation.md#2-pipeline-render--builder-preview-present-mode)), Button luôn hiện mờ 40%, trông như trong suốt. Sửa bằng cách TÁCH 2 khái niệm: "không bấm được vì đang ở Builder" (vẫn hiện FULL độ đậm) khác với "tạm thời không bấm được ở Present Mode thật vì sai phase/busy" (mới thật sự làm mờ) — qua 1 cờ riêng `showFaded = !!sequence && disabled`, không gắn opacity trực tiếp vào thuộc tính HTML `disabled`.
 
 ## Bug đã sửa: lỗi Draw/Confirm/Redo/Reset hiện như 1 dòng lỗi code
 

@@ -1,6 +1,6 @@
 # Orbit Lights (`orbitLights`) — nhóm Effects
 
-Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](../builder.md#khuôn-chung-của-nhóm-effects).
+Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](./builder.md#khuôn-chung-của-nhóm-effects).
 
 N hạt sáng (mặc định 3) kéo vệt, bay theo N quỹ đạo elip xoay đều quanh tâm khung — kiểu biểu tượng
 nguyên tử.
@@ -34,7 +34,7 @@ nguyên tử.
 ## Builder vs Present Mode
 
 - `animate` = `interactive` của `LandingRenderer` — CHỈ Present Mode chạy rAF. Builder và preview
-  `LandingPage.tsx` vẽ 1 khung tĩnh (`elapsedMs = 0`), đúng quy tắc Builder/Present Mode ở [presentation.md mục 2](../presentation.md#2-pipeline-render--builder-preview-present-mode).
+  `LandingPage.tsx` vẽ 1 khung tĩnh (`elapsedMs = 0`), đúng quy tắc Builder/Present Mode ở [presentation.md mục 2](./presentation.md#2-pipeline-render--builder-preview-present-mode).
 - Cùng 1 hàm `drawFrame` cho cả 2 → khung tĩnh và animation luôn giống hình dáng.
 - `startRef` giữ mốc thời gian qua các lần đổi props (Present Mode poll config mỗi 2s) → đổi màu/tốc
   độ không làm hạt nhảy về vị trí xuất phát. Cleanup `cancelAnimationFrame` khi unmount/đổi props.
@@ -62,7 +62,7 @@ trước) — tránh mảng thưa có lỗ `undefined` khi lưu JSON.
 `syncWithDraw`/`drawCycle` — cùng schema, cùng panel `DrawCycleFields.tsx`, cùng hook
 `useDrawCycleVisibility` với Image (chỉ Appear/Disappear). Mặc định tắt = luôn hiện + luôn chạy. Lúc
 ẩn thì unmount hẳn canvas → dừng luôn rAF; hiện lại thì hạt bay lại từ vị trí xuất phát. Chi tiết
-model Idle/Draw/Redraw: [presentation.md mục 4](../presentation.md#4-interactions-with-draw--model-idledrawredraw).
+model Idle/Draw/Redraw: [presentation.md mục 4](./presentation.md#4-interactions-with-draw--model-idledrawredraw).
 
 ## File liên quan
 

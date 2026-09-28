@@ -1,6 +1,6 @@
 # Fireworks (`fireworks`) — nhóm Effects
 
-Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](../builder.md#khuôn-chung-của-nhóm-effects).
+Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](./builder.md#khuôn-chung-của-nhóm-effects).
 
 Pháo hoa 2 pha bắn LIÊN TỤC: quả pháo bay lên kéo vệt → tới đỉnh nổ thành chùm tia toả tròn → tia rơi
 theo trọng lực, tắt dần, ~1/3 tia rơi tàn kiểu "willow". Viết lại vật lý từ `FireworksView.tsx` cũ (gỡ

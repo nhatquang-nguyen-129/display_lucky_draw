@@ -5,7 +5,7 @@ File `electron/drawEngine.ts` — phần **nhạy cảm nhất về tính công 
 **Nguyên tắc kiến trúc: Draw Engine tách biệt hoàn toàn khỏi phần hiển thị.** "Chọn ai trúng" (random có trọng số, loại trừ theo luật) và "hiển thị lên màn hình cho khán giả xem" là 2 việc độc lập: Draw Engine không biết gì về UI; UI (Landing Page, Dashboard) chỉ đọc kết quả Draw Engine trả về, không bao giờ tự tính toán ai trúng.
 
 Tách làm 4 hàm, tách để phục vụ luồng Button Draw/Confirm/Redo trên Landing Page (xem
-[`docs/landing/components/button.md`](../landing/components/button.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
+[`docs/landing/button.md`](../landing/button.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
 
 ```ts
 pickWinner(opts): DrawCandidate           // CHỌN, KHÔNG ghi DB

@@ -148,7 +148,7 @@ thật) chiếu thẳng từ trên xuống 1 vật thể:
 Tất cả nằm trong `PrizeImageView.tsx`, đọc `component.width/height/x/y` (khung Prize Image thật, kể
 cả phần đã zoom bởi `onSelect`'s `scaleUp` đang active — bù bằng `activeFocusScaleFraction`, xem
 doc-comment đầu file) — không có Canvas/WebGL nào, thuần CSS (đúng Tier 1 trong
-[builder.md mục 11](../builder.md#11-kỹ-thuật-đồ-hoạ--chọn-tier-nào-cho-hiệu-ứng), vì đây là 1 lớp phủ tĩnh không cần particle/vật lý khung hình).
+[builder.md mục 11](./builder.md#11-kỹ-thuật-đồ-hoạ--chọn-tier-nào-cho-hiệu-ứng), vì đây là 1 lớp phủ tĩnh không cần particle/vật lý khung hình).
 
 **(1) Chùm sáng hình nón, đáy elip** — `computeSpotlightClipPath()` trong `prizeEffectTransform.ts`.
 `clip-path: polygon(...)` chỉ vẽ được cạnh THẲNG nên đáy ban đầu là 1 đường ngang cắt cụt (nhìn giả,
@@ -258,6 +258,6 @@ qua `key` remount riêng; persistent: mỗi lần CHUYỂN sang active), tắt N
 | `src/components/landing/panels/PrizeEffectPicker.tsx` | UI chọn Focus/Highlight/Motion cho 1 giai đoạn — dropdown Highlight có Spotlight (+ Delay) và Dim (+ Amount %) |
 | `src/components/landing/componentRegistry.ts` | Default props khi tạo Prize Image mới (`prizeImage` entry, `onOutOfStock` mặc định Dim 58%) |
 
-Xem thêm: [builder.md mục 11](../builder.md#11-kỹ-thuật-đồ-hoạ--chọn-tier-nào-cho-hiệu-ứng) (tier kỹ thuật
+Xem thêm: [builder.md mục 11](./builder.md#11-kỹ-thuật-đồ-hoạ--chọn-tier-nào-cho-hiệu-ứng) (tier kỹ thuật
 hiệu ứng), [button.md](./button.md) (nút Draw đọc `selectedPrizeId` do Prize set; Multiple/Quick Draw bắt
-buộc đã chọn giải), [presentation.md](../presentation.md) (luồng quay, `spinning` khoá đổi giải).
+buộc đã chọn giải), [presentation.md](./presentation.md) (luồng quay, `spinning` khoá đổi giải).

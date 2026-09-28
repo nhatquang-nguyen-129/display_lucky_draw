@@ -1,6 +1,6 @@
 # Marquee Lights (`marqueeLights`) — nhóm Effects
 
-Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](../builder.md#khuôn-chung-của-nhóm-effects).
+Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](./builder.md#khuôn-chung-của-nhóm-effects).
 
 Hàng bóng đèn chạy quanh viền khung (chữ nhật bo góc) như bảng hiệu sân khấu/máy quay thưởng. Cùng
 khuôn Orbit Lights: sáng/tắt từng bóng là hàm THUẦN của (chỉ số bóng, thời gian), không có trạng thái

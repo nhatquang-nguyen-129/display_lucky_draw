@@ -1,6 +1,6 @@
 # Confetti (`confetti`) — nhóm Effects
 
-Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](../builder.md#khuôn-chung-của-nhóm-effects).
+Tier 2 (Canvas 2D). Cấu trúc, 2 họ kỹ thuật, quy ước panel dùng chung cho cả nhóm: [builder.md → Khuôn chung của nhóm Effects](./builder.md#khuôn-chung-của-nhóm-effects).
 
 Pháo giấy: mảnh chữ nhật (60%) / tròn (20%) / dải ruy băng (20%) bung ra rồi rơi lả tả, vừa rơi vừa
 lật + lắc ngang. Cùng khuôn Fireworks (`createShow()` step/draw tách rời, `seededRng`, deps theo

@@ -15,7 +15,7 @@
 
 **Interactions with Draw** — `DrawCycleFields` với đủ 4 Appearance **Appear/Disappear/Dim/Blur**
 (Dim/Blur có thêm **Amount**: Dim % mặc định 80, Blur px mặc định 16). Tắt (mặc định) = ảnh tĩnh luôn
-hiện. Model đầy đủ: [presentation.md mục 4](../presentation.md#4-interactions-with-draw--model-idledrawredraw).
+hiện. Model đầy đủ: [presentation.md mục 4](./presentation.md#4-interactions-with-draw--model-idledrawredraw).
 
 ## Hành vi
 
