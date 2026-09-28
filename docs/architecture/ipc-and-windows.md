@@ -5,7 +5,7 @@ Tài liệu kiến trúc cross-cutting, áp dụng cho toàn bộ app. Cùng th�
 [draw-engine.md](./draw-engine.md) (thuật toán chọn người trúng + Dashboard). Tính năng cụ thể:
 [`docs/participants/`](../participants/import.md) (Import/Data Type/Data Editor),
 [`docs/landing/`](../landing/builder.md) (Landing Builder/Present Mode/từng component). Setup máy:
-[`docs/local/`](../local/setup.md). Đóng gói/phân phối: [`docs/deploy/`](../deploy/build.md).
+[`docs/local/`](../local/setup.md). Đóng gói/phân phối: [`docs/deploy/`](../deploy/release.md).
 
 ## Mục tiêu sản phẩm
 
