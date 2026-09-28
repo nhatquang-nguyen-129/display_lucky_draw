@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 
-// Nút "Confirm" bắt GIỮ đủ `holdMs` (không phải bấm 1 phát) mới thật sự chạy — dùng cho action phá
-// dữ liệu nặng tay hơn hẳn 1 lượt Confirm thường (hiện chỉ "reset", xem CONFIRM_HOLD_MS trong
-// ButtonView.tsx). Lớp phủ đen mờ dần đầy theo chiều ngang đúng `holdMs` (CSS transition, không
+// Nút "Confirm" TRÊN POPUP xác nhận bắt GIỮ đủ `holdMs` (không phải bấm 1 phát) mới thật sự chạy —
+// trước đây dùng cho popup Reset, hiện không action nào truyền `holdMs` (Confirm/Reset giờ nhấn giữ
+// thẳng trên nút landing, xem useHoldToRun trong ButtonView.tsx). Lớp phủ đen mờ dần đầy theo chiều ngang đúng `holdMs` (CSS transition, không
 // timer riêng nào khác cho phần vẽ) làm mốc thời gian cho người bấm biết còn giữ bao lâu nữa — thả
 // tay ra sớm thì lớp phủ tự lùi về 0 nhanh (150ms) và HUỶ timer thật, không chạy `onConfirm`.
 export default function HoldToConfirmButton({

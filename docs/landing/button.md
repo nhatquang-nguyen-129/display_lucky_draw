@@ -43,8 +43,8 @@ option — xem `usedActionOwners` (tính ở `PropertiesPanel.tsx`, đọc `conf
 |---|---|---|---|
 | **None** | — | — | Mặc định, chưa cấu hình |
 | **Draw** | Đang có candidate CHỜ CONFIRM (`sequence.isPending`) → `sequence.redo()`, ngược lại → `sequence.pick()` | Không ghi DB (chỉ SELECT) | 1 nút DUY NHẤT vừa Draw vừa "Redraw/Discard" — bấm lần đầu chọn candidate mới; bấm tiếp trong lúc candidate đó CHƯA Confirm thì rút lại, chọn lại đúng giải đó cho người khác. Trang có UI chọn giải (`hasSelectablePrizeUI`) thì CẢ `pick()` LẪN `redo()` đều bắt buộc đang có `sequence.selectedPrizeId` mới cho quay, không riêng `pick()` — trước đây `redo()` bỏ qua kiểm tra này (dùng thẳng giải đã khoá từ lượt trước), nên unselect giải giữa lúc đang có candidate chờ Confirm rồi bấm Draw vẫn cứ quay tiếp cho giải cũ thay vì báo popup "Please select a prize first!" (đã sửa, xem `useDrawSequence.ts`) |
-| **Confirm** | `sequence.confirm()` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua nút Discard |
-| **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm (kể cả candidate đang chờ Confirm, chỉ tồn tại trong bộ nhớ). Popup xác nhận bắt **giữ nút Confirm đủ 3 giây** (không phải bấm 1 phát) — xem `CONFIRM_HOLD_MS` bên dưới |
+| **Confirm** | `sequence.confirm()` | `INSERT draw_results` + `UPDATE prizes.remaining` | Ghi DB thật, không hoàn tác qua nút Discard. **Không popup** — nhấn **giữ chính nút Confirm 3 giây** (xem mục "Confirm & Reset" bên dưới) |
+| **Reset** | `sequence.resetSession()` | `DELETE` toàn bộ `draw_results` của session | Không hoàn tác — xoá hết kết quả đã Confirm (kể cả candidate đang chờ Confirm, chỉ tồn tại trong bộ nhớ). **Không popup** — nhấn **giữ chính nút Reset 3 giây** (xem mục "Confirm & Reset" bên dưới) |
 | **Scoreboard** | `sequence.toggleScoreboard()` | Không ghi gì | Bật/tắt popup Scoreboard giữa màn hình |
 | **Open Link** | Đọc `getParticipantField` + `window.api.shell.openExternal` | Không ghi gì | Cần chọn thêm **Source** — mở URL của winner GẦN NHẤT, báo popup (`sequence.showInfoPrompt`) nếu chưa có winner/winner đó không có link |
 
@@ -114,15 +114,30 @@ bỏ hẳn field thừa này thay vì giữ 1 ô nhập ít ai cần sửa.
 > `Open Link` không ghi gì vào DB, nhưng vẫn có hệ quả ngoài `landing_config`: mở 1 trình duyệt
 > ngoài thật sự trên máy đang chạy Present Mode.
 
-## Reset — popup xác nhận "giữ 3 giây", không phải bấm 1 phát
+## Confirm & Reset — nhấn giữ 3 giây ngay trên nút, không popup
 
-`resetSession()` xoá SẠCH cả session (mọi `draw_results`, cộng `prizes.remaining`) — nặng tay hơn hẳn
-`confirm()` (chỉ ghi thêm ĐÚNG 1 dòng), nên popup xác nhận của action **Reset** dùng
-`HoldToConfirmButton.tsx` (`LandingRenderer.tsx`) thay vì nút Confirm bấm 1 phát: `ButtonView.tsx` gọi
-`sequence.requestConfirm(message, action, holdMs)` với `holdMs` lấy từ map `CONFIRM_HOLD_MS =
-{ reset: 3000 }` — action nào không có trong map này (hiện chỉ "confirm") vẫn giữ popup Cancel/Confirm
-bấm 1 phát như cũ. Thả tay ra sớm huỷ luôn thao tác, không có gì xảy ra — chỉ giữ ĐỦ 3 giây liên tục
-mới thật sự chạy `resetSession()`.
+2 action ghi dữ liệu thật (Confirm ghi 1 kết quả, Reset xoá SẠCH cả session) KHÔNG hiện popup xác nhận
+— người vận hành **nhấn giữ chính nút trên landing đủ 3 giây** (`HOLD_ACTION_MS`, hook `useHoldToRun`
+trong `ButtonView.tsx`). Giữ nút ngay tại màn trình chiếu đã đủ để tránh bấm nhầm, không cần popup chen
+ngang. Popup DUY NHẤT còn lại là "Redraw" (bấm Draw lúc chưa Confirm — cảnh báo sắp mất kết quả, xem mục
+dưới).
+
+- Bình thường nút hiện tên gốc ("Confirm" / "Reset").
+- **Đang giữ** → 1 lớp phủ tối chạy ngang nút đúng 3 giây làm mốc thời gian, chữ đổi thành
+  **"Hold 3s to confirm"** / **"Hold 3s to reset"**.
+- **Giữ đủ 3 giây** → lớp phủ đứng yên đầy nút, đổi sang **xanh lá**, chữ đổi thành **"✓ Confirmed"** /
+  **"✓ Reset"** trong 1,5 giây (`HOLD_FEEDBACK_MS`) rồi nút về bình thường.
+- **Thả tay, kéo chuột ra khỏi nút, hoặc bị huỷ con trỏ trước 3 giây** → huỷ, không ghi gì: lớp phủ rút
+  về, chữ về NGAY tên nút gốc. Khác hẳn trạng thái xanh "✓" nên người vận hành biết chắc đã chạy hay chưa.
+  Chữ cho từng action: map `HOLD_ACTION_FEEDBACK`.
+- Click thường và Enter/Space bàn phím **không** chạy — chỉ có đường nhấn giữ.
+- Riêng Confirm: chưa có candidate chờ Confirm (`!sequence.isPending`) thì nhấn xuống là chạy `confirm()`
+  ngay để nó báo "Please draw a winner first!", không bắt giữ vô ích. Reset thì luôn phải giữ.
+- Nút vẫn khoá như cũ khi `busy`/`spinning`.
+
+Popup xác nhận chung (`sequence.requestConfirm`, `LandingRenderer.tsx`) vẫn hỗ trợ tham số `holdMs`
+(nút Confirm trên popup phải giữ, `HoldToConfirmButton.tsx`) nhưng hiện không action nào dùng — trước đây
+là popup của Reset.
 
 Sau khi Reset chạy xong, Winner Name/Text (khi `syncWithDraw`) tự về đúng trạng thái Idle NGAY LẬP
 TỨC qua `DrawSequenceActions.resetSeq` — xem mục "3 trạng thái Idle/Revealed/Disappear" ở
@@ -161,8 +176,7 @@ người trúng — Quick Draw ra nhiều người cùng lúc nên không có 1 
 ### Popup "Are you sure" trước khi âm thầm huỷ 1 candidate đang chờ Confirm
 
 `ButtonView.tsx`'s `handleClick()` tự hỏi lại 1 câu đơn giản ("Are you sure you don't want to confirm
-the current winner before drawing again?" — KHÔNG bắt giữ nút như `CONFIRM_MESSAGES`, chỉ hỏi lại
-đúng 1 lần) TRƯỚC KHI gọi `runDraw()`, bất cứ khi nào NGƯỜI VẬN HÀNH TỰ TAY bấm Draw trong lúc còn 1
+the current winner before drawing again?" — bấm 1 phát, chỉ hỏi lại đúng 1 lần) TRƯỚC KHI gọi `runDraw()`, bất cứ khi nào NGƯỜI VẬN HÀNH TỰ TAY bấm Draw trong lúc còn 1
 candidate đang `isPending` (đã pick, chưa Confirm) — điều kiện DUY NHẤT: `sequence.isPending &&
 sequence.candidate`, KHÔNG phân biệt mode nào hay giải nào đang chọn:
 

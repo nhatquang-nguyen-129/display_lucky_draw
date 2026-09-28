@@ -9,27 +9,81 @@ import {
   LandingData,
 } from "@/lib/landing/types";
 
-// 2 action ghi dữ liệu THẬT, VĨNH VIỄN (xem docs/landing/button.md) — bắt buộc xác nhận qua
-// popup (sequence.requestConfirm(), vẽ ở LandingRenderer.tsx) trước khi thật sự chạy, tránh bấm
-// nhầm giữa lúc trình chiếu trực tiếp. Action còn lại không cần — hoặc vô hại (draw/
-// toggleScoreboard/openLink không ghi gì bất thuận nghịch), hoặc đã tự no-op an toàn sẵn.
-const CONFIRM_MESSAGES: Partial<Record<ButtonAction, string>> = {
-  confirm: "Are you sure you want to confirm this winner? This will be saved permanently.",
-  reset: "Are you sure you want to reset all data in this session? If yes, press and hold this Confirm button for 3 seconds.",
+// 2 action ghi dữ liệu THẬT, VĨNH VIỄN (xem docs/landing/button.md) — KHÔNG qua popup, mà phải nhấn
+// GIỮ chính nút đủ HOLD_ACTION_MS mới chạy (useHoldToRun bên dưới), tránh bấm nhầm giữa lúc trình chiếu
+// mà không làm phiền bằng popup. Mỗi action có chữ riêng: `holding` hiện TRONG LÚC đang giữ, `done` hiện
+// sau khi giữ đủ (thả sớm thì về ngay tên nút gốc). Action còn lại bấm 1 phát — hoặc vô hại (draw/toggleScoreboard/openLink không ghi gì
+// bất thuận nghịch), hoặc đã tự no-op an toàn sẵn. Popup DUY NHẤT còn lại: "Redraw" khi bấm Draw lúc
+// còn candidate chưa Confirm (xem handleClick) — đó là cảnh báo sắp MẤT kết quả, không phải xác nhận.
+const HOLD_ACTION_MS = 3000;
+const HOLD_ACTION_FEEDBACK: Partial<Record<ButtonAction, { holding: string; done: string }>> = {
+  confirm: { holding: "Hold 3s to confirm", done: "✓ Confirmed" },
+  reset: { holding: "Hold 3s to reset", done: "✓ Reset" },
 };
 
-// "reset" xoá SẠCH cả session (mọi draw_results, kể cả người đã quay nhưng CHƯA Confirm, cộng
-// prizes.remaining) — nặng tay hơn hẳn "confirm" (chỉ ghi thêm ĐÚNG 1 dòng), nên bắt GIỮ nút Confirm
-// đủ 3s trên popup thay vì bấm 1 phát, giảm rủi ro bấm nhầm phá dữ liệu cả buổi quay (xem
-// HoldToConfirmButton trong LandingRenderer.tsx). Action nào không có trong map này giữ nguyên popup
-// Cancel/Confirm bấm 1 phát như cũ.
-const CONFIRM_HOLD_MS: Partial<Record<ButtonAction, number>> = {
-  reset: 3000,
-};
+// Thời gian hiện phản hồi kết quả (HOLD_ACTION_FEEDBACK) trước khi nút về bình thường.
+const HOLD_FEEDBACK_MS = 1500;
+
+// Nhấn giữ `holdMs` trên CHÍNH nút rồi mới chạy `onComplete` — thả tay/kéo ra ngoài sớm là huỷ. `phase`:
+//   "holding" — đang giữ: lớp phủ chạy ngang nút đúng `holdMs` (CSS transition) + chữ `holding`;
+//   "done"    — giữ ĐỦ: lớp phủ đứng yên đầy nút, đổi xanh lá + chữ `done` trong HOLD_FEEDBACK_MS;
+//   "idle"    — bình thường, và NGAY khi thả sớm: lớp phủ rút về, chữ về tên nút gốc.
+// "done" phải trông KHÁC hẳn "thả sớm" — trước đây cả 2 đều chỉ rút lớp phủ về, người vận hành không
+// phân biệt được đã chạy thật hay chưa.
+type HoldPhase = "idle" | "holding" | "done";
+
+function useHoldToRun(holdMs: number, onComplete: () => void) {
+  const [phase, setPhase] = useState<HoldPhase>("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showDone() {
+    if (feedbackRef.current) clearTimeout(feedbackRef.current);
+    setPhase("done");
+    feedbackRef.current = setTimeout(() => {
+      feedbackRef.current = null;
+      setPhase("idle");
+    }, HOLD_FEEDBACK_MS);
+  }
+
+  function start() {
+    if (timerRef.current) return;
+    if (feedbackRef.current) {
+      clearTimeout(feedbackRef.current);
+      feedbackRef.current = null;
+    }
+    setPhase("holding");
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      showDone();
+      onComplete();
+    }, holdMs);
+  }
+
+  // Gọi ở pointerup/leave/cancel — chỉ tính là "thả sớm" khi ĐANG giữ thật (timer còn chạy); sau khi
+  // đã "done" thì thả tay không làm tắt phản hồi "✓".
+  function cancel() {
+    if (!timerRef.current) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setPhase("idle");
+  }
+
+  // Component bị unmount giữa lúc đang giữ (vd đóng cửa sổ Present) — không để timer chạy tiếp.
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (feedbackRef.current) clearTimeout(feedbackRef.current);
+    },
+    []
+  );
+
+  return { phase, start, cancel };
+}
 
 // Bấm là chạy đúng 1 action cố định đã chọn trong Properties Panel — gọi thẳng hàm tương ứng của
-// DrawSequenceActions, không qua tín hiệu/trung gian nào (trừ "confirm"/"reset" phải qua popup xác
-// nhận trước, xem CONFIRM_MESSAGES + handleClick bên dưới). "openLink" đọc URL từ field đã chọn
+// DrawSequenceActions, không qua tín hiệu/trung gian nào (trừ "confirm"/"reset" phải nhấn giữ đủ
+// HOLD_ACTION_MS, xem HOLD_ACTION_FEEDBACK + handlePointerDown bên dưới). "openLink" đọc URL từ field đã chọn
 // của winner GẦN NHẤT (data.results[0]) — báo popup (sequence.showInfoPrompt) nếu chưa có winner
 // hoặc winner đó không có link, KHÁC các action khác (vốn no-op im lặng khi bấm lúc chưa có gì) vì
 // đây là action DUY NHẤT mà bấm "thành công" hay "không làm gì" trông giống hệt nhau từ bên ngoài
@@ -245,14 +299,34 @@ export default function ButtonView({
   // Button chưa gán action, không có chữ cố định nào hợp lý hơn cho action rỗng.
   const displayLabel = action === "draw" ? drawButtonLabel(sequence) : BUTTON_ACTION_LABELS[action] ?? label;
 
+  // Confirm/Reset = nhấn GIỮ chính nút (không popup). Riêng Confirm lúc chưa có candidate chờ Confirm thì
+  // không bắt giữ vô ích: nhấn xuống là chạy confirm() ngay, hàm đó tự báo "Please draw a winner first!".
+  const holdFeedback = HOLD_ACTION_FEEDBACK[action];
+  const isHoldAction = !!holdFeedback;
+  const hold = useHoldToRun(HOLD_ACTION_MS, () => {
+    if (sequence && !sequence.busy && !sequence.spinning) runAction(component, sequence, data);
+  });
+
+  function handlePointerDown(e: React.PointerEvent) {
+    if (!isHoldAction || !sequence || locked || e.button !== 0) return;
+    if (action === "confirm" && !sequence.isPending) {
+      runAction(component, sequence, data);
+      return;
+    }
+    hold.start();
+  }
+
   function handleClick() {
     if (!sequence || locked) return;
+    // Confirm/Reset chỉ chạy qua nhấn giữ (handlePointerDown) — bỏ qua click thường, kể cả Enter/Space
+    // bàn phím, để không có đường nào chạy mà không giữ đủ thời gian.
+    if (isHoldAction) return;
     // Đang có 1 candidate CHỜ CONFIRM (isPending) mà bấm Draw NGƯỜI VẬN HÀNH TỰ TAY bấm lần nữa —
     // BẤT KỂ mode nào (Single redo cùng giải, Single đổi giải, Multiple, Quick) đều làm mất candidate
     // đó (Single redo() vẫn PICK 1 NGƯỜI KHÁC cho cùng giải, người đang pending vẫn bị bỏ luôn — không
     // phải "giữ lại", chỉ là giữ NGUYÊN giải; Multiple/Quick's runMultipleDrawInternal/
     // runQuickDrawInternal không đọc lại candidate đang pending, luôn pick() HOÀN TOÀN MỚI). Nhắc bằng
-    // 1 popup "Are you sure" đơn giản (không bắt giữ nút như CONFIRM_MESSAGES, chỉ hỏi lại đúng 1 câu)
+    // 1 popup "Are you sure" đơn giản (chỉ hỏi lại đúng 1 câu)
     // TRƯỚC MỌI lần bấm Draw như vậy — KHÔNG hỏi lại giữa CÁC LƯỢT nội bộ của 1 batch Multiple/Quick
     // đã chạy (mỗi lượt trong batch tự Confirm luôn, không có gì "chưa confirm" để mất — và người vận
     // hành cũng không tự tay bấm Draw cho từng lượt đó, cả batch chỉ 1 cú bấm duy nhất).
@@ -263,11 +337,6 @@ export default function ButtonView({
         undefined,
         "Redraw"
       );
-      return;
-    }
-    const confirmMessage = CONFIRM_MESSAGES[component.props.action];
-    if (confirmMessage) {
-      sequence.requestConfirm(confirmMessage, () => runAction(component, sequence, data), CONFIRM_HOLD_MS[component.props.action]);
       return;
     }
     runAction(component, sequence, data);
@@ -281,9 +350,22 @@ export default function ButtonView({
       <button
         type="button"
         onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={hold.cancel}
+        onPointerLeave={hold.cancel}
+        onPointerCancel={hold.cancel}
+        onContextMenu={isHoldAction ? (e) => e.preventDefault() : undefined}
         disabled={disabled}
-        title={!sequence ? "Buttons are only active in Present Mode" : locked ? "Please wait…" : undefined}
-        className="flex h-full flex-1 items-center justify-center font-medium shadow-lg transition-opacity disabled:cursor-not-allowed"
+        title={
+          !sequence
+            ? "Buttons are only active in Present Mode"
+            : locked
+              ? "Please wait…"
+              : isHoldAction
+                ? `Press and hold for 3 seconds to ${action}`
+                : undefined
+        }
+        className="relative flex h-full flex-1 select-none items-center justify-center overflow-hidden font-medium shadow-lg transition-opacity disabled:cursor-not-allowed"
         style={{
           fontSize,
           color,
@@ -305,7 +387,27 @@ export default function ButtonView({
           opacity: locked ? 0.4 : undefined,
         }}
       >
-        {displayLabel}
+        {isHoldAction && (
+          <span
+            className="pointer-events-none absolute inset-y-0 left-0"
+            style={{
+              // Đang giữ: phủ tối chạy dần; giữ đủ: đứng yên đầy nút, đổi sang xanh lá (không phụ
+              // thuộc màu nút đã cấu hình); thả sớm: rút về nhanh.
+              width: hold.phase === "holding" || hold.phase === "done" ? "100%" : "0%",
+              backgroundColor: hold.phase === "done" ? "rgba(22, 163, 74, 0.92)" : "rgba(0, 0, 0, 0.25)",
+              transitionProperty: "width, background-color",
+              transitionDuration: hold.phase === "holding" ? `${HOLD_ACTION_MS}ms` : "150ms",
+              transitionTimingFunction: hold.phase === "holding" ? "linear" : "ease-out",
+            }}
+          />
+        )}
+        <span className="relative" style={hold.phase === "done" ? { color: "#FFFFFF" } : undefined}>
+          {holdFeedback && hold.phase === "done"
+            ? holdFeedback.done
+            : holdFeedback && hold.phase === "holding"
+              ? holdFeedback.holding
+              : displayLabel}
+        </span>
       </button>
       {showDrawMenu && (
         <DrawMenu
