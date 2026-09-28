@@ -33,25 +33,29 @@ gọi thẳng qua DevTools console vẫn bị reject):
 |---|---|
 | Participant | `participants:create/update/bulkImport/delete/bulkDelete/reorder` |
 | Prize | `prizes:create/update/delete` |
-| Session config | `sessions:updateLandingConfig` |
+| Session config | `sessions:updateLandingConfig/updateOptions/updateColumnTypes/updateColumnLabels` |
+| Tab | `sessions:rename`, `sessions:delete` (đóng tab) |
 | Draw | `draw:one/pick/commit/resetSession` |
 | Mở cửa sổ | `present:open`, `landingBuilder:open`, `dataEditor:open` |
 
-**Cố ý KHÔNG chặn**: `sessions:delete` (xoá tab → `data/.trash/`, có đường lấy lại, không phải "sửa dữ
-liệu đã quay") và `sessions:rename`/`updateOptions`/`updateColumnTypes`/`updateColumnLabels` (quản lý
-tab, không phải dữ liệu kết quả). Thêm IPC mới sửa/xoá dữ liệu participant/prize/draw hay mở cửa sổ
-edit → nhớ thêm `assertSessionUnlocked` vào đầu handler, theo đúng bảng trên.
+Session đang khoá là **chỉ xem hoàn toàn**: không đổi tên, không đóng tab được (bản đầu cố ý để 2 thao
+tác này ngoài khoá, sau đó đổi theo yêu cầu). Thêm IPC mới ghi dữ liệu của 1 session hay mở cửa sổ edit
+→ nhớ thêm `assertSessionUnlocked` vào đầu handler, theo đúng bảng trên.
 
-Endpoint để đổi trạng thái: `sessions:setLocked` (`{ id, locked }`), theo đúng khuôn IPC 3 lớp
-(`main.ts` → `preload.ts` → `Window.api` trong `src/types.ts`) như mọi endpoint khác — xem
-[`ipc-and-windows.md`](./ipc-and-windows.md#ipc-3-lớp-bắt-buộc-đồng-bộ).
+Endpoint để đổi trạng thái: `sessions:setLocked` (`{ id, locked }`) → `{ ok, openWindows }`, theo đúng
+khuôn IPC 3 lớp (`main.ts` → `preload.ts` → `Window.api` trong `src/types.ts`) như mọi endpoint khác —
+xem [`ipc-and-windows.md`](./ipc-and-windows.md#ipc-3-lớp-bắt-buộc-đồng-bộ). **Khoá bị từ chối**
+(`ok: false`) khi session còn mở Data Editor/Landing Builder/Presentation — khoá giữa chừng sẽ làm cửa sổ
+đó lỗi ở lần ghi/quay tiếp theo hoặc mất thay đổi chưa Save; `SessionLockMenu.tsx` báo người dùng đóng
+các cửa sổ đó trước. Mở khoá thì luôn được.
 
 ## Giao diện
 
-- **Khoá/mở khoá**: chuột phải (Windows) hoặc secondary-click trên trackpad (macOS) vào 1 tab trong
-  `TabBar.tsx` → menu nổi `SessionLockMenu.tsx`, đúng 1 lựa chọn tuỳ trạng thái hiện tại
-  ("Lock session" / "Unlock session"). Trình duyệt tự chuẩn hoá sự kiện `contextmenu` giữa các cách
-  bấm chuột phải khác nhau của từng hệ điều hành — không cần code riêng theo platform.
+- **Khoá/mở khoá**: chuột phải (Windows) hoặc secondary-click trên trackpad / **Option + click**
+  (macOS) vào 1 tab trong `TabBar.tsx` → menu nổi `SessionLockMenu.tsx`, đúng 1 lựa chọn tuỳ trạng thái
+  hiện tại ("Lock session" / "Unlock session"). Trình duyệt tự chuẩn hoá sự kiện `contextmenu` giữa các
+  cách bấm chuột phải; Option + click là 1 `click` có `altKey`, `TabBar.tsx` bắt riêng.
+- **Tab đang khoá**: double-click không đổi tên, nút × (đóng tab) ẩn đi.
 - **Khoá**: có hiệu lực ngay, không cần xác nhận thêm (chiều "an toàn").
 - **Mở khoá**: bắt buộc giữ nút 3 giây (`HoldToUnlockButton.tsx`, dùng `requestAnimationFrame` chạy
   thanh fill, thả sớm là huỷ, không có class thao tác nào ngắn hơn 3s có tác dụng) — đây là điểm khác

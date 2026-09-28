@@ -50,13 +50,22 @@ export default function TabBar() {
       <div className="flex flex-1 items-end gap-1 overflow-x-auto">
         {sessions.map((s) => {
           const active = s.id === activeSessionId;
+          // Tab đang khoá: không đổi tên (double-click) và không đóng (nút ×) — main.ts cũng chặn
+          // sessions:rename/sessions:delete bằng assertSessionUnlocked.
+          const locked = s.locked === 1;
           return (
             <div
               key={s.id}
-              onClick={() => switchTab(s.id)}
-              onDoubleClick={() => startRename(s.id, s.name)}
+              // Option + click (macOS) mở cùng menu Lock/Unlock như chuột phải — ngoài click 2 ngón/
+              // Control-click vốn đã ra sự kiện contextmenu.
+              onClick={(e) => (e.altKey ? handleContextMenu(e, s) : switchTab(s.id))}
+              onDoubleClick={() => !locked && startRename(s.id, s.name)}
               onContextMenu={(e) => handleContextMenu(e, s)}
-              title="Double-click to rename, right-click to lock/unlock"
+              title={
+                locked
+                  ? "Locked (view only) — right-click or Option + click to unlock"
+                  : "Double-click to rename, right-click or Option + click to lock"
+              }
               className={`group flex max-w-[200px] shrink-0 cursor-pointer items-center gap-2 rounded-t-lg border border-b-0 px-3 py-2 text-sm transition-colors ${
                 active
                   ? "border-base-800 bg-base-950 text-base-100"
@@ -91,13 +100,15 @@ export default function TabBar() {
                   <span className="truncate">{s.name}</span>
                 </span>
               )}
-              <button
-                onClick={(e) => handleCloseTab(e, s.id, s.name)}
-                title="Close this session"
-                className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
-              >
-                ×
-              </button>
+              {!locked && (
+                <button
+                  onClick={(e) => handleCloseTab(e, s.id, s.name)}
+                  title="Close this session"
+                  className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
+                >
+                  ×
+                </button>
+              )}
             </div>
           );
         })}

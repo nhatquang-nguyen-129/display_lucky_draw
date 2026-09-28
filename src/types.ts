@@ -166,7 +166,8 @@ declare global {
           excludePreviousWinners?: boolean;
         }) => Promise<string>;
         rename: (data: { id: string; name: string }) => Promise<void>;
-        setLocked: (data: { id: string; locked: boolean }) => Promise<void>;
+        // Khoá bị từ chối (ok: false) khi session còn mở cửa sổ phụ — openWindows = tên các cửa sổ cần đóng.
+        setLocked: (data: { id: string; locked: boolean }) => Promise<{ ok: boolean; openWindows: string[] }>;
         updateOptions: (data: {
           id: string;
           allowDuplicatePrize: boolean;

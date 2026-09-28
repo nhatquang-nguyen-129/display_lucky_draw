@@ -607,17 +607,33 @@ ipcMain.handle(
   (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => createSession(data)
 );
 
-ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => renameSession(data.id, data.name));
+ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => {
+  assertSessionUnlocked(data.id);
+  renameSession(data.id, data.name);
+});
 
 // Khoá/mở khoá session — không phải bảo mật (không có password), chỉ tránh nhầm lẫn chỉnh sửa sau khi
 // đã quay xong. Mở khoá yêu cầu giữ nút 3 giây ở phía renderer (SessionLockMenu.tsx/HoldToUnlockButton.tsx).
-ipcMain.handle("sessions:setLocked", (_e, data: { id: string; locked: boolean }) =>
-  setSessionLocked(data.id, data.locked)
-);
+// Khoá bị TỪ CHỐI khi session còn mở cửa sổ phụ (Data Editor/Builder/Presentation): khoá giữa chừng làm
+// cửa sổ đó lỗi ở lần ghi/quay tiếp theo (hoặc mất thay đổi chưa Save) — trả tên cửa sổ để renderer báo
+// người dùng đóng trước.
+ipcMain.handle("sessions:setLocked", (_e, data: { id: string; locked: boolean }) => {
+  if (data.locked) {
+    const openWindows = [
+      dataEditorWindows.has(data.id) && "Data Editor",
+      landingBuilderWindows.has(data.id) && "Landing Builder",
+      presentWindows.has(data.id) && "Presentation",
+    ].filter(Boolean) as string[];
+    if (openWindows.length > 0) return { ok: false, openWindows };
+  }
+  setSessionLocked(data.id, data.locked);
+  return { ok: true, openWindows: [] };
+});
 
 ipcMain.handle(
   "sessions:updateOptions",
   (_e, data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) => {
+    assertSessionUnlocked(data.id);
     getDb(data.id).prepare(`UPDATE sessions SET allow_duplicate_prize = ?, exclude_previous_winners = ? WHERE id = ?`).run(
       data.allowDuplicatePrize ? 1 : 0,
       data.excludePreviousWinners ? 1 : 0,
@@ -631,6 +647,7 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateColumnTypes",
   (_e, data: { id: string; columnTypes: Record<string, string> }) => {
+    assertSessionUnlocked(data.id);
     getDb(data.id).prepare(`UPDATE sessions SET participant_column_types = ? WHERE id = ?`).run(
       JSON.stringify(data.columnTypes),
       data.id
@@ -643,6 +660,7 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateColumnLabels",
   (_e, data: { id: string; columnLabels: Record<string, string> }) => {
+    assertSessionUnlocked(data.id);
     getDb(data.id).prepare(`UPDATE sessions SET participant_column_labels = ? WHERE id = ?`).run(
       JSON.stringify(data.columnLabels),
       data.id
@@ -663,7 +681,10 @@ ipcMain.handle(
 );
 
 // Xoá tab = chuyển file của session vào data/.trash/ (không xoá hẳn — có đường lấy lại, xem db.ts).
-ipcMain.handle("sessions:delete", (_e, id: string) => deleteSession(id));
+ipcMain.handle("sessions:delete", (_e, id: string) => {
+  assertSessionUnlocked(id);
+  deleteSession(id);
+});
 
 // Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,
 // xem useLandingData.ts), phải luôn khớp đúng "ai đã thật sự trúng" như hành vi trước khi có cột

@@ -36,9 +36,13 @@ export default function SessionLockMenu({ session, x, y, onClose, onChanged }: P
   }, [confirmingUnlock, onClose]);
 
   async function handleLock() {
-    await window.api.sessions.setLocked({ id: session.id, locked: true });
-    onChanged();
+    const result = await window.api.sessions.setLocked({ id: session.id, locked: true });
     onClose();
+    if (!result.ok) {
+      alert(`Close the ${result.openWindows.join(", ")} window of session "${session.name}" before locking it.`);
+      return;
+    }
+    onChanged();
   }
 
   async function handleConfirmUnlock() {
