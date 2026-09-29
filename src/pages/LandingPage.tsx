@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Button from "@/components/Button";
 import { useSession } from "@/context/SessionContext";
 import LandingRenderer from "@/components/landing/LandingRenderer";
+import { LandingSessionContext } from "@/components/landing/LandingSessionContext";
 import { useLandingData } from "@/components/landing/useLandingData";
 import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
 import { CANVAS_HEIGHT, CANVAS_WIDTH, parseLandingConfig } from "@/lib/landing/types";
@@ -103,7 +104,9 @@ export default function LandingPage() {
         className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-800 bg-base-950 p-6"
       >
         <div style={{ width: CANVAS_WIDTH * scale, height: CANVAS_HEIGHT * scale }} className="shadow-2xl">
-          <LandingRenderer config={config} data={data} scale={scale} />
+          <LandingSessionContext.Provider value={activeSessionId}>
+            <LandingRenderer config={config} data={data} scale={scale} />
+          </LandingSessionContext.Provider>
         </div>
       </div>
     </div>

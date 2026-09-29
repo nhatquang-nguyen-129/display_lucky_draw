@@ -234,6 +234,12 @@ declare global {
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
       };
+      media: {
+        // null = người dùng huỷ dialog. Phát lại qua `ldmedia://<sessionId>/<mediaId>` (electron/media.ts).
+        importVideo: (
+          sessionId: string
+        ) => Promise<{ mediaId: string; fileName: string; size: number } | { error: string } | null>;
+      };
       shell: {
         openExternal: (url: string) => Promise<void>;
       };

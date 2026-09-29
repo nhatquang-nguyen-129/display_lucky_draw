@@ -22,6 +22,10 @@ import {
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
+import { importVideo, purgeUnusedMedia, registerMediaProtocol, registerMediaScheme } from "./media";
+
+// Scheme ldmedia:// (video của Landing, xem media.ts) — Electron bắt buộc đăng ký trước app ready.
+registerMediaScheme();
 
 // Icon dùng lúc runtime (khác với build.icon trong package.json — đó là icon đóng gói
 // vào file .app/.exe lúc build, còn icon này để BrowserWindow tự set icon cửa sổ/taskbar
@@ -175,6 +179,13 @@ function openLandingBuilderWindow(sessionId: string) {
     existing.focus();
     return;
   }
+  // Dọn video mồ côi TRƯỚC khi Builder mở (chưa có lịch sử Undo nào) — xem purgeUnusedMedia. Lỗi dọn
+  // dẹp không được chặn việc mở Builder.
+  try {
+    purgeUnusedMedia(sessionId);
+  } catch (e) {
+    console.warn("[media] purge failed:", e);
+  }
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -304,6 +315,7 @@ function openDataEditorWindow(sessionId: string) {
 
 app.whenReady().then(() => {
   app.setName(APP_NAME);
+  registerMediaProtocol();
 
   // macOS: BrowserWindow "icon" option không đổi icon Dock lúc chạy `electron .` ở dev
   // (chỉ có tác dụng khi đã đóng gói thành .app) — cần set thủ công qua app.dock.
@@ -834,6 +846,13 @@ ipcMain.handle("present:toggleFullscreen", (e) => {
 ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {
   assertSessionUnlocked(sessionId);
   openLandingBuilderWindow(sessionId);
+});
+
+// Component Video trên Landing — main tự mở dialog + đọc file bằng fs (renderer không đọc file được,
+// và không nên chuyển vài trăm MB qua IPC), ghi BLOB vào bảng media, chỉ trả id về. Xem media.ts.
+ipcMain.handle("media:importVideo", (e, sessionId: string) => {
+  assertSessionUnlocked(sessionId);
+  return importVideo(sessionId, BrowserWindow.fromWebContents(e.sender));
 });
 
 ipcMain.handle("dataEditor:open", (_e, sessionId: string) => {

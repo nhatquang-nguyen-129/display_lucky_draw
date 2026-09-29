@@ -150,6 +150,51 @@ export interface ImageComponent extends BaseComponent {
   props: ImageProps;
 }
 
+// Appearance của Video trong "Interactions with Draw" — KHÁC domain DrawRestState của Image (không hiện/
+// ẩn/dim/blur mà điều khiển phát): "play" phát tiếp từ vị trí đang đứng, "pause" dừng tại khung hình
+// hiện tại, "stop" dừng VÀ tua về khung hình đầu tiên (vẫn HIỆN khung đó, không ẩn video).
+export type VideoPlayState = "play" | "pause" | "stop";
+export type VideoPhaseAction = "none" | VideoPlayState;
+
+// Cùng kiến trúc 3 mốc Idle/Draw/Redraw + quy tắc "khác giá trị thật gần nhất phía trước" với
+// DrawCycleConfig (xem doc-comment ở đó), chỉ khác: đổi trạng thái phát là TỨC THÌ, không có hiệu ứng
+// chuyển cảnh (crossfade/slide... vô nghĩa với play/pause) — mỗi mốc chỉ còn Delay. Redraw khác "none"
+// thì chạy redrawAction, rồi (nếu drawAction khác "none") tự chạy lại drawAction sau đúng khoảng đệm
+// cố định như Image — vd Redraw = Stop, Draw = Play: mỗi lượt quay lại, video phát lại từ đầu.
+export interface VideoCycleConfig {
+  prizeId?: string;
+  idleState: VideoPlayState;
+  idleDelayMs?: number;
+  drawAction: VideoPhaseAction;
+  drawDelayMs?: number;
+  redrawAction: VideoPhaseAction;
+  redrawDelayMs?: number;
+}
+
+export const DEFAULT_VIDEO_CYCLE: VideoCycleConfig = { idleState: "stop", drawAction: "play", redrawAction: "stop" };
+
+export interface VideoProps {
+  // id dòng trong bảng `media` của CHÍNH file session (electron/db.ts) — video KHÔNG nhét base64 vào
+  // landing_config như Image (vài trăm MB), renderer phát qua scheme `ldmedia://<sessionId>/<mediaId>`
+  // (xem registerMediaProtocol trong electron/main.ts).
+  mediaId: string | null;
+  fileName: string | null; // chỉ để hiện trong Properties Panel
+  fit: "cover" | "contain" | "stretch";
+  borderRadius: number;
+  loop: boolean;
+  muted: boolean;
+  // undefined/false = video tự phát ngay khi mở Present Mode (theo `loop`). true = điều khiển phát theo
+  // `drawCycle` (VideoCycleConfig, KHÔNG phải DrawCycleConfig — cùng tên field để
+  // hasMissingPrizeBinding đọc được `prizeId` chung).
+  syncWithDraw?: boolean;
+  drawCycle?: VideoCycleConfig;
+}
+
+export interface VideoComponent extends BaseComponent {
+  type: "video";
+  props: VideoProps;
+}
+
 // Giá trị `amount` mặc định khi 1 phase mới được đổi sang đích "dim"/"blur" mà chưa từng cấu hình gì
 // (xem BackgroundPanel.tsx/ImagePanel.tsx) — Dim 80% theo đúng yêu cầu, Blur 16px chọn tạm 1 mức vừa phải.
 export const DEFAULT_BACKGROUND_DIM_AMOUNT = 80;
@@ -617,7 +662,7 @@ export function isLiveDrawResultId(id: string | null | undefined): boolean {
 // tiếp tính là Draw mới, không phải Redraw).
 export function drawCycleResultId(
   latest: import("@/types").DrawResultRow | undefined,
-  cycle: DrawCycleConfig | undefined
+  cycle: Pick<DrawCycleConfig, "prizeId"> | undefined
 ): string | undefined {
   if (!latest || !isLiveDrawResultId(latest.id)) return undefined;
   if (cycle?.prizeId && latest.prize_id !== cycle.prizeId) return undefined;
@@ -891,6 +936,7 @@ export interface SparkFountainComponent extends BaseComponent {
 export type LandingComponent =
   | TextComponent
   | ImageComponent
+  | VideoComponent
   | BackgroundComponent
   | LuckyWheelComponent
   | WinnerNameComponent

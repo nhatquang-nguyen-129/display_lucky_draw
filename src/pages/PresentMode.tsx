@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useLandingData } from "@/components/landing/useLandingData";
 import { useDrawSequence } from "@/components/landing/useDrawSequence";
 import LandingRenderer from "@/components/landing/LandingRenderer";
+import { LandingSessionContext } from "@/components/landing/LandingSessionContext";
 import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
 import {
   CANVAS_HEIGHT,
@@ -83,7 +84,9 @@ export default function PresentMode() {
             sequence.infoPrompt bên trong LandingRenderer — cùng chỗ với "Please select a prize
             first!" — không còn thanh chữ đỏ riêng ở đây (trông như lỗi code thay vì 1 thông báo
             nghiệp vụ bình thường). */}
-        <LandingRenderer config={config} data={sequence.effectiveData} scale={scale} interactive sequence={sequence} />
+        <LandingSessionContext.Provider value={sessionId ?? null}>
+          <LandingRenderer config={config} data={sequence.effectiveData} scale={scale} interactive sequence={sequence} />
+        </LandingSessionContext.Provider>
       </div>
 
       {/* Overlay mờ, sáng lên khi hover — không nổi bật giữa màn hình trình chiếu nhưng người vận

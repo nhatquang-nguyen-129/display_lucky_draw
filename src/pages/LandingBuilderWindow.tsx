@@ -4,6 +4,7 @@ import Button from "@/components/Button";
 import ComponentPalette from "@/components/landing/ComponentPalette";
 import LandingCanvas, { CanvasTool } from "@/components/landing/LandingCanvas";
 import LayersPanel from "@/components/landing/LayersPanel";
+import { LandingSessionContext } from "@/components/landing/LandingSessionContext";
 import PropertiesPanel from "@/components/landing/PropertiesPanel";
 import { COMPONENT_REGISTRY, createComponentAt } from "@/components/landing/componentRegistry";
 import { useConfigHistory } from "@/components/landing/useConfigHistory";
@@ -572,6 +573,7 @@ export default function LandingBuilderWindow() {
   }
 
   return (
+    <LandingSessionContext.Provider value={sessionId ?? null}>
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-base-950">
       <div className="flex shrink-0 items-center justify-between border-b border-base-800 bg-base-900 px-4 py-2">
         <div>
@@ -853,6 +855,7 @@ export default function LandingBuilderWindow() {
         )}
       </div>
     </div>
+    </LandingSessionContext.Provider>
   );
 }
 

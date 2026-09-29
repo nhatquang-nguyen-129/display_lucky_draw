@@ -120,6 +120,10 @@ const api = {
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
     },
+  media: {
+    // Mở dialog chọn video, main lưu vào bảng media của session — xem electron/media.ts.
+    importVideo: (sessionId: string) => ipcRenderer.invoke("media:importVideo", sessionId),
+  },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
   },

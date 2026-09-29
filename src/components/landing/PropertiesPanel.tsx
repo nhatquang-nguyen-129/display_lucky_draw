@@ -5,6 +5,7 @@ import SharedFields from "./panels/SharedFields";
 import { DrawCyclePrizesContext } from "./panels/DrawCycleFields";
 import TextPanel from "./panels/TextPanel";
 import ImagePanel from "./panels/ImagePanel";
+import VideoPanel from "./panels/VideoPanel";
 import LuckyWheelPanel from "./panels/LuckyWheelPanel";
 import LiveTextPanel from "./panels/LiveTextPanel";
 import LiveImagePanel from "./panels/LiveImagePanel";
@@ -89,6 +90,7 @@ export default function PropertiesPanel({
       <div className="space-y-4 p-3">
         {selected.type === "text" && <TextPanel props={selected.props} onChange={onChangeProps} />}
         {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "video" && <VideoPanel props={selected.props} onChange={onChangeProps} />}
         {selected.type === "background" && <BackgroundPanel props={selected.props} onChange={onChangeProps} />}
         {selected.type === "luckyWheel" && (
           <LuckyWheelPanel

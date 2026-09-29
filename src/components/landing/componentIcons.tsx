@@ -22,6 +22,15 @@ function ImageIcon() {
   );
 }
 
+function VideoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m10 9 5 3-5 3V9Z" />
+    </svg>
+  );
+}
+
 function BackgroundIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -155,6 +164,7 @@ function GenericComponentIcon() {
 const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   text: TextIcon,
   image: ImageIcon,
+  video: VideoIcon,
   background: BackgroundIcon,
   luckyWheel: LuckyWheelIcon,
   winnerName: WinnerNameIcon,

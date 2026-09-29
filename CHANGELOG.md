@@ -2,6 +2,20 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Component Video (nhóm Basic)
+
+Chi tiết: `docs/landing/video.md`.
+
+- Video trên landing (MP4/WebM/MOV, tối đa 500 MB): Fit, Border radius, Loop, Muted (mặc định tắt
+  tiếng). Không bật "Trigger with Draw" thì tự phát trong Presentation.
+- "Interactions with Draw" cùng model Idle/Draw/Redraw như Image nhưng Appearance là **Play / Pause /
+  Stop** (Stop = về khung hình đầu, vẫn hiện), mỗi mốc chỉ có Delay.
+- Lưu trữ: BLOB trong bảng mới `media` của chính file session (migration additive, file cũ chỉ được
+  thêm bảng) — copy 1 file `.db` vẫn mang đủ video. Phát qua scheme `ldmedia://` có hỗ trợ HTTP Range.
+  Video không còn dùng tự dọn (+ `VACUUM`) mỗi lần mở Builder.
+
 ## [1.1.2] — 2026-09-29
 
 ### Sửa lỗi Image hiện khung xám quanh ảnh PNG trong suốt

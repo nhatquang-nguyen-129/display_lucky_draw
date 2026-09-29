@@ -83,6 +83,7 @@ erDiagram
   SESSIONS ||--o{ PARTICIPANTS : session_id
   SESSIONS ||--o{ PRIZES : session_id
   SESSIONS ||--o{ DRAW_RESULTS : session_id
+  SESSIONS ||--o{ MEDIA : session_id
   PARTICIPANTS ||--o{ DRAW_RESULTS : participant_id
   PRIZES ||--o{ DRAW_RESULTS : prize_id
 
@@ -128,7 +129,18 @@ erDiagram
     text rng_seed
     integer confirmed "1 = đã Confirm thật; 0 = đã pick nhưng bị Redo/bỏ dở, chỉ để Dashboard xem lịch sử"
   }
+  MEDIA {
+    text id PK
+    text session_id FK
+    text file_name
+    text mime
+    integer size
+    blob data "file video của component Video, xem docs/landing/video.md"
+  }
 ```
+
+`media` (bảng mới cho component Video, `CREATE TABLE IF NOT EXISTS` — file cũ chỉ được thêm bảng rỗng): landing chỉ lưu
+`media.id`; dòng không còn component nào dùng tự bị xoá (+ `VACUUM`) mỗi lần mở Builder.
 
 ## Migration
 

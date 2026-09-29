@@ -178,6 +178,19 @@ CREATE TABLE IF NOT EXISTS draw_results (
   rng_seed TEXT,
   confirmed INTEGER NOT NULL DEFAULT 1
 );
+
+-- File media (video) của component Video trên Landing — lưu BLOB ngay trong file session để "copy 1
+-- file .db là mang theo đủ" vẫn đúng. landing_config chỉ giữ media.id (xem VideoProps trong
+-- src/lib/landing/types.ts). Bảng mới hoàn toàn, CREATE IF NOT EXISTS nên file cũ chỉ được THÊM bảng.
+CREATE TABLE IF NOT EXISTS media (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
   migrateToPerSessionData(db);
   migratePrizeFields(db);

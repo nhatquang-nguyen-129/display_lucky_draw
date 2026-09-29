@@ -98,6 +98,7 @@ mặc định, tâm tại điểm thả, tự chọn nó và mở Properties Pan
 |---|---|---|
 | **Basic** | Text | [components/text.md](./text.md) |
 | | Image | [components/image.md](./image.md) |
+| | Video | [components/video.md](./video.md) |
 | | Background (tối đa 1/trang) | [components/background.md](./background.md) |
 | **Draw** | Lucky Wheel (tối đa 1/trang) | [components/lucky-wheel.md](./lucky-wheel.md) |
 | | Winner | [components/winner.md](./winner.md) |
