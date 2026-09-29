@@ -2,20 +2,29 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.1.0] — 2026-09-29
 
 ### Session Lock — khoá session sau khi quay xong
 
 Chi tiết: `docs/architecture/session-lock.md`.
 
-- Thêm: khoá/mở khoá từng session (chuột phải vào tab) để tránh nhầm lẫn chỉnh sửa sau khi đã có kết
-  quả cuối — KHÔNG phải bảo mật, không có password, không có khôi phục.
-- Session khoá: chặn hẳn mở Data Editor/Presentation/Builder, và mọi thao tác Add/Edit/Delete/Import
-  trên Participant/Prize (8 nút liên quan bị disable, Dashboard vẫn xem được bình thường).
+- Thêm: khoá/mở khoá từng session (chuột phải, hoặc Option + click trên macOS, vào tab) để tránh nhầm
+  lẫn chỉnh sửa sau khi đã có kết quả cuối — KHÔNG phải bảo mật, không có password, không có khôi phục.
+- Session khoá: chặn hẳn mở Data Editor/Presentation/Builder, mọi thao tác Add/Edit/Delete/Import trên
+  Participant/Prize, và cả đổi tên/đóng tab (Dashboard vẫn xem được bình thường — chỉ-xem thật sự).
+- Từ chối khoá nếu session đó đang có cửa sổ Data Editor/Landing Builder/Presentation mở sẵn — báo rõ
+  cửa sổ nào cần đóng trước.
 - Mở khoá bắt buộc giữ nút 3 giây (tránh 1 cú bấm nhầm gỡ khoá).
 - Chặn thật nằm ở tầng IPC (`assertSessionUnlocked()`, `electron/main.ts`), không chỉ ẩn nút ở
   renderer — gọi thẳng API bị khoá qua DevTools console vẫn bị từ chối.
 - Cột mới `sessions.locked` (migration additive, không ảnh hưởng session cũ — mặc định chưa khoá).
+
+### Confirm/Reset trên Landing Page — giữ 3 giây ngay trên nút, bỏ popup xác nhận
+
+- Confirm và Reset không còn hiện popup hỏi lại — giữ nút 3 giây là đủ (thanh tối phủ dần lên nút,
+  nhãn đổi thành "Hold 3s to confirm/reset"; giữ đủ 3s thì nút xanh "✓ Confirmed"/"✓ Reset" 1.5s, thả
+  sớm quay lại nhãn cũ ngay). Bấm/Enter/Space thường không có tác dụng. Popup duy nhất còn lại là cảnh
+  báo Redraw (bấm Draw khi còn 1 kết quả chưa Confirm).
 
 ## [1.0.1] — 2026-09-28
 
