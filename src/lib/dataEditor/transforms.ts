@@ -18,7 +18,10 @@ export function normalizePhoneResult(v: string): string | null {
   if (parts.length >= 2 && parts.filter((p) => p.replace(/\D/g, "").length >= 7).length >= 2) {
     return null;
   }
-  let digits = v.replace(/\D/g, "");
+  // "o"/"O" rất hay bị gõ nhầm thay số "0" (hình dạng giống hệt trên bàn phím) — đổi trước khi xoá
+  // ký tự không phải số, KHÔNG xoá thẳng như trước (xoá làm mất 1 số, biến số 10 chữ số hợp lệ thành
+  // 9 chữ số sai định dạng thay vì sửa đúng).
+  let digits = v.replace(/[oO]/g, "0").replace(/\D/g, "");
   if (digits.startsWith("84") && digits.length > 9) digits = "0" + digits.slice(2);
   if (digits.length > 0 && !digits.startsWith("0")) digits = "0" + digits;
   return digits;

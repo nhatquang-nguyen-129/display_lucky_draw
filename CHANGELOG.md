@@ -2,7 +2,20 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.1.1] — 2026-09-29
+
+### Sửa lỗi Normalize Phone xoá nhầm chữ "o" thay vì đổi thành số "0"
+
+Chi tiết: `src/lib/dataEditor/transforms.ts` (`normalizePhoneResult`).
+
+- **Bug quan trọng**: chữ `o`/`O` (gõ nhầm rất phổ biến thay cho số `0`, hình dạng giống hệt) bị lệnh
+  **Normalize Phone** XOÁ THẲNG như mọi ký tự không phải số khác, thay vì sửa thành `0` — biến 1 số
+  điện thoại 10 chữ số hợp lệ (vd `098760o123`) thành 9 chữ số SAI định dạng (`098760123`) sau khi
+  "chuẩn hoá", ngược hẳn mục đích của tính năng.
+- Sửa: đổi `o`/`O` → `0` TRƯỚC khi xoá ký tự không phải số — `098760o123` giờ ra đúng `0987600123`
+  (10 số, hợp lệ). Đã kiểm tra lại qua UI thật (Data Editor → Normalize Phone), không chỉ đơn vị hàm.
+
+## [1.1.0] — 2026-09-29
 
 ### Close / Move to trash / Open / Restore — tách rõ 4 hành động trên session
 
@@ -22,8 +35,6 @@ Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo sessio
   (không còn đường lấy lại, có confirm riêng), khác hẳn Restore.
 - Sửa bug tạo trùng session: ô nhập tên tab mới nghe cả `onKeyDown` (Enter) lẫn `onBlur`, có thể cả 2
   cùng bắn gần như đồng thời và tạo 2 session trùng tên trước khi state kịp reset — chặn bằng ref-guard.
-
-## [1.1.0] — 2026-09-29
 
 ### Session Lock — khoá session sau khi quay xong
 
