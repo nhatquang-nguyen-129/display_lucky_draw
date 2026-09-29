@@ -147,13 +147,28 @@ export default function Participants() {
           {items.length} participants in session "{activeSession.name}"
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => window.api.dataEditor.open(activeSessionId!)}>
+          <Button
+            variant="secondary"
+            onClick={() => window.api.dataEditor.open(activeSessionId!)}
+            disabled={activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+          >
             Edit
           </Button>
-          <Button variant="secondary" onClick={handleImportFile}>
+          <Button
+            variant="secondary"
+            onClick={handleImportFile}
+            disabled={activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+          >
             {items.length === 0 ? "Import" : "Replace"}
           </Button>
-          <Button variant="danger" onClick={handleClearAll} disabled={items.length === 0}>
+          <Button
+            variant="danger"
+            onClick={handleClearAll}
+            disabled={items.length === 0 || activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+          >
             Delete
           </Button>
         </div>

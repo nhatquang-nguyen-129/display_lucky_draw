@@ -172,13 +172,28 @@ export default function Prizes() {
           {items.length} prizes in session "{activeSession.name}"
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={openAdd}>
+          <Button
+            variant="secondary"
+            onClick={openAdd}
+            disabled={activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+          >
             Add
           </Button>
-          <Button variant="secondary" onClick={openEditSelected} disabled={!selectedId}>
+          <Button
+            variant="secondary"
+            onClick={openEditSelected}
+            disabled={!selectedId || activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+          >
             Edit
           </Button>
-          <Button variant="danger" onClick={handleDeleteSelected} disabled={!selectedId}>
+          <Button
+            variant="danger"
+            onClick={handleDeleteSelected}
+            disabled={!selectedId || activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+          >
             Delete
           </Button>
         </div>

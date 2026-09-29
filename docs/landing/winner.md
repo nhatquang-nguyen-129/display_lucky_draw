@@ -11,7 +11,7 @@ chung (`DrawCycleFields`) mà có cơ chế riêng `useRevealed` + `useRevealTra
 X/Y/Width/Height (Position gộp vào đây, ẩn Effect entrance chung).
 
 - **Source** (`nameSourceColumn`): cột nào dùng làm tên — nhánh 2 của quy tắc Source
-  ([builder.md mục 7](../builder.md#dropdown-source-chọn-cột-participant--đúng-1-trong-2-nhánh)): chỉ các cột
+  ([builder.md mục 7](./builder.md#dropdown-source-chọn-cột-participant--đúng-1-trong-2-nhánh)): chỉ các cột
   đang gán Data Type = **Name** và còn dữ liệu, luôn hiện kể cả chỉ có 1 lựa chọn; rỗng → select
   disabled "Set a column's Data Type to Name first.". Cần khi session có nhiều cột Name (vd "Tên người
   chơi" và "Tên người thân") và muốn 2 khung Winner hiện 2 cột khác nhau. Trống = đọc

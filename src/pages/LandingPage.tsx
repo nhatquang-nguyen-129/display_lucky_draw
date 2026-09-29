@@ -80,10 +80,21 @@ export default function LandingPage() {
           {config.components.length} components in session "{activeSession.name}"
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => window.api.present.open(activeSessionId!)}>
+          <Button
+            variant="secondary"
+            onClick={() => window.api.present.open(activeSessionId!)}
+            disabled={activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to open" : undefined}
+          >
             Presentation
           </Button>
-          <Button onClick={() => window.api.landingBuilder.open(activeSessionId!)}>Builder</Button>
+          <Button
+            onClick={() => window.api.landingBuilder.open(activeSessionId!)}
+            disabled={activeSession.locked === 1}
+            title={activeSession.locked === 1 ? "Session is locked — unlock to open" : undefined}
+          >
+            Builder
+          </Button>
         </div>
       </div>
 

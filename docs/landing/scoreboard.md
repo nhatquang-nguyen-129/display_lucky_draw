@@ -51,4 +51,4 @@ optional.
 
 `src/lib/landing/types.ts` (`ScoreboardProps`, `SCOREBOARD_FIELDS`, `getScoreboardFieldLabel`),
 `views/ScoreboardView.tsx` (dispatcher), `scoreboardTemplates/TableTemplate.tsx`,
-`panels/ScoreboardPanel.tsx`, `LandingRenderer.tsx` (overlay), `components/button.md` (action Scoreboard).
+`panels/ScoreboardPanel.tsx`, `LandingRenderer.tsx` (overlay), `button.md` (action Scoreboard).

@@ -30,7 +30,7 @@ thử trên session thật đang chuẩn bị cho sự kiện.
 
 ## Kiểm tra thay đổi trước khi commit
 
-Project **chưa có test tự động** (không có Jest/Vitest/Playwright). Kiểm tra bằng 2 việc:
+Project không dùng Jest/Vitest/Playwright. Kiểm tra bằng 2 việc:
 
 1. **Type-check** — bắt sớm lỗi kiểu, đặc biệt lỗi IPC 3 lớp thiếu đồng bộ (`CLAUDE.md`):
 

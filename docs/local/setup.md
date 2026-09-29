@@ -2,7 +2,7 @@
 
 Từ máy trống tới lúc chạy được `npm run electron:dev`. Bước tiếp theo: [run-dev.md](./run-dev.md).
 Kiểm tra thay đổi + vị trí DB: [testing.md](./testing.md). Build bản phát hành:
-[`docs/deploy/build.md`](../deploy/build.md). Kiến trúc code (đọc SAU khi đã chạy được app):
+[`docs/deploy/release.md`](../deploy/release.md). Kiến trúc code (đọc SAU khi đã chạy được app):
 [`docs/architecture/ipc-and-windows.md`](../architecture/ipc-and-windows.md).
 
 ## Tổng quan

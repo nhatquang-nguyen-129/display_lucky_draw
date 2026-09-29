@@ -33,15 +33,13 @@ export interface PickWinnerOptions extends DrawOptions {
  * ghi DB (xem commitDraw). Tách riêng để phục vụ luồng Button "Draw" trên Landing Page, nơi cần
  * xem trước ứng viên rồi mới Confirm/Redo, thay vì ghi nhận ngay như nút "Draw now" cũ.
  *
- * Quy tắc cấp SESSION (đặt ở "Tuỳ chọn phiên"):
- * - exclude_previous_winners = 1: participant đã trúng bất kỳ giải nào trong session
- *   sẽ bị loại hoàn toàn khỏi mọi lượt quay sau đó.
- *
- * Quy tắc cấp GIẢI THƯỞNG (đặt trong popup thêm/sửa giải, ưu tiên áp dụng CHI TIẾT hơn session):
+ * Luật trùng lặp CHỈ đặt ở cấp GIẢI THƯỞNG (popup thêm/sửa giải) — không còn quy tắc cấp session:
  * - status != 'active': giải bị tạm ẩn, không đưa vào vòng quay.
- * - allow_duplicate_with_same_prize + max_win_count: 1 người được trúng ĐÚNG giải này tối đa bao nhiêu lần.
- * - allow_duplicate_with_other_prizes = 0: người đã trúng BẤT KỲ giải nào khác trong session
- *   sẽ không đủ điều kiện trúng giải này nữa.
+ * - allow_duplicate_with_same_prize + max_win_count: 1 người được trúng ĐÚNG giải này tối đa bao nhiêu lần
+ *   (tắt = 1 lần).
+ * - allow_duplicate_with_other_prizes = 0: người đã trúng 1 giải KHÁC trong session không đủ điều kiện
+ *   trúng giải này.
+ * Mặc định cả 2 tắt = mỗi người trúng tối đa 1 giải, 1 lần.
  *
  * Vì điều kiện phụ thuộc vào từng giải cụ thể, thuật toán chọn giải theo trọng số trước,
  * nếu giải đó không còn ai đủ điều kiện thì loại giải đó khỏi vòng quay lần này và roll lại
@@ -70,15 +68,14 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
     throw new Error("No prizes available in this session (out of stock or hidden)");
   }
 
-  let baseQuery = `SELECT * FROM participants WHERE session_id = ? AND status = 'active'`;
-  const baseParams: any[] = [sessionId];
-  if (session.exclude_previous_winners) {
-    // confirmed = 1 — lượt Redo (chưa Confirm) không tính là "đã trúng", không được loại participant
-    // khỏi vòng quay sau (xem migrateDrawResultsConfirmed trong db.ts).
-    baseQuery += ` AND id NOT IN (SELECT participant_id FROM draw_results WHERE session_id = ? AND confirmed = 1)`;
-    baseParams.push(sessionId);
-  }
-  let baseParticipants = db.prepare(baseQuery).all(...baseParams) as any[];
+  // Luật trùng lặp CHỈ đặt ở cấp giải (eligibleParticipantsForPrize bên dưới) — cờ cũ cấp session
+  // `exclude_previous_winners` KHÔNG còn được đọc: nó loại mọi người đã trúng ngay từ đầu nên che mất
+  // hoàn toàn 2 tuỳ chọn "Allow duplicate" của từng giải (không có UI nào tắt được cờ đó). Session cũ
+  // đã được migrate sang luật cấp giải tương đương (xem migratePrizeLevelRules trong db.ts). Mặc định 2
+  // tuỳ chọn đều tắt = mỗi người trúng tối đa 1 giải, 1 lần — đúng hành vi cũ.
+  let baseParticipants = db
+    .prepare(`SELECT * FROM participants WHERE session_id = ? AND status = 'active'`)
+    .all(sessionId) as any[];
   if (excludeParticipantIds.length > 0) {
     const excluded = new Set(excludeParticipantIds);
     baseParticipants = baseParticipants.filter((p) => !excluded.has(p.id));
@@ -96,24 +93,30 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
     )
     .all(sessionId) as { participant_id: string; prize_id: string; cnt: number }[];
   const winCountMap = new Map<string, number>();
-  winRows.forEach((w) => winCountMap.set(`${w.participant_id}|${w.prize_id}`, w.cnt));
+  // participant → tập các giải đã trúng (confirmed) — dùng cho "Allow duplicate with other prizes".
+  const prizesWonBy = new Map<string, Set<string>>();
+  winRows.forEach((w) => {
+    winCountMap.set(`${w.participant_id}|${w.prize_id}`, w.cnt);
+    if (!prizesWonBy.has(w.participant_id)) prizesWonBy.set(w.participant_id, new Set());
+    prizesWonBy.get(w.participant_id)!.add(w.prize_id);
+  });
 
-  const anyWinParticipants = new Set(
-    (
-      db
-        .prepare(`SELECT DISTINCT participant_id FROM draw_results WHERE session_id = ? AND confirmed = 1`)
-        .all(sessionId) as {
-        participant_id: string;
-      }[]
-    ).map((r) => r.participant_id)
-  );
-
+  // 2 luật độc lập của từng giải:
+  //   - "Allow duplicate with itself" + max_win_count: số lần tối đa 1 người trúng CHÍNH giải này
+  //     (tắt = 1 lần).
+  //   - "Allow duplicate with other prizes": người đã trúng 1 giải KHÁC giải này có được trúng giải này
+  //     không (tắt = không). Chỉ xét giải KHÁC — trước đây xét "đã trúng bất kỳ giải nào", tính cả chính
+  //     giải này, nên "with itself, max 3" + "with other" tắt thực tế chỉ cho trúng 1 lần (bug).
+  // Cả 2 tắt = mỗi người trúng tối đa 1 giải, 1 lần.
   function eligibleParticipantsForPrize(prize: any) {
     return baseParticipants.filter((p) => {
       const timesWonThisPrize = winCountMap.get(`${p.id}|${prize.id}`) ?? 0;
       const maxAllowed = prize.allow_duplicate_with_same_prize ? prize.max_win_count : 1;
       if (timesWonThisPrize >= maxAllowed) return false;
-      if (!prize.allow_duplicate_with_other_prizes && anyWinParticipants.has(p.id)) return false;
+      if (!prize.allow_duplicate_with_other_prizes) {
+        const won = prizesWonBy.get(p.id);
+        if (won && [...won].some((id) => id !== prize.id)) return false;
+      }
       return true;
     });
   }

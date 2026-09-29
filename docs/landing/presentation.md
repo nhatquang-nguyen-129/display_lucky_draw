@@ -3,7 +3,7 @@
 Đọc trước khi sửa `src/pages/PresentMode.tsx`, `src/components/landing/LandingRenderer.tsx`,
 `useDrawSequence.ts`, `useLandingData.ts`, `views/drawRevealHooks.ts`, hoặc bất kỳ `views/*` nào có
 animation. Cửa sổ dựng trang: [builder.md](./builder.md). Từng loại component:
-[`components/`](./components/).
+1 file `<component>.md` cùng thư mục (bảng ở [builder.md mục 5](./builder.md#5-add-component--danh-sách-component)).
 
 ## 1. Cửa sổ Present Mode
 
@@ -63,7 +63,7 @@ Trả về `DrawSequenceActions` (shape khai báo ở `types.ts`) + `effectiveDa
 | `confirm()` | `draw:commit` → `confirmed = 1` + trừ `prizes.remaining` (ghi DB thật), rồi `refresh()` |
 | `redo()` | Bỏ candidate đang chờ, pick người khác cho ĐÚNG giải đó (loại trừ người vừa bị bỏ) |
 | `resetSession()` | Xoá `draw_results` của session, trả `remaining` về gốc, xoá candidate, tăng `resetSeq`, `refresh()` |
-| `runDraw()` / `selectDrawMode()` | Nút Draw chính và 3 chế độ Single/Multiple/Quick — xem [components/button.md](./components/button.md) |
+| `runDraw()` / `selectDrawMode()` | Nút Draw chính và 3 chế độ Single/Multiple/Quick — xem [components/button.md](./button.md) |
 
 - **`effectiveData`**: khi có `candidate`, độn 1 dòng giả `id = "pending-<seed>"` vào ĐẦU `results`
   (tên/phone/code/email resolve theo Data Type). Mọi component thấy "có kết quả" NGAY khi Draw chạy,
@@ -94,7 +94,7 @@ Trả về `DrawSequenceActions` (shape khai báo ở `types.ts`) + `effectiveDa
 
 Dùng chung cho **8 component "tĩnh"** (nội dung do người dùng đặt, không đổi theo từng lượt): Text,
 Image, Background và 5 Effect. Winner KHÔNG dùng model này (tên người trúng đổi theo từng lượt — có
-cơ chế riêng, xem [components/winner.md](./components/winner.md)).
+cơ chế riêng, xem [components/winner.md](./winner.md)).
 
 - **Panel**: `DrawCycleFields.tsx` — checkbox **Trigger with Draw** (`syncWithDraw`, tắt = component
   luôn hiện như bình thường), dropdown **Prize**, rồi 3 mốc **Idle / Draw / Redraw**, mỗi mốc 1

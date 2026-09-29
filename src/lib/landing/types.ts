@@ -133,7 +133,7 @@ export interface ImageProps {
   // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = hiện/ẩn theo đúng chu trình đã
   // cấu hình ở `drawCycle` bên dưới (xem doc-comment DrawCycleConfig ở trên) — dùng cho 1 ảnh PNG cần
   // tự đồng bộ với quy trình quay (vd Podium tách khỏi Background để không bị dim theo, xem
-  // docs/landing/components/image.md) mà không cần tạo hẳn 1 loại component riêng. Cùng hệ hiệu ứng
+  // docs/landing/image.md) mà không cần tạo hẳn 1 loại component riêng. Cùng hệ hiệu ứng
   // (WinnerTransitionEffect) với Winner Name/Text nhưng KHÁC hook (ImageView.tsx dùng
   // useDrawCycleVisibility, không phải useRevealed — xem drawRevealHooks.ts).
   syncWithDraw?: boolean;
@@ -353,7 +353,7 @@ export interface WinnerNameProps extends LiveTextProps {
 // ngay TRONG PrizeEffectOverlay.tsx như glow/sweep) bị bỏ hẳn vì không ra hướng đẹp (nhìn như hình khối
 // phẳng lì). Vòng 2: dựng LẠI hoàn toàn bằng kỹ thuật khác (nón đáy ELIP + mask theo silhouette ảnh +
 // drop-shadow, toàn bộ CSS thuần — xem doc-comment `PrizeWonAmbientEffect` CŨ, đã xoá, và
-// docs/landing/components/prize.md mục 4) — LÚC ĐẦU gắn cứng CHỈ cho `onWon` qua field `wonAmbientEffect` riêng
+// docs/landing/prize.md mục 4) — LÚC ĐẦU gắn cứng CHỈ cho `onWon` qua field `wonAmbientEffect` riêng
 // (TÁCH HẲN khỏi hệ 3-nhóm này), rồi sau đó GỘP LẠI vào đây làm 1 lựa chọn Highlight bình thường, dùng
 // được cho CẢ 4 giai đoạn — không còn field `wonAmbientEffect`/`wonAmbientDelayMs` riêng nữa. Vì cần
 // `component.x/y/width/height` (vượt ra khỏi khung chính nó, kéo lên tận đỉnh canvas) mà
@@ -1268,17 +1268,16 @@ export interface DrawSequenceActions {
   // trong drawRevealHooks.ts). Chỉ dùng để SO SÁNH đổi khác hay không (qua useRef), giá trị số không
   // có ý nghĩa gì khác.
   resetSeq: number;
-  // Popup xác nhận chung — dùng cho action "confirm"/"reset" của Button (2 action ghi dữ liệu THẬT,
-  // VĨNH VIỄN, xem docs/landing/components/button.md), tránh bấm nhầm giữa lúc trình chiếu trực tiếp.
+  // Popup xác nhận chung — hiện chỉ dùng cho popup "Redraw" (bấm Draw lúc còn candidate chưa Confirm).
+  // Action "confirm"/"reset" KHÔNG qua popup — nhấn giữ chính nút 3 giây (useHoldToRun trong
+  // ButtonView.tsx, xem docs/landing/button.md).
   // ButtonView.tsx gọi requestConfirm(message, action) THAY VÌ chạy action ngay — action thật (vd
   // sequence.confirm()) chỉ chạy SAU KHI resolveConfirmPrompt(true) từ nút "Confirm" trên popup (vẽ
   // ở LandingRenderer.tsx, đọc confirmPrompt). resolveConfirmPrompt(false) (nút Cancel/bấm ra ngoài)
   // chỉ đóng popup, không chạy gì. Thuần UI cục bộ, không liên quan IPC/busy.
-  // `holdMs` (optional) — action nào phá dữ liệu NẶNG hơn hẳn "confirm 1 người" (hiện chỉ "reset":
-  // xoá SẠCH draw_results + trả prizes.remaining về gốc cho CẢ session, xem resetSession) thì bắt
-  // GIỮ nút Confirm đúng `holdMs` (không phải bấm 1 phát) mới thật sự chạy — xem HoldToConfirmButton
-  // trong LandingRenderer.tsx. undefined = giữ nguyên popup Cancel/Confirm bấm 1 phát như cũ (action
-  // "confirm" 1 người trúng).
+  // `holdMs` (optional) — bắt GIỮ nút Confirm trên popup đúng `holdMs` mới chạy (HoldToConfirmButton
+  // trong LandingRenderer.tsx); trước đây dùng cho popup Reset, hiện không ai truyền. undefined = popup
+  // Cancel/Confirm bấm 1 phát (popup "Redraw").
   // `confirmLabel` (optional) — chữ trên nút xác nhận, mặc định "Confirm" (LandingRenderer.tsx tự
   // fallback) — action "confirm"/"reset" giữ nguyên "Confirm" vì đúng nghĩa đen; case Draw đang
   // pending đổi giải (xem ButtonView.tsx) PHẢI đặt chữ khác ("Draw Anyway") vì bản thân câu hỏi đã
