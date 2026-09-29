@@ -4,13 +4,24 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [Unreleased]
 
-### Restore từ Trash
+### Close / Move to trash / Open / Restore — tách rõ 4 hành động trên session
 
 Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".
 
-- Thêm nút **Trash** cạnh **Data folder** ở thanh tab — mở hộp thoại liệt kê session đã đóng (nằm
-  trong `data/.trash/`), bấm **Restore** để đưa lại vào `data/` và tab tự hiện, không cần tự tay copy
-  file qua Finder/Explorer nữa.
+- **Close** (nút × trên tab): giờ CHỈ ẩn tab khỏi thanh tab — file `.db` KHÔNG di chuyển đi đâu, vẫn
+  nằm nguyên trong `data/` (cột `sessions.closed` mới, migration additive). Không còn confirm vì hoàn
+  toàn vô hại/dễ hoàn tác.
+- **Move to trash** (đổi tên từ "Delete", menu chuột phải/Option+click trên tab): chuyển file vào
+  `data/.trash/` như trước — vẫn có confirm vì khó hoàn tác hơn.
+- **Open** (thay chỗ nút "Data folder" cũ ở thanh tab): mở hộp thoại chọn 1 file `.db` bất kỳ (mặc
+  định mở ngay `data/`) — mở lại 1 session đang Close, khôi phục 1 file đang ở `.trash/`, hoặc nạp 1
+  session từ ngoài `data/` (USB, backup máy khác — copy vào `data/`, giữ nguyên bản gốc; trùng id với
+  session có sẵn thì tự hiện đúng hộp thoại conflict đã có sẵn).
+- **Restore** (đổi tên từ "Trash"): hộp thoại liệt kê session trong `data/.trash/`, chọn nhiều bằng
+  checkbox, 3 nút **Cancel / Restore / Delete** — Delete ở đây là xoá **vĩnh viễn** khỏi `data/.trash/`
+  (không còn đường lấy lại, có confirm riêng), khác hẳn Restore.
+- Sửa bug tạo trùng session: ô nhập tên tab mới nghe cả `onKeyDown` (Enter) lẫn `onBlur`, có thể cả 2
+  cùng bắn gần như đồng thời và tạo 2 session trùng tên trước khi state kịp reset — chặn bằng ref-guard.
 
 ## [1.1.0] — 2026-09-29
 

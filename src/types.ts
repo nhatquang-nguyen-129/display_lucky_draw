@@ -46,6 +46,10 @@ export interface Session {
   // Khoá session — không phải bảo mật (không password), chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay
   // xong. Xem sessions.setLocked, assertSessionUnlocked trong electron/db.ts.
   locked: 0 | 1;
+  // Đóng tab (nút ×) — chỉ ẩn khỏi danh sách trả về (sessions:list), file KHÔNG di chuyển. Khác
+  // sessions:delete (chuyển vào data/.trash/). Xem sessions.setClosed/openFile, openDbFile() trong
+  // electron/db.ts.
+  closed: 0 | 1;
 }
 
 // 1 session có ≥ 2 file cùng id trong data/ (vd copy qua lại giữa 2 máy, mỗi bên sửa riêng) — khớp
@@ -194,9 +198,16 @@ declare global {
         conflicts: () => Promise<SessionConflict[]>;
         resolveConflict: (data: { sessionId: string; keepFile: string }) => Promise<void>;
         openDataFolder: () => Promise<string>;
-        // Session đã đóng tab (data/.trash/) — xem TrashModal.tsx.
+        // Session đã bị Delete (data/.trash/, khác Close) — xem RestoreModal.tsx.
         listTrash: () => Promise<TrashEntry[]>;
         restoreFromTrash: (data: { file: string }) => Promise<void>;
+        // Xoá vĩnh viễn khỏi data/.trash/ — KHÔNG còn đường lấy lại, khác restoreFromTrash.
+        permanentlyDelete: (data: { file: string }) => Promise<void>;
+        // Nút "Open" — chọn 1 file .db bất kỳ, mở lại session đang Closed hoặc nạp session ở ngoài
+        // data/ (USB, backup máy khác...). Xem openDbFile() trong electron/db.ts.
+        openFile: () => Promise<string | null>;
+        // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
+        setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

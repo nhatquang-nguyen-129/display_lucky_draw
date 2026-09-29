@@ -9,7 +9,9 @@ interface SessionContextValue {
   switchTab: (id: string) => void;
   addTab: (name: string) => Promise<void>;
   renameTab: (id: string, name: string) => Promise<void>;
-  closeTab: (id: string) => Promise<void>;
+  closeTab: (id: string) => Promise<void>; // chỉ ẩn tab, file không di chuyển — khác deleteTab
+  deleteTab: (id: string) => Promise<void>; // chuyển vào data/.trash/, khôi phục qua RestoreModal.tsx
+  openFile: () => Promise<void>; // chọn 1 file .db qua dialog — mở lại session Closed hoặc nạp từ ngoài
   refresh: () => Promise<void>;
 }
 
@@ -77,6 +79,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const closeTab = useCallback(
     async (id: string) => {
+      await window.api.sessions.setClosed({ id, closed: true });
+      if (activeSessionId === id) setActiveSessionId(null);
+      await refresh();
+    },
+    [activeSessionId, refresh]
+  );
+
+  const deleteTab = useCallback(
+    async (id: string) => {
       await window.api.sessions.delete(id);
       if (activeSessionId === id) setActiveSessionId(null);
       await refresh();
@@ -84,11 +95,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [activeSessionId, refresh]
   );
 
+  const openFile = useCallback(async () => {
+    const id = await window.api.sessions.openFile();
+    await refresh();
+    if (id) setActiveSessionId(id);
+  }, [refresh]);
+
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
   return (
     <SessionContext.Provider
-      value={{ sessions, activeSessionId, activeSession, loading, switchTab, addTab, renameTab, closeTab, refresh }}
+      value={{
+        sessions,
+        activeSessionId,
+        activeSession,
+        loading,
+        switchTab,
+        addTab,
+        renameTab,
+        closeTab,
+        deleteTab,
+        openFile,
+        refresh,
+      }}
     >
       {children}
     </SessionContext.Provider>

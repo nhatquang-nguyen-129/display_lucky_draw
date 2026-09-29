@@ -11,9 +11,12 @@ import {
   listConflicts,
   listSessions,
   listTrash,
+  openDbFile,
+  permanentlyDelete,
   renameSession,
   resolveConflict,
   restoreFromTrash,
+  setSessionClosed,
   setSessionLocked,
 } from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
@@ -595,6 +598,21 @@ ipcMain.handle("sessions:resolveConflict", (_e, data: { sessionId: string; keepF
 ipcMain.handle("sessions:openDataFolder", () => shell.openPath(DATA_DIR));
 ipcMain.handle("sessions:listTrash", () => listTrash());
 ipcMain.handle("sessions:restoreFromTrash", (_e, data: { file: string }) => restoreFromTrash(data.file));
+ipcMain.handle("sessions:permanentlyDelete", (_e, data: { file: string }) => permanentlyDelete(data.file));
+
+// Nút "Open" ở TabBar.tsx — chọn 1 file .db bất kỳ (mặc định mở ngay data/, nơi session đang Closed
+// vẫn nằm nguyên) rồi giao cho openDbFile() xử lý 3 trường hợp (đang trong .trash/, đã trong data/,
+// hay ở ngoài hẳn — vd USB). Không trả sessionId: renderer refresh() rồi tự tìm tab mới/được mở lại.
+ipcMain.handle("sessions:openFile", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Open session",
+    defaultPath: DATA_DIR,
+    properties: ["openFile"],
+    filters: [{ name: "Lucky Draw session", extensions: ["db"] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return openDbFile(result.filePaths[0]);
+});
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.
@@ -685,9 +703,17 @@ ipcMain.handle(
 );
 
 // Xoá tab = chuyển file của session vào data/.trash/ (không xoá hẳn — có đường lấy lại, xem db.ts).
+// Đây là "Delete" (menu chuột phải, SessionLockMenu.tsx) — khác "Close" (nút ×, sessions:setClosed).
 ipcMain.handle("sessions:delete", (_e, id: string) => {
   assertSessionUnlocked(id);
   deleteSession(id);
+});
+
+// "Close" (nút × ở TabBar.tsx) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác sessions:delete ở
+// trên). Mở lại bằng nút "Open" (sessions:openFile).
+ipcMain.handle("sessions:setClosed", (_e, data: { id: string; closed: boolean }) => {
+  assertSessionUnlocked(data.id);
+  setSessionClosed(data.id, data.closed);
 });
 
 // Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,

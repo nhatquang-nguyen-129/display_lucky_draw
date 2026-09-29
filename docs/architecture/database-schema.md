@@ -13,7 +13,7 @@ data/
 ├── Hoi-cho-thang-10__3f9a1c2e.db      ← 1 session
 ├── Minigame-FB__8b20d7aa.db           ← session khác (trùng tên session cũng được)
 ├── lucky-draw.db.migrated-….bak       ← bản sao lưu DB kiểu cũ (nếu từng có)
-└── .trash/                            ← tab đã xoá / bản trùng không chọn (không xoá hẳn)
+└── .trash/                            ← tab bị Move to trash / bản trùng không chọn (không xoá hẳn)
 ```
 
 | Cách chạy | Thư mục `data/` |
@@ -21,7 +21,8 @@ data/
 | Dev, bản Setup Windows, `.app` trong Applications | `<userData>/data/` — Windows `%APPDATA%\lucky-draw-app\data\`, macOS `~/Library/Application Support/lucky-draw-app/data/` |
 | Bản portable (giải nén từ zip) | `data/` cạnh exe (Windows) / cạnh `.app` (macOS) — xem [`docs/deploy/portable.md`](../deploy/portable.md) |
 
-Nút **Data folder** ở góc phải thanh tab mở thẳng thư mục này.
+Nút **Open** ở góc phải thanh tab mở hộp thoại chọn file `.db` ngay tại thư mục này (xem "Close / Move
+to trash / Open / Restore" bên dưới).
 
 **Thiết kế (`electron/db.ts`)**:
 - **Định danh = `sessions.id` (UUID) lưu BÊN TRONG file**, không phải tên file. Tên file
@@ -35,10 +36,22 @@ Nút **Data folder** ở góc phải thanh tab mở thẳng thư mục này.
   an toàn — không có file `-wal` giữ phần dữ liệu mới nhất.
 - **Quét lại `data/`** mỗi lần renderer lấy danh sách session (`sessions:list`) — cửa sổ chính gọi lại
   khi được focus, nên file vừa copy vào `data/` lúc app đang mở tự hiện thành tab mới.
-- **Xoá tab** = chuyển file vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) — có đường lấy lại: nút
-  **Trash** cạnh **Data folder** ở thanh tab mở `TrashModal.tsx`, liệt kê session trong `.trash/`
-  (`listTrash()`) và phục hồi lại vào `data/` (`restoreFromTrash()`, bỏ hậu tố `__deleted-...` khỏi tên
-  file) mà không cần tự tay copy file qua Finder/Explorer.
+- **4 hành động tách riêng trên 1 session** (`src/components/TabBar.tsx`,
+  `src/components/SessionLockMenu.tsx`, `src/components/RestoreModal.tsx`):
+  | Hành động | Trigger | File trên đĩa | Hoàn tác |
+  |---|---|---|---|
+  | **Close** | Nút × trên tab | KHÔNG đụng gì — vẫn nằm trong `data/` | Nút **Open**, chọn lại đúng file đó |
+  | **Move to trash** | Chuột phải/Option+click → "Move to trash" | Chuyển vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) | Nút **Restore** → Restore |
+  | **Delete (vĩnh viễn)** | Nút **Restore** → chọn session → nút Delete | Xoá hẳn khỏi `data/.trash/` (`fs.unlinkSync`) | KHÔNG — mất hẳn |
+  | **Open** | Nút **Open** ở thanh tab | Chọn 1 file `.db` bất kỳ qua dialog (mặc định mở `data/`) | — |
+
+  Cột `sessions.closed` (migration additive, mặc định 0) đánh dấu Close — `listSessions()` lọc bỏ
+  session có `closed = 1` khỏi danh sách tab, nhưng `rescan()` vẫn mở kết nối cho file đó bình thường
+  (không phân biệt closed/không), nên **Open** chỉ cần đặt lại `closed = 0` mà KHÔNG cần di chuyển file
+  khi file đã sẵn trong `data/`. Chọn 1 file đang ở `.trash/` qua **Open** thì coi như bấm Restore
+  (`openDbFile()` tự nhận diện theo thư mục cha của file được chọn); chọn 1 file ở ngoài `data/` hẳn
+  (USB, backup máy khác) thì copy vào `data/`, giữ nguyên bản gốc — trùng id với session có sẵn thì
+  `rescan()` tự phát hiện thành conflict như bình thường (xem "2 bản của cùng 1 session" bên dưới).
 - **Tách DB kiểu cũ**: lúc khởi động, `lucky-draw.db` 1-file-mọi-session (vị trí cũ: `userData`, hoặc
   `data/` của bản portable) — hoặc bất kỳ file nào trong `data/` chứa nhiều session — được tách thành
   từng file theo session (`ATTACH` + `INSERT … SELECT` đúng tên cột), file gốc đổi tên thành

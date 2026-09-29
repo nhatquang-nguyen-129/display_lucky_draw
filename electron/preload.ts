@@ -83,6 +83,9 @@ const api = {
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
     listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
     restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
+    permanentlyDelete: (data: { file: string }) => ipcRenderer.invoke("sessions:permanentlyDelete", data),
+    openFile: () => ipcRenderer.invoke("sessions:openFile"),
+    setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),
