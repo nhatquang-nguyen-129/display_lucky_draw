@@ -13,7 +13,7 @@ data/
 ├── Hoi-cho-thang-10__3f9a1c2e.db      ← 1 session
 ├── Minigame-FB__8b20d7aa.db           ← session khác (trùng tên session cũng được)
 ├── lucky-draw.db.migrated-….bak       ← bản sao lưu DB kiểu cũ (nếu từng có)
-└── .trash/                            ← tab đã xoá / bản trùng không chọn (không xoá hẳn)
+└── .trash/                            ← tab bị Move to trash / bản trùng không chọn (không xoá hẳn)
 ```
 
 | Cách chạy | Thư mục `data/` |
@@ -21,7 +21,8 @@ data/
 | Dev, bản Setup Windows, `.app` trong Applications | `<userData>/data/` — Windows `%APPDATA%\lucky-draw-app\data\`, macOS `~/Library/Application Support/lucky-draw-app/data/` |
 | Bản portable (giải nén từ zip) | `data/` cạnh exe (Windows) / cạnh `.app` (macOS) — xem [`docs/deploy/portable.md`](../deploy/portable.md) |
 
-Nút **Data folder** ở góc phải thanh tab mở thẳng thư mục này.
+Nút **Open** ở góc phải thanh tab mở hộp thoại chọn file `.db` ngay tại thư mục này (xem "Close / Move
+to trash / Open / Restore" bên dưới).
 
 **Thiết kế (`electron/db.ts`)**:
 - **Định danh = `sessions.id` (UUID) lưu BÊN TRONG file**, không phải tên file. Tên file
@@ -35,7 +36,22 @@ Nút **Data folder** ở góc phải thanh tab mở thẳng thư mục này.
   an toàn — không có file `-wal` giữ phần dữ liệu mới nhất.
 - **Quét lại `data/`** mỗi lần renderer lấy danh sách session (`sessions:list`) — cửa sổ chính gọi lại
   khi được focus, nên file vừa copy vào `data/` lúc app đang mở tự hiện thành tab mới.
-- **Xoá tab** = chuyển file vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) — có đường lấy lại.
+- **4 hành động tách riêng trên 1 session** (`src/components/TabBar.tsx`,
+  `src/components/SessionLockMenu.tsx`, `src/components/RestoreModal.tsx`):
+  | Hành động | Trigger | File trên đĩa | Hoàn tác |
+  |---|---|---|---|
+  | **Close** | Nút × trên tab | KHÔNG đụng gì — vẫn nằm trong `data/` | Nút **Open**, chọn lại đúng file đó |
+  | **Move to trash** | Chuột phải/Option+click → "Move to trash" | Chuyển vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) | Nút **Restore** → Restore |
+  | **Delete (vĩnh viễn)** | Nút **Restore** → chọn session → nút Delete | Xoá hẳn khỏi `data/.trash/` (`fs.unlinkSync`) | KHÔNG — mất hẳn |
+  | **Open** | Nút **Open** ở thanh tab | Chọn 1 file `.db` bất kỳ qua dialog (mặc định mở `data/`) | — |
+
+  Cột `sessions.closed` (migration additive, mặc định 0) đánh dấu Close — `listSessions()` lọc bỏ
+  session có `closed = 1` khỏi danh sách tab, nhưng `rescan()` vẫn mở kết nối cho file đó bình thường
+  (không phân biệt closed/không), nên **Open** chỉ cần đặt lại `closed = 0` mà KHÔNG cần di chuyển file
+  khi file đã sẵn trong `data/`. Chọn 1 file đang ở `.trash/` qua **Open** thì coi như bấm Restore
+  (`openDbFile()` tự nhận diện theo thư mục cha của file được chọn); chọn 1 file ở ngoài `data/` hẳn
+  (USB, backup máy khác) thì copy vào `data/`, giữ nguyên bản gốc — trùng id với session có sẵn thì
+  `rescan()` tự phát hiện thành conflict như bình thường (xem "2 bản của cùng 1 session" bên dưới).
 - **Tách DB kiểu cũ**: lúc khởi động, `lucky-draw.db` 1-file-mọi-session (vị trí cũ: `userData`, hoặc
   `data/` của bản portable) — hoặc bất kỳ file nào trong `data/` chứa nhiều session — được tách thành
   từng file theo session (`ATTACH` + `INSERT … SELECT` đúng tên cột), file gốc đổi tên thành
@@ -74,11 +90,12 @@ erDiagram
     text id PK
     text name
     integer allow_duplicate_prize
-    integer exclude_previous_winners
+    integer exclude_previous_winners "KHÔNG CÒN DÙNG — luôn 0, xem Migration"
     text landing_config "JSON — LandingConfig"
     text participant_column_types "JSON — { col: ColumnType }"
     text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
     text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
+    integer locked "1 = khoá sửa/xoá + mở Data Editor/Presentation/Builder, xem architecture/session-lock.md"
   }
   PARTICIPANTS {
     text id PK
@@ -127,6 +144,16 @@ An toàn khi chạy lại nhiều lần (luôn kiểm tra cột đã tồn tại
 `DROP`/mất dữ liệu cũ. Khi cần đổi CẤU TRÚC bảng (không chỉ thêm cột — vd bỏ ràng buộc `UNIQUE` toàn
 cục), pattern là: tạo bảng `_new`, `INSERT … SELECT` copy dữ liệu cũ sang, `DROP` bảng cũ, `RENAME` bảng
 mới về tên cũ (xem `migrateToPerSessionData`).
+
+Migration đổi **dữ liệu** (không phải thêm cột) không kiểm tra được bằng "cột đã có chưa" → đánh dấu bằng
+`PRAGMA user_version` của từng file, chạy đúng 1 lần. Hiện có:
+
+| `user_version` | Hàm | Việc |
+|---|---|---|
+| 0 → 1 | `migratePrizeLevelRules` | Bỏ luật cấp session `exclude_previous_winners`: session nào đang bật thì tắt cả 2 tuỳ chọn "Allow duplicate" + `max_win_count = 1` trên mọi giải của nó (= đúng hành vi cũ: mỗi người 1 giải 1 lần), rồi đặt cờ về 0. Xem `docs/architecture/draw-engine.md`. |
+
+Thêm migration dữ liệu mới: viết hàm `if (user_version >= N) return` + làm việc + `user_version = N`
+trong 1 transaction, gọi cuối `ensureSchema`.
 
 **Trước khi sửa `db.ts`**: luôn hỏi lại người dùng nếu thay đổi liên quan tới schema hoặc cách lưu file —
 không được viết migration phá dữ liệu người dùng đã có (`CLAUDE.md` mục "Việc cần hỏi lại trước khi làm").

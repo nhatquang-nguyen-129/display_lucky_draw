@@ -190,6 +190,54 @@ CREATE TABLE IF NOT EXISTS draw_results (
   // draw_results.confirmed — lượt pick chưa Confirm ghi confirmed = 0 (xem drawEngine.ts). DEFAULT 1
   // cho dữ liệu cũ vì mọi dòng có trước migration này đều đã đi qua commitDraw.
   addColumnIfMissing(db, "draw_results", "confirmed", "confirmed INTEGER NOT NULL DEFAULT 1");
+  // Khoá session (chặn sửa/xoá Participant/Prize, mở Data Editor/Presentation/Builder) — không phải
+  // bảo mật, chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay xong. Không có password/khôi phục.
+  addColumnIfMissing(db, "sessions", "locked", "locked INTEGER NOT NULL DEFAULT 0");
+  // Đóng tab (nút ×) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác hẳn Delete/.trash). Mở lại
+  // bằng nút Open (chọn file .db, mặc định mở ngay data/). Xem listSessions()/openDbFile() bên dưới.
+  addColumnIfMissing(db, "sessions", "closed", "closed INTEGER NOT NULL DEFAULT 0");
+  migratePrizeLevelRules(db);
+}
+
+export function setSessionLocked(sessionId: string, locked: boolean) {
+  getDb(sessionId).prepare(`UPDATE sessions SET locked = ? WHERE id = ?`).run(locked ? 1 : 0, sessionId);
+}
+
+// Đóng tab = chỉ ẩn khỏi listSessions(), file KHÔNG di chuyển (khác deleteSession, chuyển vào
+// data/.trash/). Mở lại: openDbFile() với đúng file đó (còn nguyên trong data/) tự đặt closed = 0.
+export function setSessionClosed(sessionId: string, closed: boolean) {
+  getDb(sessionId).prepare(`UPDATE sessions SET closed = ? WHERE id = ?`).run(closed ? 1 : 0, sessionId);
+}
+
+// Gọi ở ĐẦU mọi IPC handler sửa/xoá dữ liệu hoặc mở cửa sổ Data Editor/Presentation/Builder — xem
+// docs/deploy (Session Lock). Throw để ipcRenderer.invoke ở phía renderer reject, dù nút bấm tương
+// ứng đã bị disable khi khoá (đây là lớp chặn thật, không chỉ ẩn nút).
+export function assertSessionUnlocked(sessionId: string) {
+  const row = getDb(sessionId).prepare(`SELECT locked FROM sessions WHERE id = ?`).get(sessionId) as
+    | { locked: number }
+    | undefined;
+  if (row?.locked) throw new Error("Session is locked");
+}
+
+/**
+ * Chuyển luật trùng lặp từ cấp session sang HẲN cấp giải (xem pickWinner trong drawEngine.ts). Cờ cũ
+ * `sessions.exclude_previous_winners = 1` (bật sẵn cho mọi session, không có UI để tắt) loại mọi người đã
+ * trúng, che mất 2 tuỳ chọn "Allow duplicate" của từng giải. Để session cũ GIỮ NGUYÊN hành vi, tắt cả 2
+ * tuỳ chọn trên mọi giải của session đó — tương đương chính xác "mỗi người trúng tối đa 1 giải, 1 lần" —
+ * rồi hạ cờ về 0. Chạy đúng 1 lần mỗi file (đánh dấu bằng PRAGMA user_version), nên sau đó người tổ chức
+ * tự bật tuỳ chọn nào thì tuỳ chọn đó có hiệu lực, không bị ghi đè lại. File DB kiểu cũ nhiều session
+ * được migrate TRƯỚC khi tách (splitMultiSessionFile mở file nguồn qua openFile → ensureSchema).
+ */
+function migratePrizeLevelRules(db: DB) {
+  if ((db.pragma("user_version", { simple: true }) as number) >= 1) return;
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE prizes SET allow_duplicate_with_other_prizes = 0, allow_duplicate_with_same_prize = 0, max_win_count = 1
+       WHERE session_id IN (SELECT id FROM sessions WHERE exclude_previous_winners = 1)`
+    ).run();
+    db.prepare(`UPDATE sessions SET exclude_previous_winners = 0`).run();
+    db.pragma("user_version = 1");
+  })();
 }
 
 /**
@@ -472,8 +520,12 @@ export function listSessions(): any[] {
   rescan();
   const rows = [...entries.values()]
     .map((e) => e.db.prepare(`SELECT * FROM sessions LIMIT 1`).get())
-    .filter(Boolean) as { created_at: string }[];
-  return rows.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+    .filter(Boolean) as { created_at: string; closed: number }[];
+  // Session đã Close (nút ×) không hiện thành tab, nhưng file vẫn nằm trong data/ và vẫn có entry ở
+  // đây (rescan() không phân biệt closed) — chỉ ẩn ở bước trả về renderer này.
+  return rows
+    .filter((r) => !r.closed)
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
 }
 
 export function createSession(data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }): string {
@@ -482,7 +534,7 @@ export function createSession(data: { name: string; allowDuplicatePrize?: boolea
   const db = openFile(file);
   db.prepare(
     `INSERT INTO sessions (id, name, allow_duplicate_prize, exclude_previous_winners, status) VALUES (?, ?, ?, ?, 'draft')`
-  ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, data.excludePreviousWinners === false ? 0 : 1);
+  ).run(id, data.name, data.allowDuplicatePrize ? 1 : 0, 0); // exclude_previous_winners: không còn dùng, xem migratePrizeLevelRules
   entries.set(id, { file, db });
   return id;
 }
@@ -607,6 +659,106 @@ export function resolveConflict(sessionId: string, keepFile: string) {
     }
     kept.db = openFile(kept.file);
   }
+}
+
+export interface TrashEntry {
+  file: string; // tên file trong data/.trash/ — dùng làm tham số cho restoreFromTrash
+  name: string; // sessions.name đọc từ bên trong file, không phải tên file
+  deletedAt: string; // ISO — mtime của file trong .trash (thời điểm chuyển vào, không phải lúc tạo)
+  participants: number;
+  prizes: number;
+  confirmedDraws: number;
+}
+
+/** Danh sách session đang nằm trong data/.trash/ (đã đóng tab, chưa xoá hẳn) — cho renderer hiện hộp
+ *  thoại Restore. Mở READ-ONLY, không chạy migration lên file đã bị bỏ đi. */
+export function listTrash(): TrashEntry[] {
+  if (!fs.existsSync(TRASH_DIR)) return [];
+  return fs
+    .readdirSync(TRASH_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".db"))
+    .map((f) => path.join(TRASH_DIR, f))
+    .map((file) => {
+      const info = copyInfo(file, false);
+      let name = path.basename(file, ".db").replace(/__deleted-.*$/, "");
+      const db = openFile(file, true);
+      try {
+        const row = db.prepare(`SELECT name FROM sessions LIMIT 1`).get() as { name: string } | undefined;
+        if (row?.name) name = row.name;
+      } catch {
+        /* file cũ/hỏng schema — giữ tên suy ra từ filename ở trên */
+      } finally {
+        db.close();
+      }
+      return {
+        file: info.file,
+        name,
+        deletedAt: info.modifiedAt,
+        participants: info.participants,
+        prizes: info.prizes,
+        confirmedDraws: info.confirmedDraws,
+      };
+    })
+    .sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : -1)); // xoá gần nhất lên đầu
+}
+
+/** Đưa 1 file từ data/.trash/ trở lại data/ — bỏ hậu tố "__deleted-<thời điểm>" khỏi tên file, tự
+ *  thêm số thứ tự nếu trùng tên. Trả về đường dẫn file đích (data/), để openDbFile() peek lấy id.
+ *  rescan() ở lần gọi listSessions()/refresh() kế tiếp sẽ tự thấy nó. */
+export function restoreFromTrash(fileName: string): string {
+  const file = path.join(TRASH_DIR, fileName);
+  if (!fs.existsSync(file)) throw new Error(`Trash file not found: ${fileName}`);
+  const cleanBase = path.basename(fileName, ".db").replace(/__deleted-.*$/, "");
+  const target = uniquePath(DATA_DIR, `${cleanBase}.db`);
+  fs.renameSync(file, target);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (fs.existsSync(file + suffix)) fs.renameSync(file + suffix, target + suffix);
+  }
+  return target;
+}
+
+/** Xoá VĨNH VIỄN 1 file khỏi data/.trash/ — KHÔNG còn đường lấy lại (khác restoreFromTrash). Renderer
+ *  (RestoreModal.tsx) phải tự hỏi xác nhận trước khi gọi, giống các thao tác không hoàn tác khác. */
+export function permanentlyDelete(fileName: string) {
+  const file = path.join(TRASH_DIR, fileName);
+  if (!fs.existsSync(file)) return;
+  fs.unlinkSync(file);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (fs.existsSync(file + suffix)) fs.unlinkSync(file + suffix);
+  }
+}
+
+/** Nút "Open" (electron/main.ts, dialog chọn 1 file .db) — 3 trường hợp, trả về sessionId để renderer
+ *  tự switchTab tới đúng session vừa mở (null nếu không xác định được, vd file hỏng):
+ *  1. File đang ở data/.trash/: coi như bấm Restore (restoreFromTrash), bỏ hậu tố "__deleted-...".
+ *  2. File đã nằm trong data/ (session đang Closed, hoặc hiếm khi app chưa kịp rescan): chỉ đặt
+ *     closed = 0, KHÔNG di chuyển file.
+ *  3. File ở ngoài data/ (USB, backup máy khác...): copy vào data/, giữ nguyên bản gốc. Trùng id với
+ *     session đang có sẵn thì rescan() ở lần listSessions() kế tiếp tự phát hiện thành conflict
+ *     (SessionConflictDialog.tsx), không cần xử lý riêng ở đây. */
+export function openDbFile(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
+  const dir = path.dirname(filePath);
+  let target: string;
+
+  if (sameFile(dir, DATA_DIR)) {
+    rescan();
+    const found = [...entries.entries()].find(([, e]) => sameFile(e.file, filePath));
+    if (!found) return null;
+    setSessionClosed(found[0], false);
+    return found[0];
+  } else if (sameFile(dir, TRASH_DIR)) {
+    target = restoreFromTrash(path.basename(filePath));
+  } else {
+    target = uniquePath(DATA_DIR, path.basename(filePath));
+    fs.copyFileSync(filePath, target);
+  }
+
+  rescan();
+  const entry = [...entries.values()].find((e) => sameFile(e.file, target));
+  if (!entry) return null;
+  const row = entry.db.prepare(`SELECT id FROM sessions LIMIT 1`).get() as { id: string } | undefined;
+  return row?.id ?? null;
 }
 
 export function closeAll() {

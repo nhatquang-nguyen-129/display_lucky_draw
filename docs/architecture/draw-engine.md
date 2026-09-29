@@ -5,7 +5,7 @@ File `electron/drawEngine.ts` — phần **nhạy cảm nhất về tính công 
 **Nguyên tắc kiến trúc: Draw Engine tách biệt hoàn toàn khỏi phần hiển thị.** "Chọn ai trúng" (random có trọng số, loại trừ theo luật) và "hiển thị lên màn hình cho khán giả xem" là 2 việc độc lập: Draw Engine không biết gì về UI; UI (Landing Page, Dashboard) chỉ đọc kết quả Draw Engine trả về, không bao giờ tự tính toán ai trúng.
 
 Tách làm 4 hàm, tách để phục vụ luồng Button Draw/Confirm/Redo trên Landing Page (xem
-[`docs/landing/components/button.md`](../landing/components/button.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
+[`docs/landing/button.md`](../landing/button.md)) mà KHÔNG đổi hành vi của nút "Draw now" cũ (trang Draw):
 
 ```ts
 pickWinner(opts): DrawCandidate           // CHỌN, KHÔNG ghi DB
@@ -18,16 +18,28 @@ drawOne(opts) { return commitDraw(pickWinner(opts), opts.sessionId); }  // hành
 
 Trước đây `draw_results` CHỈ chứa lượt đã Confirm — 1 candidate bị Redo (xem trang Landing, nút Redo) không để lại dấu vết gì trong DB. Giờ IPC `draw:pick` gọi `recordPendingDraw` NGAY khi có candidate (trước khi người vận hành kịp Confirm/Redo), ghi 1 row `confirmed = 0`; `commitDraw` (Confirm) chỉ UPDATE đúng row đó (khớp theo `rng_seed`, sinh mới mỗi lần pick nên đủ để nhận diện 1 lượt) lên `confirmed = 1` và mới trừ `prizes.remaining` lúc này — Redo bỏ dở thì row đó giữ mãi `confirmed = 0`, không bao giờ bị sửa lại.
 
-**Mọi truy vấn trong `pickWinner` dùng `draw_results` để loại trừ (đã trúng giải nào, `exclude_previous_winners`, `allow_duplicate_with_*`) đều lọc `confirmed = 1`** — lượt Redo/bỏ dở KHÔNG được tính là "đã trúng", không loại participant khỏi vòng quay sau. `sessions:results` (nguồn dữ liệu SỐNG cho Present Mode — Scoreboard/Winner Name, xem `useLandingData.ts`) cũng CHỈ trả `confirmed = 1`, giữ đúng hành vi cũ. Lịch sử ĐẦY ĐỦ (kể cả `confirmed = 0`) dùng IPC riêng `sessions:drawHistory`, chỉ Dashboard đọc — xem [`docs/architecture/database-schema.md`](database-schema.md).
+**Mọi truy vấn trong `pickWinner` dùng `draw_results` để loại trừ (đã trúng giải nào, `allow_duplicate_with_*`, `max_win_count`) đều lọc `confirmed = 1`** — lượt Redo/bỏ dở KHÔNG được tính là "đã trúng", không loại participant khỏi vòng quay sau. `sessions:results` (nguồn dữ liệu SỐNG cho Present Mode — Scoreboard/Winner Name, xem `useLandingData.ts`) cũng CHỈ trả `confirmed = 1`, giữ đúng hành vi cũ. Lịch sử ĐẦY ĐỦ (kể cả `confirmed = 0`) dùng IPC riêng `sessions:drawHistory`, chỉ Dashboard đọc — xem [`docs/architecture/database-schema.md`](database-schema.md).
 
 Thuật toán `pickWinner`, theo đúng thứ tự:
 
 1. Lọc `prizes` còn `remaining > 0` và `status = 'active'` (lọc theo `lockedPrizeId` nếu có — ca Redo).
-2. Lọc `participants` `status = 'active'`, trừ người đã trúng (nếu session bật `exclude_previous_winners`), trừ `excludeParticipantIds` (ca Redo).
+2. Lọc `participants` `status = 'active'`, trừ `excludeParticipantIds` (ca Redo). KHÔNG còn luật cấp session — ai đã trúng gì do luật cấp giải (dưới) quyết định.
 3. **Random có trọng số** để chọn 1 giải trong các giải còn hợp lệ (`weight` càng cao càng dễ trúng) — nếu giải đó KHÔNG còn ai đủ điều kiện (do luật trùng lặp cấp giải), loại giải đó và roll lại trong phần còn lại (tránh "chọn trúng giải nhưng không ai nhận được").
 4. Random đều (`randomInt`) 1 người trong nhóm đủ điều kiện của giải đã chọn.
 
-Luật trùng lặp cấp giải (`eligibleParticipantsForPrize`): `allow_duplicate_with_same_prize` + `max_win_count` (1 người trúng ĐÚNG giải này tối đa bao nhiêu lần), `allow_duplicate_with_other_prizes` (đã trúng giải KHÁC thì có được trúng tiếp giải này không).
+### Luật trùng lặp — CHỈ ở cấp giải
+
+`eligibleParticipantsForPrize` xét từng người với giải đang quay, dựa trên lượt đã Confirm:
+
+| Tuỳ chọn trên giải (Prize form) | Ý nghĩa |
+|---|---|
+| **Allow duplicate with itself** (`allow_duplicate_with_same_prize`) + **Max wins per person** (`max_win_count`) | Bật: 1 người trúng CHÍNH giải này tối đa `max_win_count` lần. Tắt: tối đa 1 lần. |
+| **Allow duplicate with other prizes** (`allow_duplicate_with_other_prizes`) | Bật: người đã trúng giải KHÁC vẫn được trúng giải này. Tắt: đã trúng bất kỳ giải nào khác → loại. Chỉ đếm giải KHÁC, lượt trúng chính giải này do tuỳ chọn trên quyết định. |
+
+Luật xét theo **giải đang quay** (có hướng): Bike bật "other", Voucher tắt → trúng Voucher rồi vẫn trúng Bike được, nhưng trúng Bike rồi thì không trúng Voucher nữa. Cả 2 tắt (mặc định giải mới) = mỗi người 1 giải, 1 lần. `quantity`/`remaining` vẫn chặn trên cùng — max 5 mà chỉ còn 2 suất thì hết 2 suất là thôi.
+
+**Bug đã sửa (sau 1.0.0):** (1) session có cờ `exclude_previous_winners` luôn bật (không có UI tắt) loại mọi người đã trúng khỏi TẤT CẢ lượt quay → 2 tuỳ chọn trên vô tác dụng; (2) kiểm tra "other prizes" đếm cả chính giải đang quay → "Allow duplicate with itself" không bao giờ cho trúng lần 2. Nay bỏ hẳn luật cấp session (cột vẫn còn trong DB, luôn 0), session cũ được migration đưa về đúng hành vi cũ — xem [`database-schema.md`](database-schema.md) mục Migration.
+
 
 ## Chọn ai trúng KHÔNG phụ thuộc "cột nào tên gì"
 

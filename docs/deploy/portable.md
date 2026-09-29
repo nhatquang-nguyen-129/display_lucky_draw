@@ -2,11 +2,16 @@
 
 > **Trạng thái**
 > - **Windows**: đã implement và test (`…-win.zip`).
-> - **macOS**: code và cấu hình đã có (`…-mac.zip`), **chờ build + test trên Mac thật**. Làm theo mục
->   [macOS](#4-macos), ghi lại kết quả vào đây.
+> - **macOS**: đã build + test trên Mac thật (MacBook Pro M-series, macOS 26.6.2, arm64, 2026-09-28).
+>   Chữ ký **ad-hoc** mặc định bị AMFI **CHẶN HẲN** lúc chạy (không chỉ cảnh báo Gatekeeper), xem
+>   [Ký số](#ký-số-code-signing). Chạy được **miễn phí** bằng cách ký lại bằng chứng chỉ "Apple
+>   Development" (Xcode + Apple ID thường), nhưng **chỉ trên đúng máy có chứng chỉ đó**. Chạy thẳng trên
+>   MỌI Mac vẫn cần Apple Developer ID + notarization ([mục 6](#6-việc-còn-lại)). Checklist chức năng
+>   qua UI **chưa test** — mới xác nhận app khởi động và chạy ổn định
+>   ([release.md → Test](./release.md#7-test-trước-khi-phát)).
 
-Bản portable là **định dạng phân phối chính** của app. Bản cài đặt (Installer) chỉ dành cho máy cố
-định dùng lâu dài, xem [installer.md](./installer.md). Cách build cả hai: [build.md](./build.md).
+Bản portable là **định dạng phân phối chính** của app. Bản cài đặt dành cho máy cố định:
+[installer.md](./installer.md). Build, test, phát hành, xử lý lỗi: [release.md](./release.md).
 
 ## 1. Triết lý thiết kế
 
@@ -34,8 +39,8 @@ cài đặt, không cần quyền Admin. Kết quả quay ghi ngược vào thư
 
 ### Vì sao làm được đơn giản
 
-Toàn bộ dữ liệu của 1 session nằm trong **đúng 1 file SQLite** (mỗi session 1 file trong `data/`), không có
-file ảnh rời:
+Toàn bộ dữ liệu của 1 session nằm trong **đúng 1 file SQLite** (mỗi session 1 file trong `data/`), không
+có file ảnh rời:
 
 | Dữ liệu | Nằm ở đâu trong DB |
 |---|---|
@@ -45,8 +50,9 @@ file ảnh rời:
 | Landing page: component, ảnh nền, ảnh PNG | `sessions.landing_config` (JSON, ảnh nhúng base64) |
 | Kết quả quay | bảng `draw_results` |
 
-Nên "mang dữ liệu theo app" chỉ là **đặt thư mục `data/` cạnh app**, và mang 1 session riêng lẻ sang máy khác
-chỉ là copy 1 file. Cơ chế lưu theo session, tên file, bản trùng: [`docs/architecture/database-schema.md`](../architecture/database-schema.md#lưu-trữ-theo-session--mỗi-session-là-1-file).
+Nên "mang dữ liệu theo app" chỉ là **đặt thư mục `data/` cạnh app**, và mang 1 session sang máy khác chỉ
+là copy 1 file. Cơ chế lưu theo session, tên file, bản trùng:
+[`docs/architecture/database-schema.md`](../architecture/database-schema.md#lưu-trữ-theo-session--mỗi-session-là-1-file).
 
 ### Các phương án đã loại
 
@@ -84,11 +90,13 @@ Chỉ áp dụng cho bản thư mục, kiểm tra theo thứ tự trước khi m
 
 | Tình huống | Nhận biết | Hộp thoại hướng dẫn |
 |---|---|---|
-| macOS App Translocation | `execPath` chứa `/AppTranslocation/` | Lệnh `xattr` gỡ cờ quarantine (xem [macOS](#mở-trên-mac-khác-gatekeeper-app-translocation)) |
+| macOS App Translocation | `execPath` chứa `/AppTranslocation/` | Lệnh `xattr` gỡ cờ quarantine (xem [mục 3](#gatekeeper-app-translocation-macos)) |
 | Chạy từ thư mục tạm (Windows: mở exe ngay trong zip chưa giải nén) | Thư mục app nằm dưới `os.tmpdir()` | "Extract All" rồi chạy từ thư mục đã giải nén |
 | `data/` không ghi được | Ghi thử + xoá 1 file dò thất bại (đáng tin hơn `fs.accessSync` với USB/ổ mạng) | Chuyển thư mục sang chỗ ghi được; trên Mac nhắc USB NTFS là chỉ-đọc |
 
 ### Hành vi chung của bản đóng gói (`app.isPackaged`)
+
+Áp dụng cho cả portable lẫn installer:
 
 - **Chặn mở 2 app cùng lúc**: `app.requestSingleInstanceLock()` ở đầu `db.ts`, TRƯỚC khi mở DB (vì
   `main.ts` import `db.ts` trước mọi dòng code khác). Instance thứ 2 thoát ngay, cửa sổ đang chạy được
@@ -101,200 +109,207 @@ Chỉ áp dụng cho bản thư mục, kiểm tra theo thứ tự trước khi m
 
 ### Đóng gói — `electron/make-portable-zip.mjs`
 
-Chạy sau electron-builder trong `npm run package`, trên đúng hệ điều hành đang build. Không thêm
-dependency nào:
+Bản portable **không dùng target có sẵn** của electron-builder: electron-builder chỉ xuất thư mục app
+(`win-unpacked/`; target `dir` trên Mac), rồi script này tự nén. Chạy sau electron-builder trong
+`npm run package`, trên đúng hệ điều hành đang build, không thêm dependency:
 
 1. Tạm dời `data/` (nếu có, do chạy thử bản build) ra ngoài, để **dữ liệu test không lọt vào bản phân
    phối**.
 2. Tạm đổi tên thư mục output của electron-builder thành `Lucky Draw Studio`, để zip **có sẵn thư mục
    mẹ**.
-3. Nén: Windows dùng `tar.exe` (bsdtar) có sẵn trong Windows 10/11; macOS dùng `ditto` (giữ đúng
-   symlink/metadata của `.app` bundle, zip thường làm hỏng bundle).
+3. Nén (khác nhau theo hệ điều hành, xem [mục 3](#3-khác-biệt-windows--macos)).
 4. LUÔN trả lại tên thư mục và `data/` như cũ, kể cả khi nén lỗi (electron-builder cần đúng tên cũ ở
    lần build sau).
+5. Copy `assets/distribution/README.txt` (điền `{{version}}`, CRLF + BOM) ra `release/README.txt`.
 
-Riêng macOS, trước khi nén script **ký ad-hoc** toàn bộ `.app` (`codesign --force --deep --sign -`)
-rồi `codesign --verify`. Chi tiết ở mục [Ký số](#ký-số-code-signing).
+## 3. Khác biệt Windows / macOS
 
-## 3. Windows
+| | Windows | macOS |
+|---|---|---|
+| File phân phối | `…-win.zip` (x64, ~120 MB) | `…-mac.zip` (universal: Mac chip M lẫn Intel, nặng hơn) |
+| Thư mục output electron-builder | `release/win-unpacked/` | `release/mac-universal/` (target `dir`) |
+| Công cụ nén | `System32\tar.exe` (bsdtar, có sẵn Windows 10/11) — gọi đích danh vì `tar` của Git Bash là GNU tar, không nén được zip | `ditto -c -k --keepParent` — giữ đúng symlink/metadata của `.app` bundle (zip thường làm hỏng bundle) |
+| Ký số | Không ký — vẫn chạy được | Script ký **ad-hoc** trước khi nén, nhưng AMFI chặn ad-hoc → phải ký lại bằng chứng chỉ Apple Development trên từng máy (xem dưới) |
+| `data/` nằm ở | Cạnh `Lucky Draw Studio.exe` | Cạnh `Lucky Draw Studio.app` (KHÔNG trong bundle) |
+| Máy lạ chặn lần đầu | SmartScreen (cảnh báo, có "Run anyway") | AMFI (chặn hẳn, không có nút bypass) + Gatekeeper (xem dưới) |
+| Chạy sai chỗ | Mở exe trong zip → chạy từ `%TEMP%` → báo lỗi | App Translocation → báo lỗi kèm lệnh sửa |
+| USB | NTFS/exFAT đều được | **Phải exFAT** (hoặc APFS/Mac OS Extended). NTFS trên Mac là chỉ-đọc |
+| Kéo riêng app vào Applications | — | Thành "bản cài đặt", dữ liệu chuyển sang `userData` ([installer.md](./installer.md)) |
 
-### Cấu trúc
+### Cấu trúc thư mục
 
 ```
-Lucky Draw Studio\               ← thư mục mẹ có sẵn trong Lucky Draw Studio-<version>-win.zip
-├── Lucky Draw Studio.exe        ← double-click để chạy
-├── data\
-│   ├── Hoi-cho__3f9a1c2e.db     ← 1 file = 1 session (participant, prize, landing, lịch sử quay)
+Windows                                   macOS
+Lucky Draw Studio\                        Lucky Draw Studio/
+├── Lucky Draw Studio.exe  ← chạy         ├── Lucky Draw Studio.app  ← chạy (Finder hiện như 1 file)
+├── data\                                 └── data/
+│   ├── Hoi-cho__3f9a1c2e.db                  └── <tên-session>__<mã>.db
 │   └── Minigame__8b20d7aa.db
 └── resources\ locales\ *.dll …  ← file của app, không động vào
 ```
 
-Chỉ copy riêng `Lucky Draw Studio.exe` thì app không mở được (thiếu dll): lỗi lộ ngay, không mất dữ
-liệu âm thầm.
-
-### Build
-
-`npm run package` trên máy Windows → `release/Lucky Draw Studio-<version>-win.zip` (~120 MB). Chi tiết
-và yêu cầu máy build: [build.md](./build.md).
-
-`release/win-unpacked/` chính là thư mục app y hệt nội dung file zip. Dùng thẳng được để test, nhưng
-lần `npm run package` sau sẽ ghi đè, nên đừng để dữ liệu thật ở đó.
-
-### Chuẩn bị dữ liệu
-
-**Cách sạch nhất: chuẩn bị luôn bằng bản thư mục.**
-
-1. Giải nén `…-win.zip` (chuột phải → **Extract All**) ra máy mình hoặc thẳng lên USB.
-2. Chạy `Lucky Draw Studio.exe`, tạo session (tab) → mỗi session tự có 1 file trong `data\`.
-3. Nhập participant, prize, dựng landing, quay thử nếu cần (**Reset session** trước khi mang đi).
-4. Tắt app (không bắt buộc với dữ liệu — file luôn đủ sau mỗi lần ghi — nhưng nên tắt trước khi copy).
-5. Copy nguyên thư mục lên USB (nếu chưa làm ở bước 1).
-
-**Mang 1 session từ máy khác / từ bản dev hoặc bản cài đặt:** copy đúng file session đó (nút **Data
-folder** ở góc phải thanh tab mở thư mục `data` của bản đang chạy) vào `data\` của bản thư mục — tab
-tự hiện khi mở app hoặc khi quay lại cửa sổ app. Bản dev/cài đặt dùng `%APPDATA%\lucky-draw-app\data\`.
-
-### Mở trên máy khác
-
-- **Phải giải nén trước.** Mở exe ngay trong zip (Windows hỏi "Extract all / Run") thì app báo lỗi
-  "running from a temporary folder" rồi thoát. Đây là chủ đích: Windows chạy app từ `%TEMP%`, dữ liệu
-  ghi ở đó sẽ mất.
-- **SmartScreen** lần đầu (app chưa ký số): "Windows protected your PC" → **More info → Run anyway**.
-  Một số phần mềm diệt virus có thể báo nhầm vì cùng lý do.
-- Cách an toàn nhất khi gửi cho người vận hành: **copy sẵn thư mục đã giải nén** (kèm
-  các file session trong `data\`) vào USB, họ không phải giải nén gì.
-
-### Lỗi thường gặp (Windows)
-
-| Triệu chứng | Nguyên nhân | Cách xử lý |
-|---|---|---|
-| "The app is running from a temporary folder" | Mở exe ngay trong file zip chưa giải nén | Chuột phải zip → Extract All, chạy exe trong thư mục đã giải nén |
-| "Cannot write to the data folder" | Ổ chỉ-đọc, USB khoá write-protect, thư mục không có quyền ghi | Chuyển nguyên thư mục sang chỗ ghi được (Desktop, Documents, USB không khoá) |
-| App mở ra thiếu tab / TRỐNG dù đã chuẩn bị dữ liệu | File session không nằm đúng `data\` cạnh exe | Bấm **Data folder** để xem app đang đọc thư mục nào, đặt file session vào đó |
-| Hiện hộp thoại "Different copies of the same session" | Có ≥ 2 file của cùng 1 session (copy qua lại, mỗi bên sửa riêng) | Chọn bản muốn giữ (mặc định gợi ý bản mới nhất), bản còn lại vào `data\.trash\` |
-| SmartScreen chặn hẳn, không có nút "Run anyway" | Policy công ty chặn app chưa ký số | Cần chứng chỉ code signing, ngoài phạm vi hiện tại |
-
-## 4. macOS
-
-### Cấu trúc
-
-```
-Lucky Draw Studio/                  ← thư mục mẹ có sẵn trong Lucky Draw Studio-<version>-mac.zip
-├── Lucky Draw Studio.app           ← double-click để mở (Finder hiện như 1 file, thật ra là thư mục)
-└── data/
-    └── <tên-session>__<mã>.db       ← 1 file = 1 session
-```
-
-`data/` nằm **cạnh** `.app`, không nằm trong bundle.
-
-### Khác biệt so với Windows
-
-| | Windows | macOS |
-|---|---|---|
-| File phân phối | `…-win.zip` (x64) | `…-mac.zip` (universal: chạy cả Mac chip M lẫn Intel, file nặng hơn) |
-| Máy lạ chặn lần đầu | SmartScreen | Gatekeeper, xem [bên dưới](#mở-trên-mac-khác-gatekeeper-app-translocation) |
-| Chạy sai chỗ | Mở exe trong zip → báo lỗi | App Translocation → báo lỗi kèm lệnh sửa |
-| USB | NTFS/exFAT đều được | **Phải exFAT** (hoặc APFS/Mac OS Extended). NTFS trên Mac là chỉ-đọc |
-| Kéo riêng app vào Applications | | Thành "bản cài đặt", dữ liệu chuyển sang `userData` (xem [installer.md](./installer.md)) |
-
-### Build trên Mac
-
-Chỉ build được TRÊN MÁY MAC: `better-sqlite3` là native module, và script nén dùng `codesign`/`ditto`
-của macOS.
-
-1. Xcode Command Line Tools (codesign, lipo cho bản universal): `xcode-select --install`
-2. Node.js 20 LTS (cùng major với máy Windows): tải từ nodejs.org, hoặc `nvm install 20 && nvm use 20`
-3. Lấy code:
-
-   ```bash
-   git clone https://github.com/nhatquang-nguyen-129/display_lucky_draw.git
-   cd display_lucky_draw
-   git checkout branch_2x      # đã clone rồi thì: git pull
-   ```
-
-4. `npm ci` (cài đúng version trong `package-lock.json`)
-5. `npm run package`: build renderer + main → electron-builder đóng gói `.app` universal (build x64 +
-   arm64 rồi gộp; lần đầu tải Electron cho cả 2 kiến trúc nên lâu vài phút) → script ký ad-hoc rồi nén.
-
-Kết quả trong `release/`:
-
-| File | Ý nghĩa |
-|---|---|
-| `Lucky Draw Studio-<version>-mac.zip` | **Bản phân phối**, có thư mục mẹ `Lucky Draw Studio/` |
-| `mac-universal/Lucky Draw Studio.app` | App chưa nén, test nhanh được, bị ghi đè ở lần build sau |
-| `builder-debug.yml` | Log cấu hình electron-builder, bỏ qua |
-
-Chạy dev trên Mac (không bắt buộc để build): thêm `npx electron-rebuild` sau `npm ci`, rồi
-`npm run electron:dev`. Xem [`docs/local/run-dev.md`](../local/run-dev.md).
+1 file `.db` = 1 session (participant, prize, landing, lịch sử quay). Windows: chỉ copy riêng
+`Lucky Draw Studio.exe` thì app không mở được (thiếu dll) — lỗi lộ ngay, không mất dữ liệu âm thầm.
 
 ### Ký số (code signing)
 
-- `build.mac.identity: null`: electron-builder KHÔNG ký bằng Developer ID (không cần tài khoản Apple
-  Developer $99/năm).
-- Script nén tự **ký ad-hoc** (`codesign --sign -`) toàn bộ bundle. Bắt buộc vì 2 lý do: binary arm64
-  trên Mac chip M phải có chữ ký hợp lệ; và máy khác sẽ báo "chưa xác minh" (có nút mở) thay vì "is
-  damaged" (không có nút mở).
-- `hardenedRuntime: false`: hardened runtime chỉ cần cho notarization; bật nó với chữ ký ad-hoc dễ làm
-  app không nạp được native module `better_sqlite3.node`.
-- Muốn hết hẳn cảnh báo Gatekeeper trên mọi Mac: cần Apple Developer ID + notarization, ngoài phạm vi
-  hiện tại.
+- **Windows**: không ký. SmartScreen lần đầu: "Windows protected your PC" → **More info → Run anyway**.
+  Hết hẳn cảnh báo cần chứng chỉ code signing.
+- **macOS**, cấu hình `package.json` → `build.mac`:
+  - `target: dir`, `arch: universal`; `identity: null`: electron-builder KHÔNG ký bằng Developer ID
+    (không cần tài khoản Apple Developer $99/năm).
+  - Script nén tự **ký ad-hoc** toàn bộ bundle (`codesign --force --deep --sign -`, rồi
+    `codesign --verify --deep --strict`). Ban đầu tưởng đủ vì: binary arm64 trên Mac chip M phải có MỘT
+    chữ ký nào đó mới nạp được; và máy khác sẽ báo "chưa xác minh" (có nút mở) thay vì "is damaged".
+    **Test thật cho thấy KHÔNG đủ** — xem ngay dưới.
+  - `hardenedRuntime: false`: hardened runtime chỉ cần cho notarization; bật nó với chữ ký ad-hoc dễ làm
+    app không nạp được native module `better_sqlite3.node`.
 
-### Mở trên Mac khác (Gatekeeper, App Translocation)
+#### Ad-hoc bị AMFI chặn (đã xác nhận trên Mac thật, 2026-09-28)
+
+App đã ký ad-hoc **không mở được, không có cửa sổ nào** — tự thoát trong 1-2s, không dialog, không crash
+report. Không phải cảnh báo Gatekeeper rồi cho bấm tiếp. Unified log (`log show`) cho thấy `amfid` chặn
+lúc khởi động:
+
+```
+amfid[...] '.../Lucky Draw Studio' not valid: Error Domain=AppleMobileFileIntegrityError Code=-423
+"The file is adhoc signed or signed by an unknown certificate chain"
+```
+
+- `codesign --verify` báo "valid on disk" nhưng `spctl --assess --type execute` báo "rejected": 2 công cụ
+  đánh giá KHÁC nhau — `--verify` chỉ kiểm tra chữ ký còn toàn vẹn, không kiểm tra macOS có CHẤP NHẬN
+  chữ ký đó để chạy hay không.
+- Máy test để Gatekeeper/SIP ở cấu hình mặc định, nên nhiều khả năng đây là hành vi chung của macOS hiện
+  tại với ad-hoc, không phải lỗi riêng 1 máy.
+- **"Open Anyway" trong System Settings KHÔNG giúp được**: đó là bypass cho Gatekeeper (quarantine), còn
+  AMFI là lớp chặn riêng, thấp hơn, không có nút bypass.
+- `sudo spctl --add` đã thử: macOS hiện tại báo "This operation is no longer supported" — không dùng được.
+
+#### Cách chạy được miễn phí — ký bằng chứng chỉ "Apple Development" (từng máy)
+
+Ký bằng chứng chỉ **Apple Development** (Xcode tự cấp miễn phí cho mọi Apple ID qua "Personal Team",
+không cần $99/năm) thay ad-hoc thì AMFI **chấp nhận** — đã xác nhận app mở được, đủ tiến trình
+main/renderer/GPU/network, chạy ổn định. **Giới hạn: chỉ có tác dụng trên máy có private key của chứng
+chỉ đó** (nằm trong Keychain).
+
+**Tạo chứng chỉ** (1 lần trên máy Mac muốn chạy app):
+
+1. Cài **Xcode đầy đủ** từ Mac App Store (Command Line Tools không có UI tạo chứng chỉ).
+2. Xcode → **Settings → Accounts** → **+** → đăng nhập Apple ID thường → Xcode tạo "Personal Team".
+3. Chọn team đó → **Manage Certificates…** → **+** → **Apple Development** (bước 2 KHÔNG tự sinh chứng
+   chỉ, phải làm bước này).
+4. Kiểm tra: `security find-identity -v -p codesigning` phải ra 1 identity. Nếu ra **"0 valid identities
+   found"**: máy thiếu chứng chỉ trung gian đúng thế hệ (`security verify-cert` báo
+   `CSSMERR_TP_NOT_TRUSTED`; máy test cần **WWDR G3** nhưng chỉ có G2 đã hết hạn 07/02/2023). Tải
+   **"Worldwide Developer Relations — G3"** (hoặc thế hệ lỗi báo) từ
+   `https://www.apple.com/certificateauthority/`, double-click → Keychain Access → **Add**, kiểm tra lại.
+
+**Ký lại `.app`** — thủ công **từ trong ra ngoài**, KHÔNG dùng `--deep`: `codesign --deep` với identity
+thật báo `errSecInternalComponent` ở `Squirrel.framework` (symlink `Versions/Current -> A` làm `--deep` xử
+lý sai thứ tự) và dừng giữa chừng, app vẫn còn chữ ký ad-hoc cũ.
+
+```bash
+IDENTITY="<SHA-1 hash từ security find-identity>"
+APP="Lucky Draw Studio.app"
+
+# 1. Mọi .dylib rời (trong Electron Framework.framework/Libraries, và better_sqlite3.node)
+codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib"
+# … lặp lại cho libvk_swiftshader.dylib, libGLESv2.dylib, libffmpeg.dylib, và
+#   Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+
+# 2. Executable NẰM SÂU NHẤT trong mỗi framework/helper (ShipIt, Squirrel, Mantle, ReactiveObjC,
+#    chrome_crashpad_handler, rồi tới binary chính của Electron Framework)
+codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt"
+# … tương tự cho các executable còn lại, TỪNG FILE MỘT
+
+# 3. Bản thân từng .framework bundle (Squirrel, Mantle, ReactiveObjC, Electron Framework)
+codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/Squirrel.framework"
+# … tương tự cho 3 framework còn lại
+
+# 4. Từng Helper .app (ký executable bên trong trước, rồi ký cái .app)
+codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/Lucky Draw Studio Helper.app/Contents/MacOS/Lucky Draw Studio Helper"
+codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/Lucky Draw Studio Helper.app"
+# … tương tự cho Helper (Plugin)/(Renderer)/(GPU)
+
+# 5. Cuối cùng app chính — KHÔNG --deep (mọi thứ bên trong đã ký xong)
+codesign --force --sign "$IDENTITY" "$APP"
+
+codesign --verify --deep --strict "$APP"   # không in gì + exit code 0 là đạt
+```
+
+- macOS hỏi mật khẩu Keychain ở mỗi lệnh ("codesign wants to access key…") → bấm **Always Allow** ở lần
+  đầu.
+- Ký xong, `spctl --assess` **vẫn báo "rejected" — BÌNH THƯỜNG**: đó là đánh giá "đủ điều kiện phân phối
+  công khai" của Gatekeeper (chỉ nhận Developer ID + notarization), khác AMFI (cái quyết định app có
+  CHẠY được không). Cứ mở bằng `open`/double-click.
+
+#### Mở trên Mac khác chưa có chứng chỉ
+
+Bản `.zip` phân phối vẫn chỉ ký ad-hoc → mọi Mac chưa làm bước trên đều gặp lại nguyên lỗi AMFI. Phải
+làm TRÊN CHÍNH máy muốn chạy, 1 trong 2 cách:
+
+- **Cách A — mang chứng chỉ sang** (máy của mình/đồng nghiệp tin cậy, không cần Xcode):
+  1. Máy gốc: Keychain Access → chứng chỉ "Apple Development: …" → chuột phải → **Export…** → file
+     `.p12` (đặt mật khẩu).
+  2. Export thêm "Apple Worldwide Developer Relations Certification Authority — G3" ra `.cer` (hoặc tải
+     lại từ trang Apple trên máy mới).
+  3. Copy 2 file sang máy mới → double-click từng file để nhập vào Keychain.
+  4. Máy mới: `security find-identity -v -p codesigning` lấy SHA-1 (giống máy gốc), ký lại `.app` theo
+     quy trình ở trên.
+
+  Private key khi đó nằm trên ≥ 2 máy — chấp nhận được cho vài máy tự quản, không phải chuẩn bảo mật cho
+  dùng lâu dài/nhiều máy.
+- **Cách B — tạo chứng chỉ mới trên máy đó**: làm lại toàn bộ "Tạo chứng chỉ" (Apple ID nào cũng được) rồi
+  ký lại bằng identity của máy đó. Chắc hơn, không chia sẻ private key.
+
+Dù cách nào, nếu zip có cờ quarantine (AirDrop/tải về) có thể vẫn cần thêm bước Gatekeeper ở mục dưới —
+độc lập với việc ký, làm sau khi ký xong. **Không thực tế cho máy venue lạ** — khi đó cần Developer ID +
+notarization ([mục 6](#6-việc-còn-lại)).
+
+### Gatekeeper, App Translocation (macOS)
+
+Mục này nói về cờ quarantine, **độc lập** với lỗi AMFI ở trên: app phải được ký bằng chứng chỉ Apple
+Development trước thì mới tới được bước này.
 
 App tải về, AirDrop, hoặc giải nén từ zip tải về đều bị macOS gắn cờ **quarantine**. Hệ quả:
 
 1. **Gatekeeper chặn lần mở đầu tiên.**
-   - macOS 15 (Sequoia) trở lên: mở app → "Apple could not verify…" → **Done** → **System Settings →
-     Privacy & Security** → kéo xuống, bấm **Open Anyway** cạnh tên app → xác nhận bằng mật khẩu máy.
-     Chuột phải → Open không còn bỏ qua được như macOS cũ.
-   - macOS 14 trở xuống: chuột phải (Control-click) vào app → **Open** → **Open**.
+   - macOS 15 (Sequoia) trở lên: "Apple could not verify…" → **Done** → **System Settings → Privacy &
+     Security** → **Open Anyway** cạnh tên app → xác nhận mật khẩu. Chuột phải → Open không còn bỏ qua
+     được như macOS cũ.
+   - macOS 14 trở xuống: chuột phải (Control-click) app → **Open** → **Open**.
 2. **App Translocation**: app còn cờ quarantine bị macOS âm thầm chạy từ một bản sao chỉ-đọc ở đường
    dẫn ngẫu nhiên, nên không thấy `data/` thật. App phát hiện và báo lỗi kèm lệnh sửa.
 
-**Cách chắc chắn nhất** (1 lần cho mỗi bản copy, gỡ cờ cho mọi file trong thư mục): mở Terminal, gõ
-`xattr -dr com.apple.quarantine ` (có dấu cách cuối), kéo thư mục `Lucky Draw Studio` vào cửa sổ
-Terminal, Enter.
+**Cách chắc chắn nhất** (1 lần cho mỗi bản copy): Terminal, gõ `xattr -dr com.apple.quarantine ` (có
+dấu cách cuối), kéo thư mục `Lucky Draw Studio` vào cửa sổ Terminal, Enter. Copy qua USB bằng Finder từ
+máy build (file chưa từng bị gắn cờ) thường không bị hỏi gì.
 
-Copy qua USB bằng Finder từ máy build (file chưa từng bị gắn cờ) thường không bị hỏi gì.
+## 4. Chuẩn bị dữ liệu
 
-### Chuẩn bị dữ liệu
+**Cách sạch nhất: chuẩn bị luôn bằng bản thư mục.**
 
-Như Windows: giải nén zip (double-click trong Finder), mở app, nhập dữ liệu, **thoát app** (đóng cửa
-sổ hoặc Cmd+Q), copy nguyên thư mục. Mang 1 session từ bản dev/cài đặt trên Mac
-(`~/Library/Application Support/lucky-draw-app/data/`) hoặc từ bản Windows: copy đúng file session đó vào
-`data/`.
+1. Giải nén zip (Windows: chuột phải → **Extract All**; Mac: double-click trong Finder) ra máy mình hoặc
+   thẳng lên USB.
+2. Mở app, tạo session (tab) → mỗi session tự có 1 file trong `data/`.
+3. Nhập participant, prize, dựng landing, quay thử nếu cần (**Reset session** trước khi mang đi).
+4. Thoát app (Windows: đóng cửa sổ; Mac: đóng cửa sổ hoặc Cmd+Q). Không bắt buộc với dữ liệu — file luôn
+   đủ sau mỗi lần ghi — nhưng nên thoát trước khi copy.
+5. Copy nguyên thư mục lên USB (nếu chưa làm ở bước 1).
 
-### Checklist test trên Mac
+**Mang 1 session từ máy khác / bản dev / bản cài đặt**: copy đúng file session đó vào `data/` của bản thư
+mục (nút **Data folder** ở góc phải thanh tab mở thư mục `data` của bản đang chạy) — tab tự hiện khi mở
+app hoặc khi quay lại cửa sổ app. Bản dev/cài đặt dùng `%APPDATA%\lucky-draw-app\data\` (Windows) /
+`~/Library/Application Support/lucky-draw-app/data/` (Mac). File session dùng chung được giữa 2 hệ điều
+hành.
 
-- [ ] Giải nén `…-mac.zip` → ra đúng 1 thư mục `Lucky Draw Studio/`.
-- [ ] Mở `Lucky Draw Studio.app`, tạo 1 session → app lên, không bật DevTools; có `data/<tên>__<mã>.db` cạnh `.app`.
-- [ ] Import participant/prize, dựng landing, quay thử, mở Present Mode/Landing Builder: hiển thị và
-      hiệu ứng như bản Windows.
-- [ ] Đóng cửa sổ (nút đỏ) → app thoát hẳn (không còn chấm dưới icon Dock); `data/` chỉ có các file
-      `.db` (không có `-wal`/`-journal`).
-- [ ] Double-click app lần 2 khi đang mở → chỉ đưa cửa sổ cũ lên trước.
-- [ ] Copy nguyên thư mục sang chỗ khác (USB exFAT) → mở thấy đủ dữ liệu.
-- [ ] Copy 1 file session từ bản Windows vào `data/` → mở thấy đúng session đó.
-- [ ] Copy thêm 1 bản khác của cùng session (vd `… - Copy.db`) → hiện hộp thoại chọn bản ngay khi mở app.
-- [ ] Kéo riêng `.app` vào `/Applications` rồi mở → dùng `~/Library/Application Support/lucky-draw-app/`,
-      KHÔNG tạo `data/` trong Applications.
+`release/win-unpacked/` (hay `release/mac-universal/`) chính là thư mục app, dùng thẳng được để test,
+nhưng lần build sau sẽ ghi đè — đừng để dữ liệu thật ở đó.
 
-### Lỗi thường gặp (macOS)
-
-| Triệu chứng | Nguyên nhân | Cách xử lý |
-|---|---|---|
-| "macOS is running the app from a protected temporary copy…" | App Translocation (app còn cờ quarantine) | Lệnh `xattr -dr com.apple.quarantine <thư mục>` như trên, mở lại |
-| "Lucky Draw Studio is damaged and can't be opened" | Chữ ký hỏng/thiếu (không build qua `npm run package`, hoặc sửa file trong bundle sau khi ký) | Build lại bằng `npm run package`; tạm thời dùng lệnh `xattr` |
-| "Cannot write to the data folder" | USB NTFS (chỉ-đọc trên Mac) hoặc thư mục không có quyền ghi | Dùng USB exFAT, hoặc chuyển thư mục sang Desktop/Documents |
-| Đóng cửa sổ mà app không thoát | Đang chạy bản dev (`electron:dev`), bản dev giữ hành vi Mac mặc định | Bình thường, chỉ bản đóng gói mới thoát khi đóng cửa sổ |
-
-Lỗi lúc **build** trên Mac (gộp universal, `codesign`, `npm ci`): [troubleshooting.md](./troubleshooting.md).
-
-## 5. Vận hành tại venue (cả 2 hệ điều hành)
+## 5. Vận hành tại venue
 
 - **Test trước ngày sự kiện (bắt buộc)**: mở từ đúng USB sẽ mang đi, trên máy khác nếu có, **tự mắt
-  xác nhận** thấy đủ session/participant/prize/landing. Thiếu tab = file session không nằm đúng
-  `data/`.
+  xác nhận** thấy đủ session/participant/prize/landing. Thiếu tab = file session không nằm đúng `data/`.
 - **Không rút USB khi app đang chạy**, có thể hỏng file DB. Tắt app trước, rồi mới rút.
 - **Luôn giữ 1 bản sao các file trong `data/`** ở nơi khác trước khi đi. USB hỏng/mất là mất cả dữ liệu
   lẫn kết quả.
@@ -310,9 +325,18 @@ mở bằng chính bản thư mục đó để xem lại/xuất kết quả.
 
 ## 6. Việc còn lại
 
-- **macOS**: build + chạy [checklist](#checklist-test-trên-mac) trên Mac thật, ghi kết quả vào đây.
-  Nếu gộp universal lỗi, chuyển sang chỉ build arm64 (xem [troubleshooting.md](./troubleshooting.md)).
-- **Tuỳ nhu cầu**: code signing Windows / Apple Developer ID + notarization để hết cảnh báo
-  SmartScreen/Gatekeeper.
+- **macOS — chạy được miễn phí nhưng từng máy một** (ad-hoc bị AMFI chặn, chứng chỉ Apple Development
+  thì được, xem [Ký số](#ký-số-code-signing)). Việc tiếp theo tuỳ mục tiêu:
+  1. **Chỉ 1-2 máy tự quản** (máy cá nhân, máy công ty cố định): cách miễn phí là đủ — làm 1 lần/máy,
+     hoặc mang chứng chỉ sang theo [Cách A](#mở-trên-mac-khác-chưa-có-chứng-chỉ).
+  2. **Chạy thẳng trên MỌI Mac tại venue, không cấu hình trước** ("cắm USB vào máy lạ"): bắt buộc
+     **Apple Developer ID ($99/năm) + notarization** — cách DUY NHẤT để mọi Mac tin sẵn chữ ký, AMFI
+     lẫn Gatekeeper chấp nhận ngay. Cần viết lại phần ký trong `make-portable-zip.mjs` (bỏ ký ad-hoc,
+     ký bằng Developer ID + gọi Apple notary service).
+  3. Test quy trình ký miễn phí trên 1 Mac hoàn toàn khác (đời máy/macOS khác, không dùng chung chứng
+     chỉ) — chưa làm.
+  4. Chạy hết checklist chức năng qua UI trên Mac ([release.md → Test](./release.md#7-test-trước-khi-phát)).
+- **Tuỳ nhu cầu**: code signing Windows để hết cảnh báo SmartScreen — chỉ là cảnh báo, KHÔNG chặn chạy
+  như macOS (đã xác nhận bản Windows chưa ký vẫn chạy).
 - **Linux**: chưa có bản thư mục (`db.ts` luôn dùng `~/.config/lucky-draw-app/data/`).
   electron-builder đóng gói được `AppImage`/`deb` nếu cần, build trên Linux.

@@ -65,6 +65,7 @@ const api = {
     create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
       ipcRenderer.invoke("sessions:create", data),
     rename: (data: { id: string; name: string }) => ipcRenderer.invoke("sessions:rename", data),
+    setLocked: (data: { id: string; locked: boolean }) => ipcRenderer.invoke("sessions:setLocked", data),
     updateOptions: (data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) =>
       ipcRenderer.invoke("sessions:updateOptions", data),
     updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) =>
@@ -80,6 +81,11 @@ const api = {
     resolveConflict: (data: { sessionId: string; keepFile: string }) =>
       ipcRenderer.invoke("sessions:resolveConflict", data),
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
+    listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
+    restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
+    permanentlyDelete: (data: { file: string }) => ipcRenderer.invoke("sessions:permanentlyDelete", data),
+    openFile: () => ipcRenderer.invoke("sessions:openFile"),
+    setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

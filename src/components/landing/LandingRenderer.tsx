@@ -178,17 +178,13 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
           </div>
         ))}
 
-      {/* Popup xác nhận cho action "confirm"/"reset" của Button (ghi dữ liệu THẬT, VĨNH VIỄN — xem
-          docs/landing/components/button.md) — CHỈ ở Present Mode thật, khi sequence.confirmPrompt đang
-          có giá trị (ButtonView.tsx gọi sequence.requestConfirm() thay vì chạy action ngay). Click
-          nền tối (ngoài thẻ) hoặc bấm Esc = Cancel, giống hành vi đóng modal thông thường. z-50 để
-          LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc. `confirmPrompt.holdMs` (action
-          "reset" — xem CONFIRM_HOLD_MS trong ButtonView.tsx) đổi nút "Confirm" bấm 1 phát thành GIỮ
-          đủ số ms đó (HoldToConfirmButton.tsx) — nặng tay hơn hẳn xoá SẠCH cả session nên cần khó bấm
-          nhầm hơn "confirm" 1 người trúng. KHÔNG có dòng phụ tự sinh "Press and hold for Xs" nữa (đã
-          bỏ, gộp thẳng vào đúng 1 câu `message` cho gọn) — action nào dùng `holdMs` sau này PHẢI tự
-          nói rõ luôn việc "giữ nút" trong `CONFIRM_MESSAGES` của action đó, không có dòng nào tự thêm
-          vào giúp nữa. */}
+      {/* Popup xác nhận chung — hiện chỉ còn popup "Redraw" (bấm Draw lúc còn candidate chưa Confirm);
+          action "confirm"/"reset" của Button KHÔNG qua đây nữa mà nhấn giữ chính nút 3 giây (xem
+          ButtonView.tsx, docs/landing/button.md). CHỈ ở Present Mode thật, khi sequence.confirmPrompt
+          đang có giá trị. Click nền tối (ngoài thẻ) hoặc bấm Esc = Cancel, giống hành vi đóng modal
+          thông thường. z-50 để LUÔN nổi trên cả Scoreboard nếu 2 popup vô tình mở cùng lúc.
+          `confirmPrompt.holdMs` (hiện không ai truyền) đổi nút "Confirm" bấm 1 phát thành GIỮ đủ số ms
+          đó (HoldToConfirmButton.tsx) — ai dùng lại PHẢI tự nói rõ việc "giữ nút" trong `message`. */}
       {interactive && sequence?.confirmPrompt && (
         <div
           className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"

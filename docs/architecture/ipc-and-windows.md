@@ -5,7 +5,7 @@ Tài liệu kiến trúc cross-cutting, áp dụng cho toàn bộ app. Cùng th�
 [draw-engine.md](./draw-engine.md) (thuật toán chọn người trúng + Dashboard). Tính năng cụ thể:
 [`docs/participants/`](../participants/import.md) (Import/Data Type/Data Editor),
 [`docs/landing/`](../landing/builder.md) (Landing Builder/Present Mode/từng component). Setup máy:
-[`docs/local/`](../local/setup.md). Đóng gói/phân phối: [`docs/deploy/`](../deploy/build.md).
+[`docs/local/`](../local/setup.md). Đóng gói/phân phối: [`docs/deploy/`](../deploy/release.md).
 
 ## Mục tiêu sản phẩm
 
@@ -92,6 +92,10 @@ quả.
 `sessions` là bảng gốc — mọi `participants`/`prizes`/`draw_results` đều có cột `session_id` trỏ về đây. `SessionContext.tsx` (React Context, chỉ dùng ở cửa sổ chính) giữ `activeSessionId`, nhớ lại tab cuối dùng qua `localStorage` để mở đúng tab đó ở lần chạy sau.
 
 **Quy tắc bắt buộc**: bất kỳ IPC handler hay câu SQL mới nào đụng tới `participants`/`prizes` đều phải lọc theo `session_id` — quên bước này từng gây lỗi thật ở `Dashboard.tsx`/`Prizes.tsx` (hiện dữ liệu của TẤT CẢ session thay vì chỉ session đang active).
+
+Session còn có thể bị **khoá** (`sessions.locked`, chuột phải vào tab để đổi) — chặn sửa/xoá
+participant/prize và mở Data Editor/Presentation/Builder, không phải bảo mật (không password), chỉ
+tránh thao tác nhầm sau khi đã quay xong. Xem [`session-lock.md`](./session-lock.md).
 
 ## Kiến trúc đa cửa sổ (multi-window)
 

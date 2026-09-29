@@ -4,6 +4,63 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [Unreleased]
 
+### Close / Move to trash / Open / Restore — tách rõ 4 hành động trên session
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".
+
+- **Close** (nút × trên tab): giờ CHỈ ẩn tab khỏi thanh tab — file `.db` KHÔNG di chuyển đi đâu, vẫn
+  nằm nguyên trong `data/` (cột `sessions.closed` mới, migration additive). Không còn confirm vì hoàn
+  toàn vô hại/dễ hoàn tác.
+- **Move to trash** (đổi tên từ "Delete", menu chuột phải/Option+click trên tab): chuyển file vào
+  `data/.trash/` như trước — vẫn có confirm vì khó hoàn tác hơn.
+- **Open** (thay chỗ nút "Data folder" cũ ở thanh tab): mở hộp thoại chọn 1 file `.db` bất kỳ (mặc
+  định mở ngay `data/`) — mở lại 1 session đang Close, khôi phục 1 file đang ở `.trash/`, hoặc nạp 1
+  session từ ngoài `data/` (USB, backup máy khác — copy vào `data/`, giữ nguyên bản gốc; trùng id với
+  session có sẵn thì tự hiện đúng hộp thoại conflict đã có sẵn).
+- **Restore** (đổi tên từ "Trash"): hộp thoại liệt kê session trong `data/.trash/`, chọn nhiều bằng
+  checkbox, 3 nút **Cancel / Restore / Delete** — Delete ở đây là xoá **vĩnh viễn** khỏi `data/.trash/`
+  (không còn đường lấy lại, có confirm riêng), khác hẳn Restore.
+- Sửa bug tạo trùng session: ô nhập tên tab mới nghe cả `onKeyDown` (Enter) lẫn `onBlur`, có thể cả 2
+  cùng bắn gần như đồng thời và tạo 2 session trùng tên trước khi state kịp reset — chặn bằng ref-guard.
+
+## [1.1.0] — 2026-09-29
+
+### Session Lock — khoá session sau khi quay xong
+
+Chi tiết: `docs/architecture/session-lock.md`.
+
+- Thêm: khoá/mở khoá từng session (chuột phải, hoặc Option + click trên macOS, vào tab) để tránh nhầm
+  lẫn chỉnh sửa sau khi đã có kết quả cuối — KHÔNG phải bảo mật, không có password, không có khôi phục.
+- Session khoá: chặn hẳn mở Data Editor/Presentation/Builder, mọi thao tác Add/Edit/Delete/Import trên
+  Participant/Prize, và cả đổi tên/đóng tab (Dashboard vẫn xem được bình thường — chỉ-xem thật sự).
+- Từ chối khoá nếu session đó đang có cửa sổ Data Editor/Landing Builder/Presentation mở sẵn — báo rõ
+  cửa sổ nào cần đóng trước.
+- Mở khoá bắt buộc giữ nút 3 giây (tránh 1 cú bấm nhầm gỡ khoá).
+- Chặn thật nằm ở tầng IPC (`assertSessionUnlocked()`, `electron/main.ts`), không chỉ ẩn nút ở
+  renderer — gọi thẳng API bị khoá qua DevTools console vẫn bị từ chối.
+- Cột mới `sessions.locked` (migration additive, không ảnh hưởng session cũ — mặc định chưa khoá).
+
+### Confirm/Reset trên Landing Page — giữ 3 giây ngay trên nút, bỏ popup xác nhận
+
+- Confirm và Reset không còn hiện popup hỏi lại — giữ nút 3 giây là đủ (thanh tối phủ dần lên nút,
+  nhãn đổi thành "Hold 3s to confirm/reset"; giữ đủ 3s thì nút xanh "✓ Confirmed"/"✓ Reset" 1.5s, thả
+  sớm quay lại nhãn cũ ngay). Bấm/Enter/Space thường không có tác dụng. Popup duy nhất còn lại là cảnh
+  báo Redraw (bấm Draw khi còn 1 kết quả chưa Confirm).
+
+## [1.0.1] — 2026-09-28
+
+### Luật trùng giải — chỉ còn ở cấp giải, sửa "Allow duplicate" không có tác dụng
+
+Chi tiết: `docs/architecture/draw-engine.md` mục "Luật trùng lặp — CHỈ ở cấp giải".
+
+- Sửa: **Allow duplicate with itself** + **Max wins per person** giờ thật sự cho 1 người trúng lại chính
+  giải đó tới Max lần; **Allow duplicate with other prizes** cho người đã trúng giải khác trúng tiếp giải
+  này. Trước đây cờ session `exclude_previous_winners` (luôn bật, không có UI) loại mọi người đã trúng,
+  và kiểm tra "other prizes" đếm nhầm cả chính giải đó.
+- Không tick cả 2 (mặc định giải mới) = mỗi người 1 giải, 1 lần. Mặc định "other prizes" đổi thành tắt.
+- Session cũ: migration 1 lần (`user_version` 0 → 1) tắt 2 tuỳ chọn trên các giải của session đang bật
+  cờ cũ → kết quả quay y như trước. Sửa lại hint trong Prize form cho đúng nghĩa.
+
 ### Lưu trữ theo session — mỗi session là 1 file
 
 Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".
@@ -24,21 +81,33 @@ Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo sessio
   `prizes:update/delete` nhận thêm `sessionId`; thêm `sessions:conflicts`, `sessions:resolveConflict`,
   `sessions:openDataFolder`.
 
-### macOS — bản thư mục (portable) giống Windows (chờ build/test trên Mac thật)
+### macOS — bản thư mục (portable), đã test trên Mac thật — ký ad-hoc mặc định KHÔNG chạy được
 
-Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS), `docs/deploy/installer.md`.
+Chi tiết + hướng dẫn build/test: `docs/deploy/portable.md` (mục macOS, đặc biệt "Ký số"), `docs/deploy/installer.md`.
 
 - `npm run package` trên Mac ra `Lucky Draw Studio-<version>-mac.zip` (universal: Intel + chip M):
   thư mục mẹ `Lucky Draw Studio/` chứa `Lucky Draw Studio.app`, dữ liệu ở `data/` cạnh `.app`
   (không ghi vào trong bundle). Kéo riêng `.app` vào Applications thì dùng
   `~/Library/Application Support/lucky-draw-app/` như app cài đặt.
-- `electron/make-portable-zip.mjs` trên Mac: ký ad-hoc toàn bộ `.app` (`codesign --sign -`, không cần
-  Apple Developer ID) rồi nén bằng `ditto`. electron-builder không ký (`identity: null`,
-  `hardenedRuntime: false`).
+- **Test trên Mac thật (MacBook Pro M-series, macOS 26.6.2) xác nhận**: ký ad-hoc mặc định
+  (`identity: null`) bị macOS **AMFI chặn cứng lúc chạy** (`Code=-423`), không phải chỉ cảnh báo
+  Gatekeeper bấm "Run Anyway" được như dự tính ban đầu — app tự thoát trong 1-2s, không cửa sổ,
+  không dialog.
+- **Cách chạy được, MIỄN PHÍ** (không cần Apple Developer ID $99/năm): ký lại `.app` bằng 1 chứng chỉ
+  "Apple Development" tạo qua Xcode + Apple ID thường, cộng thêm cài chứng chỉ trung gian WWDR đúng
+  thế hệ (G3) — **chỉ có tác dụng trên đúng máy Mac đã tạo chứng chỉ đó**. Chi tiết đầy đủ + cách xử
+  lý tạm thời khi chuyển sang máy Mac khác: `docs/deploy/portable.md` mục "Ký số" và "Mở trên Mac khác
+  chưa có chứng chỉ".
+- Muốn 1 bản chạy thẳng trên MỌI Mac tại venue mà không cần cấu hình gì trước vẫn cần Apple Developer
+  ID + notarization thật sự — chưa làm.
+- `sudo spctl --add` (từng dự tính là phương án tạm) đã bị Apple khai tử trên macOS hiện tại, loại
+  khỏi danh sách lựa chọn.
 - App báo lỗi rồi thoát khi bị macOS App Translocation (app còn cờ quarantine) — kèm lệnh `xattr`
   để sửa; báo rõ USB NTFS là chỉ-đọc trên Mac.
 - Bản đóng gói trên Mac thoát hẳn khi đóng cửa sổ cuối cùng (giống Windows) để DB được đóng ngay.
   Bản dev giữ hành vi Mac mặc định.
+- Checklist chức năng đầy đủ qua UI (tạo session, import, quay, landing, Present Mode…) **chưa test
+  bằng tay** — mới xác nhận app khởi động và giữ tiến trình ổn định.
 
 ## [1.0.0] — 2026-09-27
 

@@ -20,7 +20,7 @@ const DEFAULT_FORM = {
   category: "",
   quantity: 1,
   weight: 1,
-  allowDuplicateWithOtherPrizes: true,
+  allowDuplicateWithOtherPrizes: false,
   allowDuplicateWithSamePrize: false,
   maxWinCount: 1,
 };
@@ -231,7 +231,7 @@ export default function PrizeFormModal({
               className="accent-gold-500"
             />
           </label>
-          <p className="text-xs text-base-500">A winner of this prize can still win other prizes.</p>
+          <p className="text-xs text-base-500">People who already won another prize can still win this one.</p>
 
           <label className="flex items-center justify-between text-sm">
             <span className="text-base-200">Allow duplicate with itself</span>
@@ -242,7 +242,7 @@ export default function PrizeFormModal({
               className="accent-gold-500"
             />
           </label>
-          <p className="text-xs text-base-500">The same person can win this exact prize multiple times.</p>
+          <p className="text-xs text-base-500">The same person can win this prize again, up to the max below. Off = once.</p>
 
           {form.allowDuplicateWithSamePrize && (
             <div>
