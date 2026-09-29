@@ -2,6 +2,17 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [1.1.2] — 2026-09-29
+
+### Sửa lỗi Image hiện khung xám quanh ảnh PNG trong suốt
+
+Chi tiết: `src/components/landing/views/ImageView.tsx`.
+
+- Component **Image** luôn phủ nền `bg-base-800/40` sau ảnh kể cả khi ĐÃ có ảnh — PNG tách nền (vd
+  Podium) lộ ra thành 1 khung chữ nhật xám mờ, cả trong Builder lẫn Present Mode.
+- Sửa: nền mờ chỉ còn hiện khi CHƯA có ảnh (placeholder "No image"), đồng nhất với Prize Image
+  (`PrizeImageView.tsx`).
+
 ## [1.1.1] — 2026-09-29
 
 ### Sửa lỗi Normalize Phone xoá nhầm chữ "o" thay vì đổi thành số "0"
