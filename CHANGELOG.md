@@ -2,6 +2,16 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Restore từ Trash
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session".
+
+- Thêm nút **Trash** cạnh **Data folder** ở thanh tab — mở hộp thoại liệt kê session đã đóng (nằm
+  trong `data/.trash/`), bấm **Restore** để đưa lại vào `data/` và tab tự hiện, không cần tự tay copy
+  file qua Finder/Explorer nữa.
+
 ## [1.1.0] — 2026-09-29
 
 ### Session Lock — khoá session sau khi quay xong

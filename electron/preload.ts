@@ -81,6 +81,8 @@ const api = {
     resolveConflict: (data: { sessionId: string; keepFile: string }) =>
       ipcRenderer.invoke("sessions:resolveConflict", data),
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
+    listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
+    restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

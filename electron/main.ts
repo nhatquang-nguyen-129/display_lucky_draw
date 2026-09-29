@@ -10,8 +10,10 @@ import {
   getDb,
   listConflicts,
   listSessions,
+  listTrash,
   renameSession,
   resolveConflict,
+  restoreFromTrash,
   setSessionLocked,
 } from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
@@ -591,6 +593,8 @@ ipcMain.handle("sessions:resolveConflict", (_e, data: { sessionId: string; keepF
   resolveConflict(data.sessionId, data.keepFile)
 );
 ipcMain.handle("sessions:openDataFolder", () => shell.openPath(DATA_DIR));
+ipcMain.handle("sessions:listTrash", () => listTrash());
+ipcMain.handle("sessions:restoreFromTrash", (_e, data: { file: string }) => restoreFromTrash(data.file));
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.

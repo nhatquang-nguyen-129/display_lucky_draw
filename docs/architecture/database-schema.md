@@ -35,7 +35,10 @@ Nút **Data folder** ở góc phải thanh tab mở thẳng thư mục này.
   an toàn — không có file `-wal` giữ phần dữ liệu mới nhất.
 - **Quét lại `data/`** mỗi lần renderer lấy danh sách session (`sessions:list`) — cửa sổ chính gọi lại
   khi được focus, nên file vừa copy vào `data/` lúc app đang mở tự hiện thành tab mới.
-- **Xoá tab** = chuyển file vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) — có đường lấy lại.
+- **Xoá tab** = chuyển file vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) — có đường lấy lại: nút
+  **Trash** cạnh **Data folder** ở thanh tab mở `TrashModal.tsx`, liệt kê session trong `.trash/`
+  (`listTrash()`) và phục hồi lại vào `data/` (`restoreFromTrash()`, bỏ hậu tố `__deleted-...` khỏi tên
+  file) mà không cần tự tay copy file qua Finder/Explorer.
 - **Tách DB kiểu cũ**: lúc khởi động, `lucky-draw.db` 1-file-mọi-session (vị trí cũ: `userData`, hoặc
   `data/` của bản portable) — hoặc bất kỳ file nào trong `data/` chứa nhiều session — được tách thành
   từng file theo session (`ATTACH` + `INSERT … SELECT` đúng tên cột), file gốc đổi tên thành

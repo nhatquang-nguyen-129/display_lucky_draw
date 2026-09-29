@@ -66,6 +66,16 @@ export interface SessionConflict {
   copies: SessionCopyInfo[];
 }
 
+// Session đã đóng tab (chuyển vào data/.trash/, chưa xoá hẳn) — khớp TrashEntry trong electron/db.ts.
+export interface TrashEntry {
+  file: string; // tên file trong data/.trash/ — dùng làm tham số cho sessions.restoreFromTrash
+  name: string;
+  deletedAt: string; // ISO
+  participants: number;
+  prizes: number;
+  confirmedDraws: number;
+}
+
 export interface DrawResultRow {
   id: string;
   session_id: string;
@@ -184,6 +194,9 @@ declare global {
         conflicts: () => Promise<SessionConflict[]>;
         resolveConflict: (data: { sessionId: string; keepFile: string }) => Promise<void>;
         openDataFolder: () => Promise<string>;
+        // Session đã đóng tab (data/.trash/) — xem TrashModal.tsx.
+        listTrash: () => Promise<TrashEntry[]>;
+        restoreFromTrash: (data: { file: string }) => Promise<void>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

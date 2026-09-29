@@ -648,6 +648,60 @@ export function resolveConflict(sessionId: string, keepFile: string) {
   }
 }
 
+export interface TrashEntry {
+  file: string; // tên file trong data/.trash/ — dùng làm tham số cho restoreFromTrash
+  name: string; // sessions.name đọc từ bên trong file, không phải tên file
+  deletedAt: string; // ISO — mtime của file trong .trash (thời điểm chuyển vào, không phải lúc tạo)
+  participants: number;
+  prizes: number;
+  confirmedDraws: number;
+}
+
+/** Danh sách session đang nằm trong data/.trash/ (đã đóng tab, chưa xoá hẳn) — cho renderer hiện hộp
+ *  thoại Restore. Mở READ-ONLY, không chạy migration lên file đã bị bỏ đi. */
+export function listTrash(): TrashEntry[] {
+  if (!fs.existsSync(TRASH_DIR)) return [];
+  return fs
+    .readdirSync(TRASH_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".db"))
+    .map((f) => path.join(TRASH_DIR, f))
+    .map((file) => {
+      const info = copyInfo(file, false);
+      let name = path.basename(file, ".db").replace(/__deleted-.*$/, "");
+      const db = openFile(file, true);
+      try {
+        const row = db.prepare(`SELECT name FROM sessions LIMIT 1`).get() as { name: string } | undefined;
+        if (row?.name) name = row.name;
+      } catch {
+        /* file cũ/hỏng schema — giữ tên suy ra từ filename ở trên */
+      } finally {
+        db.close();
+      }
+      return {
+        file: info.file,
+        name,
+        deletedAt: info.modifiedAt,
+        participants: info.participants,
+        prizes: info.prizes,
+        confirmedDraws: info.confirmedDraws,
+      };
+    })
+    .sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : -1)); // xoá gần nhất lên đầu
+}
+
+/** Đưa 1 file từ data/.trash/ trở lại data/ — bỏ hậu tố "__deleted-<thời điểm>" khỏi tên file, tự
+ *  thêm số thứ tự nếu trùng tên. rescan() ở lần gọi listSessions()/refresh() kế tiếp sẽ tự thấy nó. */
+export function restoreFromTrash(fileName: string) {
+  const file = path.join(TRASH_DIR, fileName);
+  if (!fs.existsSync(file)) throw new Error(`Trash file not found: ${fileName}`);
+  const cleanBase = path.basename(fileName, ".db").replace(/__deleted-.*$/, "");
+  const target = uniquePath(DATA_DIR, `${cleanBase}.db`);
+  fs.renameSync(file, target);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (fs.existsSync(file + suffix)) fs.renameSync(file + suffix, target + suffix);
+  }
+}
+
 export function closeAll() {
   for (const e of entries.values()) if (e.db.open) e.db.close();
 }

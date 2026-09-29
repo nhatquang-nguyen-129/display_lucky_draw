@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSession } from "@/context/SessionContext";
 import { Session } from "@/types";
 import SessionLockMenu from "./SessionLockMenu";
+import TrashModal from "./TrashModal";
 
 export default function TabBar() {
   const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, refresh } = useSession();
@@ -10,6 +11,7 @@ export default function TabBar() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
 
   function handleContextMenu(e: React.MouseEvent, s: Session) {
     e.preventDefault();
@@ -29,7 +31,7 @@ export default function TabBar() {
   async function handleCloseTab(e: React.MouseEvent, id: string, name: string) {
     e.stopPropagation();
     const ok = confirm(
-      `Close session "${name}"? Its data file (participants, prizes, landing page, draw results) will be moved to the data/.trash folder — move it back into data/ to restore it.`
+      `Close session "${name}"? Its data (participants, prizes, landing page, draw results) will be moved to Trash — use the "Trash" button to restore it.`
     );
     if (ok) await closeTab(id);
   }
@@ -145,6 +147,20 @@ export default function TabBar() {
         </svg>
         Data folder
       </button>
+
+      {/* Session đóng bằng nút "×" nằm ở data/.trash/, chưa xoá hẳn — xem TrashModal.tsx. */}
+      <button
+        onClick={() => setShowTrash(true)}
+        title="Trash — restore a closed session"
+        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+          <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" />
+        </svg>
+        Trash
+      </button>
+
+      {showTrash && <TrashModal onClose={() => setShowTrash(false)} />}
 
       {lockMenu && (
         <SessionLockMenu
