@@ -97,6 +97,8 @@ erDiagram
     text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
     text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
     integer locked "1 = khoá sửa/xoá + mở Data Editor/Presentation/Builder, xem architecture/session-lock.md"
+    integer closed "1 = ẩn khỏi thanh tab (Close/nút ×), file KHÔNG di chuyển — khác Delete/.trash"
+    text imported_columns "JSON string[] — tên cột lần Import/Replace gần nhất, Dashboard.tsx dùng hiện lại dữ liệu gốc"
   }
   PARTICIPANTS {
     text id PK

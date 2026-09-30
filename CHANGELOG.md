@@ -4,6 +4,20 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [Unreleased]
 
+### Dashboard — bảng lịch sử quay hiện đủ cột gốc đã import, không chỉ 1 cột "Participant"
+
+Chi tiết: `docs/architecture/database-schema.md` (cột `sessions.imported_columns`).
+
+- Trước đây bảng lịch sử quay ở Dashboard chỉ hiện 1 cột "Participant" (tên đã resolve qua Data
+  Type) — 2 người trùng tên hiển thị thì không phân biệt được ai vừa trúng thật.
+- Thêm cột mới `sessions.imported_columns` (JSON, ghi lại đúng tên cột của lần Import/Replace gần
+  nhất) — Dashboard giờ hiện ĐỦ các cột đã import (vd Họ Tên, SĐT, Công ty...) thay cho 1 cột
+  "Participant", đủ để phân biệt 2 người trùng tên. Cố ý KHÔNG kèm cột tự tạo sau này qua Generate
+  (Data Editor) — 2 loại cột nằm chung `extra_data` nên phải lưu riêng danh sách mới phân biệt được.
+- Session tạo trước khi có tính năng này (`imported_columns` rỗng) lùi về đúng hành vi cũ, không vỡ gì.
+- Đã kiểm tra qua UI thật: 2 participant cùng tên khác SĐT, Dashboard hiện đúng SĐT của người vừa
+  trúng.
+
 ### Component Video (nhóm Basic)
 
 Chi tiết: `docs/landing/video.md`.

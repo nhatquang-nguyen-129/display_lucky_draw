@@ -209,6 +209,10 @@ CREATE TABLE IF NOT EXISTS media (
   // Đóng tab (nút ×) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác hẳn Delete/.trash). Mở lại
   // bằng nút Open (chọn file .db, mặc định mở ngay data/). Xem listSessions()/openDbFile() bên dưới.
   addColumnIfMissing(db, "sessions", "closed", "closed INTEGER NOT NULL DEFAULT 0");
+  // Danh sách tên cột của lần Import/Replace gần nhất (JSON string[]) — Dashboard dùng để hiện lại
+  // đúng dữ liệu gốc đã import, phân biệt với cột tự tạo sau này qua Generate (cùng nằm trong
+  // extra_data nên không tự phân biệt được nếu không lưu riêng). Ghi ở participants:bulkImport.
+  addColumnIfMissing(db, "sessions", "imported_columns", "imported_columns TEXT");
   migratePrizeLevelRules(db);
 }
 

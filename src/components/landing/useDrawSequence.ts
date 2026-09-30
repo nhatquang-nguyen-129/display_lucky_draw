@@ -558,6 +558,7 @@ export function useDrawSequence(
       participant_code: resolve("code"),
       participant_phone: resolve("phone"),
       participant_email: resolve("email"),
+      participant_extra_data: participant?.extra_data ?? null,
       prize_name: candidate.prizeName,
       prize_code: prize?.code ?? null,
       prize_display_image: prize?.display_image ?? null,

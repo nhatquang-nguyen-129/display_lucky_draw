@@ -50,6 +50,11 @@ export interface Session {
   // sessions:delete (chuyển vào data/.trash/). Xem sessions.setClosed/openFile, openDbFile() trong
   // electron/db.ts.
   closed: 0 | 1;
+  // Danh sách tên cột của lần Import/Replace gần nhất (JSON string[], null nếu chưa import lần nào
+  // qua luồng mới hoặc session tạo trước khi có tính năng này) — Dashboard.tsx dùng để hiện lại đúng
+  // dữ liệu gốc đã import, phân biệt với cột tự tạo qua Generate trong Data Editor. Ghi ở
+  // participants:bulkImport (electron/main.ts).
+  imported_columns: string | null;
 }
 
 // 1 session có ≥ 2 file cùng id trong data/ (vd copy qua lại giữa 2 máy, mỗi bên sửa riêng) — khớp
@@ -70,7 +75,8 @@ export interface SessionConflict {
   copies: SessionCopyInfo[];
 }
 
-// Session đã đóng tab (chuyển vào data/.trash/, chưa xoá hẳn) — khớp TrashEntry trong electron/db.ts.
+// Session đã bị Delete (menu chuột phải trên tab, chuyển vào data/.trash/, chưa xoá hẳn — KHÁC Close/
+// nút × chỉ ẩn tab) — khớp TrashEntry trong electron/db.ts.
 export interface TrashEntry {
   file: string; // tên file trong data/.trash/ — dùng làm tham số cho sessions.restoreFromTrash
   name: string;
@@ -89,6 +95,9 @@ export interface DrawResultRow {
   participant_code: string | null;
   participant_phone: string | null;
   participant_email: string | null;
+  // JSON string chứa mọi cột đã import (xem Session.imported_columns) — Dashboard.tsx parse để hiện
+  // lại dữ liệu gốc thay vì chỉ 1 tên đã resolve, tránh nhầm lẫn khi 2 người trùng tên hiển thị.
+  participant_extra_data: string | null;
   prize_name: string;
   prize_code: string | null;
   prize_display_image: string | null;

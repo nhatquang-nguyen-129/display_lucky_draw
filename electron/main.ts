@@ -477,7 +477,14 @@ ipcMain.handle(
       }
       return inserted;
     });
-    return tx(rows);
+    const result = tx(rows);
+    // Ghi lại ĐÚNG danh sách tên cột của lần import này (không phải cộng dồn/giữ cột cũ) — Dashboard
+    // dùng để hiện lại đúng dữ liệu gốc, phân biệt với cột tự tạo sau này qua Generate (xem
+    // docs/architecture/database-schema.md).
+    const columns = new Set<string>();
+    for (const row of rows) if (row.extra) for (const key of Object.keys(row.extra)) columns.add(key);
+    db.prepare(`UPDATE sessions SET imported_columns = ? WHERE id = ?`).run(JSON.stringify([...columns]), sessionId);
+    return result;
   }
 );
 
@@ -760,9 +767,9 @@ function resolveDrawRows(sessionId: string, extraWhere: string): any[] {
 
   // Kết quả hiển thị (Winner Name/Scoreboard) đọc theo cột nào đang được Data Editor gán Data Type
   // Name/Phone/Code/Email cho session này — KHÔNG đọc cứng p.name/.phone/... (xem
-  // docs/architecture/draw-engine.md). participant_extra_data chỉ dùng để resolve ở đây, không trả
-  // ra ngoài (giữ đúng shape DrawResultRow cũ, tránh renderer phải đổi theo). PHẢI lọc
-  // status != 'removed' giống participants:list — thiếu lọc này thì dòng đã soft-delete (vd batch
+  // docs/architecture/draw-engine.md). participant_extra_data dùng để resolve ở đây, và CŨNG được trả
+  // nguyên ra ngoài (Dashboard.tsx dùng để hiện lại đủ các cột đã import — xem
+  // sessions.imported_columns). PHẢI lọc status != 'removed' giống participants:list — thiếu lọc này thì dòng đã soft-delete (vd batch
   // import cũ còn ghi thẳng cột SQL name/phone/...) khiến activeCoreFields tưởng nhầm cột đó đang có
   // dữ liệu thật, participant_name/_phone/... của kết quả CONFIRMED sẽ ra rỗng dù người trúng có tên
   // thật ở cột extra_data khác (bug đã gặp thật, cùng gốc với drawEngine.ts's pickWinner).
@@ -783,9 +790,8 @@ function resolveDrawRows(sessionId: string, extraWhere: string): any[] {
       email: r.participant_email,
       extra_data: r.participant_extra_data,
     };
-    const { participant_extra_data, ...rest } = r;
     return {
-      ...rest,
+      ...r,
       participant_name: resolveParticipantField(participant, columnTypesJson, "name", activeCoreFields) || r.participant_name,
       participant_phone: resolveParticipantField(participant, columnTypesJson, "phone", activeCoreFields) || r.participant_phone,
       participant_code: resolveParticipantField(participant, columnTypesJson, "code", activeCoreFields) || r.participant_code,
