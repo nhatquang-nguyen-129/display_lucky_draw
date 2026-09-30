@@ -55,12 +55,24 @@ npm ci                     # CHỈ cần khi package.json / package-lock.json v�
 Không cần chạy `npx electron-rebuild` cho bản build — electron-builder tự rebuild `better-sqlite3`
 (chỉ cần khi muốn chạy dev sau `npm ci`).
 
-**Bước 2 — (tuỳ chọn) tăng version.** Tên file output lấy theo `version` trong `package.json`:
+**Bước 2 — (tuỳ chọn) tăng version.** Tên file output lấy theo `version` trong `package.json`.
+
+Quy ước đặt version `X.Y.Z` (vd `1.2.3`) của dự án:
+
+| Số | Ý nghĩa | Khi nào tăng |
+|---|---|---|
+| `X` (major) | Thay đổi cả kiến trúc phần mềm | **Chỉ khi chủ dự án duyệt**, không tự tăng |
+| `Y` (minor) | Thay đổi tính năng: thêm tính năng mới, đổi hoặc xoá tính năng lớn | Bản có tính năng mới/đổi lớn |
+| `Z` (patch) | Thay đổi nhỏ: sửa lỗi, chỉnh giao diện/hành vi nhỏ | Bản sửa nhỏ, chỉ đổi số cuối |
+
+Chủ dự án là người quyết định mỗi bản thuộc loại nào. Tăng `Y` thì `Z` về 0, tăng `X` thì cả `Y`/`Z` về 0.
 
 ```powershell
-npm version patch --no-git-tag-version   # 1.0.0 -> 1.0.1 (sửa lỗi)
-npm version minor --no-git-tag-version   # 1.0.0 -> 1.1.0 (thêm tính năng)
+npm version patch --no-git-tag-version   # 1.0.0 -> 1.0.1 (thay đổi nhỏ)
+npm version minor --no-git-tag-version   # 1.0.0 -> 1.1.0 (thay đổi tính năng)
 ```
+
+Đồng thời đổi mục `## [Unreleased]` trong `CHANGELOG.md` thành `## [<version>] — <ngày>`.
 
 Sửa cả `package.json` lẫn `package-lock.json`, không tự commit/tag (làm ở bước 5).
 

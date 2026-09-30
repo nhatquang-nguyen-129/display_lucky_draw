@@ -698,7 +698,7 @@ export interface ScoreboardProps {
 
   columns: ScoreboardField[]; // cột nào hiện + đúng thứ tự trái → phải
   fontSize: number;
-  color: string; // màu chữ trong bảng (cả tiêu đề cột lẫn giá trị)
+  color: string; // màu chữ các ô giá trị trong bảng
 
   // Nền riêng cho khung bảng (KHÔNG phải Name Bar) — "color" = 1 khối màu, "image" = ảnh tải lên,
   // "none" = trong suốt.

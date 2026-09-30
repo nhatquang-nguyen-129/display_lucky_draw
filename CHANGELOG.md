@@ -2,7 +2,15 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.1.3] — 2026-09-30
+
+### Scoreboard — bỏ hàng tiêu đề cột
+
+Chi tiết: `docs/landing/scoreboard.md`.
+
+- Bảng người trúng không còn hàng NAME/PRIZE/DISPLAY_PHONE... ở trên, chỉ hiện các dòng người trúng.
+  Tên cột thường là tên kỹ thuật từ file import (có `_`, không dấu), khán giả không cần đọc.
+- Áp dụng cho mọi landing, kể cả landing đã dựng trước đó. Không có tuỳ chọn bật lại.
 
 ### Dashboard — bảng lịch sử quay hiện đủ cột gốc đã import, không chỉ 1 cột "Participant"
 

@@ -1,7 +1,6 @@
 import { DrawResultRow } from "@/types";
 import {
   getParticipantExtraField,
-  getScoreboardFieldLabel,
   isLiveDrawResultId,
   LandingData,
   ScoreboardComponent,
@@ -71,8 +70,9 @@ function normalizeProps(props: ScoreboardComponent["props"]) {
 
 // Template "table" (đầu tiên) — giao diện kiểu 1 cửa sổ Windows: Name Bar (title + màu nền/màu chữ
 // riêng) ở trên, bên dưới là bảng người trúng với cột tự chọn + nền riêng (màu hoặc ảnh). Bảng dựng
-// bằng CSS Grid (không phải <table>) — header cột đứng yên (position: sticky) khi cuộn danh sách dài,
-// mỗi ô header/giá trị là 1 grid item, tự chia đều theo số cột đang bật.
+// bằng CSS Grid (không phải <table>), mỗi ô giá trị là 1 grid item, tự chia đều theo số cột đang bật.
+// KHÔNG có hàng tiêu đề cột — tên cột thường là tên kỹ thuật từ file import (vd display_phone, không
+// dấu), khán giả không cần đọc; tên cột chỉ hiện trong dropdown Columns của Panel.
 export default function TableTemplate({
   component,
   data,
@@ -85,10 +85,6 @@ export default function TableTemplate({
   const { title, headerColor, fontSize, color, backgroundColor, backgroundImageDataUrl } = component.props;
   const { titleBarColor, columns: cols, backgroundType, backgroundImageFit } = normalizeProps(component.props);
   const winners = confirmedWinners(data);
-  // Nền của hàng tiêu đề cột PHẢI đục màu (không trong suốt) để không bị chữ/hàng bên dưới đè lên khi
-  // cuộn — dùng đúng màu nền khung nếu là "color", còn "image"/"none" thì fallback về 1 lớp trắng gần
-  // đục để tiêu đề luôn đọc được bất kể ảnh nền bên dưới là gì.
-  const headerBg = backgroundType === "color" ? backgroundColor : "rgba(255,255,255,0.92)";
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-lg shadow-2xl" style={{ pointerEvents: "auto" }}>
@@ -133,15 +129,6 @@ export default function TableTemplate({
           </p>
         ) : (
           <div className="grid" style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}>
-            {cols.map((f) => (
-              <div
-                key={`head-${f}`}
-                className="sticky top-0 z-10 truncate px-2 py-1.5 text-left font-semibold uppercase tracking-wide"
-                style={{ color, backgroundColor: headerBg, fontSize }}
-              >
-                {getScoreboardFieldLabel(f)}
-              </div>
-            ))}
             {winners.map((r, i) =>
               cols.map((f) => (
                 <div
