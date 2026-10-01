@@ -243,6 +243,31 @@ codesign --verify --deep --strict "$APP"   # không in gì + exit code 0 là đ�
   công khai" của Gatekeeper (chỉ nhận Developer ID + notarization), khác AMFI (cái quyết định app có
   CHẠY được không). Cứ mở bằng `open`/double-click.
 
+**BẮT BUỘC nén lại `.zip` sau khi ký — dễ quên nhất, làm hỏng cả bản phát hành nếu bỏ qua.**
+`Lucky Draw Studio-<version>-mac.zip` được `make-portable-zip.mjs` nén **TRƯỚC** lúc bạn ký lại tay ở
+trên (nó nén ngay trong `npm run package`, lúc app vẫn còn chữ ký ad-hoc) — ký lại `.app` trên đĩa
+KHÔNG tự cập nhật file `.zip` đã có sẵn. Thiếu bước này thì `release/mac-universal/Lucky Draw
+Studio.app` chạy tốt (đã ký đúng) nhưng file `.zip` đem đi phát vẫn là bản ad-hoc cũ, dính lại y hệt
+lỗi AMFI Code -423 ở máy nhận.
+
+```bash
+cd release
+rm -f "Lucky Draw Studio-<version>-mac.zip"
+mv "mac-universal" "Lucky Draw Studio"       # ditto cần đúng tên thư mục mẹ productName
+ditto -c -k --sequesterRsrc --keepParent "Lucky Draw Studio" "Lucky Draw Studio-<version>-mac.zip"
+mv "Lucky Draw Studio" "mac-universal"       # trả lại tên cũ — electron-builder cần đúng tên này ở lần build sau
+```
+
+Xác minh lại đúng bản đã ký nằm trong `.zip` (không phải chỉ `mac-universal/` trên đĩa):
+
+```bash
+rm -rf /tmp/verify-zip && mkdir -p /tmp/verify-zip
+ditto -x -k "Lucky Draw Studio-<version>-mac.zip" /tmp/verify-zip
+codesign -dv "/tmp/verify-zip/Lucky Draw Studio/Lucky Draw Studio.app" 2>&1 | grep TeamIdentifier
+# phải ra "TeamIdentifier=<mã team>", KHÔNG phải "TeamIdentifier=not set"
+rm -rf /tmp/verify-zip
+```
+
 #### Mở trên Mac khác chưa có chứng chỉ
 
 Bản `.zip` phân phối vẫn chỉ ký ad-hoc → mọi Mac chưa làm bước trên đều gặp lại nguyên lỗi AMFI. Phải
@@ -297,11 +322,11 @@ máy build (file chưa từng bị gắn cờ) thường không bị hỏi gì.
    đủ sau mỗi lần ghi — nhưng nên thoát trước khi copy.
 5. Copy nguyên thư mục lên USB (nếu chưa làm ở bước 1).
 
-**Mang 1 session từ máy khác / bản dev / bản cài đặt**: copy đúng file session đó vào `data/` của bản thư
-mục (nút **Data folder** ở góc phải thanh tab mở thư mục `data` của bản đang chạy) — tab tự hiện khi mở
-app hoặc khi quay lại cửa sổ app. Bản dev/cài đặt dùng `%APPDATA%\lucky-draw-app\data\` (Windows) /
-`~/Library/Application Support/lucky-draw-app/data/` (Mac). File session dùng chung được giữa 2 hệ điều
-hành.
+**Mang 1 session từ máy khác / bản dev / bản cài đặt**: bấm nút **Open** ở góc phải thanh tab (mặc
+định mở ngay thư mục `data` của bản đang chạy) rồi chọn file session đó — tự copy vào `data/`, tab tự
+hiện ngay, không cần tự tay copy qua Finder/Explorer. Bản dev/cài đặt dùng
+`%APPDATA%\lucky-draw-app\data\` (Windows) / `~/Library/Application Support/lucky-draw-app/data/`
+(Mac). File session dùng chung được giữa 2 hệ điều hành.
 
 `release/win-unpacked/` (hay `release/mac-universal/`) chính là thư mục app, dùng thẳng được để test,
 nhưng lần build sau sẽ ghi đè — đừng để dữ liệu thật ở đó.

@@ -166,6 +166,12 @@ trong ra ngoài theo [portable.md → Ký số](./portable.md#cách-chạy-đư�
 nhắm vào `release/mac-universal/Lucky Draw Studio.app`. Bản ký lại chỉ chạy trên máy có chứng chỉ đó;
 máy Mac khác xem [Mở trên Mac khác chưa có chứng chỉ](./portable.md#mở-trên-mac-khác-chưa-có-chứng-chỉ).
 
+**Rồi BẮT BUỘC nén lại `.zip`** — file `.zip` ở bước build phía trên đã nén xong TRƯỚC lúc ký lại tay
+(lúc đó app vẫn còn ad-hoc), nên ký lại `.app` trên đĩa không tự cập nhật `.zip` đã có. Thiếu bước
+này thì đem `.zip` cũ đi phát vẫn dính nguyên lỗi AMFI dù `mac-universal/Lucky Draw Studio.app` đã ký
+đúng. Lệnh `ditto` + cách xác minh lại: [portable.md → Ký số](./portable.md#ký-số-code-signing) (ngay
+sau đoạn ký thủ công).
+
 Chạy thử (mở bằng `open`/Finder, không chạy thẳng binary từ terminal VS Code — xem
 [mục 9](#lỗi-khi-chạy-app-đã-phát--macos)):
 
@@ -257,8 +263,8 @@ LUÔN test trên 1 máy KHÔNG có Node/VS Code/source code (hoặc ít nhất 1
 
 - **Portable** (khuyến nghị): copy sẵn NGUYÊN thư mục đã giải nén (kèm file session đã chuẩn bị trong
   `data/`) vào USB, hoặc gửi zip + `README.txt` kèm lời dặn "giải nén rồi mở app bên trong, luôn copy
-  cả thư mục". Máy đã có app chỉ cần thêm 1 session: gửi đúng 1 file session, người nhận đặt vào `data/`
-  (nút **Data folder**).
+  cả thư mục". Máy đã có app chỉ cần thêm 1 session: gửi đúng 1 file session, người nhận bấm nút
+  **Open** ở thanh tab rồi chọn file đó (tự copy vào `data/`) — không cần tự tay đặt vào đúng thư mục.
 - **Installer**: Windows gửi `…-Setup.exe` + `README.txt`; Mac gửi bản portable kèm hướng dẫn kéo `.app`
   vào Applications.
 - **Cảnh báo lần đầu mở trên máy lạ** (app chưa ký số chính thức) là BÌNH THƯỜNG: Windows SmartScreen
@@ -305,7 +311,7 @@ LUÔN test trên 1 máy KHÔNG có Node/VS Code/source code (hoặc ít nhất 1
 |---|---|---|
 | "The app is running from a temporary folder" | Mở exe ngay trong zip chưa giải nén | Chuột phải zip → **Extract All**, chạy exe trong thư mục đã giải nén |
 | "Cannot write to the data folder" | Ổ chỉ-đọc, USB khoá write-protect, thư mục không có quyền ghi | Chuyển nguyên thư mục sang chỗ ghi được (Desktop, Documents, USB không khoá) |
-| App mở ra thiếu tab / TRỐNG dù đã chuẩn bị dữ liệu | File session không nằm đúng thư mục `data` app đang đọc | Bấm **Data folder** (góc phải thanh tab) xem app đọc thư mục nào, đặt file session vào đó |
+| App mở ra thiếu tab / TRỐNG dù đã chuẩn bị dữ liệu | File session không nằm đúng thư mục `data` app đang đọc | Bấm **Open** (góc phải thanh tab, mặc định mở ngay thư mục `data` app đang đọc) để xem có đúng file không, hoặc chọn thẳng file session từ đó |
 | Hộp thoại "Different copies of the same session" | ≥ 2 file của cùng 1 session (copy qua lại, mỗi bên sửa riêng) | Chọn bản muốn giữ (gợi ý bản mới nhất), bản còn lại vào `data\.trash\` |
 | SmartScreen chặn hẳn, không có "Run anyway" | Policy công ty chặn app chưa ký số | Cần chứng chỉ code signing, ngoài phạm vi hiện tại |
 
