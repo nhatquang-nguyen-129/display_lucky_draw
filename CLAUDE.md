@@ -51,3 +51,36 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 - Không tự ý đổi logic `drawEngine.ts` (thuật toán random) nếu không được yêu cầu rõ — đây là phần nhạy cảm nhất về tính công bằng.
 - Version `X.Y.Z`: `X` = đổi kiến trúc, **chỉ tăng khi chủ dự án duyệt**; `Y` = thêm/đổi/xoá tính năng lớn; `Z` = thay đổi nhỏ/sửa lỗi. Chủ dự án quyết định bản nào tăng số nào — xem `docs/deploy/release.md` bước 2.
 - Lucky Wheel (Wheel Circular + Digit Roller) đã CHỐT cho production (xem `CHANGELOG.md`) — chỉ sửa bug, không đổi hành vi/giao diện nếu không được yêu cầu rõ.
+
+## TODO — plan đang dang dở (xoá mục này sau khi làm xong)
+
+**Canvas Landing tuỳ chỉnh kích thước** (không chỉ cố định 1920×1080) — lý do: màn LED thật của người
+dùng là 3584×2304 (~1.56:1, không phải 16:9), hiện bị letterbox ~12.5% viền đen trên/dưới.
+
+Đã xác nhận qua đọc code (KHÔNG cần đổi DB/IPC — chỉ renderer + 1 UI mới):
+- `LandingCanvas.tsx` (artboard thật trong Builder) **đã đọc `config.canvas.width/height` sẵn** —
+  sửa/zoom/pan trên canvas tuỳ chỉnh đã chạy đúng ngay bây giờ, không cần sửa gì ở đây.
+- Chỉ 3 chỗ còn đọc hằng số cứng `CANVAS_WIDTH`/`CANVAS_HEIGHT` (`src/lib/landing/types.ts:965-966`)
+  thay vì giá trị thật của session:
+  1. `src/pages/PresentMode.tsx:62` — công thức fit-scale cửa sổ trình chiếu (dễ sửa nhất: đổi sang
+     `config.canvas.width/height`, thêm vào dependency array của effect đang để `[]`).
+  2. `src/pages/LandingPage.tsx:52` (+ JSX dòng 106) — preview ở cửa sổ chính, tương tự.
+  3. `src/components/landing/componentRegistry.ts` — 6 entry (Background + 5 effect full-bleed, dòng
+     114-115/272-273/291-292/307-308/324-325/340-341) dùng `CANVAS_WIDTH`/`CANVAS_HEIGHT` làm
+     `defaultWidth`/`defaultHeight`, chỉ được đọc trong `createComponentAt()` (dòng 358-372) lúc tạo
+     component mới — cần thêm cờ `fullBleed?: true` vào các entry này, đổi `createComponentAt` nhận
+     thêm `canvasWidth, canvasHeight`, và 2 nơi gọi nó trong `LandingBuilderWindow.tsx` (dòng 497, 512)
+     truyền `prev.canvas.width, prev.canvas.height` (đã có sẵn trong scope).
+- Chưa có UI nào sửa được `canvas.width/height` — cần thêm 1 nút trong header
+  `LandingBuilderWindow.tsx` (cạnh tên session, trước cụm Undo/Redo — xem popover "History" dòng
+  603-636 làm mẫu UI) hiện `W × H` hiện tại, mở popover 2 ô nhập Width/Height + nút Apply, gọi
+  `updateConfig((prev) => ({...prev, canvas: {width, height}}), {commit:true, label:"Changed canvas size"})`
+  (tái dùng đúng pattern update/undo đã có, không cần code lưu mới).
+- KHÔNG tự resize lại component đã đặt sẵn khi đổi canvas size (giống Figma) — chỉ áp dụng cho
+  component tạo MỚI sau khi đổi.
+- Xong phần code thì cập nhật `docs/landing/builder.md` (dòng 41, đang ghi "Artboard cố định
+  1920×1080"), `docs/landing/presentation.md` (dòng 15-16), và `CHANGELOG.md`.
+
+Plan đầy đủ (đã viết nhưng chưa review lại với người dùng) từng nằm ở
+`/Users/quang/.claude/plans/merry-questing-map.md` trên máy cũ — mục này là bản tóm tắt mang theo
+sang máy khác, dùng `/plan` hoặc đọc lại mục này để tiếp tục đúng chỗ.
