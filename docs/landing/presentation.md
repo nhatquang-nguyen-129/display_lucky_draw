@@ -14,6 +14,8 @@ animation. Cửa sổ dựng trang: [builder.md](./builder.md). Từng loại co
   Chi tiết cửa sổ: [`docs/architecture/ipc-and-windows.md`](../architecture/ipc-and-windows.md).
 - **Scale & letterbox**: artboard 1920×1080 luôn scale vừa cửa sổ, giữ 16:9
   (`min(innerWidth/1920, innerHeight/1080)`), phần dư tô đen.
+- **Frame** (Output Frame): component khung vùng LED cắt chỉ vẽ ở đây khi bật "Show in Presentation" —
+  xem [`output-frame.md`](output-frame.md).
 - **Tự cập nhật khi Builder Save**: poll `sessions.get` mỗi **2s** → parse `landing_config` + lọc type
   không còn tồn tại. Không cần đóng/mở lại khi sửa trang.
 - **Dữ liệu sống**: `useLandingData` — nguồn fetch/poll DUY NHẤT cho participants/prizes/results/

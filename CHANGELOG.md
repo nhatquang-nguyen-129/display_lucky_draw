@@ -2,6 +2,19 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Landing — component Frame (Output Frame) cho màn LED không phải 16:9
+
+Chi tiết: `docs/landing/output-frame.md`.
+
+- Component mới **Frame** (nhóm Basic): nhập độ phân giải màn LED (vd 3584×2304) → khung nét đứt 1px
+  cùng tỉ lệ trên canvas. Kéo viền/nhãn để di chuyển, kéo góc để resize giữ tỉ lệ, nút "Fit to canvas",
+  tự bắt dính mép ảnh Background thực tế/mép canvas; hiện toạ độ cắt để cấu hình Resolume/LED
+  controller. Toggle "Show in Presentation" để vẽ/ẩn khung trên cửa sổ trình chiếu.
+- Canvas vẫn cố định 1920×1080, không đổi gì với landing đã dựng. Thay thế tạm cho plan "canvas tuỳ
+  chỉnh kích thước" (hoãn lại).
+
 ## [1.1.3] — 2026-09-30
 
 ### Scoreboard — bỏ hàng tiêu đề cột

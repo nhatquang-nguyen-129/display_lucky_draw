@@ -1,6 +1,7 @@
 import { AnchorEditTarget, ButtonAction, LandingComponent, LandingConfig } from "@/lib/landing/types";
 import { Participant, Prize } from "@/types";
 import BackgroundPanel from "./panels/BackgroundPanel";
+import OutputFramePanel from "./panels/OutputFramePanel";
 import SharedFields from "./panels/SharedFields";
 import { DrawCyclePrizesContext } from "./panels/DrawCycleFields";
 import TextPanel from "./panels/TextPanel";
@@ -92,6 +93,9 @@ export default function PropertiesPanel({
         {selected.type === "image" && <ImagePanel props={selected.props} onChange={onChangeProps} />}
         {selected.type === "video" && <VideoPanel props={selected.props} onChange={onChangeProps} />}
         {selected.type === "background" && <BackgroundPanel props={selected.props} onChange={onChangeProps} />}
+        {selected.type === "outputFrame" && (
+          <OutputFramePanel component={selected} onChange={onChangeProps} onChangeComponent={onChangeComponent} />
+        )}
         {selected.type === "luckyWheel" && (
           <LuckyWheelPanel
             props={selected.props}

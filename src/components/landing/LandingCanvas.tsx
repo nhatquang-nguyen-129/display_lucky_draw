@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AnchorEditTarget,
+  computeOutputFrameHeight,
   DEFAULT_PRIZE_GROUP_EFFECT,
   DEFAULT_PRIZE_STAGE_EFFECT,
   LandingComponent,
@@ -54,6 +55,9 @@ interface LandingCanvasProps {
 }
 
 const GRID_SIZE = 40; // px, đo trong không gian artboard (chưa scale) — chỉ để căn chỉnh mắt, không snap
+// Frame (Output Frame) bắt dính "mạnh" hơn component thường — kéo lại gần mép ảnh Background/canvas là
+// tự khớp luôn (xem frameSnapRects()).
+const FRAME_SNAP_PX = 16;
 const CENTER_SNAP_PX = 8; // ngưỡng bắt dính căn thẳng hàng/khoảng cách đều (xem computeSnap()), tính theo px màn hình (không phải artboard)
 const MINIMAP_WIDTH = 160; // px hiển thị — chiều cao tự suy ra theo đúng tỉ lệ khung thật (xem minimapScale)
 // Tỉ lệ phần "bàn nháp" (pasteboard) mở rộng thêm quanh khung 1920x1080 thật — mỗi bên (trái/phải/
@@ -76,6 +80,32 @@ interface Rect {
   y: number;
   width: number;
   height: number;
+}
+
+// Vùng ảnh Background THỰC TẾ đang hiển thị (px canvas) — khớp cách BackgroundView.tsx vẽ <img>
+// object-fit (object-position mặc định = giữa): "cover"/"stretch" phủ kín khung component, "contain" thì
+// chỉ phần ảnh ở giữa (bỏ viền đen 2 bên/trên-dưới, cần kích thước gốc của ảnh). Cắt theo canvas vì Present
+// Mode clip đúng canvas. `null` = không còn phần nào hiển thị trong canvas.
+function visibleBackgroundRect(
+  box: Rect,
+  fit: "cover" | "contain" | "stretch",
+  natural: { w: number; h: number } | undefined,
+  canvasWidth: number,
+  canvasHeight: number
+): Rect | null {
+  let r = box;
+  if (fit === "contain" && natural && natural.w > 0 && natural.h > 0) {
+    const k = Math.min(box.width / natural.w, box.height / natural.h);
+    const w = natural.w * k;
+    const h = natural.h * k;
+    r = { x: box.x + (box.width - w) / 2, y: box.y + (box.height - h) / 2, width: w, height: h };
+  }
+  const x1 = Math.max(0, r.x);
+  const y1 = Math.max(0, r.y);
+  const x2 = Math.min(canvasWidth, r.x + r.width);
+  const y2 = Math.min(canvasHeight, r.y + r.height);
+  if (x2 <= x1 || y2 <= y1) return null;
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
 // Đường dóng (đỏ) — khi kéo, 1 trong 3 điểm mốc (mép trái/tâm/mép phải cho trục X, mép trên/tâm/mép
@@ -246,6 +276,20 @@ export default function LandingCanvas({
   // Đường dóng đỏ + vạch báo khoảng cách đều đang hiện trong lúc kéo (xem computeSnap()) — chỉ có
   // giá trị khi đang kéo di chuyển ĐÚNG 1 component, rỗng mọi lúc khác.
   const [guides, setGuides] = useState<{ lines: GuideLine[]; spacings: GuideSpacing[] }>({ lines: [], spacings: [] });
+  // Kích thước gốc ảnh của từng Background (theo đúng srcDataUrl) — chỉ cần cho fit "contain" để Frame
+  // bắt dính đúng mép ảnh thật (xem visibleBackgroundRect()).
+  const [bgNaturalSizes, setBgNaturalSizes] = useState<Record<string, { src: string; w: number; h: number }>>({});
+  useEffect(() => {
+    for (const c of config.components) {
+      if (c.type !== "background" || !c.props.srcDataUrl) continue;
+      const src = c.props.srcDataUrl;
+      if (bgNaturalSizes[c.id]?.src === src) continue;
+      const img = new Image();
+      img.onload = () =>
+        setBgNaturalSizes((prev) => ({ ...prev, [c.id]: { src, w: img.naturalWidth, h: img.naturalHeight } }));
+      img.src = src;
+    }
+  }, [config.components]);
   // Khung marquee (rubber-band) đang kéo trên nền trống — toạ độ MÀN HÌNH (client), không cần quy đổi
   // pan/scale vì chỉ dùng để vẽ overlay `position: fixed` và so giao trực tiếp với
   // getBoundingClientRect() của từng component (xem handleWrapperMouseDown).
@@ -386,10 +430,13 @@ export default function LandingCanvas({
       // đều — xem computeSnap(). Ngưỡng tính theo px MÀN HÌNH (chia cho scale để ra ngưỡng tương ứng
       // trong không gian artboard) để cảm giác bắt dính không đổi theo mức zoom. Chỉ áp dụng cho di
       // chuyển 1 component, không áp dụng khi kéo nhóm hay resize.
-      const threshold = CENTER_SNAP_PX / scale;
-      const others = config.components
-        .filter((c) => c.id !== component.id && !c.hiddenInBuilder)
-        .map((c) => ({ x: c.x, y: c.y, width: c.width, height: c.height }));
+      const isFrame = component.type === "outputFrame";
+      const threshold = (isFrame ? FRAME_SNAP_PX : CENTER_SNAP_PX) / scale;
+      const others = isFrame
+        ? frameSnapRects()
+        : config.components
+            .filter((c) => c.id !== component.id && !c.hiddenInBuilder)
+            .map((c) => ({ x: c.x, y: c.y, width: c.width, height: c.height }));
       const snap = computeSnap(
         { x: nextX, y: nextY, width: component.width, height: component.height },
         others,
@@ -410,6 +457,24 @@ export default function LandingCanvas({
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  // Mốc bắt dính cho Frame: toàn canvas + vùng ảnh thật của mọi Background đang hiện trong Builder.
+  function frameSnapRects(): Rect[] {
+    const rects: Rect[] = [{ x: 0, y: 0, width: canvasWidth, height: canvasHeight }];
+    for (const c of config.components) {
+      if (c.type !== "background" || c.hiddenInBuilder) continue;
+      const natural = bgNaturalSizes[c.id];
+      const r = visibleBackgroundRect(
+        c,
+        c.props.fit,
+        natural && natural.src === c.props.srcDataUrl ? natural : undefined,
+        canvasWidth,
+        canvasHeight
+      );
+      if (r) rects.push(r);
+    }
+    return rects;
   }
 
   function handleResizeMouseDown(e: React.MouseEvent, component: LandingComponent, corner: ResizeCorner) {
@@ -433,11 +498,47 @@ export default function LandingCanvas({
         height = Math.max(MIN_SIZE, start.height - dy);
         y = start.y + (start.height - height);
       }
+      // Output Frame khoá tỉ lệ màn LED — lấy chiều kéo lớn hơn, góc đối diện đứng yên.
+      if (component.type === "outputFrame") {
+        const ratio = component.props.targetWidth / component.props.targetHeight;
+        width = Math.max(width, height * ratio);
+        height = computeOutputFrameHeight(width, component.props);
+        // Bắt dính mép đang kéo vào mép ảnh Background/canvas — chọn trục lệch ít hơn, trục còn lại
+        // suy ra theo tỉ lệ.
+        const left = corner.includes("left");
+        const top = corner.includes("top");
+        const right0 = start.x + start.width;
+        const bottom0 = start.y + start.height;
+        const threshold = FRAME_SNAP_PX / scale;
+        const rects = frameSnapRects();
+        const edgeX = left ? right0 - width : start.x + width;
+        const edgeY = top ? bottom0 - height : start.y + height;
+        const nearest = (v: number, cands: number[]) =>
+          cands.reduce<{ c: number; d: number } | null>((best, c) => {
+            const d = Math.abs(v - c);
+            return d < threshold && (!best || d < best.d) ? { c, d } : best;
+          }, null);
+        const sx = nearest(edgeX, rects.flatMap((r) => [r.x, r.x + r.width]));
+        const sy = nearest(edgeY, rects.flatMap((r) => [r.y, r.y + r.height]));
+        const lines: GuideLine[] = [];
+        if (sx && (!sy || sx.d <= sy.d)) {
+          width = Math.max(MIN_SIZE, left ? right0 - sx.c : sx.c - start.x);
+          lines.push({ axis: "x", pos: sx.c });
+        } else if (sy) {
+          width = Math.max(MIN_SIZE, (top ? bottom0 - sy.c : sy.c - start.y) * ratio);
+          lines.push({ axis: "y", pos: sy.c });
+        }
+        height = computeOutputFrameHeight(width, component.props);
+        x = left ? right0 - width : start.x;
+        y = top ? bottom0 - height : start.y;
+        setGuides({ lines, spacings: [] });
+      }
       x = clamp(x, -marginX, canvasWidth + marginX - width);
       y = clamp(y, -marginY, canvasHeight + marginY - height);
       onUpdateComponent(component.id, { x, y, width, height });
     }
     function onUp() {
+      setGuides({ lines: [], spacings: [] });
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     }
@@ -789,12 +890,18 @@ export default function LandingCanvas({
                 .sort((a, b) => a.zIndex - b.zIndex)
                 .map((component) => {
                   const isSelected = selectedIds.includes(component.id);
+                  // Output Frame phủ gần hết canvas và nằm trên cùng — ruột khung KHÔNG bắt chuột (click
+                  // xuyên xuống component bên dưới), chỉ viền + nhãn góc trên-trái kéo/chọn được.
+                  const isFrame = component.type === "outputFrame";
+                  // Bật lại pointer-events cho viền/handle của khung CHỈ khi cả lớp overlay đang hoạt động
+                  // (không Hand tool, không đang sửa anchor) — giữ đúng cơ chế tắt lớp ở div cha bên trên.
+                  const frameActive = isFrame && tool !== "hand" && !(anchorEdit && anchorEdit.mode !== "locked");
                   return (
                     <div
                       key={component.id}
                       onMouseDown={(e) => handleComponentMouseDown(e, component)}
                       onClick={(e) => e.stopPropagation()}
-                      className={`absolute cursor-move ${isSelected ? "outline outline-2 outline-gold-500" : "hover:outline hover:outline-1 hover:outline-gold-500/50"}`}
+                      className={`absolute cursor-move ${isFrame ? "pointer-events-none" : ""} ${isSelected ? "outline outline-2 outline-gold-500" : isFrame ? "" : "hover:outline hover:outline-1 hover:outline-gold-500/50"}`}
                       style={{
                         left: component.x * scale,
                         top: component.y * scale,
@@ -802,6 +909,19 @@ export default function LandingCanvas({
                         height: component.height * scale,
                       }}
                     >
+                      {frameActive && (
+                        <>
+                          <div
+                            className="pointer-events-auto absolute left-0 top-0"
+                            style={{ width: Math.min(component.width, 640) * scale, height: 32 * scale }}
+                          />
+                          <div className="pointer-events-auto absolute -top-1.5 left-0 h-3 w-full" />
+                          <div className="pointer-events-auto absolute -bottom-1.5 left-0 h-3 w-full" />
+                          <div className="pointer-events-auto absolute -left-1.5 top-0 h-full w-3" />
+                          <div className="pointer-events-auto absolute -right-1.5 top-0 h-full w-3" />
+                        </>
+                      )}
+
                       {/* Handle resize 4 góc — CHỈ hiện khi đang chọn ĐÚNG 1 component (resize nhiều
                           component cùng lúc không có ngữ nghĩa rõ ràng, không nằm trong yêu cầu). */}
                       {isSelected &&
@@ -810,7 +930,7 @@ export default function LandingCanvas({
                           <div
                             key={corner}
                             onMouseDown={(e) => handleResizeMouseDown(e, component, corner)}
-                            className="absolute h-2.5 w-2.5 rounded-full border border-base-950 bg-gold-500"
+                            className={`${frameActive ? "pointer-events-auto" : ""} absolute h-2.5 w-2.5 rounded-full border border-base-950 bg-gold-500`}
                             style={{
                               cursor: cornerCursor[corner],
                               top: corner.includes("top") ? -5 : undefined,

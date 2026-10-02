@@ -118,6 +118,19 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       fit: "cover",
     }),
   },
+  outputFrame: {
+    label: "Frame",
+    description: "Dashed guide marking the area the LED controller/Resolume crops — set the LED resolution, keeps its aspect ratio",
+    category: "Basic",
+    // Mặc định màn LED 3584×2304 thu nhỏ vừa canvas 1920×1080 (1680×1080) — đổi trong panel.
+    defaultWidth: 1680,
+    defaultHeight: 1080,
+    createDefaultProps: () => ({
+      targetWidth: 3584,
+      targetHeight: 2304,
+      showInPresent: true,
+    }),
+  },
   luckyWheel: {
     label: "Lucky Wheel",
     description: "Spinning wheel bound to the Draw Engine",

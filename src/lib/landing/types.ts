@@ -195,6 +195,25 @@ export interface VideoComponent extends BaseComponent {
   props: VideoProps;
 }
 
+// Output Frame — khung nét đứt đánh dấu vùng LED controller/Resolume sẽ cắt ra khỏi canvas 1920×1080
+// (màn LED thật không phải 16:9, vd 3584×2304). THUẦN HIỂN THỊ, không ảnh hưởng component nào khác.
+// x/y/width/height của component CHÍNH LÀ vùng cắt (px canvas); height luôn dẫn xuất từ width theo tỉ lệ
+// targetWidth/targetHeight (xem computeOutputFrameHeight + fitAutoHeight trong LandingBuilderWindow.tsx).
+export interface OutputFrameProps {
+  targetWidth: number; // độ phân giải màn LED thật — chỉ để lấy tỉ lệ + hiện nhãn
+  targetHeight: number;
+  showInPresent: boolean; // vẽ khung lên Present Mode (để căn Resolume) — tắt trước khi diễn
+}
+
+export interface OutputFrameComponent extends BaseComponent {
+  type: "outputFrame";
+  props: OutputFrameProps;
+}
+
+export function computeOutputFrameHeight(width: number, props: OutputFrameProps): number {
+  return Math.max(1, Math.round((width * props.targetHeight) / props.targetWidth));
+}
+
 // Giá trị `amount` mặc định khi 1 phase mới được đổi sang đích "dim"/"blur" mà chưa từng cấu hình gì
 // (xem BackgroundPanel.tsx/ImagePanel.tsx) — Dim 80% theo đúng yêu cầu, Blur 16px chọn tạm 1 mức vừa phải.
 export const DEFAULT_BACKGROUND_DIM_AMOUNT = 80;
@@ -937,6 +956,7 @@ export type LandingComponent =
   | TextComponent
   | ImageComponent
   | VideoComponent
+  | OutputFrameComponent
   | BackgroundComponent
   | LuckyWheelComponent
   | WinnerNameComponent
@@ -1026,7 +1046,7 @@ export function newComponentId(): string {
 /** Chiều cao "vừa khít" cho template "digitRoller" ở 1 width cho trước — LẶP LẠI chính xác công
  * thức cellWidth/cellHeight trong DigitRollerTemplate.tsx (gap=8px, tỉ lệ cellWidth:cellHeight =
  * 0.7:1). Dùng ở LandingBuilderWindow (áp lại MẶC ĐỊNH sau mọi thay đổi width/digitCount/template,
- * xem fitDigitRollerHeight) để khung kéo-thả LUÔN sát đúng kích thước thật — người dùng không tự
+ * xem fitAutoHeight) để khung kéo-thả LUÔN sát đúng kích thước thật — người dùng không tự
  * chỉnh height rời rạc cho template này, height luôn là giá trị DẪN XUẤT từ width + digitCount. */
 export function computeDigitRollerFitHeight(widthBound: number, digitCount: number): number {
   const gap = 8;

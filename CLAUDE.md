@@ -54,6 +54,9 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 
 ## TODO — plan đang dang dở (xoá mục này sau khi làm xong)
 
+**[HOÃN — 2026-10-02]** Đã làm giải pháp tạm component "Frame" (`outputFrame`,
+xem `docs/landing/output-frame.md`) vì sát giờ sự kiện, canvas vẫn 1920×1080. Plan bên dưới giữ lại để làm sau.
+
 **Canvas Landing tuỳ chỉnh kích thước** (không chỉ cố định 1920×1080) — lý do: màn LED thật của người
 dùng là 3584×2304 (~1.56:1, không phải 16:9), hiện bị letterbox ~12.5% viền đen trên/dưới.
 

@@ -40,6 +40,14 @@ function BackgroundIcon() {
   );
 }
 
+function OutputFrameIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 2.5" className="h-5 w-5">
+      <rect x="3" y="5" width="18" height="14" rx="1" />
+    </svg>
+  );
+}
+
 function LuckyWheelIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -166,6 +174,7 @@ const ICONS: Partial<Record<LandingComponentType, () => JSX.Element>> = {
   image: ImageIcon,
   video: VideoIcon,
   background: BackgroundIcon,
+  outputFrame: OutputFrameIcon,
   luckyWheel: LuckyWheelIcon,
   winnerName: WinnerNameIcon,
   prizeImage: PrizeImageIcon,
