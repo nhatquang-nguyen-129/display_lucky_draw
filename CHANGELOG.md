@@ -2,7 +2,7 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.1.4] — 2026-10-03
 
 ### Landing — component Frame (Output Frame) cho màn LED không phải 16:9
 
@@ -14,6 +14,15 @@ Chi tiết: `docs/landing/output-frame.md`.
   controller. Toggle "Show in Presentation" để vẽ/ẩn khung trên cửa sổ trình chiếu.
 - Canvas vẫn cố định 1920×1080, không đổi gì với landing đã dựng. Thay thế tạm cho plan "canvas tuỳ
   chỉnh kích thước" (hoãn lại).
+
+### Hộp thoại "Different copies of the same session" — thêm nút Keep both
+
+Chi tiết: `docs/architecture/database-schema.md` mục "2 bản của cùng 1 session".
+
+- 2 file `.db` cùng mã session nhưng là 2 bản dựng cố ý khác nhau (vd copy rồi đổi tên LED-Ngang/LED-Doc)
+  giờ giữ được cả 2: nút **Keep both (new ID for selected)** cấp mã session mới cho bản đang chọn, mở
+  thành tab riêng. File được sao lưu vào `data/.backup/` trước khi sửa. Nút "Keep selected copies" giữ
+  nguyên hành vi cũ.
 
 ## [1.1.3] — 2026-09-30
 
