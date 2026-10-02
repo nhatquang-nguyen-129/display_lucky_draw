@@ -71,10 +71,17 @@ hoặc trừ sai số giải.
   vào): bảng các bản với tên file, thời điểm sửa, số participant/prize/lượt đã Confirm, đánh dấu
   **Newest — recommended**, nhưng người dùng tự chọn. **Keep selected copies** → giữ bản đã chọn (đổi về
   tên file chuẩn), các bản còn lại vào `data/.trash/`.
+- **Keep both (new ID for selected)** (`keepBothConflict`): dùng khi các bản là 2 cấu hình CỐ Ý khác nhau
+  (vd copy rồi đổi tên `…-LED-Ngang`/`…-LED-Doc`) — giữ MỌI bản, bản đang chọn được cấp id mới
+  (`giveNewSessionId`: UPDATE `sessions.id` + `session_id` ở participants/prizes/draw_results/media trong 1
+  transaction, sao lưu nguyên file vào `data/.backup/` trước) → thành tab riêng. Tên file giữ nguyên (8 ký
+  tự id trong tên lệch id thật cũng không sao). Chọn đúng bản đang dùng thì 1 bản khác lên thay giữ id gốc;
+  còn ≥ 2 bản cùng id gốc thì hộp thoại hiện lại cho phần còn lại.
 - Thông tin bản chưa dùng đọc ở chế độ read-only — chạy migration lên nó sẽ đổi thời điểm sửa, chính là
   tiêu chí "mới nhất".
 
-IPC: `sessions:list`, `sessions:conflicts`, `sessions:resolveConflict`, `sessions:openDataFolder`.
+IPC: `sessions:list`, `sessions:conflicts`, `sessions:resolveConflict`, `sessions:keepBothConflict`,
+`sessions:openDataFolder`.
 
 ## Schema (trong MỖI file)
 

@@ -206,6 +206,8 @@ declare global {
         // giữ bản nào (xem electron/db.ts, SessionConflictDialog.tsx).
         conflicts: () => Promise<SessionConflict[]>;
         resolveConflict: (data: { sessionId: string; keepFile: string }) => Promise<void>;
+        // Giữ mọi bản, cấp id mới cho bản `file` → session riêng. Trả về id mới.
+        keepBothConflict: (data: { sessionId: string; file: string }) => Promise<string>;
         openDataFolder: () => Promise<string>;
         // Session đã bị Delete (data/.trash/, khác Close) — xem RestoreModal.tsx.
         listTrash: () => Promise<TrashEntry[]>;

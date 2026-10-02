@@ -111,6 +111,8 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
 const LEGACY_DIR = resolveLegacyDir();
 export const DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
 const TRASH_DIR = path.join(DATA_DIR, ".trash");
+// Bản sao lưu file TRƯỚC khi bị cấp id mới (xem giveNewSessionId) — thư mục ẩn, rescan() không quét.
+const BACKUP_DIR = path.join(DATA_DIR, ".backup");
 ensureWritableDir(DATA_DIR);
 
 /* ---------------- Schema + migration (áp cho TỪNG file) ---------------- */
@@ -444,6 +446,35 @@ function splitMultiSessionFile(source: string) {
   console.log(`[db] Split ${source} into ${sessions.length} session file(s); original kept as ${backup}`);
 }
 
+/* ---------------- File trùng id → cấp id mới ---------------- */
+
+// Mọi bảng có cột session_id (sessions dùng cột id) — không có FOREIGN KEY nên UPDATE thẳng được.
+const SESSION_ID_TABLES = ["participants", "prizes", "draw_results", "media"] as const;
+
+/**
+ * Đổi `file` thành 1 session RIÊNG với id mới (sessions.id + session_id mọi bảng) — dùng cho nút "Keep
+ * both" của SessionConflictDialog (keepBothConflict bên dưới), khi 2 file cùng id là 2 bản dựng CỐ Ý
+ * khác nhau (vd copy rồi đổi tên "…-LED-Ngang"/"…-LED-Doc"), không phải 1 session copy qua lại giữa 2
+ * máy. Sao lưu nguyên file vào data/.backup/ trước khi sửa. Tên file giữ nguyên (8 ký tự id trong tên
+ * chỉ để đọc, lệch id thật cũng không sao). File phải KHÔNG đang mở ở kết nối khác.
+ */
+function giveNewSessionId(file: string, oldId: string): string {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  fs.copyFileSync(file, uniquePath(BACKUP_DIR, `${path.basename(file, ".db")}__before-new-id-${stamp}.db`));
+  const newId = randomUUID();
+  const db = openFile(file);
+  db.transaction(() => {
+    db.prepare(`UPDATE sessions SET id = ? WHERE id = ?`).run(newId, oldId);
+    for (const table of SESSION_ID_TABLES) {
+      db.prepare(`UPDATE ${table} SET session_id = ? WHERE session_id = ?`).run(newId, oldId);
+    }
+  })();
+  db.close();
+  console.log(`[db] ${path.basename(file)} shared session id ${oldId} with another file — gave it new id ${newId}`);
+  return newId;
+}
+
 /* ---------------- Registry: session id → file đang dùng ---------------- */
 
 interface Entry {
@@ -642,6 +673,34 @@ export function listConflicts(): SessionConflict[] {
     out.push({ sessionId, name, copies: copies.map((c) => ({ ...c, recommended: c === newest })) });
   }
   return out;
+}
+
+/**
+ * "Keep both": giữ MỌI bản, cấp id mới cho đúng bản `file` (tên file) → thành session/tab riêng. Bản
+ * đang dùng được chọn thì 1 bản khác lên thay giữ id gốc. Còn ≥ 2 bản cùng id gốc thì hộp thoại hiện lại
+ * cho phần còn lại. Trả về id mới.
+ */
+export function keepBothConflict(sessionId: string, file: string): string {
+  const entry = entries.get(sessionId);
+  const others = conflictFiles.get(sessionId);
+  if (!entry || !others || others.size === 0) throw new Error(`No conflict for session ${sessionId}`);
+  const target = [entry.file, ...others].find((f) => sameFile(path.basename(f), file));
+  if (!target) throw new Error(`File not found: ${file}`);
+
+  if (sameFile(target, entry.file)) {
+    entry.db.close();
+    entries.delete(sessionId);
+    const promoted = [...others][0];
+    others.delete(promoted);
+    entries.set(sessionId, { file: promoted, db: openFile(promoted) });
+  } else {
+    others.delete(target);
+  }
+  if (others.size === 0) conflictFiles.delete(sessionId);
+
+  const newId = giveNewSessionId(target, sessionId);
+  entries.set(newId, { file: target, db: openFile(target) });
+  return newId;
 }
 
 /** Giữ đúng 1 bản (`keepFile`, tên file) của session, các bản còn lại chuyển vào data/.trash/. */

@@ -80,6 +80,8 @@ const api = {
     conflicts: () => ipcRenderer.invoke("sessions:conflicts"),
     resolveConflict: (data: { sessionId: string; keepFile: string }) =>
       ipcRenderer.invoke("sessions:resolveConflict", data),
+    keepBothConflict: (data: { sessionId: string; file: string }) =>
+      ipcRenderer.invoke("sessions:keepBothConflict", data),
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
     listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
     restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),

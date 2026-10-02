@@ -15,6 +15,7 @@ import {
   permanentlyDelete,
   renameSession,
   resolveConflict,
+  keepBothConflict,
   restoreFromTrash,
   setSessionClosed,
   setSessionLocked,
@@ -613,6 +614,10 @@ ipcMain.handle("sessions:list", () => listSessions());
 ipcMain.handle("sessions:conflicts", () => listConflicts());
 ipcMain.handle("sessions:resolveConflict", (_e, data: { sessionId: string; keepFile: string }) =>
   resolveConflict(data.sessionId, data.keepFile)
+);
+// "Keep both" — cấp id mới cho đúng bản được chọn, giữ mọi bản (xem keepBothConflict trong db.ts).
+ipcMain.handle("sessions:keepBothConflict", (_e, data: { sessionId: string; file: string }) =>
+  keepBothConflict(data.sessionId, data.file)
 );
 ipcMain.handle("sessions:openDataFolder", () => shell.openPath(DATA_DIR));
 ipcMain.handle("sessions:listTrash", () => listTrash());
