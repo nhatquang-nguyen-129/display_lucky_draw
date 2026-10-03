@@ -52,6 +52,31 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 - Version `X.Y.Z`: `X` = đổi kiến trúc, **chỉ tăng khi chủ dự án duyệt**; `Y` = thêm/đổi/xoá tính năng lớn; `Z` = thay đổi nhỏ/sửa lỗi. Chủ dự án quyết định bản nào tăng số nào — xem `docs/deploy/release.md` bước 2.
 - Lucky Wheel (Wheel Circular + Digit Roller) đã CHỐT cho production (xem `CHANGELOG.md`) — chỉ sửa bug, không đổi hành vi/giao diện nếu không được yêu cầu rõ.
 
+## BUG đã xác định — chưa fix (xoá mục này sau khi làm xong)
+
+**[2026-10-03]** Xoá hết participant rồi import file mới ("Replace" trong `Participants.tsx`) → Wheel
+không nhận được trường dữ liệu hiển thị (tên người trúng ra rỗng).
+
+Nguyên nhân xác nhận qua đọc code: luồng Replace (`Participants.tsx:108-118`) gọi `bulkDelete` rồi
+`bulkImport`, nhưng `participants:bulkImport` (`electron/main.ts:443-489`) **chỉ ghi lại
+`imported_columns`**, KHÔNG đụng tới `sessions.participant_column_types`/`participant_column_labels`.
+Mapping "cột nào là Name/Phone/..." của file CŨ vẫn còn nguyên trong DB. Nếu file mới có tên cột khác
+file cũ → mapping cũ trỏ vào cột không còn tồn tại → cả 3 hàm resolve (`resolveParticipantField`
+`electron/participantFields.ts`, `resolveParticipantDisplayField` `src/lib/landing/types.ts`,
+`resolveColumnForType` `src/lib/dataEditor/validate.ts`) không tìm thấy cột nào gắn type "name" →
+trả về rỗng. Vì import mới luôn ghi `name: ""` vào cột SQL lõi (`Participants.tsx:95`, generic hoàn
+toàn, không đoán cột) nên không có fallback nào cứu được. Nếu file mới trùng tên cột với file cũ thì
+mapping cũ tình cờ vẫn khớp → không thấy lỗi → đúng với cảm giác "thỉnh thoảng mới bị".
+
+Hướng fix đã chốt với chủ dự án (chưa code): trong `participants:bulkImport`, sau khi tính được tập
+tên cột của lần import này (`columns`, đã có sẵn ở dòng tính `imported_columns`) — dọn
+(prune) `participant_column_types` và `participant_column_labels`: xoá key nào KHÔNG còn nằm trong
+`columns` VÀ không phải core field (`name`/`phone`/`code`/`email`, luôn giữ vì không phụ thuộc file
+import). Cột trùng tên với file cũ tự động giữ nguyên mapping, không cần người dùng gán lại tay; cột
+không còn tồn tại thì mapping biến mất sạch (không còn ma trỏ vào cột chết). `electron/
+participantFields.ts` cần export thêm 1 set tên core field (hoặc tái dùng `CORE_FIELDS` sẵn có trong
+file, đổi thành `export`) để `main.ts` dùng khi prune.
+
 ## TODO — plan đang dang dở (xoá mục này sau khi làm xong)
 
 **[HOÃN — 2026-10-02]** Đã làm giải pháp tạm component "Frame" (`outputFrame`,
