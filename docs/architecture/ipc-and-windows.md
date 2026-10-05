@@ -93,9 +93,10 @@ quả.
 
 **Quy tắc bắt buộc**: bất kỳ IPC handler hay câu SQL mới nào đụng tới `participants`/`prizes` đều phải lọc theo `session_id` — quên bước này từng gây lỗi thật ở `Dashboard.tsx`/`Prizes.tsx` (hiện dữ liệu của TẤT CẢ session thay vì chỉ session đang active).
 
-Session còn có thể bị **khoá** (`sessions.locked`, chuột phải vào tab để đổi) — chặn sửa/xoá
-participant/prize và mở Data Editor/Presentation/Builder, không phải bảo mật (không password), chỉ
-tránh thao tác nhầm sau khi đã quay xong. Xem [`session-lock.md`](./session-lock.md).
+Session còn có thể bị **khoá** (`sessions.locked`, chuột phải vào tab để đổi), 2 mức: **Input lock**
+chỉ chặn sửa/xoá participant/prize + Data Editor (vẫn quay số, sửa Landing, trình chiếu được); **Full
+lock** chặn toàn bộ, kể cả mở Presentation/Builder. Không phải bảo mật (không password), chỉ tránh thao
+tác nhầm. Xem [`session-lock.md`](./session-lock.md).
 
 ## Kiến trúc đa cửa sổ (multi-window)
 

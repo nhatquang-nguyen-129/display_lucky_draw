@@ -218,8 +218,22 @@ CREATE TABLE IF NOT EXISTS media (
   migratePrizeLevelRules(db);
 }
 
-export function setSessionLocked(sessionId: string, locked: boolean) {
-  getDb(sessionId).prepare(`UPDATE sessions SET locked = ? WHERE id = ?`).run(locked ? 1 : 0, sessionId);
+// sessions.locked: 0 = mở, 1 = Full lock (khoá toàn bộ — giá trị cũ, giữ nguyên nghĩa cho DB cũ),
+// 2 = Input lock (chỉ khoá participant/prize + cấu hình dữ liệu, vẫn quay số/sửa Landing thoải mái).
+// Dùng lại cột INTEGER có sẵn nên không cần migration. Xem docs/architecture/session-lock.md.
+export type SessionLockLevel = 0 | 1 | 2;
+export const LOCK_FULL = 1;
+export const LOCK_INPUTS = 2;
+
+export function setSessionLocked(sessionId: string, locked: SessionLockLevel) {
+  getDb(sessionId).prepare(`UPDATE sessions SET locked = ? WHERE id = ?`).run(locked, sessionId);
+}
+
+function getLockLevel(sessionId: string): number {
+  const row = getDb(sessionId).prepare(`SELECT locked FROM sessions WHERE id = ?`).get(sessionId) as
+    | { locked: number }
+    | undefined;
+  return row?.locked ?? 0;
 }
 
 // Đóng tab = chỉ ẩn khỏi listSessions(), file KHÔNG di chuyển (khác deleteSession, chuyển vào
@@ -228,14 +242,21 @@ export function setSessionClosed(sessionId: string, closed: boolean) {
   getDb(sessionId).prepare(`UPDATE sessions SET closed = ? WHERE id = ?`).run(closed ? 1 : 0, sessionId);
 }
 
-// Gọi ở ĐẦU mọi IPC handler sửa/xoá dữ liệu hoặc mở cửa sổ Data Editor/Presentation/Builder — xem
-// docs/deploy (Session Lock). Throw để ipcRenderer.invoke ở phía renderer reject, dù nút bấm tương
-// ứng đã bị disable khi khoá (đây là lớp chặn thật, không chỉ ẩn nút).
+// 2 hàm chặn, gọi ở ĐẦU IPC handler — xem docs/architecture/session-lock.md. Throw để
+// ipcRenderer.invoke ở phía renderer reject, dù nút bấm tương ứng đã bị disable khi khoá (đây là lớp
+// chặn thật, không chỉ ẩn nút).
+// - assertInputsUnlocked: hành động đổi DỮ LIỆU ĐẦU VÀO (participant, prize, data type/nhãn cột, tuỳ
+//   chọn quay, xoá session, mở Data Editor) — bị chặn bởi CẢ Input lock lẫn Full lock.
+// - assertSessionUnlocked: mọi hành động còn lại (quay số, Landing Builder/Presentation, đổi tên,
+//   đóng tab...) — chỉ bị chặn bởi Full lock.
+export function assertInputsUnlocked(sessionId: string) {
+  const level = getLockLevel(sessionId);
+  if (level === LOCK_FULL) throw new Error("Session is locked");
+  if (level === LOCK_INPUTS) throw new Error("Session inputs are locked (participants & prizes)");
+}
+
 export function assertSessionUnlocked(sessionId: string) {
-  const row = getDb(sessionId).prepare(`SELECT locked FROM sessions WHERE id = ?`).get(sessionId) as
-    | { locked: number }
-    | undefined;
-  if (row?.locked) throw new Error("Session is locked");
+  if (getLockLevel(sessionId) === LOCK_FULL) throw new Error("Session is locked");
 }
 
 /**
@@ -571,9 +592,43 @@ export function listSessions(): any[] {
     .filter(Boolean) as { created_at: string; closed: number }[];
   // Session đã Close (nút ×) không hiện thành tab, nhưng file vẫn nằm trong data/ và vẫn có entry ở
   // đây (rescan() không phân biệt closed) — chỉ ẩn ở bước trả về renderer này.
-  return rows
+  // Thứ tự tab: theo .tab-order.json (người dùng kéo-thả ở TabBar.tsx) trước, session chưa có trong
+  // file (mới tạo/mới copy vào data/) xếp sau theo created_at như cũ.
+  const order = new Map(readTabOrder().map((id, i) => [id, i]));
+  const rank = (r: { id: string }) => order.get(r.id) ?? Infinity;
+  return (rows as { id: string; created_at: string; closed: number }[])
     .filter((r) => !r.closed)
-    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+    .sort((a, b) => {
+      const byOrder = rank(a) - rank(b);
+      if (byOrder) return byOrder;
+      return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+    });
+}
+
+// Thứ tự tab lưu ở data/.tab-order.json (mảng session id) — KHÔNG lưu trong file session (thứ tự là
+// thuộc tính của cả thư mục data/, không của riêng 1 session), không phải localStorage (để bản portable
+// mang data/ sang máy khác vẫn giữ thứ tự). Dấu "." đầu tên giống .trash/.backup: rescan() bỏ qua.
+// Hỏng/thiếu file → coi như chưa sắp xếp, không lỗi.
+const TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
+
+function readTabOrder(): string[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(TAB_ORDER_FILE, "utf8"));
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Ghi thứ tự tab mới (đủ mọi tab đang hiện). Id của session đang Close/không còn tồn tại vẫn giữ lại
+ *  ở cuối, để mở lại tab Closed thì về gần đúng chỗ cũ thay vì nhảy xuống cuối. Ghi file tạm rồi rename
+ *  để không bao giờ để lại file JSON ghi dở. */
+export function setTabOrder(ids: string[]) {
+  const visible = new Set(ids);
+  const next = [...ids, ...readTabOrder().filter((id) => !visible.has(id))];
+  const tmp = `${TAB_ORDER_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2), "utf8");
+  fs.renameSync(tmp, TAB_ORDER_FILE);
 }
 
 export function createSession(data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }): string {

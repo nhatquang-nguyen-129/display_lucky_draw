@@ -2,6 +2,35 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Session Lock — thêm mức "Input lock" (khoá mềm)
+
+Chi tiết: `docs/architecture/session-lock.md`.
+
+- Chuột phải vào tab → **Lock inputs**: chỉ khoá dữ liệu đầu vào (participant, prize, Data Editor, xoá
+  session). Quay số, Landing Builder, Presentation, đổi tên/đóng tab vẫn dùng bình thường. Icon ổ khoá
+  màu xanh nhạt trên tab.
+- **Lock session** giữ nguyên hành vi cũ (khoá toàn bộ, ổ khoá xám). Có thể chuyển qua lại giữa 2 mức;
+  mọi chiều nới lỏng đều phải giữ nút 3 giây.
+- Không đổi schema DB: dùng giá trị mới `2` trên cột `sessions.locked` có sẵn — session đang khoá ở bản
+  cũ vẫn là khoá toàn bộ.
+
+### Thanh tab — kéo-thả để đổi thứ tự session
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session" (Thứ tự tab).
+
+- Kéo 1 tab sang trái/phải, vạch xanh chỉ chỗ thả. Thứ tự lưu ở `data/.tab-order.json` — bản portable
+  mang sang máy khác vẫn giữ nguyên. Tab mới tạo/mới copy vào nằm cuối như cũ. Không đổi schema DB.
+
+### Đóng gói Windows — thêm thư mục portable giải nén sẵn
+
+Chi tiết: `docs/deploy/release.md` mục 1, `docs/deploy/portable.md`.
+
+- `npm run package` trên Windows giờ ra đủ 3 lựa chọn trong `release/`: `…-Setup.exe`, `…-win.zip` và
+  thư mục `…-win/` (zip đã giải nén sẵn, dùng ngay).
+- Bản portable (zip lẫn thư mục giải nén sẵn, cả Mac) luôn có sẵn thư mục `data/` rỗng.
+
 ## [1.1.4] — 2026-10-03
 
 ### Landing — component Frame (Output Frame) cho màn LED không phải 16:9

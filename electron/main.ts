@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { randomUUID } from "crypto";
 import {
+  assertInputsUnlocked,
   assertSessionUnlocked,
   closeAll,
   createSession,
@@ -19,6 +20,9 @@ import {
   restoreFromTrash,
   setSessionClosed,
   setSessionLocked,
+  setTabOrder,
+  SessionLockLevel,
+  LOCK_FULL,
 } from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
@@ -393,7 +397,7 @@ ipcMain.handle(
     _e,
     data: { sessionId: string; name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }
   ) => {
-    assertSessionUnlocked(data.sessionId);
+    assertInputsUnlocked(data.sessionId);
     const id = randomUUID();
     getDb(data.sessionId).prepare(
       `INSERT INTO participants (id, session_id, name, code, phone, email, extra_data, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -425,7 +429,7 @@ ipcMain.handle(
       extra?: ExtraData;
     }
   ) => {
-    assertSessionUnlocked(data.sessionId);
+    assertInputsUnlocked(data.sessionId);
     getDb(data.sessionId).prepare(
       `UPDATE participants SET name = ?, code = ?, phone = ?, email = ?, extra_data = ? WHERE id = ?`
     ).run(
@@ -446,7 +450,7 @@ ipcMain.handle(
     sessionId: string,
     rows: Array<{ name: string; code?: string; phone?: string; email?: string; extra?: ExtraData }>
   ) => {
-    assertSessionUnlocked(sessionId);
+    assertInputsUnlocked(sessionId);
     const db = getDb(sessionId);
     const insert = db.prepare(
       `INSERT OR IGNORE INTO participants (id, session_id, name, code, phone, email, extra_data, sort_order, source)
@@ -492,12 +496,12 @@ ipcMain.handle(
 // Soft-delete: giữ hàng lại để đối chiếu với số liệu gốc (xem participants:stats). Draw Engine lọc
 // status = 'active' nên hàng 'removed' tự động không vào vòng quay; participants:list cũng ẩn nó đi.
 ipcMain.handle("participants:delete", (_e, sessionId: string, id: string) => {
-  assertSessionUnlocked(sessionId);
+  assertInputsUnlocked(sessionId);
   getDb(sessionId).prepare(`UPDATE participants SET status = 'removed' WHERE id = ?`).run(id);
 });
 
 ipcMain.handle("participants:bulkDelete", (_e, sessionId: string, ids: string[]) => {
-  assertSessionUnlocked(sessionId);
+  assertInputsUnlocked(sessionId);
   const db = getDb(sessionId);
   const del = db.prepare(`UPDATE participants SET status = 'removed' WHERE id = ? AND status != 'removed'`);
   const tx = db.transaction((items: string[]) => {
@@ -510,7 +514,7 @@ ipcMain.handle("participants:bulkDelete", (_e, sessionId: string, ids: string[])
 
 // Ghi lại thứ tự dòng sau khi kéo-thả sắp xếp trong Data Editor — orderedIds đã đúng thứ tự mong muốn.
 ipcMain.handle("participants:reorder", (_e, sessionId: string, orderedIds: string[]) => {
-  assertSessionUnlocked(sessionId);
+  assertInputsUnlocked(sessionId);
   const db = getDb(sessionId);
   const update = db.prepare(`UPDATE participants SET sort_order = ? WHERE id = ?`);
   const tx = db.transaction((ids: string[]) => {
@@ -540,7 +544,7 @@ interface PrizeInput {
 }
 
 ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
-  assertSessionUnlocked(data.sessionId);
+  assertInputsUnlocked(data.sessionId);
   const id = randomUUID();
   getDb(data.sessionId).prepare(
     `INSERT INTO prizes (
@@ -566,7 +570,7 @@ ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
 });
 
 ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
-  assertSessionUnlocked(data.sessionId);
+  assertInputsUnlocked(data.sessionId);
   const db = getDb(data.sessionId);
   const existing = db.prepare(`SELECT quantity, remaining FROM prizes WHERE id = ?`).get(data.id) as
     | { quantity: number; remaining: number }
@@ -600,7 +604,7 @@ ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
 });
 
 ipcMain.handle("prizes:delete", (_e, sessionId: string, id: string) => {
-  assertSessionUnlocked(sessionId);
+  assertInputsUnlocked(sessionId);
   getDb(sessionId).prepare(`DELETE FROM prizes WHERE id = ?`).run(id);
 });
 
@@ -660,15 +664,17 @@ ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => {
 
 // Khoá/mở khoá session — không phải bảo mật (không có password), chỉ tránh nhầm lẫn chỉnh sửa sau khi
 // đã quay xong. Mở khoá yêu cầu giữ nút 3 giây ở phía renderer (SessionLockMenu.tsx/HoldToUnlockButton.tsx).
-// Khoá bị TỪ CHỐI khi session còn mở cửa sổ phụ (Data Editor/Builder/Presentation): khoá giữa chừng làm
-// cửa sổ đó lỗi ở lần ghi/quay tiếp theo (hoặc mất thay đổi chưa Save) — trả tên cửa sổ để renderer báo
-// người dùng đóng trước.
-ipcMain.handle("sessions:setLocked", (_e, data: { id: string; locked: boolean }) => {
-  if (data.locked) {
+// `locked`: 0 = mở, 1 = Full lock, 2 = Input lock (xem SessionLockLevel trong db.ts).
+// Khoá bị TỪ CHỐI khi session còn mở cửa sổ phụ mà mức khoá mới sẽ chặn: khoá giữa chừng làm cửa sổ đó
+// lỗi ở lần ghi/quay tiếp theo (hoặc mất thay đổi chưa Save) — trả tên cửa sổ để renderer báo người
+// dùng đóng trước. Full lock chặn cả 3 cửa sổ; Input lock chỉ chặn Data Editor (Builder/Presentation
+// vẫn chạy bình thường khi chỉ khoá đầu vào).
+ipcMain.handle("sessions:setLocked", (_e, data: { id: string; locked: SessionLockLevel }) => {
+  if (data.locked !== 0) {
     const openWindows = [
       dataEditorWindows.has(data.id) && "Data Editor",
-      landingBuilderWindows.has(data.id) && "Landing Builder",
-      presentWindows.has(data.id) && "Presentation",
+      data.locked === LOCK_FULL && landingBuilderWindows.has(data.id) && "Landing Builder",
+      data.locked === LOCK_FULL && presentWindows.has(data.id) && "Presentation",
     ].filter(Boolean) as string[];
     if (openWindows.length > 0) return { ok: false, openWindows };
   }
@@ -679,7 +685,7 @@ ipcMain.handle("sessions:setLocked", (_e, data: { id: string; locked: boolean })
 ipcMain.handle(
   "sessions:updateOptions",
   (_e, data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) => {
-    assertSessionUnlocked(data.id);
+    assertInputsUnlocked(data.id);
     getDb(data.id).prepare(`UPDATE sessions SET allow_duplicate_prize = ?, exclude_previous_winners = ? WHERE id = ?`).run(
       data.allowDuplicatePrize ? 1 : 0,
       data.excludePreviousWinners ? 1 : 0,
@@ -693,7 +699,7 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateColumnTypes",
   (_e, data: { id: string; columnTypes: Record<string, string> }) => {
-    assertSessionUnlocked(data.id);
+    assertInputsUnlocked(data.id);
     getDb(data.id).prepare(`UPDATE sessions SET participant_column_types = ? WHERE id = ?`).run(
       JSON.stringify(data.columnTypes),
       data.id
@@ -706,7 +712,7 @@ ipcMain.handle(
 ipcMain.handle(
   "sessions:updateColumnLabels",
   (_e, data: { id: string; columnLabels: Record<string, string> }) => {
-    assertSessionUnlocked(data.id);
+    assertInputsUnlocked(data.id);
     getDb(data.id).prepare(`UPDATE sessions SET participant_column_labels = ? WHERE id = ?`).run(
       JSON.stringify(data.columnLabels),
       data.id
@@ -729,7 +735,7 @@ ipcMain.handle(
 // Xoá tab = chuyển file của session vào data/.trash/ (không xoá hẳn — có đường lấy lại, xem db.ts).
 // Đây là "Delete" (menu chuột phải, SessionLockMenu.tsx) — khác "Close" (nút ×, sessions:setClosed).
 ipcMain.handle("sessions:delete", (_e, id: string) => {
-  assertSessionUnlocked(id);
+  assertInputsUnlocked(id);
   deleteSession(id);
 });
 
@@ -738,6 +744,12 @@ ipcMain.handle("sessions:delete", (_e, id: string) => {
 ipcMain.handle("sessions:setClosed", (_e, data: { id: string; closed: boolean }) => {
   assertSessionUnlocked(data.id);
   setSessionClosed(data.id, data.closed);
+});
+
+// Kéo-thả đổi thứ tự tab (TabBar.tsx) — `ids` = toàn bộ tab đang hiện theo thứ tự mới. Không gọi
+// assert khoá nào: chỉ là thứ tự hiển thị, lưu ở data/.tab-order.json, không đụng file session nào.
+ipcMain.handle("sessions:setTabOrder", (_e, ids: string[]) => {
+  setTabOrder(ids);
 });
 
 // Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,
@@ -867,7 +879,7 @@ ipcMain.handle("media:importVideo", (e, sessionId: string) => {
 });
 
 ipcMain.handle("dataEditor:open", (_e, sessionId: string) => {
-  assertSessionUnlocked(sessionId);
+  assertInputsUnlocked(sessionId);
   openDataEditorWindow(sessionId);
 });
 

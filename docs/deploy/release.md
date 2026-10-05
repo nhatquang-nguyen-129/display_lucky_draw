@@ -13,7 +13,14 @@ từng định dạng: [portable.md](./portable.md) (định dạng chính), [in
 | Dữ liệu | `data/` trong thư mục app, đi theo app | Thư mục hồ sơ người dùng, gắn với máy |
 | Phù hợp | Máy mượn tại venue, cầm USB đi | Máy cố định dùng lâu dài |
 
-`npm run package` luôn ra đủ mọi file của hệ điều hành đang chạy (Windows: cả zip lẫn Setup.exe).
+`npm run package` luôn ra đủ mọi file của hệ điều hành đang chạy. Trên Windows, `release\` luôn có đủ
+**3 lựa chọn** (quy ước cố định, đừng bỏ):
+
+| Trong `release\` | Dùng khi |
+|---|---|
+| `Lucky Draw Studio-<version>-Setup.exe` | Cài lên máy cố định ([installer.md](./installer.md)) |
+| `Lucky Draw Studio-<version>-win.zip` | Gửi qua mạng/chat cho người khác |
+| `Lucky Draw Studio-<version>-win\` | Bản portable **đã giải nén sẵn** (giống hệt nội dung zip, có sẵn `data\` rỗng) — copy thẳng ra USB/máy venue hoặc chạy thử luôn, không cần unzip |
 
 ## 2. Chuẩn bị máy build
 
@@ -77,7 +84,20 @@ npm version minor --no-git-tag-version   # 1.0.0 -> 1.1.0 (thay đổi tính nă
 Sửa cả `package.json` lẫn `package-lock.json`, không tự commit/tag (làm ở bước 5).
 
 **Bước 3 — tắt mọi thứ đang giữ file trong `release\`**: app đang chạy từ `release\win-unpacked\` /
-`release\_test\`, cửa sổ Explorer đang mở thư mục đó. Không tắt thì bước 4 lỗi `EPERM`/`EBUSY`.
+`release\Lucky Draw Studio-<version>-win\` / `release\_test\`, cửa sổ Explorer đang mở thư mục đó. Không tắt thì bước 4 lỗi `EPERM`/`EBUSY`.
+
+> **⚠ Dữ liệu thật trong `release\`.** Thư mục giải nén sẵn `release\Lucky Draw Studio-<version>-win\`
+> dùng chạy sự kiện được ngay, nên rất dễ có session THẬT trong `data\` của nó. Bước 4 xoá cả
+> `release\` — kiểm tra và chuyển dữ liệu ra ngoài TRƯỚC:
+>
+> ```powershell
+> Get-ChildItem release -Recurse -Force | Where-Object { $_.FullName -match '\\data\\' }
+> ```
+>
+> Có file nào → copy nguyên thư mục `data\` đó ra ngoài `release\` (vd `Documents\lucky-draw-backup-<ngày>\`),
+> build xong thì chép lại vào `data\` của thư mục giải nén sẵn mới. Nếu app vẫn đang mở từ thư mục đó,
+> `Remove-Item` chỉ xoá được các file không bị khoá — file `.db` còn lại nhưng `.trash\`/`.backup\` và
+> file chương trình mất hết (đã xảy ra 2026-10-05).
 
 **Bước 4 — xoá bản cũ và build.**
 
@@ -86,10 +106,11 @@ Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
 npm run package
 ```
 
-Mất 1–3 phút (lần đầu lâu hơn: tải Electron vào cache). Thành công khi 2 dòng cuối là:
+Mất 1–3 phút (lần đầu lâu hơn: tải Electron vào cache). Thành công khi 3 dòng cuối là:
 
 ```
 make-portable-zip: …\release\Lucky Draw Studio-<version>-win.zip
+make-portable-zip: …\release\Lucky Draw Studio-<version>-win
 make-portable-zip: …\release\README.txt
 ```
 
@@ -99,19 +120,20 @@ Các dòng sau là **bình thường**: `Some chunks are larger than 500 kB`, `d
 Kiểm tra output:
 
 ```powershell
-Get-ChildItem release -File | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}}
+Get-ChildItem release | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}}
 ```
 
-Chạy thử bản portable giống hệt người nhận (giải nén ra chỗ KHÔNG phải thư mục tạm — app từ chối chạy
-trong `%TEMP%`), rồi làm [checklist mục 7](#7-test-trước-khi-phát):
+Chạy thử bản portable giống hệt người nhận — thư mục giải nén sẵn được giải nén TỪ chính file zip nên
+nội dung giống hệt, chạy thẳng được — rồi làm [checklist mục 7](#7-test-trước-khi-phát):
 
 ```powershell
 $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
-Expand-Archive "release\Lucky Draw Studio-$v-win.zip" -DestinationPath release\_test -Force
-& "release\_test\Lucky Draw Studio\Lucky Draw Studio.exe"
+& "release\Lucky Draw Studio-$v-win\Lucky Draw Studio.exe"
 ```
 
-Dữ liệu thử nằm ở `release\_test\Lucky Draw Studio\data\`, mất ở lần build sau. Tắt app khi thử xong.
+Dữ liệu thử nằm ở `release\Lucky Draw Studio-<version>-win\data\`, mất ở lần build sau. Tắt app khi thử
+xong. **Nếu định copy thư mục này ra USB đem đi**, xoá các file BÊN TRONG `data\` thử nghiệm trước (giữ
+lại thư mục `data\` rỗng), hoặc build lại, để dữ liệu test không lọt sang máy venue.
 
 **Bước 5 — (tuỳ chọn, khi đã tăng version) commit + tag**, để sau này biết bản người dùng đang cầm build
 từ code nào:

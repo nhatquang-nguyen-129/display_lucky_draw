@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Button from "@/components/Button";
 import { useSession } from "@/context/SessionContext";
+import { fullyLocked } from "@/lib/sessionLock";
 import LandingRenderer from "@/components/landing/LandingRenderer";
 import { LandingSessionContext } from "@/components/landing/LandingSessionContext";
 import { useLandingData } from "@/components/landing/useLandingData";
@@ -84,15 +85,15 @@ export default function LandingPage() {
           <Button
             variant="secondary"
             onClick={() => window.api.present.open(activeSessionId!)}
-            disabled={activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to open" : undefined}
+            disabled={fullyLocked(activeSession)}
+            title={fullyLocked(activeSession) ? "Session is locked — unlock to open" : undefined}
           >
             Presentation
           </Button>
           <Button
             onClick={() => window.api.landingBuilder.open(activeSessionId!)}
-            disabled={activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to open" : undefined}
+            disabled={fullyLocked(activeSession)}
+            title={fullyLocked(activeSession) ? "Session is locked — unlock to open" : undefined}
           >
             Builder
           </Button>

@@ -13,7 +13,8 @@ data/
 ├── Hoi-cho-thang-10__3f9a1c2e.db      ← 1 session
 ├── Minigame-FB__8b20d7aa.db           ← session khác (trùng tên session cũng được)
 ├── lucky-draw.db.migrated-….bak       ← bản sao lưu DB kiểu cũ (nếu từng có)
-└── .trash/                            ← tab bị Move to trash / bản trùng không chọn (không xoá hẳn)
+├── .trash/                            ← tab bị Move to trash / bản trùng không chọn (không xoá hẳn)
+└── .tab-order.json                    ← thứ tự tab (kéo-thả ở TabBar.tsx), mảng session id
 ```
 
 | Cách chạy | Thư mục `data/` |
@@ -58,6 +59,13 @@ to trash / Open / Restore" bên dưới).
   `*.migrated-<thời điểm>.bak`, KHÔNG xoá.
 - IPC sửa/xoá theo id bản ghi (`participants:update/delete/bulkDelete/reorder`, `prizes:update/delete`)
   nhận thêm `sessionId` để biết mở file nào.
+- **Thứ tự tab**: kéo-thả tab ở `TabBar.tsx` → `sessions:setTabOrder(ids)` ghi `data/.tab-order.json`
+  (mảng session id; ghi file tạm rồi rename). KHÔNG lưu trong file session (thứ tự là của cả thư mục,
+  không của riêng 1 session — không cần migration) và KHÔNG lưu localStorage (bản portable mang `data/`
+  sang máy khác vẫn giữ thứ tự). `listSessions()` xếp theo file này trước; session chưa có trong file
+  (mới tạo, mới copy vào) xếp sau theo `created_at` như cũ. Id của tab đang Close được giữ lại trong
+  file để mở lại thì về gần chỗ cũ. File hỏng/thiếu → coi như chưa sắp xếp. Đổi thứ tự không bị Session
+  Lock chặn (chỉ là hiển thị). `rescan()` bỏ qua file này (tên bắt đầu bằng `.`, không phải `.db`).
 
 ### 2 bản của cùng 1 session
 
@@ -103,7 +111,7 @@ erDiagram
     text participant_column_types "JSON — { col: ColumnType }"
     text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
     text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
-    integer locked "1 = khoá sửa/xoá + mở Data Editor/Presentation/Builder, xem architecture/session-lock.md"
+    integer locked "0 = mở, 1 = Full lock (chỉ xem), 2 = Input lock (chỉ khoá participant/prize), xem architecture/session-lock.md"
     integer closed "1 = ẩn khỏi thanh tab (Close/nút ×), file KHÔNG di chuyển — khác Delete/.trash"
     text imported_columns "JSON string[] — tên cột lần Import/Replace gần nhất, Dashboard.tsx dùng hiện lại dữ liệu gốc"
   }

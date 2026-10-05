@@ -44,8 +44,10 @@ export interface Session {
   participant_column_labels: string | null; // JSON: { [tênCột]: "Nhãn hiển thị" } — cột lõi chỉ đổi nhãn
   created_at: string;
   // Khoá session — không phải bảo mật (không password), chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay
-  // xong. Xem sessions.setLocked, assertSessionUnlocked trong electron/db.ts.
-  locked: 0 | 1;
+  // xong. 0 = mở, 1 = Full lock (chỉ xem), 2 = Input lock (chỉ khoá participant/prize, vẫn quay số +
+  // sửa Landing được). Xem sessions.setLocked, assertInputsUnlocked/assertSessionUnlocked trong
+  // electron/db.ts, docs/architecture/session-lock.md.
+  locked: 0 | 1 | 2;
   // Đóng tab (nút ×) — chỉ ẩn khỏi danh sách trả về (sessions:list), file KHÔNG di chuyển. Khác
   // sessions:delete (chuyển vào data/.trash/). Xem sessions.setClosed/openFile, openDbFile() trong
   // electron/db.ts.
@@ -190,7 +192,7 @@ declare global {
         }) => Promise<string>;
         rename: (data: { id: string; name: string }) => Promise<void>;
         // Khoá bị từ chối (ok: false) khi session còn mở cửa sổ phụ — openWindows = tên các cửa sổ cần đóng.
-        setLocked: (data: { id: string; locked: boolean }) => Promise<{ ok: boolean; openWindows: string[] }>;
+        setLocked: (data: { id: string; locked: 0 | 1 | 2 }) => Promise<{ ok: boolean; openWindows: string[] }>;
         updateOptions: (data: {
           id: string;
           allowDuplicatePrize: boolean;
@@ -219,6 +221,8 @@ declare global {
         openFile: () => Promise<string | null>;
         // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
+        // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
+        setTabOrder: (ids: string[]) => Promise<void>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Button from "@/components/Button";
 import PrizeFormModal from "@/components/PrizeFormModal";
 import { useSession } from "@/context/SessionContext";
+import { inputLockTitle, inputsLocked } from "@/lib/sessionLock";
 import { Prize } from "@/types";
 
 // Quantity dưới mức này thì KHÔNG bao giờ báo "Low stock" — 1/1 hay 1/2 remaining là bình thường cho 1
@@ -175,24 +176,24 @@ export default function Prizes() {
           <Button
             variant="secondary"
             onClick={openAdd}
-            disabled={activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+            disabled={inputsLocked(activeSession)}
+            title={inputLockTitle(activeSession)}
           >
             Add
           </Button>
           <Button
             variant="secondary"
             onClick={openEditSelected}
-            disabled={!selectedId || activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+            disabled={!selectedId || inputsLocked(activeSession)}
+            title={inputLockTitle(activeSession)}
           >
             Edit
           </Button>
           <Button
             variant="danger"
             onClick={handleDeleteSelected}
-            disabled={!selectedId || activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+            disabled={!selectedId || inputsLocked(activeSession)}
+            title={inputLockTitle(activeSession)}
           >
             Delete
           </Button>
