@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { DrawCycleConfig, DrawPhaseEffectConfig, DrawRestState, WinnerTransitionEffect } from "@/lib/landing/types";
+import {
+  DrawCycleConfig,
+  DrawPhaseEffectConfig,
+  DrawRestState,
+  VideoCycleConfig,
+  VideoPlayState,
+  WinnerTransitionEffect,
+} from "@/lib/landing/types";
 
 // `useRevealed`/`useRevealTransition` — dùng bởi WinnerNameView.tsx (khi bật `syncWithDraw` là mặc
 // định, không tắt được) — rút gọn về đúng 1 hình dạng: "có 1 chuỗi khi đã revealed, rỗng khi
@@ -223,6 +230,88 @@ export function useRevealTransition(
 
 type FiredPhase = "idle" | "draw" | "redraw";
 
+// Phát hiện mốc Idle/Draw/Redraw VỪA xảy ra — dùng chung bởi `useDrawCycleVisibility` và
+// `useVideoCycleState` (cùng model 3 mốc, chỉ khác việc làm ở mỗi mốc). Tính NGAY trong lúc render
+// (đồng bộ, giống pattern useRevealed), chỉ ghi vào `firedPhaseRef` cho effect của hook gọi đọc, không
+// tự chạy timer. `fireKey` đổi ĐÚNG 1 lần mỗi khi có 1 phase mới cần chạy — tách khỏi re-render thường
+// (vd đổi màu/size trong Properties Panel không được kích hoạt lại animation).
+function useDrawPhaseTrigger(resultId: string | undefined, resetSeq: number | undefined) {
+  // Đã từng có ít nhất 1 resultId THẬT (khác Idle) hay chưa — phân biệt "Draw" (từ Idle) với "Redraw"
+  // (đang có kết quả trước đó), giống hadPreviousRef trong useRevealed ở trên.
+  const hadDrawRef = useRef(false);
+  const prevIdRef = useRef(resultId);
+  const prevResetSeqRef = useRef(resetSeq);
+  const firedPhaseRef = useRef<FiredPhase | null>(null);
+
+  if (prevResetSeqRef.current !== resetSeq) {
+    prevResetSeqRef.current = resetSeq;
+    hadDrawRef.current = false;
+    firedPhaseRef.current = "idle";
+  } else if (prevIdRef.current !== resultId) {
+    if (resultId === undefined) {
+      hadDrawRef.current = false;
+      firedPhaseRef.current = "idle";
+    } else if (!hadDrawRef.current) {
+      hadDrawRef.current = true;
+      firedPhaseRef.current = "draw";
+    } else {
+      firedPhaseRef.current = "redraw";
+    }
+  }
+  prevIdRef.current = resultId;
+
+  return { firedPhaseRef, fireKey: `${resultId ?? "__idle__"}:${resetSeq ?? 0}` };
+}
+
+/**
+ * Trạng thái phát của Video theo 3 mốc Idle/Draw/Redraw — xem doc-comment VideoCycleConfig trong
+ * types.ts. Cùng cách nối bước với `useDrawCycleVisibility` bên dưới: Redraw khác "none" chạy
+ * redrawAction (sau `redrawDelayMs`), rồi — nếu Draw có action thật — chờ khoảng đệm cố định
+ * `MIN_REDRAW_REVEAL_GAP_MS` + `drawDelayMs` mới chạy lại drawAction. Trả về `playState` hiện tại kèm
+ * `seq` tăng MỖI lần 1 bước chạy (kể cả trùng giá trị — vd Stop khi đang Stop vẫn phải tua lại đầu),
+ * VideoView.tsx áp lên thẻ <video> theo `seq`, không theo riêng `playState`.
+ */
+export function useVideoCycleState(
+  resultId: string | undefined,
+  config: VideoCycleConfig,
+  resetSeq?: number
+): { playState: VideoPlayState; seq: number } {
+  const [state, setState] = useState({ playState: config.idleState, seq: 0 });
+  const { firedPhaseRef, fireKey } = useDrawPhaseTrigger(resultId, resetSeq);
+
+  useEffect(() => {
+    const firedPhase = firedPhaseRef.current;
+    if (!firedPhase) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    function runStep(toState: VideoPlayState, delayMs: number | undefined, onDone?: () => void) {
+      timers.push(
+        setTimeout(() => {
+          setState((s) => ({ playState: toState, seq: s.seq + 1 }));
+          onDone?.();
+        }, Math.max(0, delayMs ?? 0))
+      );
+    }
+
+    if (firedPhase === "idle") {
+      runStep(config.idleState, config.idleDelayMs);
+    } else if (firedPhase === "draw") {
+      if (config.drawAction !== "none") runStep(config.drawAction, config.drawDelayMs);
+    } else if (config.redrawAction !== "none") {
+      runStep(config.redrawAction, config.redrawDelayMs, () => {
+        if (config.drawAction === "none") return;
+        const drawAction = config.drawAction;
+        timers.push(setTimeout(() => runStep(drawAction, config.drawDelayMs), MIN_REDRAW_REVEAL_GAP_MS));
+      });
+    }
+
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fireKey]);
+
+  return state;
+}
+
 /**
  * Model hiện/ẩn (hoặc dim/blur) TỔNG QUÁT theo đúng 3 mốc thật của quy trình quay (Idle/Draw/Redraw)
  * — xem doc-comment DrawCycleConfig trong types.ts. Khác `useRevealed` ở trên (gắn cứng Appear=Draw,
@@ -261,36 +350,7 @@ export function useDrawCycleVisibility(
   const [activeState, setActiveState] = useState<DrawRestState>(restState);
   const [activeAmount, setActiveAmount] = useState<number | undefined>(config.idleEffect?.amount);
   const [transitionClass, setTransitionClass] = useState("");
-
-  // Đã từng có ít nhất 1 resultId THẬT (khác Idle) hay chưa — phân biệt "Draw" (từ Idle) với "Redraw"
-  // (đang có kết quả trước đó), giống hadPreviousRef trong useRevealed ở trên.
-  const hadDrawRef = useRef(false);
-  const prevIdRef = useRef(resultId);
-  const prevResetSeqRef = useRef(resetSeq);
-  const firedPhaseRef = useRef<FiredPhase | null>(null);
-
-  // Xác định phase nào VỪA xảy ra NGAY trong lúc render (đồng bộ, giống pattern useRevealed) — chỉ
-  // ghi lại vào ref để effect bên dưới đọc, không tự chạy timer ở đây.
-  if (prevResetSeqRef.current !== resetSeq) {
-    prevResetSeqRef.current = resetSeq;
-    hadDrawRef.current = false;
-    firedPhaseRef.current = "idle";
-  } else if (prevIdRef.current !== resultId) {
-    if (resultId === undefined) {
-      hadDrawRef.current = false;
-      firedPhaseRef.current = "idle";
-    } else if (!hadDrawRef.current) {
-      hadDrawRef.current = true;
-      firedPhaseRef.current = "draw";
-    } else {
-      firedPhaseRef.current = "redraw";
-    }
-  }
-  prevIdRef.current = resultId;
-
-  // Key đổi ĐÚNG 1 lần mỗi khi có 1 phase mới cần chạy — tách khỏi re-render thường (vd đổi màu/size
-  // trong Properties Panel không được kích hoạt lại animation).
-  const fireKey = `${resultId ?? "__idle__"}:${resetSeq ?? 0}`;
+  const { firedPhaseRef, fireKey } = useDrawPhaseTrigger(resultId, resetSeq);
 
   useEffect(() => {
     const firedPhase = firedPhaseRef.current;

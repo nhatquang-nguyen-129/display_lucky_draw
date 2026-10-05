@@ -95,8 +95,9 @@ thư mục dữ liệu — xem mục trên.)
 | Cập nhật | Chạy Setup bản mới, cài đè | Kéo `.app` bản mới vào Applications → **Replace** |
 | Gỡ | Settings → Apps → Lucky Draw Studio → Uninstall | Kéo app từ Applications vào Trash |
 
-Chung cả 2: dữ liệu **mỗi user hệ điều hành một bản riêng**, mỗi session 1 file `<tên>__<mã>.db`, mở
-nhanh bằng nút **Data folder** ở góc phải thanh tab. Cập nhật hay gỡ đều **giữ nguyên dữ liệu**; muốn dọn
+Chung cả 2: dữ liệu **mỗi user hệ điều hành một bản riêng**, mỗi session 1 file `<tên>__<mã>.db`. Nút
+**Open** ở góc phải thanh tab mặc định mở ngay thư mục này (chọn file để nạp session, hoặc chỉ để xem
+có gì trong đó). Cập nhật hay gỡ đều **giữ nguyên dữ liệu**; muốn dọn
 sạch thì tự xoá thư mục `lucky-draw-app` (mất toàn bộ dữ liệu, không hoàn tác được).
 
 ### Windows — các bước cài
@@ -134,5 +135,6 @@ App trong Applications KHÔNG tạo `data/` cạnh nó; dữ liệu ở
 ## 4. Chuyển dữ liệu giữa bản cài đặt và bản portable
 
 Copy file session cần chuyển giữa thư mục dữ liệu của bản cài đặt (bảng mục 3) và `data/` của bản
-portable (nút **Data folder** mở đúng thư mục của bản đang chạy). Tab tự hiện khi mở app hoặc quay lại
-cửa sổ app. File session dùng chung được giữa Windows và macOS.
+portable, hoặc dùng thẳng nút **Open** ở thanh tab (mặc định mở đúng thư mục của bản đang chạy) để
+chọn file mà không cần tự tay copy. Tab tự hiện khi mở app hoặc quay lại cửa sổ app. File session dùng
+chung được giữa Windows và macOS.

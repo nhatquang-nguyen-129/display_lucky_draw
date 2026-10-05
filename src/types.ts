@@ -44,12 +44,19 @@ export interface Session {
   participant_column_labels: string | null; // JSON: { [tênCột]: "Nhãn hiển thị" } — cột lõi chỉ đổi nhãn
   created_at: string;
   // Khoá session — không phải bảo mật (không password), chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay
-  // xong. Xem sessions.setLocked, assertSessionUnlocked trong electron/db.ts.
-  locked: 0 | 1;
+  // xong. 0 = mở, 1 = Full lock (chỉ xem), 2 = Input lock (chỉ khoá participant/prize, vẫn quay số +
+  // sửa Landing được). Xem sessions.setLocked, assertInputsUnlocked/assertSessionUnlocked trong
+  // electron/db.ts, docs/architecture/session-lock.md.
+  locked: 0 | 1 | 2;
   // Đóng tab (nút ×) — chỉ ẩn khỏi danh sách trả về (sessions:list), file KHÔNG di chuyển. Khác
   // sessions:delete (chuyển vào data/.trash/). Xem sessions.setClosed/openFile, openDbFile() trong
   // electron/db.ts.
   closed: 0 | 1;
+  // Danh sách tên cột của lần Import/Replace gần nhất (JSON string[], null nếu chưa import lần nào
+  // qua luồng mới hoặc session tạo trước khi có tính năng này) — Dashboard.tsx dùng để hiện lại đúng
+  // dữ liệu gốc đã import, phân biệt với cột tự tạo qua Generate trong Data Editor. Ghi ở
+  // participants:bulkImport (electron/main.ts).
+  imported_columns: string | null;
 }
 
 // 1 session có ≥ 2 file cùng id trong data/ (vd copy qua lại giữa 2 máy, mỗi bên sửa riêng) — khớp
@@ -70,7 +77,8 @@ export interface SessionConflict {
   copies: SessionCopyInfo[];
 }
 
-// Session đã đóng tab (chuyển vào data/.trash/, chưa xoá hẳn) — khớp TrashEntry trong electron/db.ts.
+// Session đã bị Delete (menu chuột phải trên tab, chuyển vào data/.trash/, chưa xoá hẳn — KHÁC Close/
+// nút × chỉ ẩn tab) — khớp TrashEntry trong electron/db.ts.
 export interface TrashEntry {
   file: string; // tên file trong data/.trash/ — dùng làm tham số cho sessions.restoreFromTrash
   name: string;
@@ -89,6 +97,9 @@ export interface DrawResultRow {
   participant_code: string | null;
   participant_phone: string | null;
   participant_email: string | null;
+  // JSON string chứa mọi cột đã import (xem Session.imported_columns) — Dashboard.tsx parse để hiện
+  // lại dữ liệu gốc thay vì chỉ 1 tên đã resolve, tránh nhầm lẫn khi 2 người trùng tên hiển thị.
+  participant_extra_data: string | null;
   prize_name: string;
   prize_code: string | null;
   prize_display_image: string | null;
@@ -181,7 +192,7 @@ declare global {
         }) => Promise<string>;
         rename: (data: { id: string; name: string }) => Promise<void>;
         // Khoá bị từ chối (ok: false) khi session còn mở cửa sổ phụ — openWindows = tên các cửa sổ cần đóng.
-        setLocked: (data: { id: string; locked: boolean }) => Promise<{ ok: boolean; openWindows: string[] }>;
+        setLocked: (data: { id: string; locked: 0 | 1 | 2 }) => Promise<{ ok: boolean; openWindows: string[] }>;
         updateOptions: (data: {
           id: string;
           allowDuplicatePrize: boolean;
@@ -197,6 +208,8 @@ declare global {
         // giữ bản nào (xem electron/db.ts, SessionConflictDialog.tsx).
         conflicts: () => Promise<SessionConflict[]>;
         resolveConflict: (data: { sessionId: string; keepFile: string }) => Promise<void>;
+        // Giữ mọi bản, cấp id mới cho bản `file` → session riêng. Trả về id mới.
+        keepBothConflict: (data: { sessionId: string; file: string }) => Promise<string>;
         openDataFolder: () => Promise<string>;
         // Session đã bị Delete (data/.trash/, khác Close) — xem RestoreModal.tsx.
         listTrash: () => Promise<TrashEntry[]>;
@@ -208,6 +221,8 @@ declare global {
         openFile: () => Promise<string | null>;
         // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
+        // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
+        setTabOrder: (ids: string[]) => Promise<void>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;
@@ -233,6 +248,12 @@ declare global {
       };
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
+      };
+      media: {
+        // null = người dùng huỷ dialog. Phát lại qua `ldmedia://<sessionId>/<mediaId>` (electron/media.ts).
+        importVideo: (
+          sessionId: string
+        ) => Promise<{ mediaId: string; fileName: string; size: number } | { error: string } | null>;
       };
       shell: {
         openExternal: (url: string) => Promise<void>;

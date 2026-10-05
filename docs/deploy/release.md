@@ -13,7 +13,14 @@ từng định dạng: [portable.md](./portable.md) (định dạng chính), [in
 | Dữ liệu | `data/` trong thư mục app, đi theo app | Thư mục hồ sơ người dùng, gắn với máy |
 | Phù hợp | Máy mượn tại venue, cầm USB đi | Máy cố định dùng lâu dài |
 
-`npm run package` luôn ra đủ mọi file của hệ điều hành đang chạy (Windows: cả zip lẫn Setup.exe).
+`npm run package` luôn ra đủ mọi file của hệ điều hành đang chạy. Trên Windows, `release\` luôn có đủ
+**3 lựa chọn** (quy ước cố định, đừng bỏ):
+
+| Trong `release\` | Dùng khi |
+|---|---|
+| `Lucky Draw Studio-<version>-Setup.exe` | Cài lên máy cố định ([installer.md](./installer.md)) |
+| `Lucky Draw Studio-<version>-win.zip` | Gửi qua mạng/chat cho người khác |
+| `Lucky Draw Studio-<version>-win\` | Bản portable **đã giải nén sẵn** (giống hệt nội dung zip, có sẵn `data\` rỗng) — copy thẳng ra USB/máy venue hoặc chạy thử luôn, không cần unzip |
 
 ## 2. Chuẩn bị máy build
 
@@ -55,17 +62,42 @@ npm ci                     # CHỈ cần khi package.json / package-lock.json v�
 Không cần chạy `npx electron-rebuild` cho bản build — electron-builder tự rebuild `better-sqlite3`
 (chỉ cần khi muốn chạy dev sau `npm ci`).
 
-**Bước 2 — (tuỳ chọn) tăng version.** Tên file output lấy theo `version` trong `package.json`:
+**Bước 2 — (tuỳ chọn) tăng version.** Tên file output lấy theo `version` trong `package.json`.
+
+Quy ước đặt version `X.Y.Z` (vd `1.2.3`) của dự án:
+
+| Số | Ý nghĩa | Khi nào tăng |
+|---|---|---|
+| `X` (major) | Thay đổi cả kiến trúc phần mềm | **Chỉ khi chủ dự án duyệt**, không tự tăng |
+| `Y` (minor) | Thay đổi tính năng: thêm tính năng mới, đổi hoặc xoá tính năng lớn | Bản có tính năng mới/đổi lớn |
+| `Z` (patch) | Thay đổi nhỏ: sửa lỗi, chỉnh giao diện/hành vi nhỏ | Bản sửa nhỏ, chỉ đổi số cuối |
+
+Chủ dự án là người quyết định mỗi bản thuộc loại nào. Tăng `Y` thì `Z` về 0, tăng `X` thì cả `Y`/`Z` về 0.
 
 ```powershell
-npm version patch --no-git-tag-version   # 1.0.0 -> 1.0.1 (sửa lỗi)
-npm version minor --no-git-tag-version   # 1.0.0 -> 1.1.0 (thêm tính năng)
+npm version patch --no-git-tag-version   # 1.0.0 -> 1.0.1 (thay đổi nhỏ)
+npm version minor --no-git-tag-version   # 1.0.0 -> 1.1.0 (thay đổi tính năng)
 ```
+
+Đồng thời đổi mục `## [Unreleased]` trong `CHANGELOG.md` thành `## [<version>] — <ngày>`.
 
 Sửa cả `package.json` lẫn `package-lock.json`, không tự commit/tag (làm ở bước 5).
 
 **Bước 3 — tắt mọi thứ đang giữ file trong `release\`**: app đang chạy từ `release\win-unpacked\` /
-`release\_test\`, cửa sổ Explorer đang mở thư mục đó. Không tắt thì bước 4 lỗi `EPERM`/`EBUSY`.
+`release\Lucky Draw Studio-<version>-win\` / `release\_test\`, cửa sổ Explorer đang mở thư mục đó. Không tắt thì bước 4 lỗi `EPERM`/`EBUSY`.
+
+> **⚠ Dữ liệu thật trong `release\`.** Thư mục giải nén sẵn `release\Lucky Draw Studio-<version>-win\`
+> dùng chạy sự kiện được ngay, nên rất dễ có session THẬT trong `data\` của nó. Bước 4 xoá cả
+> `release\` — kiểm tra và chuyển dữ liệu ra ngoài TRƯỚC:
+>
+> ```powershell
+> Get-ChildItem release -Recurse -Force | Where-Object { $_.FullName -match '\\data\\' }
+> ```
+>
+> Có file nào → copy nguyên thư mục `data\` đó ra ngoài `release\` (vd `Documents\lucky-draw-backup-<ngày>\`),
+> build xong thì chép lại vào `data\` của thư mục giải nén sẵn mới. Nếu app vẫn đang mở từ thư mục đó,
+> `Remove-Item` chỉ xoá được các file không bị khoá — file `.db` còn lại nhưng `.trash\`/`.backup\` và
+> file chương trình mất hết (đã xảy ra 2026-10-05).
 
 **Bước 4 — xoá bản cũ và build.**
 
@@ -74,10 +106,11 @@ Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
 npm run package
 ```
 
-Mất 1–3 phút (lần đầu lâu hơn: tải Electron vào cache). Thành công khi 2 dòng cuối là:
+Mất 1–3 phút (lần đầu lâu hơn: tải Electron vào cache). Thành công khi 3 dòng cuối là:
 
 ```
 make-portable-zip: …\release\Lucky Draw Studio-<version>-win.zip
+make-portable-zip: …\release\Lucky Draw Studio-<version>-win
 make-portable-zip: …\release\README.txt
 ```
 
@@ -87,19 +120,20 @@ Các dòng sau là **bình thường**: `Some chunks are larger than 500 kB`, `d
 Kiểm tra output:
 
 ```powershell
-Get-ChildItem release -File | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}}
+Get-ChildItem release | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}}
 ```
 
-Chạy thử bản portable giống hệt người nhận (giải nén ra chỗ KHÔNG phải thư mục tạm — app từ chối chạy
-trong `%TEMP%`), rồi làm [checklist mục 7](#7-test-trước-khi-phát):
+Chạy thử bản portable giống hệt người nhận — thư mục giải nén sẵn được giải nén TỪ chính file zip nên
+nội dung giống hệt, chạy thẳng được — rồi làm [checklist mục 7](#7-test-trước-khi-phát):
 
 ```powershell
 $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
-Expand-Archive "release\Lucky Draw Studio-$v-win.zip" -DestinationPath release\_test -Force
-& "release\_test\Lucky Draw Studio\Lucky Draw Studio.exe"
+& "release\Lucky Draw Studio-$v-win\Lucky Draw Studio.exe"
 ```
 
-Dữ liệu thử nằm ở `release\_test\Lucky Draw Studio\data\`, mất ở lần build sau. Tắt app khi thử xong.
+Dữ liệu thử nằm ở `release\Lucky Draw Studio-<version>-win\data\`, mất ở lần build sau. Tắt app khi thử
+xong. **Nếu định copy thư mục này ra USB đem đi**, xoá các file BÊN TRONG `data\` thử nghiệm trước (giữ
+lại thư mục `data\` rỗng), hoặc build lại, để dữ liệu test không lọt sang máy venue.
 
 **Bước 5 — (tuỳ chọn, khi đã tăng version) commit + tag**, để sau này biết bản người dùng đang cầm build
 từ code nào:
@@ -153,6 +187,12 @@ app tự thoát trong 1-2s, không cửa sổ. Tạo chứng chỉ miễn phí (
 trong ra ngoài theo [portable.md → Ký số](./portable.md#cách-chạy-được-miễn-phí--ký-bằng-chứng-chỉ-apple-development-từng-máy),
 nhắm vào `release/mac-universal/Lucky Draw Studio.app`. Bản ký lại chỉ chạy trên máy có chứng chỉ đó;
 máy Mac khác xem [Mở trên Mac khác chưa có chứng chỉ](./portable.md#mở-trên-mac-khác-chưa-có-chứng-chỉ).
+
+**Rồi BẮT BUỘC nén lại `.zip`** — file `.zip` ở bước build phía trên đã nén xong TRƯỚC lúc ký lại tay
+(lúc đó app vẫn còn ad-hoc), nên ký lại `.app` trên đĩa không tự cập nhật `.zip` đã có. Thiếu bước
+này thì đem `.zip` cũ đi phát vẫn dính nguyên lỗi AMFI dù `mac-universal/Lucky Draw Studio.app` đã ký
+đúng. Lệnh `ditto` + cách xác minh lại: [portable.md → Ký số](./portable.md#ký-số-code-signing) (ngay
+sau đoạn ký thủ công).
 
 Chạy thử (mở bằng `open`/Finder, không chạy thẳng binary từ terminal VS Code — xem
 [mục 9](#lỗi-khi-chạy-app-đã-phát--macos)):
@@ -245,8 +285,8 @@ LUÔN test trên 1 máy KHÔNG có Node/VS Code/source code (hoặc ít nhất 1
 
 - **Portable** (khuyến nghị): copy sẵn NGUYÊN thư mục đã giải nén (kèm file session đã chuẩn bị trong
   `data/`) vào USB, hoặc gửi zip + `README.txt` kèm lời dặn "giải nén rồi mở app bên trong, luôn copy
-  cả thư mục". Máy đã có app chỉ cần thêm 1 session: gửi đúng 1 file session, người nhận đặt vào `data/`
-  (nút **Data folder**).
+  cả thư mục". Máy đã có app chỉ cần thêm 1 session: gửi đúng 1 file session, người nhận bấm nút
+  **Open** ở thanh tab rồi chọn file đó (tự copy vào `data/`) — không cần tự tay đặt vào đúng thư mục.
 - **Installer**: Windows gửi `…-Setup.exe` + `README.txt`; Mac gửi bản portable kèm hướng dẫn kéo `.app`
   vào Applications.
 - **Cảnh báo lần đầu mở trên máy lạ** (app chưa ký số chính thức) là BÌNH THƯỜNG: Windows SmartScreen
@@ -293,7 +333,7 @@ LUÔN test trên 1 máy KHÔNG có Node/VS Code/source code (hoặc ít nhất 1
 |---|---|---|
 | "The app is running from a temporary folder" | Mở exe ngay trong zip chưa giải nén | Chuột phải zip → **Extract All**, chạy exe trong thư mục đã giải nén |
 | "Cannot write to the data folder" | Ổ chỉ-đọc, USB khoá write-protect, thư mục không có quyền ghi | Chuyển nguyên thư mục sang chỗ ghi được (Desktop, Documents, USB không khoá) |
-| App mở ra thiếu tab / TRỐNG dù đã chuẩn bị dữ liệu | File session không nằm đúng thư mục `data` app đang đọc | Bấm **Data folder** (góc phải thanh tab) xem app đọc thư mục nào, đặt file session vào đó |
+| App mở ra thiếu tab / TRỐNG dù đã chuẩn bị dữ liệu | File session không nằm đúng thư mục `data` app đang đọc | Bấm **Open** (góc phải thanh tab, mặc định mở ngay thư mục `data` app đang đọc) để xem có đúng file không, hoặc chọn thẳng file session từ đó |
 | Hộp thoại "Different copies of the same session" | ≥ 2 file của cùng 1 session (copy qua lại, mỗi bên sửa riêng) | Chọn bản muốn giữ (gợi ý bản mới nhất), bản còn lại vào `data\.trash\` |
 | SmartScreen chặn hẳn, không có "Run anyway" | Policy công ty chặn app chưa ký số | Cần chứng chỉ code signing, ngoài phạm vi hiện tại |
 

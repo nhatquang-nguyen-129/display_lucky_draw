@@ -4,6 +4,7 @@ import Button from "@/components/Button";
 import ComponentPalette from "@/components/landing/ComponentPalette";
 import LandingCanvas, { CanvasTool } from "@/components/landing/LandingCanvas";
 import LayersPanel from "@/components/landing/LayersPanel";
+import { LandingSessionContext } from "@/components/landing/LandingSessionContext";
 import PropertiesPanel from "@/components/landing/PropertiesPanel";
 import { COMPONENT_REGISTRY, createComponentAt } from "@/components/landing/componentRegistry";
 import { useConfigHistory } from "@/components/landing/useConfigHistory";
@@ -11,6 +12,7 @@ import {
   AnchorEditTarget,
   ButtonComponent,
   computeDigitRollerFitHeight,
+  computeOutputFrameHeight,
   DEFAULT_PRIZE_GROUP_EFFECT,
   DEFAULT_PRIZE_STAGE_EFFECT,
   LandingComponent,
@@ -114,7 +116,7 @@ export default function LandingBuilderWindow() {
       // trước) — tự sửa lại ngay khi mở Builder, không cần người dùng bấm/kéo gì để kích hoạt.
       // savedConfigRef giữ bản GỐC (chưa sửa) nên nếu có thay đổi, badge tự hiện "Unsaved" để người
       // dùng chủ động bấm Save, không âm thầm ghi đè DB.
-      const fitted = { ...parsed, components: known.map(fitDigitRollerHeight) };
+      const fitted = { ...parsed, components: known.map(fitAutoHeight) };
       history.reset(fitted);
       savedConfigRef.current = JSON.stringify(parsed);
     });
@@ -354,7 +356,7 @@ export default function LandingBuilderWindow() {
       (prev) => ({
         ...prev,
         components: prev.components.map((c) =>
-          c.id === id ? fitDigitRollerHeight({ ...c, ...patch } as LandingComponent) : c
+          c.id === id ? fitAutoHeight({ ...c, ...patch } as LandingComponent) : c
         ),
       }),
       { commit: opts?.commit, label }
@@ -387,7 +389,7 @@ export default function LandingBuilderWindow() {
       (prev) => ({
         ...prev,
         components: prev.components.map((c) =>
-          c.id === id ? fitDigitRollerHeight({ ...c, props: { ...c.props, ...patch } } as LandingComponent) : c
+          c.id === id ? fitAutoHeight({ ...c, props: { ...c.props, ...patch } } as LandingComponent) : c
         ),
       }),
       { label }
@@ -427,7 +429,12 @@ export default function LandingBuilderWindow() {
   // computeDigitRollerFitHeight), áp lại bất biến này sau MỌI thay đổi (kéo-resize, đổi Digit count,
   // chuyển template sang digitRoller...). Giữ TÂM DỌC cố định khi height đổi (thay vì neo theo cạnh
   // trên/dưới) để khung không bị "nhảy" bất ngờ dù người dùng kéo từ handle nào.
-  function fitDigitRollerHeight(c: LandingComponent): LandingComponent {
+  function fitAutoHeight(c: LandingComponent): LandingComponent {
+    // Output Frame: height luôn theo tỉ lệ màn LED, giữ nguyên mép trên.
+    if (c.type === "outputFrame") {
+      const height = computeOutputFrameHeight(c.width, c.props);
+      return height === c.height ? c : { ...c, height };
+    }
     if (c.type !== "luckyWheel" || c.props.template !== "digitRoller") return c;
     const height = computeDigitRollerFitHeight(c.width, c.props.digitCount);
     if (height === c.height) return c;
@@ -506,9 +513,18 @@ export default function LandingBuilderWindow() {
       return;
     }
 
+    // Output Frame chỉ 1 cái/trang — chỉ có 1 màn LED cần cắt.
+    if (type === "outputFrame" && (config?.components ?? []).some((c) => c.type === "outputFrame")) {
+      showCenterNotice("Can't create more Frames — a page can only have 1.");
+      setShowAddFlyout(false);
+      return;
+    }
+
     updateConfig(
       (prev) => {
         const component = createComponentAt(type, x, y, prev.components.length);
+        // Output Frame là khung căn chỉnh — luôn nằm trên cùng để không bị component khác che.
+        if (type === "outputFrame") component.zIndex = Math.max(0, ...prev.components.map((c) => c.zIndex + 1));
         // Nhóm Effects: tự đặt tên "Confetti 1", "Confetti 2"... (số nhỏ nhất CÒN TRỐNG — xoá "Confetti
         // 1" rồi thêm mới sẽ lấp lại số 1) để phân biệt trong LayersPanel khi 1 trang có nhiều effect
         // cùng loại (vd mỗi cái gán 1 Prize khác nhau). Khác quy ước của Button ở trên ("Button",
@@ -559,19 +575,20 @@ export default function LandingBuilderWindow() {
 
   // Huỷ TOÀN BỘ thay đổi chưa lưu — quay lại đúng bản đã Save gần nhất. Không thể hoàn tác nên luôn
   // hỏi xác nhận trước, đúng quy ước đã dùng cho các thao tác phá huỷ khác trong app (vd Reset
-  // Session). Áp lại fitDigitRollerHeight + lọc component type không còn hợp lệ, giống hệt lúc mới
+  // Session). Áp lại fitAutoHeight + lọc component type không còn hợp lệ, giống hệt lúc mới
   // mở Builder (xem effect load session ở trên), để khớp đúng bất biến "auto-fit height" và không
   // tái xuất hiện component type cũ đã bỏ nếu bản Save gần nhất còn lưu chúng.
   function handleDiscard() {
     if (!window.confirm("Discard all unsaved changes? This cannot be undone.")) return;
     const reverted = JSON.parse(savedConfigRef.current) as LandingConfig;
     const known = reverted.components.filter((c) => !!COMPONENT_REGISTRY[c.type]);
-    history.reset({ ...reverted, components: known.map(fitDigitRollerHeight) });
+    history.reset({ ...reverted, components: known.map(fitAutoHeight) });
     setSelectedIds([]);
     setShowPanel(false);
   }
 
   return (
+    <LandingSessionContext.Provider value={sessionId ?? null}>
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-base-950">
       <div className="flex shrink-0 items-center justify-between border-b border-base-800 bg-base-900 px-4 py-2">
         <div>
@@ -853,6 +870,7 @@ export default function LandingBuilderWindow() {
         )}
       </div>
     </div>
+    </LandingSessionContext.Provider>
   );
 }
 

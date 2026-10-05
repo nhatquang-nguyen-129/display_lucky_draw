@@ -65,7 +65,7 @@ const api = {
     create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
       ipcRenderer.invoke("sessions:create", data),
     rename: (data: { id: string; name: string }) => ipcRenderer.invoke("sessions:rename", data),
-    setLocked: (data: { id: string; locked: boolean }) => ipcRenderer.invoke("sessions:setLocked", data),
+    setLocked: (data: { id: string; locked: 0 | 1 | 2 }) => ipcRenderer.invoke("sessions:setLocked", data),
     updateOptions: (data: { id: string; allowDuplicatePrize: boolean; excludePreviousWinners: boolean }) =>
       ipcRenderer.invoke("sessions:updateOptions", data),
     updateColumnTypes: (data: { id: string; columnTypes: Record<string, string> }) =>
@@ -80,12 +80,15 @@ const api = {
     conflicts: () => ipcRenderer.invoke("sessions:conflicts"),
     resolveConflict: (data: { sessionId: string; keepFile: string }) =>
       ipcRenderer.invoke("sessions:resolveConflict", data),
+    keepBothConflict: (data: { sessionId: string; file: string }) =>
+      ipcRenderer.invoke("sessions:keepBothConflict", data),
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
     listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
     restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
     permanentlyDelete: (data: { file: string }) => ipcRenderer.invoke("sessions:permanentlyDelete", data),
     openFile: () => ipcRenderer.invoke("sessions:openFile"),
     setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
+    setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),
@@ -120,6 +123,10 @@ const api = {
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
     },
+  media: {
+    // Mở dialog chọn video, main lưu vào bảng media của session — xem electron/media.ts.
+    importVideo: (sessionId: string) => ipcRenderer.invoke("media:importVideo", sessionId),
+  },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
   },

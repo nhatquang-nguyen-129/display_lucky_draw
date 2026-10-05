@@ -21,10 +21,12 @@ const labelClass = "mb-1 block text-[10px] uppercase tracking-wide text-base-500
 // Các field dùng chung cho MỌI loại component (vị trí/kích thước/hiệu ứng) — panel riêng của từng
 // loại chỉ cần render thêm phần đặc thù của nó, không cần lặp lại phần này.
 export default function SharedFields({ component, onChange, onDelete, hidePosition, hideEffect }: SharedFieldsProps) {
-  // Digit Roller tự tính height từ width + Digit count (xem fitDigitRollerHeight trong
+  // Digit Roller tự tính height từ width + Digit count (xem fitAutoHeight trong
   // LandingBuilderWindow.tsx) — nhập tay vào đây sẽ bị ghi đè lại ngay, nên khoá hẳn field này thay
   // vì để nó trông như nhập được nhưng lại tự đổi ngược, dễ gây khó hiểu.
-  const heightLocked = component.type === "luckyWheel" && component.props.template === "digitRoller";
+  // Output Frame cũng vậy — height dẫn xuất từ width theo tỉ lệ màn LED.
+  const heightLocked =
+    (component.type === "luckyWheel" && component.props.template === "digitRoller") || component.type === "outputFrame";
   return (
     <div className="space-y-3">
       {!hidePosition && (
@@ -61,7 +63,13 @@ export default function SharedFields({ component, onChange, onDelete, hidePositi
             <input
               type="number"
               disabled={heightLocked}
-              title={heightLocked ? "Digit Roller always auto-fits height to width + Digit count" : undefined}
+              title={
+                heightLocked
+                  ? component.type === "outputFrame"
+                    ? "Frame height always follows the LED aspect ratio"
+                    : "Digit Roller always auto-fits height to width + Digit count"
+                  : undefined
+              }
               className={`${fieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
               value={Math.round(component.height)}
               onChange={(e) => onChange({ height: Math.max(1, Number(e.target.value)) })}

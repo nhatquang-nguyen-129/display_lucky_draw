@@ -2,7 +2,118 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.2.0] — 2026-10-06
+
+### Session Lock — thêm mức "Input lock" (khoá mềm)
+
+Chi tiết: `docs/architecture/session-lock.md`.
+
+- Chuột phải vào tab → **Lock inputs**: chỉ khoá dữ liệu đầu vào (participant, prize, Data Editor, xoá
+  session). Quay số, Landing Builder, Presentation, đổi tên/đóng tab vẫn dùng bình thường. Icon ổ khoá
+  màu xanh nhạt trên tab.
+- **Lock session** giữ nguyên hành vi cũ (khoá toàn bộ, ổ khoá xám). Có thể chuyển qua lại giữa 2 mức;
+  mọi chiều nới lỏng đều phải giữ nút 3 giây.
+- Không đổi schema DB: dùng giá trị mới `2` trên cột `sessions.locked` có sẵn — session đang khoá ở bản
+  cũ vẫn là khoá toàn bộ.
+
+### Thanh tab — kéo-thả để đổi thứ tự session
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session" (Thứ tự tab).
+
+- Kéo 1 tab sang trái/phải, vạch xanh chỉ chỗ thả. Thứ tự lưu ở `data/.tab-order.json` — bản portable
+  mang sang máy khác vẫn giữ nguyên. Tab mới tạo/mới copy vào nằm cuối như cũ. Không đổi schema DB.
+
+### Đóng gói Windows — thêm thư mục portable giải nén sẵn
+
+Chi tiết: `docs/deploy/release.md` mục 1, `docs/deploy/portable.md`.
+
+- `npm run package` trên Windows giờ ra đủ 3 lựa chọn trong `release/`: `…-Setup.exe`, `…-win.zip` và
+  thư mục `…-win/` (zip đã giải nén sẵn, dùng ngay).
+- Bản portable (zip lẫn thư mục giải nén sẵn, cả Mac) luôn có sẵn thư mục `data/` rỗng.
+
+## [1.1.4] — 2026-10-03
+
+### Landing — component Frame (Output Frame) cho màn LED không phải 16:9
+
+Chi tiết: `docs/landing/output-frame.md`.
+
+- Component mới **Frame** (nhóm Basic): nhập độ phân giải màn LED (vd 3584×2304) → khung nét đứt 1px
+  cùng tỉ lệ trên canvas. Kéo viền/nhãn để di chuyển, kéo góc để resize giữ tỉ lệ, nút "Fit to canvas",
+  tự bắt dính mép ảnh Background thực tế/mép canvas; hiện toạ độ cắt để cấu hình Resolume/LED
+  controller. Toggle "Show in Presentation" để vẽ/ẩn khung trên cửa sổ trình chiếu.
+- Canvas vẫn cố định 1920×1080, không đổi gì với landing đã dựng. Thay thế tạm cho plan "canvas tuỳ
+  chỉnh kích thước" (hoãn lại).
+
+### Hộp thoại "Different copies of the same session" — thêm nút Keep both
+
+Chi tiết: `docs/architecture/database-schema.md` mục "2 bản của cùng 1 session".
+
+- 2 file `.db` cùng mã session nhưng là 2 bản dựng cố ý khác nhau (vd copy rồi đổi tên LED-Ngang/LED-Doc)
+  giờ giữ được cả 2: nút **Keep both (new ID for selected)** cấp mã session mới cho bản đang chọn, mở
+  thành tab riêng. File được sao lưu vào `data/.backup/` trước khi sửa. Nút "Keep selected copies" giữ
+  nguyên hành vi cũ.
+
+## [1.1.3] — 2026-09-30
+
+### Scoreboard — bỏ hàng tiêu đề cột
+
+Chi tiết: `docs/landing/scoreboard.md`.
+
+- Bảng người trúng không còn hàng NAME/PRIZE/DISPLAY_PHONE... ở trên, chỉ hiện các dòng người trúng.
+  Tên cột thường là tên kỹ thuật từ file import (có `_`, không dấu), khán giả không cần đọc.
+- Áp dụng cho mọi landing, kể cả landing đã dựng trước đó. Không có tuỳ chọn bật lại.
+
+### Dashboard — bảng lịch sử quay hiện đủ cột gốc đã import, không chỉ 1 cột "Participant"
+
+Chi tiết: `docs/architecture/database-schema.md` (cột `sessions.imported_columns`).
+
+- Trước đây bảng lịch sử quay ở Dashboard chỉ hiện 1 cột "Participant" (tên đã resolve qua Data
+  Type) — 2 người trùng tên hiển thị thì không phân biệt được ai vừa trúng thật.
+- Thêm cột mới `sessions.imported_columns` (JSON, ghi lại đúng tên cột của lần Import/Replace gần
+  nhất) — Dashboard giờ hiện ĐỦ các cột đã import (vd Họ Tên, SĐT, Công ty...) thay cho 1 cột
+  "Participant", đủ để phân biệt 2 người trùng tên. Cố ý KHÔNG kèm cột tự tạo sau này qua Generate
+  (Data Editor) — 2 loại cột nằm chung `extra_data` nên phải lưu riêng danh sách mới phân biệt được.
+- Session tạo trước khi có tính năng này (`imported_columns` rỗng) lùi về đúng hành vi cũ, không vỡ gì.
+- Đã kiểm tra qua UI thật: 2 participant cùng tên khác SĐT, Dashboard hiện đúng SĐT của người vừa
+  trúng.
+
+### Component Video (nhóm Basic)
+
+Chi tiết: `docs/landing/video.md`.
+
+- Video trên landing (MP4/WebM/MOV, tối đa 500 MB): Fit, Border radius, Loop, Muted (mặc định tắt
+  tiếng). Không bật "Trigger with Draw" thì tự phát trong Presentation.
+- "Interactions with Draw" cùng model Idle/Draw/Redraw như Image nhưng Appearance là **Play / Pause /
+  Stop** (Stop = về khung hình đầu, vẫn hiện), mỗi mốc chỉ có Delay.
+- Lưu trữ: BLOB trong bảng mới `media` của chính file session (migration additive, file cũ chỉ được
+  thêm bảng) — copy 1 file `.db` vẫn mang đủ video. Phát qua scheme `ldmedia://` có hỗ trợ HTTP Range.
+  Video không còn dùng tự dọn (+ `VACUUM`) mỗi lần mở Builder.
+
+## [1.1.2] — 2026-09-29
+
+### Sửa lỗi Image hiện khung xám quanh ảnh PNG trong suốt
+
+Chi tiết: `src/components/landing/views/ImageView.tsx`.
+
+- Component **Image** luôn phủ nền `bg-base-800/40` sau ảnh kể cả khi ĐÃ có ảnh — PNG tách nền (vd
+  Podium) lộ ra thành 1 khung chữ nhật xám mờ, cả trong Builder lẫn Present Mode.
+- Sửa: nền mờ chỉ còn hiện khi CHƯA có ảnh (placeholder "No image"), đồng nhất với Prize Image
+  (`PrizeImageView.tsx`).
+
+## [1.1.1] — 2026-09-29
+
+### Sửa lỗi Normalize Phone xoá nhầm chữ "o" thay vì đổi thành số "0"
+
+Chi tiết: `src/lib/dataEditor/transforms.ts` (`normalizePhoneResult`).
+
+- **Bug quan trọng**: chữ `o`/`O` (gõ nhầm rất phổ biến thay cho số `0`, hình dạng giống hệt) bị lệnh
+  **Normalize Phone** XOÁ THẲNG như mọi ký tự không phải số khác, thay vì sửa thành `0` — biến 1 số
+  điện thoại 10 chữ số hợp lệ (vd `098760o123`) thành 9 chữ số SAI định dạng (`098760123`) sau khi
+  "chuẩn hoá", ngược hẳn mục đích của tính năng.
+- Sửa: đổi `o`/`O` → `0` TRƯỚC khi xoá ký tự không phải số — `098760o123` giờ ra đúng `0987600123`
+  (10 số, hợp lệ). Đã kiểm tra lại qua UI thật (Data Editor → Normalize Phone), không chỉ đơn vị hàm.
+
+## [1.1.0] — 2026-09-29
 
 ### Close / Move to trash / Open / Restore — tách rõ 4 hành động trên session
 
@@ -22,8 +133,6 @@ Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo sessio
   (không còn đường lấy lại, có confirm riêng), khác hẳn Restore.
 - Sửa bug tạo trùng session: ô nhập tên tab mới nghe cả `onKeyDown` (Enter) lẫn `onBlur`, có thể cả 2
   cùng bắn gần như đồng thời và tạo 2 session trùng tên trước khi state kịp reset — chặn bằng ref-guard.
-
-## [1.1.0] — 2026-09-29
 
 ### Session Lock — khoá session sau khi quay xong
 

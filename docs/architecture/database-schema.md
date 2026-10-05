@@ -13,7 +13,8 @@ data/
 ├── Hoi-cho-thang-10__3f9a1c2e.db      ← 1 session
 ├── Minigame-FB__8b20d7aa.db           ← session khác (trùng tên session cũng được)
 ├── lucky-draw.db.migrated-….bak       ← bản sao lưu DB kiểu cũ (nếu từng có)
-└── .trash/                            ← tab bị Move to trash / bản trùng không chọn (không xoá hẳn)
+├── .trash/                            ← tab bị Move to trash / bản trùng không chọn (không xoá hẳn)
+└── .tab-order.json                    ← thứ tự tab (kéo-thả ở TabBar.tsx), mảng session id
 ```
 
 | Cách chạy | Thư mục `data/` |
@@ -58,6 +59,13 @@ to trash / Open / Restore" bên dưới).
   `*.migrated-<thời điểm>.bak`, KHÔNG xoá.
 - IPC sửa/xoá theo id bản ghi (`participants:update/delete/bulkDelete/reorder`, `prizes:update/delete`)
   nhận thêm `sessionId` để biết mở file nào.
+- **Thứ tự tab**: kéo-thả tab ở `TabBar.tsx` → `sessions:setTabOrder(ids)` ghi `data/.tab-order.json`
+  (mảng session id; ghi file tạm rồi rename). KHÔNG lưu trong file session (thứ tự là của cả thư mục,
+  không của riêng 1 session — không cần migration) và KHÔNG lưu localStorage (bản portable mang `data/`
+  sang máy khác vẫn giữ thứ tự). `listSessions()` xếp theo file này trước; session chưa có trong file
+  (mới tạo, mới copy vào) xếp sau theo `created_at` như cũ. Id của tab đang Close được giữ lại trong
+  file để mở lại thì về gần chỗ cũ. File hỏng/thiếu → coi như chưa sắp xếp. Đổi thứ tự không bị Session
+  Lock chặn (chỉ là hiển thị). `rescan()` bỏ qua file này (tên bắt đầu bằng `.`, không phải `.db`).
 
 ### 2 bản của cùng 1 session
 
@@ -71,10 +79,17 @@ hoặc trừ sai số giải.
   vào): bảng các bản với tên file, thời điểm sửa, số participant/prize/lượt đã Confirm, đánh dấu
   **Newest — recommended**, nhưng người dùng tự chọn. **Keep selected copies** → giữ bản đã chọn (đổi về
   tên file chuẩn), các bản còn lại vào `data/.trash/`.
+- **Keep both (new ID for selected)** (`keepBothConflict`): dùng khi các bản là 2 cấu hình CỐ Ý khác nhau
+  (vd copy rồi đổi tên `…-LED-Ngang`/`…-LED-Doc`) — giữ MỌI bản, bản đang chọn được cấp id mới
+  (`giveNewSessionId`: UPDATE `sessions.id` + `session_id` ở participants/prizes/draw_results/media trong 1
+  transaction, sao lưu nguyên file vào `data/.backup/` trước) → thành tab riêng. Tên file giữ nguyên (8 ký
+  tự id trong tên lệch id thật cũng không sao). Chọn đúng bản đang dùng thì 1 bản khác lên thay giữ id gốc;
+  còn ≥ 2 bản cùng id gốc thì hộp thoại hiện lại cho phần còn lại.
 - Thông tin bản chưa dùng đọc ở chế độ read-only — chạy migration lên nó sẽ đổi thời điểm sửa, chính là
   tiêu chí "mới nhất".
 
-IPC: `sessions:list`, `sessions:conflicts`, `sessions:resolveConflict`, `sessions:openDataFolder`.
+IPC: `sessions:list`, `sessions:conflicts`, `sessions:resolveConflict`, `sessions:keepBothConflict`,
+`sessions:openDataFolder`.
 
 ## Schema (trong MỖI file)
 
@@ -83,6 +98,7 @@ erDiagram
   SESSIONS ||--o{ PARTICIPANTS : session_id
   SESSIONS ||--o{ PRIZES : session_id
   SESSIONS ||--o{ DRAW_RESULTS : session_id
+  SESSIONS ||--o{ MEDIA : session_id
   PARTICIPANTS ||--o{ DRAW_RESULTS : participant_id
   PRIZES ||--o{ DRAW_RESULTS : prize_id
 
@@ -95,7 +111,9 @@ erDiagram
     text participant_column_types "JSON — { col: ColumnType }"
     text participant_duplicate_columns "JSON string[] — KHÔNG CÒN DÙNG, xem participants/schema.md"
     text participant_column_labels "JSON — { col: nhãn hiển thị tuỳ biến, chỉ core field }"
-    integer locked "1 = khoá sửa/xoá + mở Data Editor/Presentation/Builder, xem architecture/session-lock.md"
+    integer locked "0 = mở, 1 = Full lock (chỉ xem), 2 = Input lock (chỉ khoá participant/prize), xem architecture/session-lock.md"
+    integer closed "1 = ẩn khỏi thanh tab (Close/nút ×), file KHÔNG di chuyển — khác Delete/.trash"
+    text imported_columns "JSON string[] — tên cột lần Import/Replace gần nhất, Dashboard.tsx dùng hiện lại dữ liệu gốc"
   }
   PARTICIPANTS {
     text id PK
@@ -128,7 +146,18 @@ erDiagram
     text rng_seed
     integer confirmed "1 = đã Confirm thật; 0 = đã pick nhưng bị Redo/bỏ dở, chỉ để Dashboard xem lịch sử"
   }
+  MEDIA {
+    text id PK
+    text session_id FK
+    text file_name
+    text mime
+    integer size
+    blob data "file video của component Video, xem docs/landing/video.md"
+  }
 ```
+
+`media` (bảng mới cho component Video, `CREATE TABLE IF NOT EXISTS` — file cũ chỉ được thêm bảng rỗng): landing chỉ lưu
+`media.id`; dòng không còn component nào dùng tự bị xoá (+ `VACUUM`) mỗi lần mở Builder.
 
 ## Migration
 

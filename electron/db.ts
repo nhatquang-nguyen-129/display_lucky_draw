@@ -111,6 +111,8 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
 const LEGACY_DIR = resolveLegacyDir();
 export const DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
 const TRASH_DIR = path.join(DATA_DIR, ".trash");
+// Bản sao lưu file TRƯỚC khi bị cấp id mới (xem giveNewSessionId) — thư mục ẩn, rescan() không quét.
+const BACKUP_DIR = path.join(DATA_DIR, ".backup");
 ensureWritableDir(DATA_DIR);
 
 /* ---------------- Schema + migration (áp cho TỪNG file) ---------------- */
@@ -178,6 +180,19 @@ CREATE TABLE IF NOT EXISTS draw_results (
   rng_seed TEXT,
   confirmed INTEGER NOT NULL DEFAULT 1
 );
+
+-- File media (video) của component Video trên Landing — lưu BLOB ngay trong file session để "copy 1
+-- file .db là mang theo đủ" vẫn đúng. landing_config chỉ giữ media.id (xem VideoProps trong
+-- src/lib/landing/types.ts). Bảng mới hoàn toàn, CREATE IF NOT EXISTS nên file cũ chỉ được THÊM bảng.
+CREATE TABLE IF NOT EXISTS media (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
   migrateToPerSessionData(db);
   migratePrizeFields(db);
@@ -196,11 +211,29 @@ CREATE TABLE IF NOT EXISTS draw_results (
   // Đóng tab (nút ×) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác hẳn Delete/.trash). Mở lại
   // bằng nút Open (chọn file .db, mặc định mở ngay data/). Xem listSessions()/openDbFile() bên dưới.
   addColumnIfMissing(db, "sessions", "closed", "closed INTEGER NOT NULL DEFAULT 0");
+  // Danh sách tên cột của lần Import/Replace gần nhất (JSON string[]) — Dashboard dùng để hiện lại
+  // đúng dữ liệu gốc đã import, phân biệt với cột tự tạo sau này qua Generate (cùng nằm trong
+  // extra_data nên không tự phân biệt được nếu không lưu riêng). Ghi ở participants:bulkImport.
+  addColumnIfMissing(db, "sessions", "imported_columns", "imported_columns TEXT");
   migratePrizeLevelRules(db);
 }
 
-export function setSessionLocked(sessionId: string, locked: boolean) {
-  getDb(sessionId).prepare(`UPDATE sessions SET locked = ? WHERE id = ?`).run(locked ? 1 : 0, sessionId);
+// sessions.locked: 0 = mở, 1 = Full lock (khoá toàn bộ — giá trị cũ, giữ nguyên nghĩa cho DB cũ),
+// 2 = Input lock (chỉ khoá participant/prize + cấu hình dữ liệu, vẫn quay số/sửa Landing thoải mái).
+// Dùng lại cột INTEGER có sẵn nên không cần migration. Xem docs/architecture/session-lock.md.
+export type SessionLockLevel = 0 | 1 | 2;
+export const LOCK_FULL = 1;
+export const LOCK_INPUTS = 2;
+
+export function setSessionLocked(sessionId: string, locked: SessionLockLevel) {
+  getDb(sessionId).prepare(`UPDATE sessions SET locked = ? WHERE id = ?`).run(locked, sessionId);
+}
+
+function getLockLevel(sessionId: string): number {
+  const row = getDb(sessionId).prepare(`SELECT locked FROM sessions WHERE id = ?`).get(sessionId) as
+    | { locked: number }
+    | undefined;
+  return row?.locked ?? 0;
 }
 
 // Đóng tab = chỉ ẩn khỏi listSessions(), file KHÔNG di chuyển (khác deleteSession, chuyển vào
@@ -209,14 +242,21 @@ export function setSessionClosed(sessionId: string, closed: boolean) {
   getDb(sessionId).prepare(`UPDATE sessions SET closed = ? WHERE id = ?`).run(closed ? 1 : 0, sessionId);
 }
 
-// Gọi ở ĐẦU mọi IPC handler sửa/xoá dữ liệu hoặc mở cửa sổ Data Editor/Presentation/Builder — xem
-// docs/deploy (Session Lock). Throw để ipcRenderer.invoke ở phía renderer reject, dù nút bấm tương
-// ứng đã bị disable khi khoá (đây là lớp chặn thật, không chỉ ẩn nút).
+// 2 hàm chặn, gọi ở ĐẦU IPC handler — xem docs/architecture/session-lock.md. Throw để
+// ipcRenderer.invoke ở phía renderer reject, dù nút bấm tương ứng đã bị disable khi khoá (đây là lớp
+// chặn thật, không chỉ ẩn nút).
+// - assertInputsUnlocked: hành động đổi DỮ LIỆU ĐẦU VÀO (participant, prize, data type/nhãn cột, tuỳ
+//   chọn quay, xoá session, mở Data Editor) — bị chặn bởi CẢ Input lock lẫn Full lock.
+// - assertSessionUnlocked: mọi hành động còn lại (quay số, Landing Builder/Presentation, đổi tên,
+//   đóng tab...) — chỉ bị chặn bởi Full lock.
+export function assertInputsUnlocked(sessionId: string) {
+  const level = getLockLevel(sessionId);
+  if (level === LOCK_FULL) throw new Error("Session is locked");
+  if (level === LOCK_INPUTS) throw new Error("Session inputs are locked (participants & prizes)");
+}
+
 export function assertSessionUnlocked(sessionId: string) {
-  const row = getDb(sessionId).prepare(`SELECT locked FROM sessions WHERE id = ?`).get(sessionId) as
-    | { locked: number }
-    | undefined;
-  if (row?.locked) throw new Error("Session is locked");
+  if (getLockLevel(sessionId) === LOCK_FULL) throw new Error("Session is locked");
 }
 
 /**
@@ -427,6 +467,35 @@ function splitMultiSessionFile(source: string) {
   console.log(`[db] Split ${source} into ${sessions.length} session file(s); original kept as ${backup}`);
 }
 
+/* ---------------- File trùng id → cấp id mới ---------------- */
+
+// Mọi bảng có cột session_id (sessions dùng cột id) — không có FOREIGN KEY nên UPDATE thẳng được.
+const SESSION_ID_TABLES = ["participants", "prizes", "draw_results", "media"] as const;
+
+/**
+ * Đổi `file` thành 1 session RIÊNG với id mới (sessions.id + session_id mọi bảng) — dùng cho nút "Keep
+ * both" của SessionConflictDialog (keepBothConflict bên dưới), khi 2 file cùng id là 2 bản dựng CỐ Ý
+ * khác nhau (vd copy rồi đổi tên "…-LED-Ngang"/"…-LED-Doc"), không phải 1 session copy qua lại giữa 2
+ * máy. Sao lưu nguyên file vào data/.backup/ trước khi sửa. Tên file giữ nguyên (8 ký tự id trong tên
+ * chỉ để đọc, lệch id thật cũng không sao). File phải KHÔNG đang mở ở kết nối khác.
+ */
+function giveNewSessionId(file: string, oldId: string): string {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  fs.copyFileSync(file, uniquePath(BACKUP_DIR, `${path.basename(file, ".db")}__before-new-id-${stamp}.db`));
+  const newId = randomUUID();
+  const db = openFile(file);
+  db.transaction(() => {
+    db.prepare(`UPDATE sessions SET id = ? WHERE id = ?`).run(newId, oldId);
+    for (const table of SESSION_ID_TABLES) {
+      db.prepare(`UPDATE ${table} SET session_id = ? WHERE session_id = ?`).run(newId, oldId);
+    }
+  })();
+  db.close();
+  console.log(`[db] ${path.basename(file)} shared session id ${oldId} with another file — gave it new id ${newId}`);
+  return newId;
+}
+
 /* ---------------- Registry: session id → file đang dùng ---------------- */
 
 interface Entry {
@@ -523,9 +592,43 @@ export function listSessions(): any[] {
     .filter(Boolean) as { created_at: string; closed: number }[];
   // Session đã Close (nút ×) không hiện thành tab, nhưng file vẫn nằm trong data/ và vẫn có entry ở
   // đây (rescan() không phân biệt closed) — chỉ ẩn ở bước trả về renderer này.
-  return rows
+  // Thứ tự tab: theo .tab-order.json (người dùng kéo-thả ở TabBar.tsx) trước, session chưa có trong
+  // file (mới tạo/mới copy vào data/) xếp sau theo created_at như cũ.
+  const order = new Map(readTabOrder().map((id, i) => [id, i]));
+  const rank = (r: { id: string }) => order.get(r.id) ?? Infinity;
+  return (rows as { id: string; created_at: string; closed: number }[])
     .filter((r) => !r.closed)
-    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+    .sort((a, b) => {
+      const byOrder = rank(a) - rank(b);
+      if (byOrder) return byOrder;
+      return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+    });
+}
+
+// Thứ tự tab lưu ở data/.tab-order.json (mảng session id) — KHÔNG lưu trong file session (thứ tự là
+// thuộc tính của cả thư mục data/, không của riêng 1 session), không phải localStorage (để bản portable
+// mang data/ sang máy khác vẫn giữ thứ tự). Dấu "." đầu tên giống .trash/.backup: rescan() bỏ qua.
+// Hỏng/thiếu file → coi như chưa sắp xếp, không lỗi.
+const TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
+
+function readTabOrder(): string[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(TAB_ORDER_FILE, "utf8"));
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Ghi thứ tự tab mới (đủ mọi tab đang hiện). Id của session đang Close/không còn tồn tại vẫn giữ lại
+ *  ở cuối, để mở lại tab Closed thì về gần đúng chỗ cũ thay vì nhảy xuống cuối. Ghi file tạm rồi rename
+ *  để không bao giờ để lại file JSON ghi dở. */
+export function setTabOrder(ids: string[]) {
+  const visible = new Set(ids);
+  const next = [...ids, ...readTabOrder().filter((id) => !visible.has(id))];
+  const tmp = `${TAB_ORDER_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2), "utf8");
+  fs.renameSync(tmp, TAB_ORDER_FILE);
 }
 
 export function createSession(data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }): string {
@@ -625,6 +728,34 @@ export function listConflicts(): SessionConflict[] {
     out.push({ sessionId, name, copies: copies.map((c) => ({ ...c, recommended: c === newest })) });
   }
   return out;
+}
+
+/**
+ * "Keep both": giữ MỌI bản, cấp id mới cho đúng bản `file` (tên file) → thành session/tab riêng. Bản
+ * đang dùng được chọn thì 1 bản khác lên thay giữ id gốc. Còn ≥ 2 bản cùng id gốc thì hộp thoại hiện lại
+ * cho phần còn lại. Trả về id mới.
+ */
+export function keepBothConflict(sessionId: string, file: string): string {
+  const entry = entries.get(sessionId);
+  const others = conflictFiles.get(sessionId);
+  if (!entry || !others || others.size === 0) throw new Error(`No conflict for session ${sessionId}`);
+  const target = [entry.file, ...others].find((f) => sameFile(path.basename(f), file));
+  if (!target) throw new Error(`File not found: ${file}`);
+
+  if (sameFile(target, entry.file)) {
+    entry.db.close();
+    entries.delete(sessionId);
+    const promoted = [...others][0];
+    others.delete(promoted);
+    entries.set(sessionId, { file: promoted, db: openFile(promoted) });
+  } else {
+    others.delete(target);
+  }
+  if (others.size === 0) conflictFiles.delete(sessionId);
+
+  const newId = giveNewSessionId(target, sessionId);
+  entries.set(newId, { file: target, db: openFile(target) });
+  return newId;
 }
 
 /** Giữ đúng 1 bản (`keepFile`, tên file) của session, các bản còn lại chuyển vào data/.trash/. */

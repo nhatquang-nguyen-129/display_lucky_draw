@@ -114,19 +114,26 @@ Bản portable **không dùng target có sẵn** của electron-builder: electro
 `npm run package`, trên đúng hệ điều hành đang build, không thêm dependency:
 
 1. Tạm dời `data/` (nếu có, do chạy thử bản build) ra ngoài, để **dữ liệu test không lọt vào bản phân
-   phối**.
+   phối**, rồi đặt vào đó 1 thư mục `data/` **rỗng** — bản portable (zip lẫn thư mục giải nén sẵn) luôn
+   có sẵn `data/` dù chưa có dữ liệu, để người nhận thấy ngay chỗ copy file session vào. App vẫn tự tạo
+   `data/` nếu bị xoá mất.
 2. Tạm đổi tên thư mục output của electron-builder thành `Lucky Draw Studio`, để zip **có sẵn thư mục
    mẹ**.
 3. Nén (khác nhau theo hệ điều hành, xem [mục 3](#3-khác-biệt-windows--macos)).
-4. LUÔN trả lại tên thư mục và `data/` như cũ, kể cả khi nén lỗi (electron-builder cần đúng tên cũ ở
+4. LUÔN trả lại tên thư mục và `data/` như cũ (xoá `data/` rỗng, đưa `data/` thật về nếu có), kể cả khi nén lỗi (electron-builder cần đúng tên cũ ở
    lần build sau).
-5. Copy `assets/distribution/README.txt` (điền `{{version}}`, CRLF + BOM) ra `release/README.txt`.
+5. **Chỉ Windows**: giải nén sẵn chính file zip vừa tạo ra `release/Lucky Draw Studio-<version>-win/`
+   (file app nằm thẳng trong thư mục này, không lồng thêm thư mục mẹ) — để `release/` luôn có 3 lựa
+   chọn: Setup.exe, zip, hoặc thư mục portable dùng ngay. Giải nén từ zip (không copy `win-unpacked/`)
+   để nội dung đúng như người nhận zip, đồng thời kiểm tra luôn zip không hỏng. Mac không làm bước này
+   (`mac-universal/` đã là thư mục app, và vẫn phải ký lại tay trước khi dùng).
+6. Copy `assets/distribution/README.txt` (điền `{{version}}`, CRLF + BOM) ra `release/README.txt`.
 
 ## 3. Khác biệt Windows / macOS
 
 | | Windows | macOS |
 |---|---|---|
-| File phân phối | `…-win.zip` (x64, ~120 MB) | `…-mac.zip` (universal: Mac chip M lẫn Intel, nặng hơn) |
+| File phân phối | `…-win.zip` (x64, ~120 MB) + thư mục giải nén sẵn `…-win/` | `…-mac.zip` (universal: Mac chip M lẫn Intel, nặng hơn) |
 | Thư mục output electron-builder | `release/win-unpacked/` | `release/mac-universal/` (target `dir`) |
 | Công cụ nén | `System32\tar.exe` (bsdtar, có sẵn Windows 10/11) — gọi đích danh vì `tar` của Git Bash là GNU tar, không nén được zip | `ditto -c -k --keepParent` — giữ đúng symlink/metadata của `.app` bundle (zip thường làm hỏng bundle) |
 | Ký số | Không ký — vẫn chạy được | Script ký **ad-hoc** trước khi nén, nhưng AMFI chặn ad-hoc → phải ký lại bằng chứng chỉ Apple Development trên từng máy (xem dưới) |
@@ -243,6 +250,31 @@ codesign --verify --deep --strict "$APP"   # không in gì + exit code 0 là đ�
   công khai" của Gatekeeper (chỉ nhận Developer ID + notarization), khác AMFI (cái quyết định app có
   CHẠY được không). Cứ mở bằng `open`/double-click.
 
+**BẮT BUỘC nén lại `.zip` sau khi ký — dễ quên nhất, làm hỏng cả bản phát hành nếu bỏ qua.**
+`Lucky Draw Studio-<version>-mac.zip` được `make-portable-zip.mjs` nén **TRƯỚC** lúc bạn ký lại tay ở
+trên (nó nén ngay trong `npm run package`, lúc app vẫn còn chữ ký ad-hoc) — ký lại `.app` trên đĩa
+KHÔNG tự cập nhật file `.zip` đã có sẵn. Thiếu bước này thì `release/mac-universal/Lucky Draw
+Studio.app` chạy tốt (đã ký đúng) nhưng file `.zip` đem đi phát vẫn là bản ad-hoc cũ, dính lại y hệt
+lỗi AMFI Code -423 ở máy nhận.
+
+```bash
+cd release
+rm -f "Lucky Draw Studio-<version>-mac.zip"
+mv "mac-universal" "Lucky Draw Studio"       # ditto cần đúng tên thư mục mẹ productName
+ditto -c -k --sequesterRsrc --keepParent "Lucky Draw Studio" "Lucky Draw Studio-<version>-mac.zip"
+mv "Lucky Draw Studio" "mac-universal"       # trả lại tên cũ — electron-builder cần đúng tên này ở lần build sau
+```
+
+Xác minh lại đúng bản đã ký nằm trong `.zip` (không phải chỉ `mac-universal/` trên đĩa):
+
+```bash
+rm -rf /tmp/verify-zip && mkdir -p /tmp/verify-zip
+ditto -x -k "Lucky Draw Studio-<version>-mac.zip" /tmp/verify-zip
+codesign -dv "/tmp/verify-zip/Lucky Draw Studio/Lucky Draw Studio.app" 2>&1 | grep TeamIdentifier
+# phải ra "TeamIdentifier=<mã team>", KHÔNG phải "TeamIdentifier=not set"
+rm -rf /tmp/verify-zip
+```
+
 #### Mở trên Mac khác chưa có chứng chỉ
 
 Bản `.zip` phân phối vẫn chỉ ký ad-hoc → mọi Mac chưa làm bước trên đều gặp lại nguyên lỗi AMFI. Phải
@@ -297,13 +329,14 @@ máy build (file chưa từng bị gắn cờ) thường không bị hỏi gì.
    đủ sau mỗi lần ghi — nhưng nên thoát trước khi copy.
 5. Copy nguyên thư mục lên USB (nếu chưa làm ở bước 1).
 
-**Mang 1 session từ máy khác / bản dev / bản cài đặt**: copy đúng file session đó vào `data/` của bản thư
-mục (nút **Data folder** ở góc phải thanh tab mở thư mục `data` của bản đang chạy) — tab tự hiện khi mở
-app hoặc khi quay lại cửa sổ app. Bản dev/cài đặt dùng `%APPDATA%\lucky-draw-app\data\` (Windows) /
-`~/Library/Application Support/lucky-draw-app/data/` (Mac). File session dùng chung được giữa 2 hệ điều
-hành.
+**Mang 1 session từ máy khác / bản dev / bản cài đặt**: bấm nút **Open** ở góc phải thanh tab (mặc
+định mở ngay thư mục `data` của bản đang chạy) rồi chọn file session đó — tự copy vào `data/`, tab tự
+hiện ngay, không cần tự tay copy qua Finder/Explorer. Bản dev/cài đặt dùng
+`%APPDATA%\lucky-draw-app\data\` (Windows) / `~/Library/Application Support/lucky-draw-app/data/`
+(Mac). File session dùng chung được giữa 2 hệ điều hành.
 
-`release/win-unpacked/` (hay `release/mac-universal/`) chính là thư mục app, dùng thẳng được để test,
+`release/Lucky Draw Studio-<version>-win/` (bản giải nén sẵn của zip), `release/win-unpacked/` (hay
+`release/mac-universal/`) đều là thư mục app, dùng thẳng được để test,
 nhưng lần build sau sẽ ghi đè — đừng để dữ liệu thật ở đó.
 
 ## 5. Vận hành tại venue

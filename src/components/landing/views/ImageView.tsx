@@ -67,8 +67,10 @@ export default function ImageView({
   }
 
   return (
+    // Nền mờ CHỈ hiện khi KHÔNG có ảnh thật (placeholder "No image") — giống PrizeImageView.tsx. Có ảnh
+    // (nhất là PNG đã tách nền như Podium) mà vẫn phủ nền thì lộ thành 1 khung chữ nhật xám quanh ảnh.
     <div
-      className={`relative flex h-full w-full items-center justify-center overflow-hidden ${showFrame ? "bg-base-800/40" : ""}`}
+      className={`relative flex h-full w-full items-center justify-center overflow-hidden ${showFrame && !srcDataUrl ? "bg-base-800/40" : ""}`}
       style={{ borderRadius }}
     >
       {visible && (

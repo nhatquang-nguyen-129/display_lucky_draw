@@ -8,6 +8,8 @@ import Button from "./Button";
 // trúng 2 lần / trừ sai số giải). Hộp thoại này hiện NGAY khi mở app (và mỗi lần quay lại cửa sổ nếu
 // vừa có file mới chép vào): gợi ý bản sửa gần nhất nhưng để người dùng tự chọn; các bản không chọn
 // được chuyển vào data/.trash/ (không xoá hẳn). Chưa chọn thì app vẫn dùng bản mới nhất lúc khởi động.
+// "Keep both": 2 file cùng id là 2 bản dựng CỐ Ý khác nhau (vd copy rồi đổi tên LED-Ngang/LED-Doc) — giữ
+// mọi bản, bản đang chọn được cấp id mới thành tab riêng (keepBothConflict trong db.ts).
 export default function SessionConflictDialog() {
   const { refresh } = useSession();
   const [conflicts, setConflicts] = useState<SessionConflict[]>([]);
@@ -34,6 +36,19 @@ export default function SessionConflictDialog() {
     return () => window.removeEventListener("focus", load);
   }, [load]);
 
+  async function handleKeepBoth() {
+    setSaving(true);
+    try {
+      for (const c of conflicts) {
+        await window.api.sessions.keepBothConflict({ sessionId: c.sessionId, file: choice[c.sessionId] });
+      }
+      await refresh();
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleConfirm() {
     setSaving(true);
     try {
@@ -57,6 +72,11 @@ export default function SessionConflictDialog() {
           The data folder has more than one file for the session(s) below — probably copied between machines and edited
           on both. They can't be merged safely (draw results could conflict), so choose which copy to keep. The other
           copies are moved to <span className="font-mono text-base-300">data/.trash</span>, not deleted.
+        </p>
+        <p className="mt-2 text-sm text-base-400">
+          If they are intentionally different setups (e.g. one copy per LED layout), use{" "}
+          <span className="font-medium text-base-200">Keep both</span>: every copy is kept and the selected one gets a
+          new session ID, so it opens as its own tab.
         </p>
 
         <div className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
@@ -113,9 +133,19 @@ export default function SessionConflictDialog() {
           <Button variant="ghost" onClick={() => window.api.sessions.openDataFolder()}>
             Open data folder
           </Button>
-          <Button onClick={handleConfirm} disabled={saving}>
-            {saving ? "Saving..." : "Keep selected copies"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={handleKeepBoth}
+              disabled={saving}
+              title="Keep every copy — the selected copy gets a new session ID and opens as its own tab"
+            >
+              Keep both (new ID for selected)
+            </Button>
+            <Button onClick={handleConfirm} disabled={saving}>
+              {saving ? "Saving..." : "Keep selected copies"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

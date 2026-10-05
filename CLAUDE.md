@@ -25,13 +25,13 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 ## Lệnh hay dùng
 
 - `npm run electron:dev` — chạy dev (Vite + Electron song song). Sửa file trong `electron/` phải tắt bật lại lệnh này, không hot-reload như phần renderer.
-- `npm run package` — build production qua electron-builder, output vào `release/`: `…-win.zip` (bản thư mục/portable, có thư mục mẹ, tự nén bằng `electron/make-portable-zip.mjs`) + `…-Setup.exe` (Installer) trên Windows; `…-mac.zip` (universal, ký ad-hoc) trên Mac — luôn build cho hệ điều hành đang chạy. Xem `docs/deploy/`.
+- `npm run package` — build production qua electron-builder, output vào `release/`: `…-win.zip` (bản thư mục/portable, có thư mục mẹ, tự nén bằng `electron/make-portable-zip.mjs`) + `…-win\` (zip đó giải nén sẵn, dùng ngay) + `…-Setup.exe` (Installer) trên Windows — luôn đủ 3 lựa chọn này; `…-mac.zip` (universal, ký ad-hoc) trên Mac — luôn build cho hệ điều hành đang chạy. Xem `docs/deploy/`.
 - `npx electron-rebuild` — bắt buộc chạy lại mỗi khi `npm install` xong hoặc đổi version Electron, vì `better-sqlite3` là native module, không rebuild sẽ lỗi `NODE_MODULE_VERSION mismatch`.
 
 ## Kiến trúc quan trọng — đọc trước khi sửa
 
 - **Mô hình tab/session**: `src/context/SessionContext.tsx` quản lý tab đang active. MỌI bảng liên quan participant/prize đều có cột `session_id` — bất kỳ IPC handler hay query mới nào thêm vào bảng `participants`/`prizes` đều PHẢI lọc theo `session_id`, không được quên (đã từng vỡ ở `Dashboard.tsx`/`Prizes.tsx` do quên việc này).
-- **Session Lock** (`sessions.locked`, chuột phải vào tab trong `TabBar.tsx` để khoá/mở khoá): chặn sửa/xoá participant/prize + mở Data Editor/Presentation/Builder sau khi đã quay xong — KHÔNG phải bảo mật (không password), chỉ tránh thao tác nhầm. Chặn thật nằm ở `assertSessionUnlocked()` đầu mỗi IPC handler liên quan trong `main.ts`, không phải chỉ disable nút. Thêm IPC mới sửa/xoá dữ liệu hay mở cửa sổ edit → nhớ gọi hàm này. Xem `docs/architecture/session-lock.md`.
+- **Session Lock** (`sessions.locked`, chuột phải vào tab trong `TabBar.tsx` để đổi), 2 mức: **Input lock** (`2`) chỉ chặn sửa/xoá participant/prize + Data Editor, vẫn quay số/sửa Landing/trình chiếu thoải mái; **Full lock** (`1`, giá trị cũ) chặn toàn bộ — KHÔNG phải bảo mật (không password), chỉ tránh thao tác nhầm. Chặn thật nằm ở đầu mỗi IPC handler liên quan trong `main.ts`, không phải chỉ disable nút: IPC mới đụng participant/prize/cấu hình dữ liệu → gọi `assertInputsUnlocked()`; IPC mới ghi dữ liệu khác hay mở cửa sổ edit → `assertSessionUnlocked()` (chỉ chặn Full lock). Renderer dùng `src/lib/sessionLock.ts`. Xem `docs/architecture/session-lock.md`.
 - **IPC 3 lớp bắt buộc đồng bộ khi thêm field/API mới**: `electron/main.ts` (handler thật) → `electron/preload.ts` (expose qua contextBridge) → `src/types.ts` (khai báo type `window.api`). Thiếu 1 trong 3 sẽ lỗi TS hoặc lỗi runtime "not a function".
 - **Renderer KHÔNG được tự đọc file qua `fetch("file://...")`** — bị Chromium chặn do `contextIsolation: true`. Mọi thao tác đọc file phải qua IPC, main process đọc bằng `fs` rồi trả nội dung qua `ipcMain.handle`. Xem `dialog:openAndReadFile` trong `main.ts` làm mẫu.
 - **Data Editor** (`src/components/DataEditorModal.tsx` + `src/lib/dataEditor/`): dùng Command Pattern — mọi thao tác sửa dữ liệu (sửa ô, Clean, Generate, xoá dòng...) đều là 1 object `{ execute, undo }` thuần, chạy qua `useCommandHistory`. Thêm tính năng mới cho Data Editor → viết thêm 1 command trong `commands.ts`, không sửa trực tiếp state trong component.
@@ -49,4 +49,66 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 
 - Thay đổi schema DB (`electron/db.ts`) luôn cần kèm migration an toàn cho DB cũ (xem các hàm `migrate...()` cuối file `db.ts` làm mẫu) — không được `DROP`/`ALTER` phá dữ liệu người dùng đã có.
 - Không tự ý đổi logic `drawEngine.ts` (thuật toán random) nếu không được yêu cầu rõ — đây là phần nhạy cảm nhất về tính công bằng.
+- Version `X.Y.Z`: `X` = đổi kiến trúc, **chỉ tăng khi chủ dự án duyệt**; `Y` = thêm/đổi/xoá tính năng lớn; `Z` = thay đổi nhỏ/sửa lỗi. Chủ dự án quyết định bản nào tăng số nào — xem `docs/deploy/release.md` bước 2.
 - Lucky Wheel (Wheel Circular + Digit Roller) đã CHỐT cho production (xem `CHANGELOG.md`) — chỉ sửa bug, không đổi hành vi/giao diện nếu không được yêu cầu rõ.
+
+## BUG đã xác định — chưa fix (xoá mục này sau khi làm xong)
+
+**[2026-10-03]** Xoá hết participant rồi import file mới ("Replace" trong `Participants.tsx`) → Wheel
+không nhận được trường dữ liệu hiển thị (tên người trúng ra rỗng).
+
+Nguyên nhân xác nhận qua đọc code: luồng Replace (`Participants.tsx:108-118`) gọi `bulkDelete` rồi
+`bulkImport`, nhưng `participants:bulkImport` (`electron/main.ts:443-489`) **chỉ ghi lại
+`imported_columns`**, KHÔNG đụng tới `sessions.participant_column_types`/`participant_column_labels`.
+Mapping "cột nào là Name/Phone/..." của file CŨ vẫn còn nguyên trong DB. Nếu file mới có tên cột khác
+file cũ → mapping cũ trỏ vào cột không còn tồn tại → cả 3 hàm resolve (`resolveParticipantField`
+`electron/participantFields.ts`, `resolveParticipantDisplayField` `src/lib/landing/types.ts`,
+`resolveColumnForType` `src/lib/dataEditor/validate.ts`) không tìm thấy cột nào gắn type "name" →
+trả về rỗng. Vì import mới luôn ghi `name: ""` vào cột SQL lõi (`Participants.tsx:95`, generic hoàn
+toàn, không đoán cột) nên không có fallback nào cứu được. Nếu file mới trùng tên cột với file cũ thì
+mapping cũ tình cờ vẫn khớp → không thấy lỗi → đúng với cảm giác "thỉnh thoảng mới bị".
+
+Hướng fix đã chốt với chủ dự án (chưa code): trong `participants:bulkImport`, sau khi tính được tập
+tên cột của lần import này (`columns`, đã có sẵn ở dòng tính `imported_columns`) — dọn
+(prune) `participant_column_types` và `participant_column_labels`: xoá key nào KHÔNG còn nằm trong
+`columns` VÀ không phải core field (`name`/`phone`/`code`/`email`, luôn giữ vì không phụ thuộc file
+import). Cột trùng tên với file cũ tự động giữ nguyên mapping, không cần người dùng gán lại tay; cột
+không còn tồn tại thì mapping biến mất sạch (không còn ma trỏ vào cột chết). `electron/
+participantFields.ts` cần export thêm 1 set tên core field (hoặc tái dùng `CORE_FIELDS` sẵn có trong
+file, đổi thành `export`) để `main.ts` dùng khi prune.
+
+## TODO — plan đang dang dở (xoá mục này sau khi làm xong)
+
+**[HOÃN — 2026-10-02]** Đã làm giải pháp tạm component "Frame" (`outputFrame`,
+xem `docs/landing/output-frame.md`) vì sát giờ sự kiện, canvas vẫn 1920×1080. Plan bên dưới giữ lại để làm sau.
+
+**Canvas Landing tuỳ chỉnh kích thước** (không chỉ cố định 1920×1080) — lý do: màn LED thật của người
+dùng là 3584×2304 (~1.56:1, không phải 16:9), hiện bị letterbox ~12.5% viền đen trên/dưới.
+
+Đã xác nhận qua đọc code (KHÔNG cần đổi DB/IPC — chỉ renderer + 1 UI mới):
+- `LandingCanvas.tsx` (artboard thật trong Builder) **đã đọc `config.canvas.width/height` sẵn** —
+  sửa/zoom/pan trên canvas tuỳ chỉnh đã chạy đúng ngay bây giờ, không cần sửa gì ở đây.
+- Chỉ 3 chỗ còn đọc hằng số cứng `CANVAS_WIDTH`/`CANVAS_HEIGHT` (`src/lib/landing/types.ts:965-966`)
+  thay vì giá trị thật của session:
+  1. `src/pages/PresentMode.tsx:62` — công thức fit-scale cửa sổ trình chiếu (dễ sửa nhất: đổi sang
+     `config.canvas.width/height`, thêm vào dependency array của effect đang để `[]`).
+  2. `src/pages/LandingPage.tsx:52` (+ JSX dòng 106) — preview ở cửa sổ chính, tương tự.
+  3. `src/components/landing/componentRegistry.ts` — 6 entry (Background + 5 effect full-bleed, dòng
+     114-115/272-273/291-292/307-308/324-325/340-341) dùng `CANVAS_WIDTH`/`CANVAS_HEIGHT` làm
+     `defaultWidth`/`defaultHeight`, chỉ được đọc trong `createComponentAt()` (dòng 358-372) lúc tạo
+     component mới — cần thêm cờ `fullBleed?: true` vào các entry này, đổi `createComponentAt` nhận
+     thêm `canvasWidth, canvasHeight`, và 2 nơi gọi nó trong `LandingBuilderWindow.tsx` (dòng 497, 512)
+     truyền `prev.canvas.width, prev.canvas.height` (đã có sẵn trong scope).
+- Chưa có UI nào sửa được `canvas.width/height` — cần thêm 1 nút trong header
+  `LandingBuilderWindow.tsx` (cạnh tên session, trước cụm Undo/Redo — xem popover "History" dòng
+  603-636 làm mẫu UI) hiện `W × H` hiện tại, mở popover 2 ô nhập Width/Height + nút Apply, gọi
+  `updateConfig((prev) => ({...prev, canvas: {width, height}}), {commit:true, label:"Changed canvas size"})`
+  (tái dùng đúng pattern update/undo đã có, không cần code lưu mới).
+- KHÔNG tự resize lại component đã đặt sẵn khi đổi canvas size (giống Figma) — chỉ áp dụng cho
+  component tạo MỚI sau khi đổi.
+- Xong phần code thì cập nhật `docs/landing/builder.md` (dòng 41, đang ghi "Artboard cố định
+  1920×1080"), `docs/landing/presentation.md` (dòng 15-16), và `CHANGELOG.md`.
+
+Plan đầy đủ (đã viết nhưng chưa review lại với người dùng) từng nằm ở
+`/Users/quang/.claude/plans/merry-questing-map.md` trên máy cũ — mục này là bản tóm tắt mang theo
+sang máy khác, dùng `/plan` hoặc đọc lại mục này để tiếp tục đúng chỗ.

@@ -14,7 +14,9 @@ import "./landingEffects.css";
 import EscapeKeyHandler from "./views/EscapeKeyHandler";
 import TextView from "./views/TextView";
 import ImageView from "./views/ImageView";
+import VideoView from "./views/VideoView";
 import BackgroundView from "./views/BackgroundView";
+import OutputFrameView from "./views/OutputFrameView";
 import LuckyWheelView from "./views/LuckyWheelView";
 import WinnerNameView from "./views/WinnerNameView";
 import PrizeImageView from "./views/PrizeImageView";
@@ -292,10 +294,16 @@ function renderComponent(
       return (
         <ImageView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
       );
+    case "video":
+      return (
+        <VideoView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
+      );
     case "background":
       return (
         <BackgroundView component={component} data={data} builderPreview={builderPreview} resetSeq={sequence?.resetSeq} />
       );
+    case "outputFrame":
+      return <OutputFrameView component={component} builderPreview={builderPreview} />;
     case "luckyWheel":
       return <LuckyWheelView component={component} data={data} />;
     case "winnerName":

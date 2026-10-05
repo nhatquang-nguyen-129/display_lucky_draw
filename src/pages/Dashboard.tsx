@@ -69,12 +69,32 @@ export default function Dashboard() {
   const confirmedCountByPrize = new Map<string, number>();
   confirmedRows.forEach((r) => confirmedCountByPrize.set(r.prize_id, (confirmedCountByPrize.get(r.prize_id) ?? 0) + 1));
 
+  function extraValue(row: DrawHistoryRow, col: string): string {
+    if (!row.participant_extra_data) return "—";
+    try {
+      const extra = JSON.parse(row.participant_extra_data) as Record<string, string>;
+      return extra[col] || "—";
+    } catch {
+      return "—";
+    }
+  }
+
   if (!activeSession) {
     return (
       <p className="rounded-xl border border-dashed border-base-800 px-4 py-10 text-center text-sm text-base-500">
         No session open yet. Click "+ Add tab" at the top bar to create your first session.
       </p>
     );
+  }
+
+  // Cột gốc đã Import/Replace (KHÔNG kèm cột tự tạo qua Generate — xem Session.imported_columns) —
+  // hiện đủ để phân biệt 2 người trùng tên hiển thị, thay vì chỉ 1 cột "Participant" đã resolve. Session
+  // tạo trước khi có tính năng này (imported_columns rỗng/null) thì lùi về đúng cột "Participant" cũ.
+  let importedColumns: string[] = [];
+  try {
+    importedColumns = activeSession.imported_columns ? (JSON.parse(activeSession.imported_columns) as string[]) : [];
+  } catch {
+    importedColumns = [];
   }
 
   return (
@@ -97,14 +117,22 @@ export default function Dashboard() {
               <tr>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">Time</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">Prize</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">Participant</th>
+                {importedColumns.length > 0 ? (
+                  importedColumns.map((col) => (
+                    <th key={col} className="whitespace-nowrap px-4 py-3 font-medium">
+                      {col}
+                    </th>
+                  ))
+                ) : (
+                  <th className="whitespace-nowrap px-4 py-3 font-medium">Participant</th>
+                )}
                 <th className="whitespace-nowrap px-4 py-3 font-medium">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base-800 bg-base-950">
               {history.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-base-500">
+                  <td colSpan={3 + Math.max(importedColumns.length, 1)} className="px-4 py-8 text-center text-base-500">
                     No draws yet in this session.
                   </td>
                 </tr>
@@ -118,7 +146,15 @@ export default function Dashboard() {
                   >
                     <td className="whitespace-nowrap px-4 py-3 text-base-400">{formatDrawnAt(r.drawn_at)}</td>
                     <td className="whitespace-nowrap px-4 py-3">{r.prize_name}</td>
-                    <td className="whitespace-nowrap px-4 py-3">{r.participant_name}</td>
+                    {importedColumns.length > 0 ? (
+                      importedColumns.map((col) => (
+                        <td key={col} className="whitespace-nowrap px-4 py-3">
+                          {extraValue(r, col)}
+                        </td>
+                      ))
+                    ) : (
+                      <td className="whitespace-nowrap px-4 py-3">{r.participant_name}</td>
+                    )}
                     <td className="whitespace-nowrap px-4 py-3 text-base-400">
                       {r.confirmed ? "Confirmed" : "Not confirmed"}
                     </td>

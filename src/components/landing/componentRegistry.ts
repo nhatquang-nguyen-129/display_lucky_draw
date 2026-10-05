@@ -92,6 +92,21 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
       borderRadius: 0,
     }),
   },
+  video: {
+    label: "Video",
+    description: "Video clip — plays on its own, or Play/Pause/Stop in sync with Draw",
+    category: "Basic",
+    defaultWidth: 640,
+    defaultHeight: 360,
+    createDefaultProps: () => ({
+      mediaId: null,
+      fileName: null,
+      fit: "contain",
+      borderRadius: 0,
+      loop: true,
+      muted: true,
+    }),
+  },
   background: {
     label: "Background",
     description: "Full-canvas image (video support planned) — drag to reposition/resize, any area left uncovered stays black",
@@ -101,6 +116,19 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
     createDefaultProps: () => ({
       srcDataUrl: null,
       fit: "cover",
+    }),
+  },
+  outputFrame: {
+    label: "Frame",
+    description: "Dashed guide marking the area the LED controller/Resolume crops — set the LED resolution, keeps its aspect ratio",
+    category: "Basic",
+    // Mặc định màn LED 3584×2304 thu nhỏ vừa canvas 1920×1080 (1680×1080) — đổi trong panel.
+    defaultWidth: 1680,
+    defaultHeight: 1080,
+    createDefaultProps: () => ({
+      targetWidth: 3584,
+      targetHeight: 2304,
+      showInPresent: true,
     }),
   },
   luckyWheel: {

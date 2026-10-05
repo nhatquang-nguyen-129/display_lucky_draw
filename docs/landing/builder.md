@@ -43,6 +43,8 @@ Builder không cần kết quả quay; Prize Image vẫn hiện đúng ảnh gi�
   trackpad. Cuộn và pinch đi qua đúng 1 handler `wheel` gắn thủ công (prop `onWheel` của React bị
   passive, không `preventDefault` được). Pinch (Chromium tự gắn `ctrlKey`) LUÔN zoom; cuộn thường thì
   zoom ở Select tool, **pan** ở Hand tool — giống trackpad gốc macOS.
+- **Frame** (component nhóm Basic, khung vùng LED cắt): ruột khung click xuyên qua, chỉ viền + nhãn bắt
+  chuột; resize khoá tỉ lệ; tự bắt dính mép ảnh Background/canvas — xem [`output-frame.md`](output-frame.md).
 - **Bàn nháp (pasteboard)**: mỗi bên thêm 50% kích thước khung thật (`PASTEBOARD_MARGIN_RATIO` — 960px
   trái/phải, 540px trên/dưới), tổng bằng 1 khung 3840×2160 bao quanh. Kéo/resize component ra hẳn
   ngoài khung được. Nền bàn nháp khác màu + khung thật có viền đậm riêng. `LandingCanvas` truyền
@@ -66,7 +68,7 @@ Builder không cần kết quả quay; Prize Image vẫn hiện đúng ảnh gi�
 - **`hiddenInBuilder`** (bật/tắt ở Layers): ẩn component khỏi canvas Builder (cả vẽ lẫn khung chọn).
   Present Mode luôn bỏ qua cờ này.
 - **Digit Roller tự khớp chiều cao**: Lucky Wheel template Digit Roller có height dẫn xuất từ width +
-  `digitCount` (`fitDigitRollerHeight`, áp sau mọi thay đổi và cả lúc mở Builder), không chỉnh tay.
+  `digitCount` (`fitAutoHeight`, áp sau mọi thay đổi và cả lúc mở Builder), không chỉnh tay.
 
 ## 4. Toolbar & phím tắt
 
@@ -98,7 +100,9 @@ mặc định, tâm tại điểm thả, tự chọn nó và mở Properties Pan
 |---|---|---|
 | **Basic** | Text | [components/text.md](./text.md) |
 | | Image | [components/image.md](./image.md) |
+| | Video | [components/video.md](./video.md) |
 | | Background (tối đa 1/trang) | [components/background.md](./background.md) |
+| | Frame — khung vùng LED cắt (tối đa 1/trang) | [components/output-frame.md](./output-frame.md) |
 | **Draw** | Lucky Wheel (tối đa 1/trang) | [components/lucky-wheel.md](./lucky-wheel.md) |
 | | Winner | [components/winner.md](./winner.md) |
 | | Prize | [components/prize.md](./prize.md) |

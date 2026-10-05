@@ -14,11 +14,10 @@ component):
 | Bar color | `titleBarColor` | `#2244A5` | Nền thanh tiêu đề (Name Bar) |
 | Title text color | `headerColor` | `#FFFFFF` | Chữ + nút ✕ trên Name Bar |
 | Font size | `fontSize` | 16 | Chữ trong bảng; tiêu đề = ×1.1 |
-| Text color | `color` | `#14161C` | Cả tiêu đề cột lẫn giá trị |
+| Text color | `color` | `#14161C` | Giá trị trong bảng |
 | Table background | `backgroundType` | color | None / Color / Image — nền của khung bảng, độc lập Name Bar |
 | Background color / Image + Fit | `backgroundColor` / `backgroundImageDataUrl` + `backgroundImageFit` | `#FFFFFF` / — | Ảnh nhận PNG, JPG |
 | Columns | `columns` | Name, Prize | Dropdown chọn nhiều (`ColumnsDropdown`) |
-
 **Columns**: 6 field cố định (`SCOREBOARD_FIELDS`: Name, Code, Phone, Email, Prize, Category) + mọi cột
 `extra_data` đang tồn tại trong session (nhánh 1 của quy tắc Source — liệt kê hết, không lọc Data Type,
 không có tiêu chí phụ). Dropdown hiện tên cột đang chọn; bấm mở danh sách có dấu tick, bấm 1 dòng để
@@ -32,8 +31,10 @@ bật/tắt (danh sách vẫn mở để chọn tiếp), bấm ra ngoài hoặc 
   ✕, Esc, hoặc bấm lại Button Scoreboard. Quick Draw xong tự mở.
 - **Builder**: vẽ tại chỗ theo x/y như mọi component để khung kéo-thả khớp nội dung thật.
 - `TableTemplate.tsx`: giao diện kiểu cửa sổ Windows — Name Bar (grid 3 cột để title đúng tâm dù có nút
-  ✕ bên phải) + bảng CSS Grid, hàng tiêu đề cột `sticky` khi cuộn (nền đục: màu nền khung nếu Color,
-  trắng gần đục nếu Image/None), hàng xen kẽ tô nhạt. Chưa ai trúng → "No winners yet".
+  ✕ bên phải) + bảng CSS Grid, hàng xen kẽ tô nhạt. Chưa ai trúng → "No winners yet".
+- **Không có hàng tiêu đề cột** (bỏ hẳn, không có tuỳ chọn bật lại): tên cột thường là tên kỹ thuật từ
+  file import (`display_phone`, không dấu...), khán giả không cần đọc. Tên cột chỉ hiện trong dropdown
+  Columns của Panel.
 - **Chỉ người đã Confirm**: lọc bỏ dòng `pending-*` (candidate chưa Confirm).
 - Giá trị ô (`valueOf`): Name/Code/Phone/Email/Prize đọc thẳng từ `DrawResultRow` (đã resolve theo Data
   Type ở server); Category tra `data.prizes`; cột optional tra `extra_data` của participant. Thiếu → "—".

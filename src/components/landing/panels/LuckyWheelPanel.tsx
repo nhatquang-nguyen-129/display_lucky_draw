@@ -103,7 +103,7 @@ export default function LuckyWheelPanel({
 }: LuckyWheelPanelProps) {
   const isWheel = props.template === "wheel";
   const isDigitRoller = props.template === "digitRoller";
-  // Digit Roller tự tính height từ width + Digit count (xem fitDigitRollerHeight trong
+  // Digit Roller tự tính height từ width + Digit count (xem fitAutoHeight trong
   // LandingBuilderWindow.tsx) — nhập tay vào đây sẽ bị ghi đè lại ngay, nên khoá hẳn field này thay
   // vì để nó trông như nhập được nhưng lại tự đổi ngược, dễ gây khó hiểu (giữ NGUYÊN đúng hành vi cũ
   // của SharedFields.tsx trước khi Position dời vào đây).

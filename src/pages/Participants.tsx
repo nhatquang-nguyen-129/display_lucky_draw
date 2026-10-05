@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import Button from "@/components/Button";
 import { useSession } from "@/context/SessionContext";
+import { inputLockTitle, inputsLocked } from "@/lib/sessionLock";
 import { Participant } from "@/types";
 import { computeActiveParticipantCoreFields, getParticipantField } from "@/lib/landing/types";
 
@@ -150,24 +151,24 @@ export default function Participants() {
           <Button
             variant="secondary"
             onClick={() => window.api.dataEditor.open(activeSessionId!)}
-            disabled={activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+            disabled={inputsLocked(activeSession)}
+            title={inputLockTitle(activeSession)}
           >
             Edit
           </Button>
           <Button
             variant="secondary"
             onClick={handleImportFile}
-            disabled={activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+            disabled={inputsLocked(activeSession)}
+            title={inputLockTitle(activeSession)}
           >
             {items.length === 0 ? "Import" : "Replace"}
           </Button>
           <Button
             variant="danger"
             onClick={handleClearAll}
-            disabled={items.length === 0 || activeSession.locked === 1}
-            title={activeSession.locked === 1 ? "Session is locked — unlock to edit" : undefined}
+            disabled={items.length === 0 || inputsLocked(activeSession)}
+            title={inputLockTitle(activeSession)}
           >
             Delete
           </Button>
