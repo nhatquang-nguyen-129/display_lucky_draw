@@ -2,7 +2,7 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.2.0] — 2026-10-06
 
 ### Session Lock — thêm mức "Input lock" (khoá mềm)
 
