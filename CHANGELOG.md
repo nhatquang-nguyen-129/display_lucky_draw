@@ -2,6 +2,30 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Thanh tab — Duplicate session
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session" (bảng hành động, dòng Duplicate).
+
+- Chuột phải vào tab → **Duplicate**: tạo session mới "<tên> copy" (đã có thì "copy 2", "copy 3"…)
+  với nguyên participant, prize, cấu hình cột và Landing. KHÔNG copy kết quả quay — bản sao sạch, mở khoá,
+  sẵn sàng quay lại. Tab mới nằm ngay sau tab gốc. Nhân bản được cả session đang khoá.
+- Menu chuột phải gọn lại, chỉ còn tên mục, bỏ dòng chú thích: **Input Lock**, **Session Lock**,
+  **Duplicate**, **Move to Trash** (khi đang khoá: Unlock Inputs/Unlock Session/Switch to Input Lock).
+
+### Landing — Frame dạng ảnh pixel map (LED hình phức tạp)
+
+Chi tiết: `docs/landing/output-frame.md` mục "Shape Image".
+
+- Frame có thêm Shape **Image (LED mapping PNG)**: import file pixel map bên LED gửi → viền vàng bám
+  đúng hình vùng LED (tròn, vành khuyên, cánh cong, nhiều màn rời). Độ phân giải LED lấy từ kích thước
+  ảnh, khung tự Fit to canvas.
+- Tự nhận diện ảnh nền trong suốt hoặc nền đen; có Invert, lấp lỗ kín (số tấm LED), lấp khe giữa các tấm,
+  hiện % diện tích LED để kiểm tra.
+- Tuỳ chọn **Dim outside LED area** làm tối phần sẽ bị cắt; hiện mờ ảnh gốc trong Builder để đối chiếu.
+- Frame dạng Rectangle cũ giữ nguyên, không đổi landing đã dựng. Không đổi DB, không thêm thư viện.
+
 ## [1.2.0] — 2026-10-06
 
 ### Session Lock — thêm mức "Input lock" (khoá mềm)

@@ -223,6 +223,8 @@ declare global {
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
         // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
         setTabOrder: (ids: string[]) => Promise<void>;
+        // Nhân bản session → id mới ("<tên> copy"), sạch kết quả quay, mở khoá, tab nằm ngay sau tab gốc.
+        duplicate: (id: string) => Promise<string>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

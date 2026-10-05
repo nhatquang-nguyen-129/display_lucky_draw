@@ -13,6 +13,7 @@ interface SessionContextValue {
   deleteTab: (id: string) => Promise<void>; // chuyển vào data/.trash/, khôi phục qua RestoreModal.tsx
   openFile: () => Promise<void>; // chọn 1 file .db qua dialog — mở lại session Closed hoặc nạp từ ngoài
   reorderTabs: (ids: string[]) => Promise<void>; // kéo-thả tab ở TabBar.tsx, lưu ở data/.tab-order.json
+  duplicateTab: (id: string) => Promise<void>; // nhân bản session (menu chuột phải), chuyển sang tab mới
   refresh: () => Promise<void>;
 }
 
@@ -119,6 +120,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const duplicateTab = useCallback(
+    async (id: string) => {
+      const newId = await window.api.sessions.duplicate(id);
+      await refresh();
+      setActiveSessionId(newId);
+    },
+    [refresh]
+  );
+
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
   return (
@@ -135,6 +145,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         deleteTab,
         openFile,
         reorderTabs,
+        duplicateTab,
         refresh,
       }}
     >

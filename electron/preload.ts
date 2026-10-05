@@ -89,6 +89,7 @@ const api = {
     openFile: () => ipcRenderer.invoke("sessions:openFile"),
     setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
+    duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

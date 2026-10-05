@@ -21,6 +21,7 @@ import {
   setSessionClosed,
   setSessionLocked,
   setTabOrder,
+  duplicateSession,
   SessionLockLevel,
   LOCK_FULL,
 } from "./db";
@@ -751,6 +752,10 @@ ipcMain.handle("sessions:setClosed", (_e, data: { id: string; closed: boolean })
 ipcMain.handle("sessions:setTabOrder", (_e, ids: string[]) => {
   setTabOrder(ids);
 });
+
+// Nhân bản session (menu chuột phải tab) → id session mới. Không assert khoá: chỉ ĐỌC session gốc,
+// bản mới luôn mở khoá + sạch kết quả quay (xem duplicateSession trong db.ts).
+ipcMain.handle("sessions:duplicate", (_e, id: string) => duplicateSession(id));
 
 // Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,
 // xem useLandingData.ts), phải luôn khớp đúng "ai đã thật sự trúng" như hành vi trước khi có cột

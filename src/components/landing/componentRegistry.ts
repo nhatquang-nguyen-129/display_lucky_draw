@@ -120,7 +120,7 @@ export const COMPONENT_REGISTRY: Record<LandingComponentType, ComponentRegistryE
   },
   outputFrame: {
     label: "Frame",
-    description: "Dashed guide marking the area the LED controller/Resolume crops — set the LED resolution, keeps its aspect ratio",
+    description: "Guide marking the area the LED controller/Resolume crops — a rectangle with the LED resolution, or any shape from an LED mapping PNG",
     category: "Basic",
     // Mặc định màn LED 3584×2304 thu nhỏ vừa canvas 1920×1080 (1680×1080) — đổi trong panel.
     defaultWidth: 1680,

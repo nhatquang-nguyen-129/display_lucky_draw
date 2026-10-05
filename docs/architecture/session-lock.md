@@ -90,9 +90,9 @@ Mở khoá (về 0) thì luôn được.
 
   | Đang ở | Lựa chọn trong menu |
   |---|---|
-  | Mở | **Lock inputs** (→ Input lock), **Lock session** (→ Full lock), Move to trash |
-  | Input lock | **Lock session** (→ Full lock), **Unlock inputs** (→ Mở, giữ 3s) |
-  | Full lock | **Switch to input lock** (→ Input lock, giữ 3s), **Unlock session** (→ Mở, giữ 3s) |
+  | Mở | **Input Lock** (→ Input lock), **Session Lock** (→ Full lock), Duplicate, Move to Trash |
+  | Input lock | **Session Lock** (→ Full lock), **Unlock Inputs** (→ Mở, giữ 3s), Duplicate |
+  | Full lock | **Switch to Input Lock** (→ Input lock, giữ 3s), **Unlock Session** (→ Mở, giữ 3s), Duplicate |
 
   Trình duyệt tự chuẩn hoá sự kiện `contextmenu` giữa các cách bấm chuột phải; Option + click là 1
   `click` có `altKey`, `TabBar.tsx` bắt riêng.

@@ -642,6 +642,57 @@ export function createSession(data: { name: string; allowDuplicatePrize?: boolea
   return id;
 }
 
+/**
+ * Nhân bản 1 session thành session MỚI (file mới, id mới) — giữ nguyên participant, prize, cấu hình cột,
+ * Landing (kể cả media), nhưng là bản SẠCH để quay lại từ đầu: bỏ kết quả quay (draw_results), trả
+ * prizes.remaining về quantity (y hệt draw:resetSession), mở khoá, không Close. Id participant/prize
+ * GIỮ NGUYÊN (file riêng, không đụng nhau) để mọi liên kết trong Landing (Prize Image, effect theo prize…)
+ * vẫn đúng. Tên: "<tên> copy", "<tên> copy 2"... Tab mới nằm ngay sau tab gốc. Không bị Session Lock
+ * chặn — chỉ ĐỌC session gốc (nhân bản 1 session đã khoá xong để làm sự kiện mới là use-case chính).
+ */
+export function duplicateSession(sourceId: string): string {
+  const source = entries.get(sourceId);
+  if (!source) throw new Error(`Session not found: ${sourceId}`);
+  const sourceName = (source.db.prepare(`SELECT name FROM sessions WHERE id = ?`).get(sourceId) as { name: string }).name;
+  const name = nextCopyName(sourceName);
+  const id = randomUUID();
+  const file = uniquePath(DATA_DIR, fileNameFor(name, id));
+
+  // VACUUM INTO: bản sao nhất quán ngay cả khi file gốc đang mở (khác copyFileSync), không đụng file gốc.
+  source.db.prepare(`VACUUM INTO ?`).run(file);
+  const db = openFile(file);
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE sessions SET id = ?, name = ?, locked = 0, closed = 0, created_at = datetime('now') WHERE id = ?`
+    ).run(id, name, sourceId);
+    for (const table of SESSION_ID_TABLES) {
+      db.prepare(`UPDATE ${table} SET session_id = ? WHERE session_id = ?`).run(id, sourceId);
+    }
+    db.prepare(`DELETE FROM draw_results WHERE session_id = ?`).run(id);
+    db.prepare(`UPDATE prizes SET remaining = quantity WHERE session_id = ?`).run(id);
+  })();
+  entries.set(id, { file, db });
+
+  const order = listSessions().map((s: { id: string }) => s.id).filter((x) => x !== id);
+  const at = order.indexOf(sourceId);
+  order.splice(at < 0 ? order.length : at + 1, 0, id);
+  setTabOrder(order);
+  return id;
+}
+
+// "A" → "A copy"; đã có "A copy" → "A copy 2", "A copy 3"... Nhân bản "A copy 2" cũng ra "A copy 3"
+// (bỏ đuôi " copy N" để không thành "A copy 2 copy"). So với tên MỌI session đang đăng ký (kể cả tab
+// đang Close) để không trùng khi mở lại.
+function nextCopyName(name: string): string {
+  const base = name.replace(/ copy( \d+)?$/i, "");
+  const taken = new Set(
+    [...entries.values()].map((e) => (e.db.prepare(`SELECT name FROM sessions LIMIT 1`).get() as { name: string }).name)
+  );
+  let candidate = `${base} copy`;
+  for (let n = 2; taken.has(candidate); n++) candidate = `${base} copy ${n}`;
+  return candidate;
+}
+
 /** Đổi tên session + đổi tên file theo. Đổi tên file lỗi (bị khoá…) thì giữ tên file cũ — định danh
  *  nằm trong file nên không ảnh hưởng gì. */
 export function renameSession(id: string, name: string) {
