@@ -54,7 +54,13 @@ Builder không cần kết quả quay; Prize Image vẫn hiện đúng ảnh gi�
 - **Chọn**: click chọn 1; **Ctrl/Cmd+click** cộng/bớt khỏi vùng chọn; **kéo khung chọn (marquee)** trên
   nền trống chọn nhiều (giữ Ctrl/Cmd lúc bắt đầu kéo = cộng vào vùng chọn cũ).
 - **Kéo/resize**: mousedown-based (mousemove/mouseup gắn ở `window`, chia cho `scale` ra toạ độ
-  artboard). Resize qua 4 tay cầm góc, tối thiểu 20px.
+  artboard). Resize qua 4 tay cầm góc, tối thiểu 20px. **Image** và **Prize** (xem
+  [`image.md`](image.md), [`prize.md`](prize.md)) luôn khoá đúng tỉ lệ ảnh gốc khi resize (lấy
+  `naturalWidth/naturalHeight` thật của ảnh — `srcDataUrl` cho Image, `prize.display_image` cho
+  Prize — qua `mediaNaturalSizes` trong `LandingCanvas.tsx`, cùng cơ chế `bgNaturalSizes` đã dùng cho
+  Background) — không có modifier (Shift) để tắt, vì ảnh bắt buộc hiển thị nguyên vẹn, không cho kéo
+  méo/crop sai tỉ lệ. Trục kéo lệch nhiều hơn làm chủ đạo, trục còn lại tự suy theo tỉ lệ, góc đối diện
+  đứng yên — cùng kỹ thuật khoá tỉ lệ đã dùng cho Frame (xem ngay bên dưới).
 - **Smart guide** (`computeSnap`, ngưỡng 8px màn hình): khi kéo di chuyển, (1) **căn thẳng hàng** — mốc
   trái/tâm/phải (trên/giữa/dưới) trùng tâm khung thật hoặc mốc của component khác → bắt dính + hiện
   đường guide; (2) **khoảng cách đều** — nằm giữa 2 component và 2 khoảng trống gần bằng nhau → bắt

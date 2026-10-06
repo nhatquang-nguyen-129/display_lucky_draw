@@ -23,6 +23,8 @@ hiện. Model đầy đủ: [presentation.md mục 4](./presentation.md#4-intera
   KHÔNG dùng lớp phủ đen như Background, vì PNG trong suốt sẽ bị tô đen thành 1 khung chữ nhật.
   `brightness(1 − dim%)` cho đúng màu của lớp phủ đen opacity dim% trên phần ảnh đặc.
 - Builder canvas luôn hiện ảnh "sạch" (appear) để còn chọn/kéo.
+- Resize (4 tay cầm góc) luôn khoá đúng tỉ lệ ảnh gốc (`naturalWidth/naturalHeight` của `srcDataUrl`)
+  — không kéo méo/crop sai tỉ lệ được, không có cách tắt. Xem [builder.md mục 3](./builder.md#3-canvas-landingcanvastsx).
 - Dùng khi 1 ảnh PNG cần tự ẩn/hiện/tối đi theo quy trình quay mà không cần tạo loại component riêng —
   vd Podium tách khỏi Background để không bị dim theo nền: Idle = Appear, Draw = Disappear, Redraw =
   Disappear (tự hiện lại bằng Effect của Draw).

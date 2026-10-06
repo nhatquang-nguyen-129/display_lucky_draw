@@ -33,7 +33,18 @@ export default function SessionLockMenu({ session, x, y, onClose, onChanged }: P
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (confirmingTarget !== null) return; // modal Unlock tự xử lý đóng riêng
+    if (confirmingTarget !== null) {
+      // Modal Unlock không còn nút × (title căn giữa, xem JSX bên dưới) — vẫn cần 1 đường thoát
+      // không qua giữ nút, nên Escape đóng thẳng modal confirm (không đụng menu, đã ẩn từ bước này).
+      function handleEscape(e: KeyboardEvent) {
+        if (e.key === "Escape") {
+          setConfirmingTarget(null);
+          onClose();
+        }
+      }
+      document.addEventListener("keydown", handleEscape);
+      return () => document.removeEventListener("keydown", handleEscape);
+    }
     function handlePointerDown(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     }
@@ -95,15 +106,8 @@ export default function SessionLockMenu({ session, x, y, onClose, onChanged }: P
         open
         title={toInputLock ? "Switch to Input Lock" : session.locked === LOCK_INPUTS ? "Unlock Inputs" : "Unlock Session"}
         onClose={() => { setConfirmingTarget(null); onClose(); }}
+        hideCloseButton
       >
-        <p className="mb-4 text-sm text-base-400">
-          {toInputLock
-            ? `Session "${session.name}" is fully locked. Switching to input lock re-enables drawing, Landing Builder and Presentation, while participants and prizes stay locked.`
-            : session.locked === LOCK_INPUTS
-              ? `Participants and prizes of session "${session.name}" are locked. Unlocking makes them editable again.`
-              : `Session "${session.name}" is locked.`}{" "}
-          Hold the button below for 3 seconds to confirm — releasing early cancels.
-        </p>
         <HoldToUnlockButton onConfirm={handleConfirmHold} />
       </Modal>
     );

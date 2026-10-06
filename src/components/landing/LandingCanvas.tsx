@@ -290,6 +290,25 @@ export default function LandingCanvas({
       img.src = src;
     }
   }, [config.components]);
+  // Kích thước gốc ảnh của Image/Prize — dùng để khoá tỉ lệ khi resize (ảnh luôn phải giữ đúng khung
+  // hình gốc, không cho kéo méo/crop sai tỉ lệ, xem handleResizeMouseDown()).
+  const [mediaNaturalSizes, setMediaNaturalSizes] = useState<Record<string, { src: string; w: number; h: number }>>(
+    {}
+  );
+  useEffect(() => {
+    for (const c of config.components) {
+      let src: string | null = null;
+      if (c.type === "image") src = c.props.srcDataUrl ?? null;
+      else if (c.type === "prizeImage")
+        src = data?.prizes.find((p) => p.id === c.props.prizeId)?.display_image ?? null;
+      else continue;
+      if (!src || mediaNaturalSizes[c.id]?.src === src) continue;
+      const img = new Image();
+      img.onload = () =>
+        setMediaNaturalSizes((prev) => ({ ...prev, [c.id]: { src: src!, w: img.naturalWidth, h: img.naturalHeight } }));
+      img.src = src;
+    }
+  }, [config.components, data?.prizes]);
   // Khung marquee (rubber-band) đang kéo trên nền trống — toạ độ MÀN HÌNH (client), không cần quy đổi
   // pan/scale vì chỉ dùng để vẽ overlay `position: fixed` và so giao trực tiếp với
   // getBoundingClientRect() của từng component (xem handleWrapperMouseDown).
@@ -497,6 +516,23 @@ export default function LandingCanvas({
       if (corner.includes("top")) {
         height = Math.max(MIN_SIZE, start.height - dy);
         y = start.y + (start.height - height);
+      }
+      // Image/Prize luôn khoá đúng tỉ lệ ảnh gốc khi resize — không có modifier (shift) để tắt, vì
+      // ảnh LUÔN phải hiển thị nguyên vẹn, không cho kéo méo/crop sai tỉ lệ. Lấy trục đang kéo phóng/
+      // thu nhiều hơn làm chủ đạo (theo % thay đổi so với lúc bắt đầu kéo), trục còn lại suy ra đúng
+      // theo ratio — góc đối diện đứng yên (giống Output Frame bên dưới).
+      if (component.type === "image" || component.type === "prizeImage") {
+        const natural = mediaNaturalSizes[component.id];
+        if (natural && natural.w > 0 && natural.h > 0) {
+          const ratio = natural.w / natural.h;
+          const scaleW = width / start.width;
+          const scaleH = height / start.height;
+          const scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
+          width = Math.max(MIN_SIZE, start.width * scale);
+          height = Math.max(MIN_SIZE, width / ratio);
+          if (corner.includes("left")) x = start.x + (start.width - width);
+          if (corner.includes("top")) y = start.y + (start.height - height);
+        }
       }
       // Output Frame khoá tỉ lệ màn LED — lấy chiều kéo lớn hơn, góc đối diện đứng yên.
       if (component.type === "outputFrame") {

@@ -2,6 +2,24 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Landing — Image/Prize resize khoá tỉ lệ ảnh gốc
+
+Chi tiết: `docs/landing/builder.md` mục 3, `docs/landing/image.md`, `docs/landing/prize.md`.
+
+- Resize (4 tay cầm góc) của component **Image** và **Prize** giờ luôn khoá đúng tỉ lệ ảnh gốc
+  (`naturalWidth/naturalHeight`) — không kéo méo/crop sai tỉ lệ được nữa, không có modifier để tắt.
+
+### Session Lock — modal Unlock gọn lại, thanh giữ đổi màu xanh lá
+
+Chi tiết: `docs/architecture/session-lock.md` mục "Giao diện".
+
+- Modal xác nhận Unlock Session/Unlock Inputs/Switch to Input Lock chỉ còn title (căn giữa) + nút giữ
+  3 giây — bỏ đoạn mô tả và nút ×. Thoát không cần giữ nút thì bấm **Escape**.
+- Thanh fill của nút giữ đổi sang CSS transition (mượt hơn `requestAnimationFrame` cũ) và luôn màu
+  xanh lá suốt quá trình giữ, cùng ngôn ngữ hình ảnh với nút Confirm/Reset trên Landing.
+
 ## [1.3.0] — 2026-10-06
 
 ### Thanh tab — Duplicate session
