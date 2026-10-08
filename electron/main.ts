@@ -928,3 +928,29 @@ ipcMain.handle("dialog:openAndReadFile", async () => {
   const buffer = fs.readFileSync(filePath);
   return { ext, base64: buffer.toString("base64") };
 });
+
+// Xuất file (Participants / Draw history ra CSV hoặc XLSX) — renderer tự dựng nội dung (papaparse/xlsx
+// đã có sẵn ở renderer), main chỉ mở hộp thoại Save + ghi bằng fs, vì renderer không có quyền ghi file
+// (contextIsolation). Chỉ đọc dữ liệu → KHÔNG chặn bởi Session Lock. null = người dùng huỷ dialog.
+ipcMain.handle(
+  "dialog:saveFile",
+  async (e, data: { defaultName: string; ext: "csv" | "xlsx"; text?: string; base64?: string }) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const filters =
+      data.ext === "csv"
+        ? [{ name: "CSV file", extensions: ["csv"] }]
+        : [{ name: "Excel workbook", extensions: ["xlsx"] }];
+    const options = { defaultPath: path.join(app.getPath("documents"), data.defaultName), filters };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+
+    try {
+      if (data.text !== undefined) fs.writeFileSync(result.filePath, data.text, "utf-8");
+      else fs.writeFileSync(result.filePath, Buffer.from(data.base64 ?? "", "base64"));
+      return { filePath: result.filePath };
+    } catch (err) {
+      // Hay gặp nhất: file đang mở trong Excel (Windows khoá file) → EBUSY/EPERM.
+      return { error: `Could not save file: ${(err as Error).message}` };
+    }
+  }
+);

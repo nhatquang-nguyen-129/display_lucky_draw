@@ -250,6 +250,13 @@ declare global {
       };
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
+        // Hộp thoại Save + ghi file (xem src/lib/exportTable.ts). null = người dùng huỷ dialog.
+        saveFile: (data: {
+          defaultName: string;
+          ext: "csv" | "xlsx";
+          text?: string;
+          base64?: string;
+        }) => Promise<{ filePath: string } | { error: string } | null>;
       };
       media: {
         // null = người dùng huỷ dialog. Phát lại qua `ldmedia://<sessionId>/<mediaId>` (electron/media.ts).

@@ -52,3 +52,20 @@ sequenceDiagram
 Chỉ `refresh()` bảng preview (header = tên cột gốc trong file) — không còn banner "Imported X/Y rows.
 Columns detected: …" (quá dài, đã bỏ). Người dùng mở Data Editor để gán Data Type khi cần. Chưa gán Data
 Type nào thì validate không báo "Missing Name"/"Missing Phone" — chưa có gì để coi là thiếu.
+
+## Export
+
+Nút **Export ▾** (`src/components/ExportMenu.tsx`) ở trang Participants và cạnh bảng Draw history ở
+Dashboard — chọn Excel (`.xlsx`) hoặc CSV (`.csv`). Dùng chung `exportTable()` (`src/lib/exportTable.ts`):
+renderer dựng nội dung bằng chính `papaparse` (`Papa.unparse`) / `xlsx` (`aoa_to_sheet`) của luồng
+Import, rồi gọi IPC `dialog:saveFile` — main mở hộp thoại Save (mặc định thư mục Documents, tên file
+`<session> - participants|draw history - <YYYY-MM-DD_HHMM>`) và ghi bằng `fs`. Lỗi ghi (vd file đang mở
+trong Excel) báo bằng `alert`.
+
+- **Participants**: đúng các cột của bảng preview (core field đang có dữ liệu + cột `extra_data` theo
+  tên gốc), không có cột Source, không gồm dòng `removed`. Tên cột giữ nguyên → file xuất ra
+  Import/Replace ngược lại được.
+- **Draw history**: Time (giờ địa phương), Prize, các cột `imported_columns` (hoặc 1 cột Participant
+  đã resolve nếu session chưa có `imported_columns`), Status — gồm cả lượt Not confirmed, mới nhất trước.
+- CSV ghi kèm BOM UTF-8 (Excel cần để hiện đúng tiếng Việt); Import tự bỏ BOM nên vẫn đọc lại được.
+- Chỉ đọc dữ liệu → không gọi `assertInputsUnlocked`/`assertSessionUnlocked`, dùng được cả khi bị khoá.

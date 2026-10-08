@@ -1395,11 +1395,15 @@ export interface DrawSequenceActions {
   // chọn vừa hết hàng (đã bỏ — gây mất trải nghiệm thị giác ngay lúc Wheel vừa quay xong) —
   // useDrawSequence.ts vẫn tự âm thầm bỏ chọn giải đó lúc đó, không kèm popup.
   infoPrompt: string | null;
+  // true = popup chỉ có nút × góc trên phải (không có nút OK) — hiện chỉ dùng cho cảnh báo "No eligible
+  // participant left for this prize" khi Draw lại (redo) đã loại hết người đủ điều kiện của giải đang
+  // chờ Confirm (xem useDrawSequence.ts's redo()).
+  infoPromptCloseOnly: boolean;
   // Hàm CHUNG để bật popup này với message tuỳ ý — notifyOutOfStock() chỉ là 1 cách gọi RIÊNG đã có
   // sẵn format câu cố định ("... is out of stock!"). Button action "openLink" (ButtonView.tsx) dùng
   // THẲNG hàm này khi chưa có winner/winner không có link — trước đây no-op im lặng, đổi thành popup
   // vì "bấm không thấy gì" khiến người vận hành tưởng nút bị lỗi (đã gặp thật).
-  showInfoPrompt: (message: string) => void;
+  showInfoPrompt: (message: string, opts?: { closeOnly?: boolean }) => void;
   notifyOutOfStock: (prizeName: string) => void;
   dismissInfoPrompt: () => void;
   // Đang trong khoảng Lucky Wheel quay (từ lúc có candidate mới tới đúng lúc animation quay xong hẳn

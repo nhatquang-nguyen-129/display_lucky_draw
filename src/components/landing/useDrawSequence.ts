@@ -113,11 +113,14 @@ export function useDrawSequence(
   const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(null);
   // Popup thông báo dùng chung — xem doc-comment DrawSequenceActions.infoPrompt trong types.ts.
   const [infoPrompt, setInfoPrompt] = useState<string | null>(null);
-  function showInfoPrompt(message: string) {
+  const [infoPromptCloseOnly, setInfoPromptCloseOnly] = useState(false);
+  function showInfoPrompt(message: string, opts?: { closeOnly?: boolean }) {
     setInfoPrompt(message);
+    setInfoPromptCloseOnly(!!opts?.closeOnly);
   }
   function dismissInfoPrompt() {
     setInfoPrompt(null);
+    setInfoPromptCloseOnly(false);
   }
   // Đang trong khoảng Wheel quay — xem doc-comment DrawSequenceActions.spinning trong types.ts.
   const [spinning, setSpinning] = useState(false);
@@ -249,7 +252,17 @@ export function useDrawSequence(
       excludeIdsRef.current = nextExcludes;
       startSpinLock();
     } catch (e: any) {
-      showInfoPrompt(cleanErrorMessage(e, "Redo failed"));
+      // Đã loại (Draw lại) hết người đủ điều kiện của giải đang khoá — candidate cuối vẫn GIỮ NGUYÊN ở
+      // trạng thái chờ Confirm (không huỷ), chỉ báo popup cảnh báo kiểu chỉ có nút ×. Engine trả 1
+      // trong 2 câu tuỳ trường hợp: còn người active nhưng không ai đủ điều kiện giải này, hoặc
+      // excludeParticipantIds đã phủ hết mọi người active (xem drawEngine.ts's pickWinner) — gộp
+      // chung 1 câu cho người vận hành. Lỗi khác (vd giải vừa hết hàng/bị ẩn) giữ popup OK như cũ.
+      const message = cleanErrorMessage(e, "Redo failed");
+      if (message === "No eligible participant left for this prize" || message === "No participants available to draw") {
+        showInfoPrompt("No eligible participant left for this prize", { closeOnly: true });
+      } else {
+        showInfoPrompt(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -593,6 +606,7 @@ export function useDrawSequence(
     selectedPrizeId,
     togglePrizeSelection,
     infoPrompt,
+    infoPromptCloseOnly,
     showInfoPrompt,
     notifyOutOfStock,
     dismissInfoPrompt,

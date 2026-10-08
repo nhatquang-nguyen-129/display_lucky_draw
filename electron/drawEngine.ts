@@ -76,8 +76,17 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
   let baseParticipants = db
     .prepare(`SELECT * FROM participants WHERE session_id = ? AND status = 'active'`)
     .all(sessionId) as any[];
-  if (excludeParticipantIds.length > 0) {
-    const excluded = new Set(excludeParticipantIds);
+  // Người ĐÃ TỪNG được quay ra nhưng không Confirm (dòng confirmed = 0 — bị Draw lại/bỏ qua, hoặc đang
+  // chờ Confirm dở lúc tắt app) bị loại khỏi MỌI lượt quay sau trong session, đọc thẳng từ DB nên mang
+  // file session sang máy khác quay tiếp vẫn không trùng — chỉ Reset session (xoá draw_results) mới quay
+  // lại được họ. Đây là luật loại trừ RIÊNG, KHÔNG tính vào winCountMap/prizesWonBy bên dưới — lượt
+  // không Confirm không phải "đã trúng", không ảnh hưởng 2 tuỳ chọn Allow duplicate của giải.
+  // excludeParticipantIds (chuỗi Draw lại hiện tại) vẫn giữ — trùng phần lớn với tập này, gộp chung.
+  const skippedRows = db
+    .prepare(`SELECT DISTINCT participant_id FROM draw_results WHERE session_id = ? AND confirmed = 0`)
+    .all(sessionId) as { participant_id: string }[];
+  const excluded = new Set([...excludeParticipantIds, ...skippedRows.map((r) => r.participant_id)]);
+  if (excluded.size > 0) {
     baseParticipants = baseParticipants.filter((p) => !excluded.has(p.id));
   }
 
@@ -192,8 +201,9 @@ export function pickWinner({ sessionId, excludeParticipantIds = [], lockedPrizeI
  * Button "Draw" trên Landing Page, ngay khi candidate hiện lên màn hình chờ Confirm/Redo. Mục đích
  * DUY NHẤT là để lại dấu vết cho Dashboard (xem docs/architecture/draw-engine.md): 1 candidate bị Redo
  * bỏ dở vẫn còn lịch sử "đã quay ra ai, lúc nào, cho giải gì, nhưng không Confirm". KHÔNG trừ
- * prizes.remaining (chỉ trừ lúc commitDraw) và KHÔNG tính vào bất kỳ quy tắc loại trừ nào trong
- * pickWinner() (mọi query ở đó đều lọc confirmed = 1). */
+ * prizes.remaining (chỉ trừ lúc commitDraw) và KHÔNG tính vào số lần trúng của luật Allow duplicate —
+ * nhưng participant có dòng confirmed = 0 bị pickWinner() loại khỏi mọi lượt quay sau (xem
+ * skippedRows trong pickWinner) cho tới khi Reset session. */
 export function recordPendingDraw(candidate: DrawCandidate, sessionId: string): void {
   const db = getDb(sessionId);
   db.prepare(

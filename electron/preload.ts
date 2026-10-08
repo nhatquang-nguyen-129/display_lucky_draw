@@ -123,7 +123,9 @@ const api = {
   },
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
-    },
+    saveFile: (data: { defaultName: string; ext: "csv" | "xlsx"; text?: string; base64?: string }) =>
+      ipcRenderer.invoke("dialog:saveFile", data),
+  },
   media: {
     // Mở dialog chọn video, main lưu vào bảng media của session — xem electron/media.ts.
     importVideo: (sessionId: string) => ipcRenderer.invoke("media:importVideo", sessionId),

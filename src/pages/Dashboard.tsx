@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import ExportMenu from "@/components/ExportMenu";
 import { Stat, StatSection } from "@/components/StatSection";
 import { useSession } from "@/context/SessionContext";
 import { DrawHistoryRow, Participant, Prize } from "@/types";
+import { ExportFormat, exportTable, fileTimestamp } from "@/lib/exportTable";
 
 type ParticipantStats = { original: number; current: number; removed: number };
 
@@ -10,6 +12,14 @@ type ParticipantStats = { original: number; current: number; removed: number };
 // Chuyển "YYYY-MM-DD HH:MM:SS" -> ISO 8601 UTC ("...THH:MM:SSZ") trước khi parse để hiện đúng giờ.
 function formatDrawnAt(drawnAt: string): string {
   return new Date(`${drawnAt.replace(" ", "T")}Z`).toLocaleString();
+}
+
+// Cùng lý do với formatDrawnAt (UTC → giờ địa phương) nhưng định dạng cố định "YYYY-MM-DD HH:MM:SS"
+// cho file xuất — không phụ thuộc locale máy, Excel tự nhận dạng/sắp xếp được.
+function formatDrawnAtForExport(drawnAt: string): string {
+  const d = new Date(`${drawnAt.replace(" ", "T")}Z`);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 // Nền cho hàng ĐÃ CONFIRM trong bảng History — 1 hoá màu/giải (cùng giải luôn cùng màu, xoay vòng nếu
@@ -97,20 +107,50 @@ export default function Dashboard() {
     importedColumns = [];
   }
 
+  // Xuất đúng các cột của bảng History bên dưới (gồm cả lượt Not confirmed, cột Status phân biệt),
+  // mới nhất trước — giữ nguyên thứ tự sessions:drawHistory trả về.
+  async function handleExport(format: ExportFormat) {
+    const participantCols = importedColumns.length > 0 ? importedColumns : ["Participant"];
+    await exportTable({
+      fileBaseName: `${activeSession?.name ?? "session"} - draw history - ${fileTimestamp()}`,
+      sheetName: "Draw history",
+      headers: ["Time", "Prize", ...participantCols, "Status"],
+      rows: history.map((r) => [
+        formatDrawnAtForExport(r.drawn_at),
+        r.prize_name,
+        ...(importedColumns.length > 0
+          ? importedColumns.map((col) => {
+              const v = extraValue(r, col);
+              return v === "—" ? "" : v;
+            })
+          : [r.participant_name ?? ""]),
+        r.confirmed ? "Confirmed" : "Not confirmed",
+      ]),
+      format,
+    });
+  }
+
   return (
     <div className="space-y-6">
-      <StatSection>
-        <Stat label="Imported participants" value={stats.original} />
-        <Stat label="Active participants" value={participants.length} accent="muted" />
-        <Stat label="Total prizes" value={totalPrizes} />
-        <Stat label="Awarded prizes" value={awarded} accent="muted" />
-        <Stat label="Total draws" value={history.length} />
-        <Stat label="Confirmed draws" value={confirmedRows.length} accent="muted" />
-      </StatSection>
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-base-400">Overview</h2>
+        <StatSection>
+          <Stat label="Imported participants" value={stats.original} />
+          <Stat label="Active participants" value={participants.length} accent="muted" />
+          <Stat label="Total prizes" value={totalPrizes} />
+          <Stat label="Awarded prizes" value={awarded} accent="muted" />
+          <Stat label="Total draws" value={history.length} />
+          <Stat label="Confirmed draws" value={confirmedRows.length} accent="muted" />
+        </StatSection>
+      </section>
 
       {/* Log thực tế từng lượt quay, mới nhất trước — kể cả lượt bị Redo bỏ dở (Not confirmed), xem
           drawEngine.ts:recordPendingDraw. Đây là nguồn duy nhất của phần Draw, không tách bảng phụ. */}
       <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-base-400">Draw History</h2>
+          <ExportMenu onExport={handleExport} disabled={history.length === 0} />
+        </div>
         <div className="max-h-[28rem] overflow-auto rounded-xl border border-base-800">
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 z-10 bg-base-900 text-xs uppercase tracking-wide text-base-400">

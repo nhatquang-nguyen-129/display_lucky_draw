@@ -2,7 +2,34 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [1.3.0] — 2026-10-08
+
+### Draw Engine — người bị bỏ qua (Not confirmed) không bị quay lại nữa
+
+Chi tiết: `docs/architecture/draw-engine.md`.
+
+- Người đã được quay ra nhưng không Confirm (bấm Draw lại vì vắng mặt, hoặc tắt app khi đang chờ
+  Confirm) bị loại khỏi mọi lượt quay sau trong session — đọc từ Draw History trong DB nên mang session
+  sang máy khác quay tiếp vẫn không trùng. Chỉ Reset session mới quay lại được họ.
+- Lượt Not confirmed KHÔNG tính là "đã trúng" — không ảnh hưởng 2 tuỳ chọn Allow duplicate của giải.
+
+### Present Mode — cảnh báo hết người đủ điều kiện khi Draw lại
+
+Chi tiết: `docs/landing/presentation.md` bảng popup.
+
+- Đang chờ Confirm mà bấm Draw lại tới khi đã loại hết người đủ điều kiện của giải: người cuối cùng vẫn
+  giữ nguyên ở trạng thái chờ, bấm Draw tiếp hiện popup "No eligible participant left for this prize"
+  chỉ có nút × góc trên phải (không có OK).
+
+### Export Participants / Draw History ra CSV hoặc Excel
+
+Chi tiết: `docs/participants/import.md` mục "Export".
+
+- Trang **Participants** có nút **Export ▾** (Excel `.xlsx` / CSV `.csv`): xuất đúng các cột đang thấy ở
+  bảng preview, giữ tên cột gốc → Import/Replace ngược lại được. Không gồm participant đã xoá.
+- **Dashboard** có nút **Export ▾** cạnh bảng Draw History (Dashboard giờ có 2 tiêu đề section: Overview và Draw History): xuất Time (giờ máy, `YYYY-MM-DD HH:MM:SS`),
+  Prize, các cột participant đã import, Status (Confirmed / Not confirmed).
+- CSV có BOM UTF-8 để Excel mở đúng tiếng Việt. Export chỉ đọc dữ liệu nên vẫn dùng được khi session bị khoá.
 
 ### Landing — Image/Prize resize khoá tỉ lệ ảnh gốc
 
@@ -19,8 +46,6 @@ Chi tiết: `docs/architecture/session-lock.md` mục "Giao diện".
   3 giây — bỏ đoạn mô tả và nút ×. Thoát không cần giữ nút thì bấm **Escape**.
 - Thanh fill của nút giữ đổi sang CSS transition (mượt hơn `requestAnimationFrame` cũ) và luôn màu
   xanh lá suốt quá trình giữ, cùng ngôn ngữ hình ảnh với nút Confirm/Reset trên Landing.
-
-## [1.3.0] — 2026-10-06
 
 ### Thanh tab — Duplicate session
 

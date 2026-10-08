@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import Button from "@/components/Button";
+import ExportMenu from "@/components/ExportMenu";
 import { useSession } from "@/context/SessionContext";
 import { inputLockTitle, inputsLocked } from "@/lib/sessionLock";
 import { Participant } from "@/types";
 import { computeActiveParticipantCoreFields, getParticipantField } from "@/lib/landing/types";
+import { ExportFormat, exportTable, fileTimestamp } from "@/lib/exportTable";
 
 const CORE_COLUMN_LABELS: Record<string, string> = { name: "Name", phone: "Phone", code: "Code", email: "Email" };
 
@@ -121,6 +123,19 @@ export default function Participants() {
     refresh();
   }
 
+  // Xuất đúng các cột đang thấy ở bảng preview (tên cột gốc, không kèm cột "Source") — giữ nguyên tên
+  // cột gốc để file xuất ra Import/Replace ngược lại được, mapping Data Type theo tên cột vẫn khớp.
+  // Chỉ gồm participant chưa bị xoá (participants:list đã lọc status != 'removed').
+  async function handleExport(format: ExportFormat) {
+    await exportTable({
+      fileBaseName: `${activeSession?.name ?? "session"} - participants - ${fileTimestamp()}`,
+      sheetName: "Participants",
+      headers: previewColumns.map((col) => CORE_COLUMN_LABELS[col] ?? col),
+      rows: items.map((p) => previewColumns.map((col) => getParticipantField(p, col) ?? "")),
+      format,
+    });
+  }
+
   async function handleClearAll() {
     if (items.length === 0) return;
     if (
@@ -164,6 +179,7 @@ export default function Participants() {
           >
             {items.length === 0 ? "Import" : "Replace"}
           </Button>
+          <ExportMenu onExport={handleExport} disabled={items.length === 0} />
           <Button
             variant="danger"
             onClick={handleClearAll}
