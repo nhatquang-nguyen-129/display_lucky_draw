@@ -1,3 +1,5 @@
+// Theme Tailwind của toàn app — NƠI DUY NHẤT định nghĩa màu thương hiệu (gold/teal/highlight) và thang
+// màu nền/chữ "base". Tên biến giữ từ bản theme tối cũ, đừng hiểu theo nghĩa đen (xem CLAUDE.md).
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
