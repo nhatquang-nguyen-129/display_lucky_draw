@@ -1,3 +1,5 @@
+// TypeScript cho renderer (src/, React) — chỉ type-check (noEmit), Vite lo build. Process main/preload
+// biên dịch riêng bằng electron/tsconfig.json. Alias "@/..." trỏ vào src/ (khớp vite.config.ts).
 {
   "compilerOptions": {
     "target": "ES2020",
