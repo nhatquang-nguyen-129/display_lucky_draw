@@ -203,6 +203,34 @@ export interface OutputFrameProps {
   targetWidth: number; // độ phân giải màn LED thật — chỉ để lấy tỉ lệ + hiện nhãn
   targetHeight: number;
   showInPresent: boolean; // vẽ khung lên Present Mode (để căn Resolume) — tắt trước khi diễn
+  // --- Shape "image": khung theo file pixel map PNG bên LED gửi (hình tròn/cong/cánh/nhiều mảnh) ---
+  // Mọi field dưới đây OPTIONAL — landing lưu trước khi có tính năng này không có chúng, đọc qua
+  // resolveFrameMaskOptions() (giá trị mặc định 1 chỗ). Xem docs/landing/output-frame.md.
+  shape?: "rect" | "image"; // thiếu = "rect" (hành vi cũ)
+  maskSrc?: string | null; // data URL ảnh pixel map GỐC (giữ gốc để đổi cách nhận diện không cần import lại)
+  maskFileName?: string | null; // chỉ để hiện trong panel
+  maskDetect?: FrameMaskDetect; // cách nhận diện vùng LED từ ảnh
+  maskInvert?: boolean; // đảo vùng LED/ngoài LED (file vẽ vùng LED màu tối)
+  maskFillHoles?: boolean; // lấp lỗ kín bên trong (chữ đánh số tấm LED...) — tắt cho LED hình vành khuyên
+  maskGapFill?: number; // lấp khe hở mảnh giữa các tấm LED, px theo ảnh gốc
+  dimOutside?: boolean; // làm tối phần canvas nằm ngoài vùng LED
+  dimOpacity?: number; // 0-100
+  maskImageOpacity?: number; // 0-100 — hiện ảnh pixel map gốc mờ đè lên (CHỈ Builder) để đối chiếu nhận diện
+}
+
+// auto = ảnh có vùng trong suốt → theo độ trong suốt, không có → theo độ sáng (nền đen, tấm LED sáng).
+export type FrameMaskDetect = "auto" | "alpha" | "luminance";
+
+export const DEFAULT_FRAME_DIM_OPACITY = 60;
+export const DEFAULT_FRAME_GAP_FILL = 8;
+
+export function resolveFrameMaskOptions(props: OutputFrameProps) {
+  return {
+    detect: props.maskDetect ?? "auto",
+    invert: props.maskInvert ?? false,
+    fillHoles: props.maskFillHoles ?? true,
+    gapFill: props.maskGapFill ?? DEFAULT_FRAME_GAP_FILL,
+  };
 }
 
 export interface OutputFrameComponent extends BaseComponent {
@@ -1367,11 +1395,15 @@ export interface DrawSequenceActions {
   // chọn vừa hết hàng (đã bỏ — gây mất trải nghiệm thị giác ngay lúc Wheel vừa quay xong) —
   // useDrawSequence.ts vẫn tự âm thầm bỏ chọn giải đó lúc đó, không kèm popup.
   infoPrompt: string | null;
+  // true = popup chỉ có nút × góc trên phải (không có nút OK) — hiện chỉ dùng cho cảnh báo "No eligible
+  // participant left for this prize" khi Draw lại (redo) đã loại hết người đủ điều kiện của giải đang
+  // chờ Confirm (xem useDrawSequence.ts's redo()).
+  infoPromptCloseOnly: boolean;
   // Hàm CHUNG để bật popup này với message tuỳ ý — notifyOutOfStock() chỉ là 1 cách gọi RIÊNG đã có
   // sẵn format câu cố định ("... is out of stock!"). Button action "openLink" (ButtonView.tsx) dùng
   // THẲNG hàm này khi chưa có winner/winner không có link — trước đây no-op im lặng, đổi thành popup
   // vì "bấm không thấy gì" khiến người vận hành tưởng nút bị lỗi (đã gặp thật).
-  showInfoPrompt: (message: string) => void;
+  showInfoPrompt: (message: string, opts?: { closeOnly?: boolean }) => void;
   notifyOutOfStock: (prizeName: string) => void;
   dismissInfoPrompt: () => void;
   // Đang trong khoảng Lucky Wheel quay (từ lúc có candidate mới tới đúng lúc animation quay xong hẳn

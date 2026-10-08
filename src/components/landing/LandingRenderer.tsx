@@ -241,7 +241,8 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
           hoặc trực tiếp trong useDrawSequence.ts's pick()/confirm() (bấm Draw mà chưa chọn giải trên
           trang có UI chọn giải, hoặc bấm Confirm mà chưa có ai được quay). Dismiss-only (chỉ có nút
           OK, không có lựa chọn Confirm/Cancel nào khác) — click nền tối hoặc Esc cũng đóng, cùng kiểu
-          với popup confirmPrompt ở trên. */}
+          với popup confirmPrompt ở trên. infoPromptCloseOnly = biến thể chỉ có nút × góc trên phải, không
+          có nút OK (cảnh báo hết người đủ điều kiện khi Draw lại, xem useDrawSequence.ts's redo()). */}
       {interactive && sequence?.infoPrompt && (
         <div
           className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -250,13 +251,28 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         >
           <EscapeKeyHandler onEscape={sequence.dismissInfoPrompt} />
           <div
-            className="w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
+            className="relative w-[420px] max-w-[90%] rounded-xl bg-base-950 p-6 text-center shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-base font-medium text-base-100">{sequence.infoPrompt}</p>
-            <div className="mt-5 flex justify-center">
-              <Button onClick={sequence.dismissInfoPrompt}>OK</Button>
-            </div>
+            {sequence.infoPromptCloseOnly && (
+              <button
+                onClick={sequence.dismissInfoPrompt}
+                className="absolute right-3 top-3 text-base-400 hover:text-base-100"
+                aria-label="Close"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            )}
+            <p className={`text-base font-medium text-base-100 ${sequence.infoPromptCloseOnly ? "px-6" : ""}`}>
+              {sequence.infoPrompt}
+            </p>
+            {!sequence.infoPromptCloseOnly && (
+              <div className="mt-5 flex justify-center">
+                <Button onClick={sequence.dismissInfoPrompt}>OK</Button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -223,6 +223,8 @@ declare global {
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
         // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
         setTabOrder: (ids: string[]) => Promise<void>;
+        // Nhân bản session → id mới ("<tên> copy"), sạch kết quả quay, mở khoá, tab nằm ngay sau tab gốc.
+        duplicate: (id: string) => Promise<string>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;
@@ -248,6 +250,13 @@ declare global {
       };
       dialog: {
         openAndReadFile: () => Promise<{ ext: string; text?: string; base64?: string; error?: string } | null>;
+        // Hộp thoại Save + ghi file (xem src/lib/exportTable.ts). null = người dùng huỷ dialog.
+        saveFile: (data: {
+          defaultName: string;
+          ext: "csv" | "xlsx";
+          text?: string;
+          base64?: string;
+        }) => Promise<{ filePath: string } | { error: string } | null>;
       };
       media: {
         // null = người dùng huỷ dialog. Phát lại qua `ldmedia://<sessionId>/<mediaId>` (electron/media.ts).

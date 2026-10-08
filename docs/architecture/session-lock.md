@@ -90,15 +90,18 @@ Mở khoá (về 0) thì luôn được.
 
   | Đang ở | Lựa chọn trong menu |
   |---|---|
-  | Mở | **Lock inputs** (→ Input lock), **Lock session** (→ Full lock), Move to trash |
-  | Input lock | **Lock session** (→ Full lock), **Unlock inputs** (→ Mở, giữ 3s) |
-  | Full lock | **Switch to input lock** (→ Input lock, giữ 3s), **Unlock session** (→ Mở, giữ 3s) |
+  | Mở | **Input Lock** (→ Input lock), **Session Lock** (→ Full lock), Duplicate, Move to Trash |
+  | Input lock | **Session Lock** (→ Full lock), **Unlock Inputs** (→ Mở, giữ 3s), Duplicate |
+  | Full lock | **Switch to Input Lock** (→ Input lock, giữ 3s), **Unlock Session** (→ Mở, giữ 3s), Duplicate |
 
   Trình duyệt tự chuẩn hoá sự kiện `contextmenu` giữa các cách bấm chuột phải; Option + click là 1
   `click` có `altKey`, `TabBar.tsx` bắt riêng.
-- **Giữ 3 giây** (`HoldToUnlockButton.tsx`, dùng `requestAnimationFrame` chạy thanh fill, thả sớm là
-  huỷ) cho mọi chiều nới lỏng — bảng `STRICTNESS` trong `SessionLockMenu.tsx` quyết định chiều nào là
-  nới lỏng.
+- **Giữ 3 giây** (`HoldToUnlockButton.tsx`, thanh fill màu xanh lá chạy bằng CSS transition — cùng kỹ
+  thuật với nút Confirm/Reset trên Landing, xem `ButtonView.tsx`'s `useHoldToRun` — thay vì
+  `requestAnimationFrame` như bản cũ; thả sớm thì rút nhanh về 0, huỷ) cho mọi chiều nới lỏng — bảng
+  `STRICTNESS` trong `SessionLockMenu.tsx` quyết định chiều nào là nới lỏng. Modal xác nhận chỉ còn
+  title (căn giữa) + nút giữ — không còn đoạn mô tả hay nút ×; thoát mà không giữ nút thì bấm **Escape**
+  (tự xử lý riêng trong `SessionLockMenu.tsx`, không dùng chung handler đóng menu).
 - **Icon ổ khoá** cạnh tên tab trong `TabBar.tsx`: **xám** = Full lock, **xanh nhạt (teal-500)** = Input
   lock; tooltip của tab nói rõ mức đang khoá.
 - **Tab Full lock**: double-click không đổi tên, nút × (đóng tab) ẩn đi. Tab Input lock vẫn đổi tên/đóng

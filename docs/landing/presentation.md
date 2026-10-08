@@ -165,6 +165,7 @@ Vẽ trong `LandingRenderer.tsx` (cần phủ toàn bộ canvas đã scale, 1 co
 | **Confirm** (`confirmPrompt`, z-50) | Button Confirm/Reset, hoặc Draw khi còn candidate chưa Confirm | Cancel / click nền / Esc. `holdMs` (Reset: 3s) đổi nút thành giữ-để-xác-nhận (`HoldToConfirmButton.tsx`) |
 | **Draw count** (`drawModePrompt`) | Chọn Multiple/Quick Draw | `DrawModeCountPopup.tsx` — nhập số ≤ remaining |
 | **Info** (`infoPrompt`, z-50) | Thông báo nghiệp vụ: chưa chọn giải, giải hết hàng, chưa có winner, lỗi Draw/Confirm… | Chỉ nút OK / click nền / Esc |
+| **Info — chỉ ×** (`infoPrompt` + `infoPromptCloseOnly`) | "No eligible participant left for this prize": Draw lại (`redo()`) khi đã loại hết người đủ điều kiện của giải đang chờ Confirm. Candidate cuối vẫn giữ nguyên ở trạng thái chờ — Confirm được, hoặc chọn giải khác | Nút × góc trên phải / click nền / Esc (không có nút OK) |
 | **Busy** (z-60) | `sequence.busy` — Confirm/Reset đang ghi DB, GỒM cả bước `refresh()` sau đó | Không đóng được; chặn mọi click cho tới khi dữ liệu đã mới (bug đã sửa: Reset xong chọn giải ngay bị báo "hết hàng" sai) |
 
 `EscapeKeyHandler.tsx` gắn Esc cho từng popup; khi 2 popup chồng nhau chỉ popup trên cùng nhận Esc.

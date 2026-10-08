@@ -2,6 +2,73 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [1.3.0] — 2026-10-08
+
+### Draw Engine — người bị bỏ qua (Not confirmed) không bị quay lại nữa
+
+Chi tiết: `docs/architecture/draw-engine.md`.
+
+- Người đã được quay ra nhưng không Confirm (bấm Draw lại vì vắng mặt, hoặc tắt app khi đang chờ
+  Confirm) bị loại khỏi mọi lượt quay sau trong session — đọc từ Draw History trong DB nên mang session
+  sang máy khác quay tiếp vẫn không trùng. Chỉ Reset session mới quay lại được họ.
+- Lượt Not confirmed KHÔNG tính là "đã trúng" — không ảnh hưởng 2 tuỳ chọn Allow duplicate của giải.
+
+### Present Mode — cảnh báo hết người đủ điều kiện khi Draw lại
+
+Chi tiết: `docs/landing/presentation.md` bảng popup.
+
+- Đang chờ Confirm mà bấm Draw lại tới khi đã loại hết người đủ điều kiện của giải: người cuối cùng vẫn
+  giữ nguyên ở trạng thái chờ, bấm Draw tiếp hiện popup "No eligible participant left for this prize"
+  chỉ có nút × góc trên phải (không có OK).
+
+### Export Participants / Draw History ra CSV hoặc Excel
+
+Chi tiết: `docs/participants/import.md` mục "Export".
+
+- Trang **Participants** có nút **Export ▾** (Excel `.xlsx` / CSV `.csv`): xuất đúng các cột đang thấy ở
+  bảng preview, giữ tên cột gốc → Import/Replace ngược lại được. Không gồm participant đã xoá.
+- **Dashboard** có nút **Export ▾** cạnh bảng Draw History (Dashboard giờ có 2 tiêu đề section: Overview và Draw History): xuất Time (giờ máy, `YYYY-MM-DD HH:MM:SS`),
+  Prize, các cột participant đã import, Status (Confirmed / Not confirmed).
+- CSV có BOM UTF-8 để Excel mở đúng tiếng Việt. Export chỉ đọc dữ liệu nên vẫn dùng được khi session bị khoá.
+
+### Landing — Image/Prize resize khoá tỉ lệ ảnh gốc
+
+Chi tiết: `docs/landing/builder.md` mục 3, `docs/landing/image.md`, `docs/landing/prize.md`.
+
+- Resize (4 tay cầm góc) của component **Image** và **Prize** giờ luôn khoá đúng tỉ lệ ảnh gốc
+  (`naturalWidth/naturalHeight`) — không kéo méo/crop sai tỉ lệ được nữa, không có modifier để tắt.
+
+### Session Lock — modal Unlock gọn lại, thanh giữ đổi màu xanh lá
+
+Chi tiết: `docs/architecture/session-lock.md` mục "Giao diện".
+
+- Modal xác nhận Unlock Session/Unlock Inputs/Switch to Input Lock chỉ còn title (căn giữa) + nút giữ
+  3 giây — bỏ đoạn mô tả và nút ×. Thoát không cần giữ nút thì bấm **Escape**.
+- Thanh fill của nút giữ đổi sang CSS transition (mượt hơn `requestAnimationFrame` cũ) và luôn màu
+  xanh lá suốt quá trình giữ, cùng ngôn ngữ hình ảnh với nút Confirm/Reset trên Landing.
+
+### Thanh tab — Duplicate session
+
+Chi tiết: `docs/architecture/database-schema.md` mục "Lưu trữ theo session" (bảng hành động, dòng Duplicate).
+
+- Chuột phải vào tab → **Duplicate**: tạo session mới "<tên> copy" (đã có thì "copy 2", "copy 3"…)
+  với nguyên participant, prize, cấu hình cột và Landing. KHÔNG copy kết quả quay — bản sao sạch, mở khoá,
+  sẵn sàng quay lại. Tab mới nằm ngay sau tab gốc. Nhân bản được cả session đang khoá.
+- Menu chuột phải gọn lại, chỉ còn tên mục, bỏ dòng chú thích: **Input Lock**, **Session Lock**,
+  **Duplicate**, **Move to Trash** (khi đang khoá: Unlock Inputs/Unlock Session/Switch to Input Lock).
+
+### Landing — Frame dạng ảnh pixel map (LED hình phức tạp)
+
+Chi tiết: `docs/landing/output-frame.md` mục "Shape Image".
+
+- Frame có thêm Shape **Image (LED mapping PNG)**: import file pixel map bên LED gửi → viền vàng bám
+  đúng hình vùng LED (tròn, vành khuyên, cánh cong, nhiều màn rời). Độ phân giải LED lấy từ kích thước
+  ảnh, khung tự Fit to canvas.
+- Tự nhận diện ảnh nền trong suốt hoặc nền đen; có Invert, lấp lỗ kín (số tấm LED), lấp khe giữa các tấm,
+  hiện % diện tích LED để kiểm tra.
+- Tuỳ chọn **Dim outside LED area** làm tối phần sẽ bị cắt; hiện mờ ảnh gốc trong Builder để đối chiếu.
+- Frame dạng Rectangle cũ giữ nguyên, không đổi landing đã dựng. Không đổi DB, không thêm thư viện.
+
 ## [1.2.0] — 2026-10-06
 
 ### Session Lock — thêm mức "Input lock" (khoá mềm)

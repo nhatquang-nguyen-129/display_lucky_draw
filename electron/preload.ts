@@ -89,6 +89,7 @@ const api = {
     openFile: () => ipcRenderer.invoke("sessions:openFile"),
     setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
+    duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),
@@ -122,7 +123,9 @@ const api = {
   },
   dialog: {
     openAndReadFile: () => ipcRenderer.invoke("dialog:openAndReadFile"),
-    },
+    saveFile: (data: { defaultName: string; ext: "csv" | "xlsx"; text?: string; base64?: string }) =>
+      ipcRenderer.invoke("dialog:saveFile", data),
+  },
   media: {
     // Mở dialog chọn video, main lưu vào bảng media của session — xem electron/media.ts.
     importVideo: (sessionId: string) => ipcRenderer.invoke("media:importVideo", sessionId),

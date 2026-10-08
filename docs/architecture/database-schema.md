@@ -37,14 +37,25 @@ to trash / Open / Restore" bên dưới).
   an toàn — không có file `-wal` giữ phần dữ liệu mới nhất.
 - **Quét lại `data/`** mỗi lần renderer lấy danh sách session (`sessions:list`) — cửa sổ chính gọi lại
   khi được focus, nên file vừa copy vào `data/` lúc app đang mở tự hiện thành tab mới.
-- **4 hành động tách riêng trên 1 session** (`src/components/TabBar.tsx`,
+- **5 hành động tách riêng trên 1 session** (`src/components/TabBar.tsx`,
   `src/components/SessionLockMenu.tsx`, `src/components/RestoreModal.tsx`):
   | Hành động | Trigger | File trên đĩa | Hoàn tác |
   |---|---|---|---|
   | **Close** | Nút × trên tab | KHÔNG đụng gì — vẫn nằm trong `data/` | Nút **Open**, chọn lại đúng file đó |
-  | **Move to trash** | Chuột phải/Option+click → "Move to trash" | Chuyển vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) | Nút **Restore** → Restore |
+  | **Move to trash** | Chuột phải/Option+click → "Move to Trash" | Chuyển vào `data/.trash/` (`<tên>__deleted-<thời điểm>.db`) | Nút **Restore** → Restore |
   | **Delete (vĩnh viễn)** | Nút **Restore** → chọn session → nút Delete | Xoá hẳn khỏi `data/.trash/` (`fs.unlinkSync`) | KHÔNG — mất hẳn |
   | **Open** | Nút **Open** ở thanh tab | Chọn 1 file `.db` bất kỳ qua dialog (mặc định mở `data/`) | — |
+  | **Duplicate** | Chuột phải/Option+click → "Duplicate" | File MỚI `<tên> copy__<id mới>.db` (`VACUUM INTO` từ file gốc) | Move to trash bản copy |
+
+  **Duplicate** (`duplicateSession()` trong `db.ts`, IPC `sessions:duplicate`): bản sao giữ nguyên
+  participant, prize, cấu hình cột, Landing (cả media BLOB) — id participant/prize GIỮ NGUYÊN (khác file
+  nên không đụng nhau) để mọi liên kết trong Landing vẫn đúng. Session id mới (cùng cách đổi id như
+  "Keep both", `SESSION_ID_TABLES`). Bản sao là bản SẠCH để quay lại: xoá `draw_results`, trả
+  `prizes.remaining = quantity` (y hệt `draw:resetSession`), `locked = 0`, `closed = 0`, `created_at`
+  mới. Tên: "A" → "A copy" → "A copy 2"…; nhân bản "A copy 2" ra "A copy 3" (bỏ đuôi " copy N" trước khi
+  đánh số), so với tên mọi session đã đăng ký kể cả tab đang Close. Tab mới chèn ngay sau tab gốc
+  (`.tab-order.json`) và được chọn luôn. Không bị Session Lock chặn — chỉ đọc file gốc, nhân bản 1 session
+  đã khoá là use-case chính (dựng sự kiện mới từ sự kiện cũ).
 
   Cột `sessions.closed` (migration additive, mặc định 0) đánh dấu Close — `listSessions()` lọc bỏ
   session có `closed = 1` khỏi danh sách tab, nhưng `rescan()` vẫn mở kết nối cho file đó bình thường
@@ -144,7 +155,7 @@ erDiagram
     text participant_id FK
     text prize_id FK
     text rng_seed
-    integer confirmed "1 = đã Confirm thật; 0 = đã pick nhưng bị Redo/bỏ dở, chỉ để Dashboard xem lịch sử"
+    integer confirmed "1 = đã Confirm thật; 0 = đã pick nhưng bị Redo/bỏ dở — Dashboard xem lịch sử + pickWinner loại người đó khỏi lượt quay sau"
   }
   MEDIA {
     text id PK

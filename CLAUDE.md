@@ -50,6 +50,11 @@ Nguyên tắc chọn công nghệ mới cho dự án này: ưu tiên giải phá
 - Thay đổi schema DB (`electron/db.ts`) luôn cần kèm migration an toàn cho DB cũ (xem các hàm `migrate...()` cuối file `db.ts` làm mẫu) — không được `DROP`/`ALTER` phá dữ liệu người dùng đã có.
 - Không tự ý đổi logic `drawEngine.ts` (thuật toán random) nếu không được yêu cầu rõ — đây là phần nhạy cảm nhất về tính công bằng.
 - Version `X.Y.Z`: `X` = đổi kiến trúc, **chỉ tăng khi chủ dự án duyệt**; `Y` = thêm/đổi/xoá tính năng lớn; `Z` = thay đổi nhỏ/sửa lỗi. Chủ dự án quyết định bản nào tăng số nào — xem `docs/deploy/release.md` bước 2.
+- **Mỗi khi vừa làm xong 1 thay đổi code (fix/feature) — trước khi build release hoặc kết thúc việc**:
+  báo lại version hiện tại ở `package.json` trên CẢ 2 branch `branch_2x` (`git show branch_2x:package.json`
+  hoặc nhánh đang checkout) lẫn `main` (`git show main:package.json` hoặc `git show origin/main:package.json`),
+  rồi hỏi chủ dự án có muốn bump lên `vX.Y.Z` kế tiếp không (X/Y/Z tăng cái nào theo đúng quy tắc ở
+  dòng trên) — KHÔNG tự ý bump khi chưa được xác nhận.
 - Lucky Wheel (Wheel Circular + Digit Roller) đã CHỐT cho production (xem `CHANGELOG.md`) — chỉ sửa bug, không đổi hành vi/giao diện nếu không được yêu cầu rõ.
 
 ## BUG đã xác định — chưa fix (xoá mục này sau khi làm xong)

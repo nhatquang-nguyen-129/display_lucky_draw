@@ -40,6 +40,9 @@ active thì click báo popup qua `notifyOutOfStock` thay vì chọn được.
 Ảnh hiển thị luôn là `prize.display_image` (bắt buộc nhập ở màn Prizes, `PrizeFormModal.tsx`) —
 không còn ảnh dự phòng riêng. `prizeId = null`/giải đã bị xoá → hiện placeholder "No image".
 
+Resize (4 tay cầm góc) luôn khoá đúng tỉ lệ ảnh gốc của `display_image` — không kéo méo/crop sai tỉ lệ
+được, không có cách tắt. Xem [builder.md mục 3](./builder.md#3-canvas-landingcanvastsx).
+
 ## 2. Click xuyên qua PNG trong suốt — vì sao cần 2 lớp hit-test riêng
 
 Vì nhiều Prize Image thường đặt **chồng bounding box lên nhau** (ghim theo artwork nền), hit-test

@@ -2,7 +2,7 @@
   <img src="assets/icon/readme-icon.png" alt="KidsPlaza Logo" width="300"/>
 </p>
 
-This repository contains an **Lucky Draw Application** designed for offline and event-based prize drawing, running on PC environments and built using **Electron**.
+This repository contains a **Lucky Draw Application** (Lucky Draw Studio) designed for offline and event-based prize drawing, running on PC environments and built using **Electron**.
 
 The application enables organizers to configure prize structures, participant lists, draw rules, and display logic, ensuring transparency, repeatability, and operational stability during live events.
 
@@ -16,6 +16,20 @@ The system is designed with a modular, maintainable architecture, allowing contr
 > **`branch_2x`**
 
 `branch_2x` represents the active **2.x.x development line**, where incremental features, framework enhancements, and non-breaking changes are implemented before being promoted to production (`main`).
+
+---
+
+## Quick start
+
+```bash
+npm install
+npx electron-rebuild    # required after every install (better-sqlite3 is a native module)
+npm run electron:dev    # Vite + Electron in development mode
+npm run package         # production build into release/
+```
+
+Stack: Electron, React 18 + TypeScript, Vite, Tailwind CSS, better-sqlite3 (one SQLite file per draw session, fully offline).
+Detailed guides live in `docs/` — start with `docs/local/setup.md` (dev machine), `docs/architecture/ipc-and-windows.md` (architecture) and `docs/deploy/release.md` (release).
 
 ---
 
@@ -34,7 +48,7 @@ current_branch → main → deploy
 ## Ownership
 
 ```text
-This repository is maintained by the Digital Marketng Team at KidsPlaza.
+This repository is maintained by the Digital Marketing Team at KidsPlaza.
 
 For questions, access requests, or contributions, please contact:
 
