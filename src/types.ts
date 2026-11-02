@@ -88,20 +88,46 @@ export interface TrashEntry {
   confirmedDraws: number;
 }
 
-// Kết quả 1 lần Sync Data folder từ Google Drive — xem electron/driveSync.ts. "already-synced" = đã
-// tải ở lượt Sync trước, bỏ qua không tải lại; "downloaded" có savedAs khác name nghĩa là bị đổi tên
-// tránh trùng (uniquePath) vì data/ đã có sẵn 1 file khác tên y hệt — nhường cho
-// SessionConflictDialog.tsx tự phát hiện có thật là cùng 1 session hay không, không xử lý riêng ở đây.
-export interface SyncFileResult {
-  name: string;
-  savedAs?: string;
-  status: "downloaded" | "already-synced" | "skipped-not-db" | "error";
-  message?: string;
+// Cloud Sync (Cloudflare Worker + R2) — xem electron/cloudSync.ts, docs/architecture/cloud-sync.md.
+// Mọi lời gọi trả { error } thay vì throw, để modal hiện lỗi đọc được.
+export type CloudResult<T> = { error: string } | T;
+export interface CloudSettings {
+  workerUrl: string;
+  readCode: string;
+  writeToken: string;
 }
-export type SyncResult = { error: string } | { files: SyncFileResult[] };
-export interface SyncSettings {
-  apiKey: string;
-  lastFolderUrl: string;
+export interface CloudSpace {
+  name: string;
+  createdAt: string;
+  role: "read" | "write";
+}
+export interface CloudVersion {
+  sessionId: string;
+  file: string;
+  size: number;
+  pushedAt: string; // ISO
+  sessionName: string;
+  modifiedAt: string; // ISO — lần sửa cuối của file gốc lúc Push
+  sha256: string; // sha256 nội dung (bỏ qua schema cookie) — xem contentHash() trong cloudSync.ts
+  appVersion: string;
+  participantCount: number;
+  pulledAs?: string; // đã Pull bản này về data/ (file vẫn còn)
+}
+// Trạng thái 1 session khi so local với cloud — xem status() trong electron/cloudSync.ts.
+export type CloudSyncState = "in-sync" | "local-only" | "cloud-only" | "local-newer" | "cloud-newer" | "diverged";
+export interface CloudSessionStatus {
+  sessionId: string;
+  name: string;
+  state: CloudSyncState;
+  newer?: "local" | "cloud"; // chỉ với "diverged": bên nào sửa sau
+  local?: { modifiedAt: string; closed: boolean };
+  versions: CloudVersion[]; // mới nhất trước, rỗng nếu local-only
+}
+export interface CloudPushResult {
+  sessionId: string;
+  name: string;
+  status: "pushed" | "unchanged" | "error";
+  message?: string;
 }
 
 export interface DrawResultRow {
@@ -242,13 +268,18 @@ declare global {
         // Nhân bản session → id mới ("<tên> copy"), sạch kết quả quay, mở khoá, tab nằm ngay sau tab gốc.
         duplicate: (id: string) => Promise<string>;
       };
-      sync: {
-        // Tải file .db mới (theo tên, chưa có trong data/) từ 1 thư mục Google Drive công khai — xem
-        // electron/driveSync.ts. Không bao giờ ghi đè file đã có; file trùng tên được lưu dưới tên
-        // tránh trùng, nhường cho SessionConflictDialog.tsx tự phát hiện trùng sessions.id thật.
-        driveFolder: (data: { folderUrl: string; apiKey: string }) => Promise<SyncResult>;
-        // Đọc lại apiKey/lastFolderUrl đã lưu lần Sync gần nhất (data/.drive-sync.json) để tự điền modal.
-        getSettings: () => Promise<SyncSettings | null>;
+      cloud: {
+        // URL Worker + mã đã lưu (data/.cloud-sync.json) — rỗng nếu chưa Connect lần nào.
+        getSettings: () => Promise<CloudSettings>;
+        // Kiểm tra URL + mã với Worker, đúng thì lưu lại. role "write" khi writeToken hợp lệ.
+        connect: (data: CloudSettings) => Promise<CloudResult<CloudSpace>>;
+        disconnect: () => Promise<void>;
+        // So local với cloud từng session (gộp theo sessionId) — gợi ý Push/Sync theo `state`.
+        status: () => Promise<CloudResult<{ sessions: CloudSessionStatus[]; canWrite: boolean }>>;
+        // Đẩy từng session thành 1 bản mới; bản giống hệt bản mới nhất trên cloud → "unchanged".
+        push: (sessionIds: string[]) => Promise<CloudResult<{ results: CloudPushResult[] }>>;
+        // Tải 1 bản về data/ dưới tên tránh trùng — không ghi đè; trùng id → SessionConflictDialog.
+        pull: (data: { sessionId: string; file: string }) => Promise<CloudResult<{ savedAs: string; alreadyPulled: boolean }>>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

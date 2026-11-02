@@ -27,7 +27,7 @@ import {
 } from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
-import { syncDriveFolder, readSyncSettings, writeSyncSettings } from "./driveSync";
+import * as cloudSync from "./cloudSync";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 import { importVideo, purgeUnusedMedia, registerMediaProtocol, registerMediaScheme } from "./media";
 
@@ -644,19 +644,22 @@ ipcMain.handle("sessions:openFile", async () => {
   return openDbFile(result.filePaths[0]);
 });
 
-// Tải file .db mới (theo tên, chưa có trong data/) từ 1 thư mục Google Drive công khai — lời gọi
-// network DUY NHẤT trong app, xem electron/driveSync.ts. KHÔNG assertSessionUnlocked/
-// assertInputsUnlocked: thao tác này không đụng tới 1 session cụ thể nào, chỉ thêm file mới vào data/.
-ipcMain.handle("sync:driveFolder", async (_e, data: { folderUrl: string; apiKey: string }) => {
-  const settings = readSyncSettings();
-  const result = await syncDriveFolder(data.folderUrl, data.apiKey, settings?.syncedFiles ?? {});
-  if (!("error" in result)) {
-    writeSyncSettings({ apiKey: data.apiKey, lastFolderUrl: data.folderUrl, syncedFiles: result.updatedSyncedFiles });
-  }
-  return result;
+// Cloud Sync — Push/Pull nguyên file session qua Cloudflare Worker + R2 (cloud/worker/), lời gọi
+// network DUY NHẤT trong app, xem electron/cloudSync.ts. KHÔNG assertSessionUnlocked/
+// assertInputsUnlocked: Push chỉ đọc session (VACUUM INTO ra file tạm), Pull chỉ thêm file mới vào
+// data/, không đụng session nào đang mở.
+ipcMain.handle("cloud:getSettings", () => {
+  const { workerUrl, readCode, writeToken } = cloudSync.readCloudSettings();
+  return { workerUrl, readCode, writeToken };
 });
-
-ipcMain.handle("sync:getSettings", () => readSyncSettings());
+ipcMain.handle("cloud:connect", (_e, data: { workerUrl: string; readCode: string; writeToken: string }) =>
+  cloudSync.connect(data)
+);
+ipcMain.handle("cloud:disconnect", () => cloudSync.disconnect());
+// So local với cloud từng session → renderer gợi ý Push/Sync (xem status() trong cloudSync.ts).
+ipcMain.handle("cloud:status", () => cloudSync.status());
+ipcMain.handle("cloud:push", (_e, sessionIds: string[]) => cloudSync.push(sessionIds));
+ipcMain.handle("cloud:pull", (_e, data: { sessionId: string; file: string }) => cloudSync.pull(data));
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.

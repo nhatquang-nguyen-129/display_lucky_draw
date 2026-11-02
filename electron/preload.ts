@@ -91,10 +91,15 @@ const api = {
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
-  sync: {
-    // Tải file .db mới từ 1 thư mục Google Drive công khai vào data/ — xem electron/driveSync.ts.
-    driveFolder: (data: { folderUrl: string; apiKey: string }) => ipcRenderer.invoke("sync:driveFolder", data),
-    getSettings: () => ipcRenderer.invoke("sync:getSettings"),
+  cloud: {
+    // Push/Pull nguyên file session qua Cloudflare Worker + R2 — xem electron/cloudSync.ts.
+    getSettings: () => ipcRenderer.invoke("cloud:getSettings"),
+    connect: (data: { workerUrl: string; readCode: string; writeToken: string }) =>
+      ipcRenderer.invoke("cloud:connect", data),
+    disconnect: () => ipcRenderer.invoke("cloud:disconnect"),
+    status: () => ipcRenderer.invoke("cloud:status"),
+    push: (sessionIds: string[]) => ipcRenderer.invoke("cloud:push", sessionIds),
+    pull: (data: { sessionId: string; file: string }) => ipcRenderer.invoke("cloud:pull", data),
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

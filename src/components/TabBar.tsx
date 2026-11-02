@@ -4,7 +4,7 @@ import { Session } from "@/types";
 import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
 import SessionLockMenu from "./SessionLockMenu";
 import RestoreModal from "./RestoreModal";
-import DriveSyncModal from "./DriveSyncModal";
+import CloudSyncModal from "./CloudSyncModal";
 
 export default function TabBar() {
   const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, openFile, reorderTabs, refresh } =
@@ -17,7 +17,7 @@ export default function TabBar() {
   const [newName, setNewName] = useState("");
   const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
   const [showRestore, setShowRestore] = useState(false);
-  const [showSync, setShowSync] = useState(false);
+  const [showCloud, setShowCloud] = useState(false);
   // Ô nhập tên tab mới nghe cả onKeyDown (Enter) lẫn onBlur — 1 số trường hợp Enter cũng kéo theo blur
   // gần như cùng lúc, khiến handleAddTab() bị gọi 2 lần trước khi newName kịp reset, tạo nhầm 2 session
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
@@ -238,21 +238,22 @@ export default function TabBar() {
         Restore
       </button>
 
-      {/* Tải file .db mới từ 1 thư mục Google Drive công khai vào data/ — xem DriveSyncModal.tsx. */}
+      {/* Xem session đang có trên cloud + Sync về data/ — khai báo kết nối/Push ở trang Settings. Xem
+          CloudSyncModal.tsx. */}
       <button
-        onClick={() => setShowSync(true)}
-        title="Sync new session files from a public Google Drive folder"
+        onClick={() => setShowCloud(true)}
+        title="See sessions in the cloud and sync them to this computer"
         className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-          <path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" />
-          <path d="M6 15a5 5 0 0 1-1-9.9A6 6 0 0 1 17 6a4.5 4.5 0 0 1 1 8.9" />
+          <path d="M7 18a5 5 0 0 1-.9-9.9A6 6 0 0 1 17.6 8 4.5 4.5 0 0 1 17 18z" />
+          <path d="M12 15V11m0 0l-2 2m2-2l2 2" />
         </svg>
-        Sync
+        Cloud
       </button>
 
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
-      {showSync && <DriveSyncModal onClose={() => setShowSync(false)} />}
+      {showCloud && <CloudSyncModal onClose={() => setShowCloud(false)} />}
 
       {lockMenu && (
         <SessionLockMenu

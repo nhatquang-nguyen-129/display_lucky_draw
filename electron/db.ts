@@ -396,13 +396,14 @@ function slugify(name: string): string {
   return slug || "Session";
 }
 
-function fileNameFor(name: string, id: string): string {
+// Export để cloudSync.ts đặt tên file Pull về theo đúng quy ước tên file session.
+export function fileNameFor(name: string, id: string): string {
   return `${slugify(name)}__${id.slice(0, 8)}.db`;
 }
 
 // Tránh ghi đè file có sẵn (vd 2 session trùng tên VÀ trùng 8 ký tự đầu id — gần như không thể, nhưng
-// rẻ để chặn): thêm hậu tố -2, -3... Export để driveSync.ts tái dùng đúng logic này khi file tải từ
-// Google Drive trùng tên 1 file có sẵn trong data/ — nhường việc phát hiện có thật là cùng 1 session
+// rẻ để chặn): thêm hậu tố -2, -3... Export để cloudSync.ts tái dùng đúng logic này khi file Pull từ
+// cloud trùng tên 1 file có sẵn trong data/ — nhường việc phát hiện có thật là cùng 1 session
 // hay không cho rescan()/listConflicts() (đọc sessions.id thật bên trong), không tự đoán ở đây.
 export function uniquePath(dir: string, fileName: string): string {
   let target = path.join(dir, fileName);
@@ -943,6 +944,29 @@ export function openDbFile(filePath: string): string | null {
   if (!entry) return null;
   const row = entry.db.prepare(`SELECT id FROM sessions LIMIT 1`).get() as { id: string } | undefined;
   return row?.id ?? null;
+}
+
+/**
+ * Bản sao NHẤT QUÁN của 1 session đang mở ra `destFile` (VACUUM INTO, giống duplicateSession — an toàn
+ * ngay cả khi session đang được ghi), không đụng file gốc. Dùng cho Push lên Cloud Sync (cloudSync.ts).
+ * Trả về thời điểm sửa file gốc (mtime) — gửi kèm làm modifiedAt để máy Pull về so được bản nào mới hơn.
+ */
+export function snapshotSession(sessionId: string, destFile: string): { modifiedAt: string } {
+  const entry = entries.get(sessionId);
+  if (!entry) throw new Error(`Session not found: ${sessionId}`);
+  entry.db.prepare(`VACUUM INTO ?`).run(destFile);
+  return { modifiedAt: fs.statSync(entry.file).mtime.toISOString() };
+}
+
+/** Mọi session đang đăng ký (KỂ CẢ tab đang Close — file vẫn nằm trong data/) kèm file + mtime — Cloud
+ *  Sync dùng để so local với cloud (cloudSync.ts status()). Bản trùng id chờ SessionConflictDialog
+ *  không có ở đây, chỉ bản đang dùng. */
+export function listSessionFiles(): { id: string; name: string; closed: boolean; file: string; mtimeMs: number }[] {
+  rescan();
+  return [...entries.entries()].map(([id, e]) => {
+    const row = e.db.prepare(`SELECT name, closed FROM sessions LIMIT 1`).get() as { name: string; closed: number | null };
+    return { id, name: row.name, closed: !!row.closed, file: e.file, mtimeMs: fs.statSync(e.file).mtimeMs };
+  });
 }
 
 export function closeAll() {

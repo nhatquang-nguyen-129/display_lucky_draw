@@ -4,19 +4,23 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [1.4.0] — 2026-11-02
 
-### Sync Data folder từ Google Drive
+### Cloud Sync — Push/Pull session qua Cloudflare
 
-Chi tiết: `docs/architecture/drive-sync.md`.
+Chi tiết: `docs/architecture/cloud-sync.md`.
 
-- Nút **Sync** mới cạnh "Open"/"Restore" ở thanh tab: dán link 1 thư mục Google Drive công khai
-  (Anyone with the link) + 1 API key Drive tự tạo (miễn phí, hướng dẫn từng bước trong doc), tải về
-  từng file `.db` mới (chưa có trong `data/`) — thay cho việc phải cầm USB tới venue.
-- Lời gọi network ĐẦU TIÊN trong toàn bộ app (`electron/driveSync.ts`) — ngoại lệ chủ ý, chỉ chạy khi
-  bấm Sync, không thêm dependency (`fetch` global). Mọi tính năng khác vẫn 100% offline như trước.
-- Xử lý trùng tên giống hệt luồng "Open" đã có (`uniquePath()`, `SessionConflictDialog.tsx` tự hiện
-  nếu trùng `sessions.id` thật) — không có logic conflict riêng cho Sync. Chống tải lặp qua manifest
-  `data/.drive-sync.json` (Drive file id → tên đã lưu), Sync lại trên 1 folder không đổi gì không tạo
-  thêm bản sao.
+- Trang **Settings** mới (thay mục Help ở sidebar): khai báo kết nối cloud 1 lần (Server URL + Read
+  code, thêm Write token nếu máy cần đẩy lên).
+- Nút **Cloud** mới cạnh "Open"/"Restore" ở thanh tab: tự so từng session trên máy với bản trên cloud
+  (Up to date / Changed here / Newer in cloud / Changed on both / chỉ có 1 bên) và gợi ý đúng nút
+  **Push** hoặc **Sync** — thay cho việc phải cầm USB tới venue. Không có gì tự chạy nền.
+- Bỏ trang Help (nội dung cũ chỉ giải thích vài component Landing Builder).
+- Server là Cloudflare Worker + R2 tự deploy vào tài khoản Cloudflare của chủ dự án (`cloud/worker/`).
+  Mỗi Push là 1 bản mới, giữ 10 bản gần nhất mỗi session; session không đổi gì → "Unchanged", không
+  tạo bản trùng. Read code chỉ tải về được, Write token mới Push được.
+- Lời gọi network DUY NHẤT trong toàn bộ app (`electron/cloudSync.ts`) — ngoại lệ chủ ý, chỉ chạy khi
+  bấm, không thêm dependency (`fetch` global). Mọi tính năng khác vẫn 100% offline như trước.
+- Pull không bao giờ ghi đè file trong `data/` — trùng session đang mở thì `SessionConflictDialog.tsx`
+  tự hiện (cùng luồng với nút "Open"), gợi ý đúng bản được sửa gần nhất. Kiểm tra sha256 sau khi tải.
 
 ## [1.3.0] — 2026-10-08
 
