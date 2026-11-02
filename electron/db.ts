@@ -401,8 +401,10 @@ function fileNameFor(name: string, id: string): string {
 }
 
 // Tránh ghi đè file có sẵn (vd 2 session trùng tên VÀ trùng 8 ký tự đầu id — gần như không thể, nhưng
-// rẻ để chặn): thêm hậu tố -2, -3...
-function uniquePath(dir: string, fileName: string): string {
+// rẻ để chặn): thêm hậu tố -2, -3... Export để driveSync.ts tái dùng đúng logic này khi file tải từ
+// Google Drive trùng tên 1 file có sẵn trong data/ — nhường việc phát hiện có thật là cùng 1 session
+// hay không cho rescan()/listConflicts() (đọc sessions.id thật bên trong), không tự đoán ở đây.
+export function uniquePath(dir: string, fileName: string): string {
   let target = path.join(dir, fileName);
   const ext = path.extname(fileName);
   const base = fileName.slice(0, -ext.length);

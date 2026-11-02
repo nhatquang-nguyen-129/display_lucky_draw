@@ -91,6 +91,11 @@ const api = {
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
+  sync: {
+    // Tải file .db mới từ 1 thư mục Google Drive công khai vào data/ — xem electron/driveSync.ts.
+    driveFolder: (data: { folderUrl: string; apiKey: string }) => ipcRenderer.invoke("sync:driveFolder", data),
+    getSettings: () => ipcRenderer.invoke("sync:getSettings"),
+  },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),
     pick: (data: { sessionId: string; excludeParticipantIds?: string[]; lockedPrizeId?: string }) =>

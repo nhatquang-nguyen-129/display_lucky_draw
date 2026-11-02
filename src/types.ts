@@ -88,6 +88,22 @@ export interface TrashEntry {
   confirmedDraws: number;
 }
 
+// Kết quả 1 lần Sync Data folder từ Google Drive — xem electron/driveSync.ts. "already-synced" = đã
+// tải ở lượt Sync trước, bỏ qua không tải lại; "downloaded" có savedAs khác name nghĩa là bị đổi tên
+// tránh trùng (uniquePath) vì data/ đã có sẵn 1 file khác tên y hệt — nhường cho
+// SessionConflictDialog.tsx tự phát hiện có thật là cùng 1 session hay không, không xử lý riêng ở đây.
+export interface SyncFileResult {
+  name: string;
+  savedAs?: string;
+  status: "downloaded" | "already-synced" | "skipped-not-db" | "error";
+  message?: string;
+}
+export type SyncResult = { error: string } | { files: SyncFileResult[] };
+export interface SyncSettings {
+  apiKey: string;
+  lastFolderUrl: string;
+}
+
 export interface DrawResultRow {
   id: string;
   session_id: string;
@@ -225,6 +241,14 @@ declare global {
         setTabOrder: (ids: string[]) => Promise<void>;
         // Nhân bản session → id mới ("<tên> copy"), sạch kết quả quay, mở khoá, tab nằm ngay sau tab gốc.
         duplicate: (id: string) => Promise<string>;
+      };
+      sync: {
+        // Tải file .db mới (theo tên, chưa có trong data/) từ 1 thư mục Google Drive công khai — xem
+        // electron/driveSync.ts. Không bao giờ ghi đè file đã có; file trùng tên được lưu dưới tên
+        // tránh trùng, nhường cho SessionConflictDialog.tsx tự phát hiện trùng sessions.id thật.
+        driveFolder: (data: { folderUrl: string; apiKey: string }) => Promise<SyncResult>;
+        // Đọc lại apiKey/lastFolderUrl đã lưu lần Sync gần nhất (data/.drive-sync.json) để tự điền modal.
+        getSettings: () => Promise<SyncSettings | null>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

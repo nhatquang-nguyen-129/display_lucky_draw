@@ -2,6 +2,22 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [1.4.0] — 2026-11-02
+
+### Sync Data folder từ Google Drive
+
+Chi tiết: `docs/architecture/drive-sync.md`.
+
+- Nút **Sync** mới cạnh "Open"/"Restore" ở thanh tab: dán link 1 thư mục Google Drive công khai
+  (Anyone with the link) + 1 API key Drive tự tạo (miễn phí, hướng dẫn từng bước trong doc), tải về
+  từng file `.db` mới (chưa có trong `data/`) — thay cho việc phải cầm USB tới venue.
+- Lời gọi network ĐẦU TIÊN trong toàn bộ app (`electron/driveSync.ts`) — ngoại lệ chủ ý, chỉ chạy khi
+  bấm Sync, không thêm dependency (`fetch` global). Mọi tính năng khác vẫn 100% offline như trước.
+- Xử lý trùng tên giống hệt luồng "Open" đã có (`uniquePath()`, `SessionConflictDialog.tsx` tự hiện
+  nếu trùng `sessions.id` thật) — không có logic conflict riêng cho Sync. Chống tải lặp qua manifest
+  `data/.drive-sync.json` (Drive file id → tên đã lưu), Sync lại trên 1 folder không đổi gì không tạo
+  thêm bản sao.
+
 ## [1.3.0] — 2026-10-08
 
 ### Draw Engine — người bị bỏ qua (Not confirmed) không bị quay lại nữa

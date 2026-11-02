@@ -27,6 +27,7 @@ import {
 } from "./db";
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
+import { syncDriveFolder, readSyncSettings, writeSyncSettings } from "./driveSync";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 import { importVideo, purgeUnusedMedia, registerMediaProtocol, registerMediaScheme } from "./media";
 
@@ -642,6 +643,20 @@ ipcMain.handle("sessions:openFile", async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
   return openDbFile(result.filePaths[0]);
 });
+
+// Tải file .db mới (theo tên, chưa có trong data/) từ 1 thư mục Google Drive công khai — lời gọi
+// network DUY NHẤT trong app, xem electron/driveSync.ts. KHÔNG assertSessionUnlocked/
+// assertInputsUnlocked: thao tác này không đụng tới 1 session cụ thể nào, chỉ thêm file mới vào data/.
+ipcMain.handle("sync:driveFolder", async (_e, data: { folderUrl: string; apiKey: string }) => {
+  const settings = readSyncSettings();
+  const result = await syncDriveFolder(data.folderUrl, data.apiKey, settings?.syncedFiles ?? {});
+  if (!("error" in result)) {
+    writeSyncSettings({ apiKey: data.apiKey, lastFolderUrl: data.folderUrl, syncedFiles: result.updatedSyncedFiles });
+  }
+  return result;
+});
+
+ipcMain.handle("sync:getSettings", () => readSyncSettings());
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.
