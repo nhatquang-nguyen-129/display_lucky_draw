@@ -658,8 +658,44 @@ ipcMain.handle("cloud:connect", (_e, data: { workerUrl: string; readCode: string
 ipcMain.handle("cloud:disconnect", () => cloudSync.disconnect());
 // So local với cloud từng session → renderer gợi ý Push/Sync (xem status() trong cloudSync.ts).
 ipcMain.handle("cloud:status", () => cloudSync.status());
-ipcMain.handle("cloud:push", (_e, sessionIds: string[]) => cloudSync.push(sessionIds));
-ipcMain.handle("cloud:pull", (_e, data: { sessionId: string; file: string }) => cloudSync.pull(data));
+// Báo tiến độ Push/Pull về đúng cửa sổ vừa gọi (webContents.send) — renderer nghe qua
+// cloud.onProgress(). File session vài chục MB (ảnh nhúng Landing Builder) upload/download đủ lâu để
+// cần báo tiến độ cụ thể, không chỉ 1 dòng chữ "Pushing..." đứng yên.
+//
+// Modal cho đóng được dù đang Push/Pull (xác nhận "sẽ hủy quy trình" trước) — giữ đúng 1
+// AbortController của lượt đang chạy để "cloud:cancel" hủy được, dọn lại = null lúc xong (kể cả lỗi)
+// để không hủy nhầm 1 lượt MỚI bắt đầu sau đó. Chỉ 1 lượt chạy tại 1 thời điểm (UI chặn bấm 2 lần).
+let currentCloudOp: AbortController | null = null;
+ipcMain.handle("cloud:push", async (e, sessionIds: string[]) => {
+  const controller = new AbortController();
+  currentCloudOp = controller;
+  try {
+    return await cloudSync.push(
+      sessionIds,
+      (sessionId, sent, total) => e.sender.send("cloud:progress", { sessionId, sent, total }),
+      controller.signal
+    );
+  } finally {
+    if (currentCloudOp === controller) currentCloudOp = null;
+  }
+});
+ipcMain.handle("cloud:pull", async (e, items: { sessionId: string; file: string }[]) => {
+  const controller = new AbortController();
+  currentCloudOp = controller;
+  try {
+    return await cloudSync.pull(
+      items,
+      (sessionId, sent, total) => e.sender.send("cloud:progress", { sessionId, sent, total }),
+      controller.signal
+    );
+  } finally {
+    if (currentCloudOp === controller) currentCloudOp = null;
+  }
+});
+ipcMain.handle("cloud:cancel", () => {
+  currentCloudOp?.abort();
+  return true;
+});
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.

@@ -98,9 +98,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const openFile = useCallback(async () => {
-    const id = await window.api.sessions.openFile();
+    const result = await window.api.sessions.openFile();
     await refresh();
-    if (id) setActiveSessionId(id);
+    if (!result) return;
+    // Chọn trúng file của 1 session ĐÃ là tab đang mở (không phải tab Closed) — báo rõ thay vì âm thầm
+    // chuyển tab, tránh nhầm giữa các file trùng tên sự kiện nhưng khác session_id.
+    if (result.alreadyOpen) alert(`"${result.name}" is already open.`);
+    setActiveSessionId(result.id);
   }, [refresh]);
 
   // Đổi thứ tự hiện ngay (optimistic) rồi mới lưu — kéo-thả không bị giật chờ IPC. Lưu lỗi thì

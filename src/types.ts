@@ -129,6 +129,20 @@ export interface CloudPushResult {
   status: "pushed" | "unchanged" | "error";
   message?: string;
 }
+export interface CloudPullResult {
+  sessionId: string;
+  name: string;
+  status: "pulled" | "already-pulled" | "error";
+  savedAs?: string;
+  message?: string;
+}
+// Tiến độ Push/Pull đang chạy dở — bắn qua cloud:progress trong lúc main.ts còn đang xử lý, xem
+// cloud.onProgress() trong window.api bên dưới.
+export interface CloudProgress {
+  sessionId: string;
+  sent: number;
+  total: number;
+}
 
 export interface DrawResultRow {
   id: string;
@@ -259,8 +273,10 @@ declare global {
         // Xoá vĩnh viễn khỏi data/.trash/ — KHÔNG còn đường lấy lại, khác restoreFromTrash.
         permanentlyDelete: (data: { file: string }) => Promise<void>;
         // Nút "Open" — chọn 1 file .db bất kỳ, mở lại session đang Closed hoặc nạp session ở ngoài
-        // data/ (USB, backup máy khác...). Xem openDbFile() trong electron/db.ts.
-        openFile: () => Promise<string | null>;
+        // data/ (USB, backup máy khác...). `alreadyOpen` = session này đã là 1 tab đang mở từ trước
+        // (không phải tab Closed) — renderer báo rõ thay vì âm thầm switchTab. Xem openDbFile() trong
+        // electron/db.ts.
+        openFile: () => Promise<{ id: string; name: string; alreadyOpen: boolean } | null>;
         // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
         // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
@@ -279,7 +295,11 @@ declare global {
         // Đẩy từng session thành 1 bản mới; bản giống hệt bản mới nhất trên cloud → "unchanged".
         push: (sessionIds: string[]) => Promise<CloudResult<{ results: CloudPushResult[] }>>;
         // Tải 1 bản về data/ dưới tên tránh trùng — không ghi đè; trùng id → SessionConflictDialog.
-        pull: (data: { sessionId: string; file: string }) => Promise<CloudResult<{ savedAs: string; alreadyPulled: boolean }>>;
+        pull: (items: { sessionId: string; file: string }[]) => Promise<CloudResult<{ results: CloudPullResult[] }>>;
+        // Nghe tiến độ Push/Pull đang chạy — trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+        onProgress: (cb: (p: CloudProgress) => void) => () => void;
+        // Huỷ lượt Push/Pull đang chạy (đóng modal lúc busy, sau khi người dùng xác nhận).
+        cancel: () => Promise<boolean>;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

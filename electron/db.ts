@@ -913,15 +913,24 @@ export function permanentlyDelete(fileName: string) {
   }
 }
 
-/** Nút "Open" (electron/main.ts, dialog chọn 1 file .db) — 3 trường hợp, trả về sessionId để renderer
- *  tự switchTab tới đúng session vừa mở (null nếu không xác định được, vd file hỏng):
+export interface OpenDbFileResult {
+  id: string;
+  name: string;
+  // true = session này ĐÃ là 1 tab đang mở (closed = 0) từ TRƯỚC khi gọi hàm này — renderer dùng để
+  // báo rõ "session này đang mở rồi" thay vì âm thầm switchTab, tránh nhầm lẫn giữa các file trùng tên
+  // khác session_id (đã gặp thật — 2 file cùng tên sự kiện, khác id, tưởng đang mở nhầm).
+  alreadyOpen: boolean;
+}
+
+/** Nút "Open" (electron/main.ts, dialog chọn 1 file .db) — 3 trường hợp, trả về session để renderer tự
+ *  switchTab tới đúng session vừa mở (null nếu không xác định được, vd file hỏng):
  *  1. File đang ở data/.trash/: coi như bấm Restore (restoreFromTrash), bỏ hậu tố "__deleted-...".
  *  2. File đã nằm trong data/ (session đang Closed, hoặc hiếm khi app chưa kịp rescan): chỉ đặt
  *     closed = 0, KHÔNG di chuyển file.
  *  3. File ở ngoài data/ (USB, backup máy khác...): copy vào data/, giữ nguyên bản gốc. Trùng id với
  *     session đang có sẵn thì rescan() ở lần listSessions() kế tiếp tự phát hiện thành conflict
  *     (SessionConflictDialog.tsx), không cần xử lý riêng ở đây. */
-export function openDbFile(filePath: string): string | null {
+export function openDbFile(filePath: string): OpenDbFileResult | null {
   if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
   const dir = path.dirname(filePath);
   let target: string;
@@ -930,8 +939,14 @@ export function openDbFile(filePath: string): string | null {
     rescan();
     const found = [...entries.entries()].find(([, e]) => sameFile(e.file, filePath));
     if (!found) return null;
-    setSessionClosed(found[0], false);
-    return found[0];
+    const [id, entry] = found;
+    const row = entry.db.prepare(`SELECT name, closed FROM sessions LIMIT 1`).get() as {
+      name: string;
+      closed: number | null;
+    };
+    const alreadyOpen = !row.closed;
+    setSessionClosed(id, false);
+    return { id, name: row.name, alreadyOpen };
   } else if (sameFile(dir, TRASH_DIR)) {
     target = restoreFromTrash(path.basename(filePath));
   } else {
@@ -942,8 +957,8 @@ export function openDbFile(filePath: string): string | null {
   rescan();
   const entry = [...entries.values()].find((e) => sameFile(e.file, target));
   if (!entry) return null;
-  const row = entry.db.prepare(`SELECT id FROM sessions LIMIT 1`).get() as { id: string } | undefined;
-  return row?.id ?? null;
+  const row = entry.db.prepare(`SELECT id, name FROM sessions LIMIT 1`).get() as { id: string; name: string } | undefined;
+  return row ? { id: row.id, name: row.name, alreadyOpen: false } : null;
 }
 
 /**

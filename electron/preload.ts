@@ -99,7 +99,17 @@ const api = {
     disconnect: () => ipcRenderer.invoke("cloud:disconnect"),
     status: () => ipcRenderer.invoke("cloud:status"),
     push: (sessionIds: string[]) => ipcRenderer.invoke("cloud:push", sessionIds),
-    pull: (data: { sessionId: string; file: string }) => ipcRenderer.invoke("cloud:pull", data),
+    pull: (items: { sessionId: string; file: string }[]) => ipcRenderer.invoke("cloud:pull", items),
+    // Huỷ lượt Push/Pull đang chạy (đóng modal lúc đang busy, sau khi người dùng xác nhận) — xem
+    // main.ts, biến currentCloudOp.
+    cancel: () => ipcRenderer.invoke("cloud:cancel"),
+    // Tiến độ Push/Pull đang chạy (byte đã gửi/nhận trên tổng) — main gửi qua cloud:progress trong
+    // lúc push()/pull() còn đang chạy dở, trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+    onProgress: (cb: (p: { sessionId: string; sent: number; total: number }) => void) => {
+      const listener = (_e: unknown, p: { sessionId: string; sent: number; total: number }) => cb(p);
+      ipcRenderer.on("cloud:progress", listener);
+      return () => ipcRenderer.removeListener("cloud:progress", listener);
+    },
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

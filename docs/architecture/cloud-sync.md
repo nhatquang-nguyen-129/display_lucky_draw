@@ -4,6 +4,9 @@ Lời gọi network DUY NHẤT trong toàn bộ app (`electron/cloudSync.ts`) �
 người dùng tự bấm (nút "Cloud" ở `TabBar.tsx` / trang Settings), không thêm dependency (`fetch`
 global), mọi tính năng khác vẫn 100% offline.
 
+Máy hoàn toàn mới (chưa cài gì) cần chạy được app trước — xem [`docs/local/setup.md`](../local/setup.md)
+(clone, Node 20, `npm install`, `electron-rebuild`). Mục này chỉ nói phần Cloud Sync riêng.
+
 Thay cho Drive Sync (tải 1 chiều từ thư mục Google Drive công khai + API key, đã gỡ bỏ): Cloud Sync
 **có chiều đẩy lên** (Push ngay trong app, không phải tự upload file lên Drive) và **có phiên bản**
 (mỗi Push là 1 bản mới, giữ 10 bản gần nhất mỗi session). Server là Cloudflare Worker do chủ dự án tự deploy vào tài
@@ -38,11 +41,36 @@ chủ dự án có, đặt bằng `wrangler secret put`), trả về đúng 1 l�
 Worker chỉ lưu **hash SHA-256** của mã trong R2 (`tokens/<hash>.json`) — lộ bucket cũng không lộ mã.
 Mất mã thì tạo Space mới (không có cách lấy lại).
 
-## Deploy Worker (1 lần)
+**Mất mã KHÔNG lấy lại được bằng bất kỳ cách nào, kể cả tự vào xem R2 bucket trực tiếp** (Dashboard
+Cloudflare, `wrangler r2 object get`...) — R2 chỉ chứa `tokens/<hash-của-mã>.json`, 1 chiều, không suy
+ngược lại mã gốc được. 2 mã chỉ xuất hiện đúng 1 lần, trong response của lệnh `POST /v1/spaces` lúc tạo
+— lưu ngay vào trình quản lý mật khẩu lúc đó, đừng chỉ để trong terminal history.
 
-Trong `cloud/worker/` (PowerShell):
+Còn cách duy nhất khi mất mã: tạo Space MỚI (`POST /v1/spaces` với `ADMIN_TOKEN`, xem mục "Deploy
+Worker" bên dưới) — ra `spaceId` khác hẳn, không đụng gì Space cũ. Nếu Space cũ CHƯA Push file nào thì
+coi như không mất gì, tạo mới xong dùng luôn. Nếu đã lỡ Push rồi, file cũ vẫn còn nguyên trong R2 dưới
+`spaces/<spaceId cũ>/` — không bị xoá, nhưng cũng không còn cách nào đọc lại được nữa vì không còn mã
+nào trỏ tới `spaceId` đó (coi như mồ côi vĩnh viễn, muốn dọn thì tự xoá tay qua Dashboard R2).
+
+## Deploy Worker (1 lần — chỉ cần làm trên MỘT máy, không phải mỗi máy)
+
+Deploy gắn với tài khoản Cloudflare, không gắn với máy nào — làm 1 lần trên máy bất kỳ là Worker chạy
+cho mọi máy sau này (`ADMIN_TOKEN` cũng vậy, chỉ là 1 secret phía server, không cần đặt lại ở máy
+khác). Trong `cloud/worker/`:
+
+**Windows (PowerShell)**
 
 ```powershell
+npm install
+npx wrangler login                              # mở trình duyệt
+npx wrangler r2 bucket create lucky-draw-sync   # đã tồn tại (code 10004) thì bỏ qua
+npx wrangler deploy                             # in ra https://lucky-draw-sync.<subdomain>.workers.dev
+npx wrangler secret put ADMIN_TOKEN             # dán 1 chuỗi ngẫu nhiên dài, lưu lại ở trình quản lý mật khẩu
+```
+
+**macOS / Linux (bash/zsh)**
+
+```bash
 npm install
 npx wrangler login                              # mở trình duyệt
 npx wrangler r2 bucket create lucky-draw-sync   # đã tồn tại (code 10004) thì bỏ qua
@@ -54,17 +82,34 @@ npx wrangler secret put ADMIN_TOKEN             # dán 1 chuỗi ngẫu nhiên d
 - Phải `deploy` TRƯỚC `secret put` — secret gắn vào 1 Worker đã tồn tại.
 - Chưa đặt `ADMIN_TOKEN` thì tạo Space luôn trả 401 — Worker không bao giờ "mở cửa" vì thiếu secret.
 
-Tạo Space:
+### Tạo Space
+
+Dùng khi deploy lần đầu, hoặc khi cần tạo Space MỚI (mất `readCode`/`writeToken` của Space cũ — xem
+mục trên). Có thể chạy từ BẤT KỲ máy nào, không cần đúng máy đã `deploy` — chỉ cần đúng `ADMIN_TOKEN`.
+
+**Windows (PowerShell)**
 
 ```powershell
-$url = "https://lucky-draw-sync.<subdomain>.workers.dev"
-Invoke-RestMethod -Method Post "$url/v1/spaces" `
+Invoke-RestMethod -Method Post "https://lucky-draw-sync.<subdomain>.workers.dev/v1/spaces" `
   -Headers @{ Authorization = "Bearer <ADMIN_TOKEN>" } `
   -ContentType "application/json" -Body '{"name":"Year End Party 2026"}'
 ```
 
 Tên Space chỉ là nhãn hiện trong app sau khi Connect — nên để không dấu (PowerShell 5.1 dễ làm hỏng
 UTF-8 trong `-Body`).
+
+**macOS / Linux (bash/zsh)**
+
+```bash
+curl -X POST "https://lucky-draw-sync.<subdomain>.workers.dev/v1/spaces" \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Year End Party 2026"}'
+```
+
+Cả 2 cách trả về đúng 1 lần `readCode`/`writeToken` — **copy trực tiếp từ cửa sổ terminal dán thẳng
+vào Settings trong app**, đừng gõ lại tay hay chép qua trung gian (Notes/Word có thể tự đổi ký tự) —
+1 ký tự sai là Connect báo lỗi, không có cách dò ra chỗ sai bằng mắt.
 
 Chạy thử local không cần deploy: `npm run dev` với `cloud/worker/.dev.vars` chứa `ADMIN_TOKEN=...`
 (đã gitignore) — R2 giả lập nằm trong `.wrangler/state/`, URL `http://localhost:8787` (app chấp nhận
