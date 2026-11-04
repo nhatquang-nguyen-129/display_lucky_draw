@@ -46,6 +46,10 @@ export interface TextProps {
   color: string;
   fontWeight: "normal" | "bold";
   align: "left" | "center" | "right";
+  // Hệ số CSS line-height (vd 1.4) — chỉ thấy khác biệt khi `content` xuống nhiều dòng. undefined =
+  // giữ NGUYÊN hành vi cũ (bỏ hẳn style line-height, browser tự quyết — landing đã lưu trước khi có
+  // field này không đổi gì).
+  lineHeight?: number;
   // Mặc định undefined/false = giữ NGUYÊN hành vi cũ (luôn hiện `content`, không phụ thuộc Draw) —
   // landing đã lưu trước khi có field này không hề bị ảnh hưởng. true = hiện/ẩn theo đúng chu trình đã
   // cấu hình ở `drawCycle` bên dưới (xem doc-comment DrawCycleConfig ở trên) — CÙNG model với
@@ -360,6 +364,9 @@ export interface LiveTextProps {
   color: string;
   fontWeight: "normal" | "bold";
   align: "left" | "center" | "right";
+  // Hệ số CSS line-height — cùng ý nghĩa với TextProps.lineHeight ở trên, undefined = giữ nguyên hành
+  // vi cũ.
+  lineHeight?: number;
 }
 
 // Hiệu ứng ẨN/HIỆN 1 LẦN — dùng cho CẢ Winner Name lẫn Text (khi bật `syncWithDraw`, xem

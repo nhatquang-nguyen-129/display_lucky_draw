@@ -59,6 +59,70 @@ function getSessionName(sessionId: string): string {
   }
 }
 
+// Chặn đóng cửa sổ chính nếu còn session chưa Push lên Cloud Sync — xem checkCloudSyncBeforeQuit().
+// `allowQuit`: đặt true khi đã kiểm tra xong (hoặc Force Exit) để lần "close" kế tiếp cho qua thật,
+// không hỏi lại vòng 2. `checkingQuit`: tránh bấm đóng liên tục trong lúc đang chờ status() (network)
+// kích thêm nhiều lượt kiểm tra chồng lên nhau.
+let allowQuit = false;
+let checkingQuit = false;
+
+async function checkCloudSyncBeforeQuit() {
+  if (checkingQuit) return;
+  checkingQuit = true;
+  try {
+    const settings = cloudSync.readCloudSettings();
+    const configured = !!settings.workerUrl && !!(settings.readCode || settings.writeToken);
+    if (!configured) {
+      allowQuit = true;
+      mainWindow?.close();
+      return;
+    }
+    const result = await cloudSync.status();
+    // Lỗi mạng lúc thoát (vd rút mạng, server tạm thời không phản hồi) không nên giữ chân người dùng —
+    // chỉ cảnh báo khi THỰC SỰ biết có thay đổi chưa đẩy lên.
+    if ("error" in result) {
+      allowQuit = true;
+      mainWindow?.close();
+      return;
+    }
+    const pending = result.sessions.filter(
+      (s) => s.state === "local-only" || s.state === "local-newer" || s.state === "diverged"
+    );
+    if (pending.length === 0) {
+      allowQuit = true;
+      mainWindow?.close();
+      return;
+    }
+    // Có thay đổi local chưa lên cloud — báo renderer tự mở Cloud Sync (kèm nút Force Exit) thay vì
+    // đóng luôn, để người dùng cân nhắc Push trước khi rời sự kiện.
+    mainWindow?.webContents.send("cloud:quit-pending");
+  } finally {
+    checkingQuit = false;
+  }
+}
+
+// Check tương tự lúc vừa MỞ app lên (khác hẳn checkCloudSyncBeforeQuit — không chặn gì cả, chỉ chạy
+// NGẦM 1 lần sau khi renderer load xong rồi báo renderer tự mở Cloud Sync nếu thấy cần chú ý, để
+// người dùng biết sớm có session nào lệch với cloud TRƯỚC khi bắt đầu sửa dữ liệu — đặc biệt hữu ích
+// cho trường hợp máy khác đã Push 1 bản mới hơn (cloud-newer) mà máy này chưa Pull, tránh sửa tiếp lên
+// 1 bản cũ rồi Push đè mất thay đổi đó). Mọi trạng thái khác "in-sync" đều tính là "cần chú ý" —
+// "cloud-only" (session mới chỉ có trên cloud) cũng đáng được biết ngay, không chỉ 3 trạng thái
+// local-only/local-newer/diverged như lúc thoát (lúc thoát chỉ quan tâm "có gì CHƯA PUSH", lúc mở lại
+// quan tâm CẢ "có gì mới ở cloud").
+async function checkCloudSyncOnStartup() {
+  try {
+    const settings = cloudSync.readCloudSettings();
+    const configured = !!settings.workerUrl && !!(settings.readCode || settings.writeToken);
+    if (!configured) return;
+    const result = await cloudSync.status();
+    if ("error" in result) return;
+    const needsAttention = result.sessions.some((s) => s.state !== "in-sync");
+    if (needsAttention) mainWindow?.webContents.send("cloud:startup-pending");
+  } catch {
+    // Im lặng bỏ qua — đây là 1 gợi ý tiện lợi lúc mở app, không phải bước bắt buộc.
+  }
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -78,6 +142,18 @@ function createMainWindow() {
   // Khoá tiêu đề cửa sổ theo config trung tâm — không cho trang web (document.title
   // từ index.html hoặc React) ghi đè lại tiêu đề đã set.
   mainWindow.on("page-title-updated", (e) => e.preventDefault());
+
+  mainWindow.on("close", (e) => {
+    if (allowQuit) return;
+    e.preventDefault();
+    void checkCloudSyncBeforeQuit();
+  });
+
+  // Chỉ 1 lần mỗi lần mở app (không lặp lại mỗi khi reload DevTools) — renderer lúc "did-finish-load"
+  // chắc chắn đã gắn xong listener "cloud:startup-pending" (xem useEffect trong TabBar.tsx).
+  mainWindow.webContents.once("did-finish-load", () => {
+    void checkCloudSyncOnStartup();
+  });
 
   if (IS_DEV) {
     mainWindow.loadURL("http://localhost:5173");
@@ -696,6 +772,12 @@ ipcMain.handle("cloud:cancel", () => {
   currentCloudOp?.abort();
   return true;
 });
+// Nút "Force Exit" trong Cloud Sync (chỉ hiện khi modal tự mở do "cloud:quit-pending") — bỏ qua cảnh
+// báo còn session chưa Push, đóng cửa sổ chính thật sự. Xem checkCloudSyncBeforeQuit() ở trên.
+ipcMain.handle("app:forceQuit", () => {
+  allowQuit = true;
+  mainWindow?.close();
+});
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.
@@ -795,9 +877,10 @@ ipcMain.handle("sessions:delete", (_e, id: string) => {
 });
 
 // "Close" (nút × ở TabBar.tsx) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác sessions:delete ở
-// trên). Mở lại bằng nút "Open" (sessions:openFile).
+// trên), KHÔNG đụng dữ liệu/trạng thái khoá gì cả — mở lại bất cứ lúc nào qua "Open" (sessions:openFile)
+// vẫn còn nguyên y hệt. Vì vậy KHÔNG assertSessionUnlocked ở đây (khác sessions:rename) — Full lock vẫn
+// cho đóng tab để gọn thanh tab, chỉ chặn các thao tác thật sự đổi dữ liệu/metadata.
 ipcMain.handle("sessions:setClosed", (_e, data: { id: string; closed: boolean }) => {
-  assertSessionUnlocked(data.id);
   setSessionClosed(data.id, data.closed);
 });
 

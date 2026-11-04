@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/context/SessionContext";
 import { Session } from "@/types";
 import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
@@ -18,6 +18,21 @@ export default function TabBar() {
   const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
   const [showRestore, setShowRestore] = useState(false);
   const [showCloud, setShowCloud] = useState(false);
+  // true = Cloud Sync đang mở vì người dùng bấm đóng app mà còn session chưa Push (xem
+  // "cloud:quit-pending" trong main.ts) — CloudSyncModal hiện thêm nút Force Exit trong trường hợp này.
+  const [quitPending, setQuitPending] = useState(false);
+  useEffect(
+    () =>
+      window.api.cloud.onQuitPending(() => {
+        setQuitPending(true);
+        setShowCloud(true);
+      }),
+    []
+  );
+  // Main báo ngay sau khi vừa mở app xong mà có session lệch với cloud (xem checkCloudSyncOnStartup
+  // trong main.ts) — tự mở Cloud Sync để người dùng biết sớm, KHÔNG set quitPending (chỉ là gợi ý,
+  // không có nút Force Exit/banner cảnh báo như lúc thoát app).
+  useEffect(() => window.api.cloud.onStartupPending(() => setShowCloud(true)), []);
   // Ô nhập tên tab mới nghe cả onKeyDown (Enter) lẫn onBlur — 1 số trường hợp Enter cũng kéo theo blur
   // gần như cùng lúc, khiến handleAddTab() bị gọi 2 lần trước khi newName kịp reset, tạo nhầm 2 session
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
@@ -109,9 +124,9 @@ export default function TabBar() {
       <div className="flex flex-1 items-end gap-1 overflow-x-auto">
         {sessions.map((s) => {
           const active = s.id === activeSessionId;
-          // Tab Full lock: không đổi tên (double-click) và không đóng (nút ×) — main.ts cũng chặn
-          // sessions:rename/sessions:setClosed bằng assertSessionUnlocked. Input lock vẫn đổi tên/đóng
-          // được (chỉ khoá participant/prize).
+          // Tab Full lock: không đổi tên (double-click) — main.ts chặn sessions:rename bằng
+          // assertSessionUnlocked. Đóng tab (nút ×) KHÔNG bị chặn kể cả Full lock: chỉ ẩn khỏi thanh
+          // tab, không đụng dữ liệu/trạng thái khoá, mở lại nguyên vẹn qua Open bất cứ lúc nào.
           const locked = fullyLocked(s);
           const dropSide = dropTarget?.id === s.id ? dropTarget.side : null;
           return (
@@ -179,15 +194,13 @@ export default function TabBar() {
                   <span className="truncate">{s.name}</span>
                 </span>
               )}
-              {!locked && (
-                <button
-                  onClick={(e) => handleCloseTab(e, s.id)}
-                  title="Close this session"
-                  className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
-                >
-                  ×
-                </button>
-              )}
+              <button
+                onClick={(e) => handleCloseTab(e, s.id)}
+                title="Close this session"
+                className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
+              >
+                ×
+              </button>
             </div>
           );
         })}
@@ -253,7 +266,15 @@ export default function TabBar() {
       </button>
 
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
-      {showCloud && <CloudSyncModal onClose={() => setShowCloud(false)} />}
+      {showCloud && (
+        <CloudSyncModal
+          quitPending={quitPending}
+          onClose={() => {
+            setShowCloud(false);
+            setQuitPending(false);
+          }}
+        />
+      )}
 
       {lockMenu && (
         <SessionLockMenu

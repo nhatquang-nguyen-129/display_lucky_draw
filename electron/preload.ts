@@ -110,6 +110,23 @@ const api = {
       ipcRenderer.on("cloud:progress", listener);
       return () => ipcRenderer.removeListener("cloud:progress", listener);
     },
+    // Main báo khi người dùng bấm đóng cửa sổ chính mà còn session chưa Push (xem
+    // checkCloudSyncBeforeQuit trong main.ts) — renderer tự mở Cloud Sync kèm nút Force Exit.
+    onQuitPending: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on("cloud:quit-pending", listener);
+      return () => ipcRenderer.removeListener("cloud:quit-pending", listener);
+    },
+    // "Force Exit" trong Cloud Sync — bỏ qua cảnh báo, đóng cửa sổ chính thật sự.
+    forceQuit: () => ipcRenderer.invoke("app:forceQuit"),
+    // Main báo NGAY SAU KHI vừa mở app xong mà có session lệch với cloud (xem
+    // checkCloudSyncOnStartup trong main.ts) — renderer tự mở Cloud Sync (không kèm Force Exit, khác
+    // onQuitPending — chỉ là gợi ý, không chặn gì).
+    onStartupPending: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on("cloud:startup-pending", listener);
+      return () => ipcRenderer.removeListener("cloud:startup-pending", listener);
+    },
   },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),

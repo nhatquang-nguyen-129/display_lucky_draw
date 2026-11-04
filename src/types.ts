@@ -300,6 +300,14 @@ declare global {
         onProgress: (cb: (p: CloudProgress) => void) => () => void;
         // Huỷ lượt Push/Pull đang chạy (đóng modal lúc busy, sau khi người dùng xác nhận).
         cancel: () => Promise<boolean>;
+        // Main báo khi đóng cửa sổ chính mà còn session chưa Push — renderer tự mở Cloud Sync kèm nút
+        // Force Exit. Trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+        onQuitPending: (cb: () => void) => () => void;
+        // "Force Exit" trong Cloud Sync — bỏ qua cảnh báo, đóng cửa sổ chính thật sự.
+        forceQuit: () => Promise<void>;
+        // Main báo ngay sau khi vừa mở app xong mà có session lệch với cloud — renderer tự mở Cloud
+        // Sync (gợi ý, không chặn gì). Trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+        onStartupPending: (cb: () => void) => () => void;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;
