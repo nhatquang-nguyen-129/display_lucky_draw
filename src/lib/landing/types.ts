@@ -217,15 +217,12 @@ export interface OutputFrameProps {
   maskInvert?: boolean; // đảo vùng LED/ngoài LED (file vẽ vùng LED màu tối)
   maskFillHoles?: boolean; // lấp lỗ kín bên trong (chữ đánh số tấm LED...) — tắt cho LED hình vành khuyên
   maskGapFill?: number; // lấp khe hở mảnh giữa các tấm LED, px theo ảnh gốc
-  dimOutside?: boolean; // làm tối phần canvas nằm ngoài vùng LED
-  dimOpacity?: number; // 0-100
   maskImageOpacity?: number; // 0-100 — hiện ảnh pixel map gốc mờ đè lên (CHỈ Builder) để đối chiếu nhận diện
 }
 
 // auto = ảnh có vùng trong suốt → theo độ trong suốt, không có → theo độ sáng (nền đen, tấm LED sáng).
 export type FrameMaskDetect = "auto" | "alpha" | "luminance";
 
-export const DEFAULT_FRAME_DIM_OPACITY = 60;
 export const DEFAULT_FRAME_GAP_FILL = 8;
 
 export function resolveFrameMaskOptions(props: OutputFrameProps) {

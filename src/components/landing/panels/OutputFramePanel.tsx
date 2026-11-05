@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
-  DEFAULT_FRAME_DIM_OPACITY,
   FrameMaskDetect,
   LandingComponent,
   OutputFrameComponent,
@@ -238,30 +237,6 @@ export default function OutputFramePanel({ component, onChange, onChangeComponen
                   ? "Detecting LED area…"
                   : coverage !== null && `LED area: ${(coverage * 100).toFixed(1)}% of the image`}
                 {coverageWarning && <p className="mt-1 text-[10px] text-danger-500">{coverageWarning}</p>}
-              </div>
-              <div className="space-y-1.5 rounded border border-base-700 bg-base-800 px-2 py-1.5">
-                <label className={checkboxRowClass}>
-                  <input
-                    type="checkbox"
-                    checked={props.dimOutside ?? false}
-                    onChange={(e) => onChange({ dimOutside: e.target.checked })}
-                    className="accent-gold-500"
-                  />
-                  Dim outside LED area
-                </label>
-                {props.dimOutside && (
-                  <div>
-                    <label className={labelClass}>Dim amount ({props.dimOpacity ?? DEFAULT_FRAME_DIM_OPACITY}%)</label>
-                    <input
-                      type="range"
-                      min={10}
-                      max={100}
-                      className="w-full accent-gold-500"
-                      value={props.dimOpacity ?? DEFAULT_FRAME_DIM_OPACITY}
-                      onChange={(e) => onChange({ dimOpacity: Number(e.target.value) })}
-                    />
-                  </div>
-                )}
               </div>
               <div>
                 <label className={labelClass}>Show mapping image in Builder ({props.maskImageOpacity ?? 0}%)</label>
