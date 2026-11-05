@@ -513,13 +513,6 @@ export default function LandingBuilderWindow() {
       return;
     }
 
-    // Output Frame chỉ 1 cái/trang — chỉ có 1 màn LED cần cắt.
-    if (type === "outputFrame" && (config?.components ?? []).some((c) => c.type === "outputFrame")) {
-      showCenterNotice("Can't create more Frames — a page can only have 1.");
-      setShowAddFlyout(false);
-      return;
-    }
-
     updateConfig(
       (prev) => {
         const component = createComponentAt(type, x, y, prev.components.length);
