@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CloudProgress, CloudPullResult, CloudPushResult, CloudSessionStatus, CloudSyncState } from "@/types";
 import { useSession } from "@/context/SessionContext";
+import { onConflictResolved } from "@/lib/cloudSyncEvents";
 import Modal from "./Modal";
 import Button from "./Button";
 
@@ -57,6 +58,16 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
       if (ok) void run("Checking for changes...", loadStatus);
     });
   }, []);
+
+  // SessionConflictDialog.tsx báo khi 1 conflict vừa resolve xong ở nơi khác (vd sau 1 lượt Pull tạo
+  // file trùng) — tự load lại status() ngay, không chờ người dùng bấm Refresh. Guard !busy để không
+  // chồng lên 1 lượt Push/Pull đang chạy dở.
+  useEffect(
+    () => onConflictResolved(() => {
+      if (configured && !busy) void run("Checking for changes...", loadStatus);
+    }),
+    [configured, busy]
+  );
 
   // Tính tốc độ byte/giây từ cửa sổ trượt ~2s các mốc progress gần nhất — không lấy nguyên khoảng từ
   // đầu lượt vì byte vẫn còn tính cả lúc mạng đang chậm/khựng trước đó, dễ ra số sai lệch quá khứ.
@@ -409,12 +420,22 @@ function SessionRow({ row, checked, onToggle }: { row: CloudSessionStatus; check
   const label = STATE_LABEL[row.state];
   // Mốc sửa gần nhất — ưu tiên local (gần với việc người dùng đang thao tác hơn); cloud-only (không có
   // file local) thì dùng mốc cloud bản MỚI NHẤT (versions[0] — không còn cho chọn phiên bản cũ hơn
-  // trong app, những bản đó chỉ là lịch sử backup phía Cloudflare R2). diverged kèm thêm gợi ý bên nào
-  // sửa sau. Dùng formatDateCompact() để vừa cột, title= formatDate() đầy đủ phòng khi bị crop.
+  // trong app, những bản đó chỉ là lịch sử backup phía Cloudflare R2). Dùng formatDateCompact() để vừa
+  // cột, title= formatDate() đầy đủ phòng khi bị crop.
   const lastEditedSource = row.local ? ["this computer", row.local.modifiedAt] : row.versions[0] ? ["the cloud", row.versions[0].modifiedAt] : null;
-  const divergedSuffix = row.state === "diverged" ? ` · ${row.newer === "local" ? "this computer" : "the cloud"} was edited more recently` : "";
-  const lastEdited = lastEditedSource && `Last edited on ${lastEditedSource[0]} ${formatDateCompact(lastEditedSource[1])}${divergedSuffix}`;
-  const lastEditedFull = lastEditedSource && `Last edited on ${lastEditedSource[0]} ${formatDate(lastEditedSource[1])}${divergedSuffix}`;
+  const lastEdited = lastEditedSource && `Last edited on ${lastEditedSource[0]} ${formatDateCompact(lastEditedSource[1])}`;
+  const lastEditedFull = lastEditedSource && `Last edited on ${lastEditedSource[0]} ${formatDate(lastEditedSource[1])}`;
+  // Diverged là trạng thái DUY NHẤT mà cả Push và Pull đều "hợp lệ" cùng lúc — người dùng dễ không biết
+  // bấm nút nào. row.newer (status() trong cloudSync.ts đã tự tính theo modifiedAt) cho biết bên nào
+  // sửa sau — hiện thẳng thành gợi ý rõ ràng ở đây thay vì giấu trong 1 dòng chữ nhỏ bị cắt ở cột
+  // "Last edited..." như trước. Vẫn chỉ là GỢI Ý — người dùng tự tick + bấm Push/Pull như cũ, không có
+  // gì tự chạy.
+  const recommendation =
+    row.state === "diverged"
+      ? row.newer === "local"
+        ? { text: "Recommended: Push", className: "text-gold-400" }
+        : { text: "Recommended: Pull", className: "text-teal-400" }
+      : null;
 
   return (
     <div
@@ -423,11 +444,14 @@ function SessionRow({ row, checked, onToggle }: { row: CloudSessionStatus; check
     >
       <input type="checkbox" readOnly checked={checked} className="shrink-0 accent-gold-500" />
 
-      {/* Cột 1: CHỈ status — chấm tròn + nhãn ngắn, không kèm gì khác. */}
-      <span title={label.hint} className="flex min-w-0 items-center gap-1.5 text-xs text-base-400">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${label.dot}`} />
-        {label.text}
-      </span>
+      {/* Cột 1: status (chấm tròn + nhãn ngắn) + gợi ý Recommended riêng dòng dưới, chỉ Diverged mới có. */}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span title={label.hint} className="flex min-w-0 items-center gap-1.5 text-xs text-base-400">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${label.dot}`} />
+          {label.text}
+        </span>
+        {recommendation && <span className={`text-[11px] font-medium ${recommendation.className}`}>{recommendation.text}</span>}
+      </div>
 
       {/* Cột 2: Tên session — crop + "...", hover hiện tên đầy đủ qua title. */}
       <div className="flex min-w-0 items-center gap-2">
