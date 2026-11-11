@@ -1,6 +1,7 @@
 {
   "name": "lucky-draw-app",
   "private": true,
+  "description": "Offline Electron app for running lucky draws at events (participants, prizes, Landing Builder, Cloud Sync).",
   "version": "1.4.0",
   "main": "dist-electron/main.js",
   "type": "module",
