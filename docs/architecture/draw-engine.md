@@ -94,4 +94,4 @@ Soft-delete participants (`status: "active" | "removed"`, xem
 là nền tảng cho bộ số liệu original/current này — xoá 1 dòng trong Data Editor chỉ đánh dấu
 `removed`, không `DELETE` thật, nên Dashboard vẫn đếm lại được số liệu gốc. **Hệ quả**: dữ liệu xoá
 TRƯỚC khi cơ chế soft-delete tồn tại không tính vào "original" — con số chỉ đúng từ lúc thêm cơ chế
-này trở đi.
+này trở đi. 
