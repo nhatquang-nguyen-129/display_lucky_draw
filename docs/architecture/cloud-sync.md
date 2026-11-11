@@ -325,5 +325,3 @@ không ghi file.
 
 File `data/.drive-sync.json` còn sót trên máy từng dùng Drive Sync không còn ai đọc — để nguyên vô
 hại, xoá tay được.
-
-Xem thêm: `database-schema.md` mục "Lưu trữ theo session".
