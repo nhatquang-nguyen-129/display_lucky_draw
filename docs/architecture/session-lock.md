@@ -60,14 +60,16 @@ console vẫn bị reject):
 | Draw | `draw:one/pick/commit/resetSession` | `assertSessionUnlocked` | **cho phép** | chặn |
 | Landing | `sessions:updateLandingConfig`, `media:importVideo` | `assertSessionUnlocked` | **cho phép** | chặn |
 | Mở cửa sổ | `present:open`, `landingBuilder:open` | `assertSessionUnlocked` | **cho phép** | chặn |
-| Tab | `sessions:rename`, `sessions:setClosed` (nút ×) | `assertSessionUnlocked` | **cho phép** | chặn |
+| Tab | `sessions:rename` | `assertSessionUnlocked` | **cho phép** | chặn |
+| Tab | `sessions:setClosed` (nút ×) | *(không chặn)* | **cho phép** | **cho phép** |
 
 Ghi chú:
 - `draw:commit`/`draw:resetSession` có đổi `participants.status`/số lượng còn lại của prize, nhưng đó là
   **kết quả quay**, không phải dữ liệu đầu vào — nên Input lock cho phép (đúng mục đích "khoá danh sách
   rồi quay thoải mái").
 - `sessions:delete` bị Input lock chặn vì xoá session = mất luôn dữ liệu đầu vào. Đóng tab (nút ×, chỉ
-  ẩn, không đụng file) thì vẫn được.
+  ẩn, không đụng file) thì KHÔNG bị chặn ở mức khoá nào cả — kể cả Full lock — vì chỉ ẩn khỏi thanh tab,
+  không đụng dữ liệu/trạng thái khoá, mở lại nguyên vẹn qua Open bất cứ lúc nào.
 
 **Thêm IPC mới** ghi dữ liệu của 1 session hay mở cửa sổ edit → thêm 1 trong 2 hàm vào đầu handler:
 đụng participant/prize/cấu hình dữ liệu → `assertInputsUnlocked`; còn lại → `assertSessionUnlocked`.
@@ -104,8 +106,8 @@ Mở khoá (về 0) thì luôn được.
   (tự xử lý riêng trong `SessionLockMenu.tsx`, không dùng chung handler đóng menu).
 - **Icon ổ khoá** cạnh tên tab trong `TabBar.tsx`: **xám** = Full lock, **xanh nhạt (teal-500)** = Input
   lock; tooltip của tab nói rõ mức đang khoá.
-- **Tab Full lock**: double-click không đổi tên, nút × (đóng tab) ẩn đi. Tab Input lock vẫn đổi tên/đóng
-  được bình thường.
+- **Tab Full lock**: double-click không đổi tên. Nút × (đóng tab) **luôn hiện**, không bị chặn ở mức khoá
+  nào — chỉ ẩn khỏi thanh tab, không đụng dữ liệu. Tab Input lock đổi tên/đóng được bình thường.
 - **Nút bị vô hiệu hoá** (giữ nguyên hiển thị, chỉ thêm `disabled` + tooltip, không ẩn):
 
   | File | Nút | Input lock | Full lock |

@@ -32,6 +32,7 @@ export default function WinnerNameView({
     color,
     fontWeight,
     align,
+    lineHeight,
     appearEffect,
     disappearEffect,
     appearDelayMs,
@@ -97,7 +98,7 @@ export default function WinnerNameView({
   return (
     <div
       className="relative flex h-full w-full items-center overflow-hidden whitespace-pre-wrap break-words"
-      style={{ fontSize, color, fontWeight, textAlign: align, justifyContent }}
+      style={{ fontSize, color, fontWeight, textAlign: align, justifyContent, lineHeight }}
     >
       {transitioning && (
         <span className={`absolute inset-0 flex items-center ${previousClass}`} style={{ justifyContent }}>

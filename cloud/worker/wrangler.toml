@@ -1,0 +1,10 @@
+# Cloudflare Worker cho Cloud Sync — xem docs/architecture/cloud-sync.md.
+# Deploy: `npx wrangler deploy` (trong thư mục này). Secret ADMIN_TOKEN đặt riêng bằng
+# `npx wrangler secret put ADMIN_TOKEN`, KHÔNG ghi vào file này.
+name = "lucky-draw-sync"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "lucky-draw-sync"

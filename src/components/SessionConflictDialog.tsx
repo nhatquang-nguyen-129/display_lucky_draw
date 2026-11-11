@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { SessionConflict } from "@/types";
 import { useSession } from "@/context/SessionContext";
+import { notifyConflictResolved } from "@/lib/cloudSyncEvents";
 import Button from "./Button";
 
 // Mỗi session = 1 file trong data/ (xem electron/db.ts). Cùng 1 session (cùng id) có ≥ 2 file — vd copy
@@ -15,6 +16,11 @@ export default function SessionConflictDialog() {
   const [conflicts, setConflicts] = useState<SessionConflict[]>([]);
   const [choice, setChoice] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Hiện ngắn "Resolved." trước khi dialog tự đóng (conflicts.length về 0) — nếu không, resolve xong là
+  // dialog biến mất NGAY, không có gì cho người dùng thấy là vừa thành công (xem điều kiện return null
+  // bên dưới, đã gộp thêm !justResolved).
+  const [justResolved, setJustResolved] = useState(false);
 
   const load = useCallback(async () => {
     const list = await window.api.sessions.conflicts();
@@ -36,33 +42,36 @@ export default function SessionConflictDialog() {
     return () => window.removeEventListener("focus", load);
   }, [load]);
 
-  async function handleKeepBoth() {
+  // Dùng chung cho cả 2 nút — khác nhau duy nhất ở việc gọi resolveConflict hay keepBothConflict. Lỗi
+  // (hiếm, nhưng resolveConflict()/keepBothConflict() ở electron/db.ts CÓ thể throw, vd "File not
+  // found") thì hiện banner đỏ và KHÔNG refresh/đóng dialog — để người dùng thấy rõ và thử lại, thay vì
+  // bị nuốt im lặng như trước.
+  async function runResolve(action: (c: SessionConflict) => Promise<unknown>) {
     setSaving(true);
+    setError(null);
     try {
       for (const c of conflicts) {
-        await window.api.sessions.keepBothConflict({ sessionId: c.sessionId, file: choice[c.sessionId] });
+        await action(c);
       }
       await refresh();
       await load();
+      setJustResolved(true);
+      notifyConflictResolved();
+      setTimeout(() => setJustResolved(false), 1200);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleConfirm() {
-    setSaving(true);
-    try {
-      for (const c of conflicts) {
-        await window.api.sessions.resolveConflict({ sessionId: c.sessionId, keepFile: choice[c.sessionId] });
-      }
-      await refresh();
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  }
+  const handleKeepBoth = () =>
+    runResolve((c) => window.api.sessions.keepBothConflict({ sessionId: c.sessionId, file: choice[c.sessionId] }));
 
-  if (conflicts.length === 0) return null;
+  const handleConfirm = () =>
+    runResolve((c) => window.api.sessions.resolveConflict({ sessionId: c.sessionId, keepFile: choice[c.sessionId] }));
+
+  if (conflicts.length === 0 && !justResolved) return null;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4">
@@ -78,6 +87,16 @@ export default function SessionConflictDialog() {
           <span className="font-medium text-base-200">Keep both</span>: every copy is kept and the selected one gets a
           new session ID, so it opens as its own tab.
         </p>
+
+        {error && (
+          <div className="mt-3 rounded-md border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-sm text-danger-500">
+            {error}
+          </div>
+        )}
+
+        {conflicts.length === 0 && justResolved && (
+          <p className="mt-4 text-sm text-teal-500">Resolved.</p>
+        )}
 
         <div className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
           {conflicts.map((c) => (
@@ -129,24 +148,26 @@ export default function SessionConflictDialog() {
           ))}
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <Button variant="ghost" onClick={() => window.api.sessions.openDataFolder()}>
-            Open data folder
-          </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={handleKeepBoth}
-              disabled={saving}
-              title="Keep every copy — the selected copy gets a new session ID and opens as its own tab"
-            >
-              Keep both (new ID for selected)
+        {conflicts.length > 0 && (
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <Button variant="ghost" onClick={() => window.api.sessions.openDataFolder()}>
+              Open data folder
             </Button>
-            <Button onClick={handleConfirm} disabled={saving}>
-              {saving ? "Saving..." : "Keep selected copies"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={handleKeepBoth}
+                disabled={saving}
+                title="Keep every copy — the selected copy gets a new session ID and opens as its own tab"
+              >
+                Keep both (new ID for selected)
+              </Button>
+              <Button onClick={handleConfirm} disabled={saving}>
+                {saving ? "Saving..." : "Keep selected copies"}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

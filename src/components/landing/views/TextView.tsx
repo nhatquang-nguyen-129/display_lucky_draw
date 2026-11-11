@@ -16,7 +16,7 @@ export default function TextView({
   // drawRevealHooks.ts.
   resetSeq?: number;
 }) {
-  const { content, fontSize, color, fontWeight, align, syncWithDraw, drawCycle } = component.props;
+  const { content, fontSize, color, fontWeight, align, lineHeight, syncWithDraw, drawCycle } = component.props;
   const latest = data?.results[0];
   // Lọc theo Prize đã gán (nếu có) + chỉ lượt LIVE — xem drawCycleResultId trong types.ts.
   const liveResultId = drawCycleResultId(latest, drawCycle);
@@ -31,7 +31,7 @@ export default function TextView({
   return (
     <div
       className="relative flex h-full w-full items-center overflow-hidden whitespace-pre-wrap break-words"
-      style={{ fontSize, color, fontWeight, textAlign: align, justifyContent }}
+      style={{ fontSize, color, fontWeight, textAlign: align, justifyContent, lineHeight }}
     >
       {visible && (
         <div className={syncWithDraw && !builderPreview ? transitionClass : undefined}>{content}</div>

@@ -6,6 +6,8 @@ Hướng dẫn cho Claude Code khi làm việc trong repo này.
 
 Lucky Draw Studio — app desktop Electron chạy quay số trúng thưởng cho sự kiện, **hoàn toàn offline**, không có backend/cloud. Dữ liệu lưu SQLite cục bộ. Mỗi "phiên quay số" là 1 tab kiểu Chrome, độc lập hoàn toàn về participants/prizes với nhau.
 
+Ngoại lệ DUY NHẤT về offline: `electron/cloudSync.ts` (khai báo kết nối ở trang Settings, nút "Cloud" ở `TabBar.tsx` so local ↔ cloud rồi gợi ý Push/Sync) Push/Pull NGUYÊN file session qua Cloudflare Worker + R2 tự deploy (code Worker ở `cloud/worker/`, project npm riêng) — chỉ chạy khi người dùng tự bấm, không dùng dependency mới (`fetch` global), KHÔNG BAO GIỜ ghi đè file trong `data/` (trùng session thì nhường cho `SessionConflictDialog.tsx`). Thay cho Drive Sync (Google Drive) đã gỡ bỏ. Xem `docs/architecture/cloud-sync.md`. Mọi tính năng khác vẫn 100% offline như trước.
+
 Stack: Electron + Vite + React + TypeScript + better-sqlite3 + Tailwind CSS.
 
 ## Định hướng công nghệ

@@ -88,6 +88,62 @@ export interface TrashEntry {
   confirmedDraws: number;
 }
 
+// Cloud Sync (Cloudflare Worker + R2) — xem electron/cloudSync.ts, docs/architecture/cloud-sync.md.
+// Mọi lời gọi trả { error } thay vì throw, để modal hiện lỗi đọc được.
+export type CloudResult<T> = { error: string } | T;
+export interface CloudSettings {
+  workerUrl: string;
+  readCode: string;
+  writeToken: string;
+}
+export interface CloudSpace {
+  name: string;
+  createdAt: string;
+  role: "read" | "write";
+}
+export interface CloudVersion {
+  sessionId: string;
+  file: string;
+  size: number;
+  pushedAt: string; // ISO
+  sessionName: string;
+  modifiedAt: string; // ISO — lần sửa cuối của file gốc lúc Push
+  sha256: string; // sha256 nội dung (bỏ qua schema cookie) — xem contentHash() trong cloudSync.ts
+  appVersion: string;
+  participantCount: number;
+  pulledAs?: string; // đã Pull bản này về data/ (file vẫn còn)
+}
+// Trạng thái 1 session khi so local với cloud — xem status() trong electron/cloudSync.ts.
+export type CloudSyncState = "in-sync" | "local-only" | "cloud-only" | "local-newer" | "cloud-newer" | "diverged";
+export interface CloudSessionStatus {
+  sessionId: string;
+  name: string;
+  state: CloudSyncState;
+  newer?: "local" | "cloud"; // chỉ với "diverged": bên nào sửa sau
+  local?: { modifiedAt: string; closed: boolean };
+  versions: CloudVersion[]; // mới nhất trước, rỗng nếu local-only
+}
+export interface CloudPushResult {
+  sessionId: string;
+  name: string;
+  status: "pushed" | "unchanged" | "error";
+  message?: string;
+}
+export interface CloudPullResult {
+  sessionId: string;
+  name: string;
+  status: "pulled" | "already-pulled" | "error";
+  savedAs?: string;
+  message?: string;
+}
+// Tiến độ Push/Pull đang chạy dở — bắn qua cloud:progress trong lúc main.ts còn đang xử lý, xem
+// cloud.onProgress() trong window.api bên dưới.
+export interface CloudProgress {
+  sessionId: string;
+  sent: number;
+  total: number;
+}
+
 export interface DrawResultRow {
   id: string;
   session_id: string;
@@ -217,14 +273,43 @@ declare global {
         // Xoá vĩnh viễn khỏi data/.trash/ — KHÔNG còn đường lấy lại, khác restoreFromTrash.
         permanentlyDelete: (data: { file: string }) => Promise<void>;
         // Nút "Open" — chọn 1 file .db bất kỳ, mở lại session đang Closed hoặc nạp session ở ngoài
-        // data/ (USB, backup máy khác...). Xem openDbFile() trong electron/db.ts.
-        openFile: () => Promise<string | null>;
+        // data/ (USB, backup máy khác...). `alreadyOpen` = session này đã là 1 tab đang mở từ trước
+        // (không phải tab Closed) — renderer báo rõ thay vì âm thầm switchTab. Xem openDbFile() trong
+        // electron/db.ts.
+        openFile: () => Promise<{ id: string; name: string; alreadyOpen: boolean } | null>;
         // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
         // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
         setTabOrder: (ids: string[]) => Promise<void>;
         // Nhân bản session → id mới ("<tên> copy"), sạch kết quả quay, mở khoá, tab nằm ngay sau tab gốc.
         duplicate: (id: string) => Promise<string>;
+      };
+      cloud: {
+        // URL Worker + mã đã lưu (data/.cloud-sync.json) — rỗng nếu chưa Connect lần nào.
+        getSettings: () => Promise<CloudSettings>;
+        // Kiểm tra URL + mã với Worker, đúng thì lưu lại. role "write" khi writeToken hợp lệ.
+        connect: (data: CloudSettings) => Promise<CloudResult<CloudSpace>>;
+        disconnect: () => Promise<void>;
+        // So local với cloud từng session (gộp theo sessionId) — gợi ý Push/Sync theo `state`. Chạy
+        // được cả khi CHƯA Connect (cloudConfigured: false) — khi đó mọi dòng là "local-only", dùng
+        // để liệt kê session local trong SessionsModal.tsx (gộp Open+Cloud) ngay cả chưa cấu hình.
+        status: () => Promise<CloudResult<{ sessions: CloudSessionStatus[]; canWrite: boolean; cloudConfigured: boolean }>>;
+        // Đẩy từng session thành 1 bản mới; bản giống hệt bản mới nhất trên cloud → "unchanged".
+        push: (sessionIds: string[]) => Promise<CloudResult<{ results: CloudPushResult[] }>>;
+        // Tải 1 bản về data/ dưới tên tránh trùng — không ghi đè; trùng id → SessionConflictDialog.
+        pull: (items: { sessionId: string; file: string }[]) => Promise<CloudResult<{ results: CloudPullResult[] }>>;
+        // Nghe tiến độ Push/Pull đang chạy — trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+        onProgress: (cb: (p: CloudProgress) => void) => () => void;
+        // Huỷ lượt Push/Pull đang chạy (đóng modal lúc busy, sau khi người dùng xác nhận).
+        cancel: () => Promise<boolean>;
+        // Main báo khi đóng cửa sổ chính mà còn session chưa Push — renderer tự mở Cloud Sync kèm nút
+        // Force Exit. Trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+        onQuitPending: (cb: () => void) => () => void;
+        // "Force Exit" trong Cloud Sync — bỏ qua cảnh báo, đóng cửa sổ chính thật sự.
+        forceQuit: () => Promise<void>;
+        // Main báo ngay sau khi vừa mở app xong mà có session lệch với cloud — renderer tự mở Cloud
+        // Sync (gợi ý, không chặn gì). Trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+        onStartupPending: (cb: () => void) => () => void;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

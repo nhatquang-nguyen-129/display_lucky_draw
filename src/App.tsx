@@ -3,7 +3,7 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Participants from "./pages/Participants";
 import Prizes from "./pages/Prizes";
-import Help from "./pages/Help";
+import Settings from "./pages/Settings";
 import PresentMode from "./pages/PresentMode";
 import LandingPage from "./pages/LandingPage";
 import LandingBuilderWindow from "./pages/LandingBuilderWindow";
@@ -27,7 +27,7 @@ export default function App() {
         <Route path="/participants" element={<Participants />} />
         <Route path="/prizes" element={<Prizes />} />
         <Route path="/landing" element={<LandingPage />} />
-        <Route path="/help" element={<Help />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
   );

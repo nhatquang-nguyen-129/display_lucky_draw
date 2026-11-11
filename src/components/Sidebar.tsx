@@ -5,7 +5,7 @@ const navItems = [
   { to: "/participants", label: "Participants", icon: "users" },
   { to: "/prizes", label: "Prizes", icon: "gift" },
   { to: "/landing", label: "Draw", icon: "layout" },
-  { to: "/help", label: "Help", icon: "help" },
+  { to: "/settings", label: "Settings", icon: "settings" },
 ];
 
 const icons: Record<string, JSX.Element> = {
@@ -41,11 +41,12 @@ const icons: Record<string, JSX.Element> = {
       <path d="M9 9v12" />
     </svg>
   ),
-  help: (
+  settings: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.3 9.2a2.7 2.7 0 1 1 3.9 2.4c-.9.5-1.2 1-1.2 1.9v.3" strokeLinecap="round" />
-      <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
+      <path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0" strokeLinecap="round" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="8" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
     </svg>
   ),
 };

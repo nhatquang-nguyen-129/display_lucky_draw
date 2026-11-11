@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { FrameMaskDetect } from "./types";
 
-// Xử lý ảnh pixel map PNG của Output Frame (shape "image") thành 2 lớp phủ — THUẦN Canvas 2D, không thêm
-// thư viện (xem CLAUDE.md "Định hướng công nghệ"):
-//   - outlineUrl: dải viền vàng bám mép vùng LED (nằm TRONG vùng LED, giống nét khung chữ nhật).
-//   - outsideUrl: đen đặc ở phần NGOÀI vùng LED, trong suốt bên trong — OutputFrameView đặt opacity để
-//     làm tối phần sẽ bị cắt.
-// Chạy 1 lần cho mỗi (ảnh + tuỳ chọn), cache theo key, Builder/Present/Properties Panel dùng chung kết
-// quả. Xem docs/landing/output-frame.md.
+// Xử lý ảnh pixel map PNG của Output Frame (shape "image") ra viền vàng bám đúng hình vùng LED — THUẦN
+// Canvas 2D, không thêm thư viện (xem CLAUDE.md "Định hướng công nghệ"). Chạy 1 lần cho mỗi (ảnh + tuỳ
+// chọn), cache theo key, Builder/Present/Properties Panel dùng chung kết quả. Xem docs/landing/output-frame.md.
 
 export interface FrameMaskOptions {
   detect: FrameMaskDetect;
@@ -21,8 +17,7 @@ export interface FrameMaskResult {
   naturalHeight: number;
   detectedBy: "alpha" | "luminance"; // cách thật sự đã dùng (auto quy về 1 trong 2)
   coverage: number; // tỉ lệ diện tích vùng LED, 0-1 — 0 hoặc ~1 = nhận diện sai, panel cảnh báo
-  outlineUrl: string;
-  outsideUrl: string;
+  outlineUrl: string; // dải viền vàng bám mép vùng LED (nằm TRONG vùng LED, giống nét khung chữ nhật)
 }
 
 // Cạnh dài tối đa của ảnh làm việc — pixel map thật có thể 4K+, xử lý ở độ phân giải này là đủ mịn cho
@@ -174,11 +169,7 @@ export async function computeFrameMask(src: string, options: FrameMaskOptions): 
       }
     }
   });
-  const outsideUrl = toDataUrl(w, h, (d) => {
-    for (let i = 0; i < total; i++) if (!mask[i]) d[i * 4 + 3] = 255; // đen đặc (RGB mặc định 0)
-  });
-
-  return { naturalWidth, naturalHeight, detectedBy, coverage: inside / total, outlineUrl, outsideUrl };
+  return { naturalWidth, naturalHeight, detectedBy, coverage: inside / total, outlineUrl };
 }
 
 // Cache dùng chung cả cửa sổ (Builder: canvas + Properties Panel cùng gọi). Giới hạn vài mục — mỗi mục

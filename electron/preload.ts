@@ -91,6 +91,43 @@ const api = {
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
+  cloud: {
+    // Push/Pull nguyên file session qua Cloudflare Worker + R2 — xem electron/cloudSync.ts.
+    getSettings: () => ipcRenderer.invoke("cloud:getSettings"),
+    connect: (data: { workerUrl: string; readCode: string; writeToken: string }) =>
+      ipcRenderer.invoke("cloud:connect", data),
+    disconnect: () => ipcRenderer.invoke("cloud:disconnect"),
+    status: () => ipcRenderer.invoke("cloud:status"),
+    push: (sessionIds: string[]) => ipcRenderer.invoke("cloud:push", sessionIds),
+    pull: (items: { sessionId: string; file: string }[]) => ipcRenderer.invoke("cloud:pull", items),
+    // Huỷ lượt Push/Pull đang chạy (đóng modal lúc đang busy, sau khi người dùng xác nhận) — xem
+    // main.ts, biến currentCloudOp.
+    cancel: () => ipcRenderer.invoke("cloud:cancel"),
+    // Tiến độ Push/Pull đang chạy (byte đã gửi/nhận trên tổng) — main gửi qua cloud:progress trong
+    // lúc push()/pull() còn đang chạy dở, trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
+    onProgress: (cb: (p: { sessionId: string; sent: number; total: number }) => void) => {
+      const listener = (_e: unknown, p: { sessionId: string; sent: number; total: number }) => cb(p);
+      ipcRenderer.on("cloud:progress", listener);
+      return () => ipcRenderer.removeListener("cloud:progress", listener);
+    },
+    // Main báo khi người dùng bấm đóng cửa sổ chính mà còn session chưa Push (xem
+    // checkCloudSyncBeforeQuit trong main.ts) — renderer tự mở Cloud Sync kèm nút Force Exit.
+    onQuitPending: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on("cloud:quit-pending", listener);
+      return () => ipcRenderer.removeListener("cloud:quit-pending", listener);
+    },
+    // "Force Exit" trong Cloud Sync — bỏ qua cảnh báo, đóng cửa sổ chính thật sự.
+    forceQuit: () => ipcRenderer.invoke("app:forceQuit"),
+    // Main báo NGAY SAU KHI vừa mở app xong mà có session lệch với cloud (xem
+    // checkCloudSyncOnStartup trong main.ts) — renderer tự mở Cloud Sync (không kèm Force Exit, khác
+    // onQuitPending — chỉ là gợi ý, không chặn gì).
+    onStartupPending: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on("cloud:startup-pending", listener);
+      return () => ipcRenderer.removeListener("cloud:startup-pending", listener);
+    },
+  },
   draw: {
     one: (sessionId: string) => ipcRenderer.invoke("draw:one", sessionId),
     pick: (data: { sessionId: string; excludeParticipantIds?: string[]; lockedPrizeId?: string }) =>

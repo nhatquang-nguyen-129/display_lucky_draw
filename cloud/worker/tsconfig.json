@@ -1,0 +1,15 @@
+// Type-check riêng cho Worker (chạy trên Cloudflare, không phải Node/Electron) — tách hẳn khỏi app.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    // Bản "latest" khớp compatibility_date mới trong wrangler.toml (bản mặc định thiếu R2ListOptions.include).
+    "types": ["@cloudflare/workers-types/latest"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

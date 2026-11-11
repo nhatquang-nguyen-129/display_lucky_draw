@@ -207,6 +207,18 @@ export default function LiveTextPanel({
               <option value="right">Right</option>
             </select>
           </div>
+          <div>
+            <label className={labelClass}>Line height</label>
+            <input
+              type="number"
+              step={0.1}
+              min={0.5}
+              placeholder="Normal"
+              className={fieldClass}
+              value={props.lineHeight ?? ""}
+              onChange={(e) => onChange({ lineHeight: e.target.value === "" ? undefined : Number(e.target.value) })}
+            />
+          </div>
         </div>
         <div>
           <label className={labelClass}>Source</label>

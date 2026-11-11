@@ -1,13 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/context/SessionContext";
 import { Session } from "@/types";
 import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
 import SessionLockMenu from "./SessionLockMenu";
 import RestoreModal from "./RestoreModal";
+import SessionsModal from "./SessionsModal";
 
 export default function TabBar() {
-  const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, openFile, reorderTabs, refresh } =
-    useSession();
+  const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, reorderTabs, refresh } = useSession();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: "before" | "after" } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -16,6 +16,22 @@ export default function TabBar() {
   const [newName, setNewName] = useState("");
   const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
   const [showRestore, setShowRestore] = useState(false);
+  const [showSessions, setShowSessions] = useState(false);
+  // true = modal đang mở vì người dùng bấm đóng app mà còn session chưa Push (xem
+  // "cloud:quit-pending" trong main.ts) — SessionsModal hiện thêm nút Force Exit trong trường hợp này.
+  const [quitPending, setQuitPending] = useState(false);
+  useEffect(
+    () =>
+      window.api.cloud.onQuitPending(() => {
+        setQuitPending(true);
+        setShowSessions(true);
+      }),
+    []
+  );
+  // Main báo ngay sau khi vừa mở app xong mà có session lệch với cloud (xem checkCloudSyncOnStartup
+  // trong main.ts) — tự mở modal để người dùng biết sớm, KHÔNG set quitPending (chỉ là gợi ý, không có
+  // nút Force Exit/banner cảnh báo như lúc thoát app).
+  useEffect(() => window.api.cloud.onStartupPending(() => setShowSessions(true)), []);
   // Ô nhập tên tab mới nghe cả onKeyDown (Enter) lẫn onBlur — 1 số trường hợp Enter cũng kéo theo blur
   // gần như cùng lúc, khiến handleAddTab() bị gọi 2 lần trước khi newName kịp reset, tạo nhầm 2 session
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
@@ -107,9 +123,9 @@ export default function TabBar() {
       <div className="flex flex-1 items-end gap-1 overflow-x-auto">
         {sessions.map((s) => {
           const active = s.id === activeSessionId;
-          // Tab Full lock: không đổi tên (double-click) và không đóng (nút ×) — main.ts cũng chặn
-          // sessions:rename/sessions:setClosed bằng assertSessionUnlocked. Input lock vẫn đổi tên/đóng
-          // được (chỉ khoá participant/prize).
+          // Tab Full lock: không đổi tên (double-click) — main.ts chặn sessions:rename bằng
+          // assertSessionUnlocked. Đóng tab (nút ×) KHÔNG bị chặn kể cả Full lock: chỉ ẩn khỏi thanh
+          // tab, không đụng dữ liệu/trạng thái khoá, mở lại nguyên vẹn qua Open bất cứ lúc nào.
           const locked = fullyLocked(s);
           const dropSide = dropTarget?.id === s.id ? dropTarget.side : null;
           return (
@@ -177,15 +193,13 @@ export default function TabBar() {
                   <span className="truncate">{s.name}</span>
                 </span>
               )}
-              {!locked && (
-                <button
-                  onClick={(e) => handleCloseTab(e, s.id)}
-                  title="Close this session"
-                  className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
-                >
-                  ×
-                </button>
-              )}
+              <button
+                onClick={(e) => handleCloseTab(e, s.id)}
+                title="Close this session"
+                className="shrink-0 rounded px-1 text-base-500 opacity-0 hover:bg-base-700 hover:text-danger-500 group-hover:opacity-100"
+              >
+                ×
+              </button>
             </div>
           );
         })}
@@ -210,11 +224,12 @@ export default function TabBar() {
           </button>
         )}
       </div>
-      {/* Chọn 1 file .db bất kỳ (mặc định mở ngay data/) — mở lại session đang Close, hoặc nạp session
-          từ ngoài data/ (USB, backup máy khác...). Xem openFile() trong SessionContext.tsx. */}
+      {/* Danh sách MỌI session (local + cloud, cả tab Closed) để mở thẳng 1 hoặc nhiều session vào app —
+          gộp "chọn file .db qua dialog" (nay chỉ còn là lối phụ "Browse..." trong modal) với Cloud Sync
+          (Push/Pull vẫn ở đây). Xem SessionsModal.tsx. */}
       <button
-        onClick={() => openFile()}
-        title="Open a session file — reopen a closed tab, or load one from outside data/"
+        onClick={() => setShowSessions(true)}
+        title="Open a session — reopen a closed tab, pull one from the cloud, or browse for a file"
         className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -237,6 +252,15 @@ export default function TabBar() {
       </button>
 
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
+      {showSessions && (
+        <SessionsModal
+          quitPending={quitPending}
+          onClose={() => {
+            setShowSessions(false);
+            setQuitPending(false);
+          }}
+        />
+      )}
 
       {lockMenu && (
         <SessionLockMenu

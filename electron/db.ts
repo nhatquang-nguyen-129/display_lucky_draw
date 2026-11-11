@@ -396,13 +396,16 @@ function slugify(name: string): string {
   return slug || "Session";
 }
 
-function fileNameFor(name: string, id: string): string {
+// Export để cloudSync.ts đặt tên file Pull về theo đúng quy ước tên file session.
+export function fileNameFor(name: string, id: string): string {
   return `${slugify(name)}__${id.slice(0, 8)}.db`;
 }
 
 // Tránh ghi đè file có sẵn (vd 2 session trùng tên VÀ trùng 8 ký tự đầu id — gần như không thể, nhưng
-// rẻ để chặn): thêm hậu tố -2, -3...
-function uniquePath(dir: string, fileName: string): string {
+// rẻ để chặn): thêm hậu tố -2, -3... Export để cloudSync.ts tái dùng đúng logic này khi file Pull từ
+// cloud trùng tên 1 file có sẵn trong data/ — nhường việc phát hiện có thật là cùng 1 session
+// hay không cho rescan()/listConflicts() (đọc sessions.id thật bên trong), không tự đoán ở đây.
+export function uniquePath(dir: string, fileName: string): string {
   let target = path.join(dir, fileName);
   const ext = path.extname(fileName);
   const base = fileName.slice(0, -ext.length);
@@ -910,15 +913,24 @@ export function permanentlyDelete(fileName: string) {
   }
 }
 
-/** Nút "Open" (electron/main.ts, dialog chọn 1 file .db) — 3 trường hợp, trả về sessionId để renderer
- *  tự switchTab tới đúng session vừa mở (null nếu không xác định được, vd file hỏng):
+export interface OpenDbFileResult {
+  id: string;
+  name: string;
+  // true = session này ĐÃ là 1 tab đang mở (closed = 0) từ TRƯỚC khi gọi hàm này — renderer dùng để
+  // báo rõ "session này đang mở rồi" thay vì âm thầm switchTab, tránh nhầm lẫn giữa các file trùng tên
+  // khác session_id (đã gặp thật — 2 file cùng tên sự kiện, khác id, tưởng đang mở nhầm).
+  alreadyOpen: boolean;
+}
+
+/** Nút "Open" (electron/main.ts, dialog chọn 1 file .db) — 3 trường hợp, trả về session để renderer tự
+ *  switchTab tới đúng session vừa mở (null nếu không xác định được, vd file hỏng):
  *  1. File đang ở data/.trash/: coi như bấm Restore (restoreFromTrash), bỏ hậu tố "__deleted-...".
  *  2. File đã nằm trong data/ (session đang Closed, hoặc hiếm khi app chưa kịp rescan): chỉ đặt
  *     closed = 0, KHÔNG di chuyển file.
  *  3. File ở ngoài data/ (USB, backup máy khác...): copy vào data/, giữ nguyên bản gốc. Trùng id với
  *     session đang có sẵn thì rescan() ở lần listSessions() kế tiếp tự phát hiện thành conflict
  *     (SessionConflictDialog.tsx), không cần xử lý riêng ở đây. */
-export function openDbFile(filePath: string): string | null {
+export function openDbFile(filePath: string): OpenDbFileResult | null {
   if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
   const dir = path.dirname(filePath);
   let target: string;
@@ -927,8 +939,14 @@ export function openDbFile(filePath: string): string | null {
     rescan();
     const found = [...entries.entries()].find(([, e]) => sameFile(e.file, filePath));
     if (!found) return null;
-    setSessionClosed(found[0], false);
-    return found[0];
+    const [id, entry] = found;
+    const row = entry.db.prepare(`SELECT name, closed FROM sessions LIMIT 1`).get() as {
+      name: string;
+      closed: number | null;
+    };
+    const alreadyOpen = !row.closed;
+    setSessionClosed(id, false);
+    return { id, name: row.name, alreadyOpen };
   } else if (sameFile(dir, TRASH_DIR)) {
     target = restoreFromTrash(path.basename(filePath));
   } else {
@@ -939,8 +957,31 @@ export function openDbFile(filePath: string): string | null {
   rescan();
   const entry = [...entries.values()].find((e) => sameFile(e.file, target));
   if (!entry) return null;
-  const row = entry.db.prepare(`SELECT id FROM sessions LIMIT 1`).get() as { id: string } | undefined;
-  return row?.id ?? null;
+  const row = entry.db.prepare(`SELECT id, name FROM sessions LIMIT 1`).get() as { id: string; name: string } | undefined;
+  return row ? { id: row.id, name: row.name, alreadyOpen: false } : null;
+}
+
+/**
+ * Bản sao NHẤT QUÁN của 1 session đang mở ra `destFile` (VACUUM INTO, giống duplicateSession — an toàn
+ * ngay cả khi session đang được ghi), không đụng file gốc. Dùng cho Push lên Cloud Sync (cloudSync.ts).
+ * Trả về thời điểm sửa file gốc (mtime) — gửi kèm làm modifiedAt để máy Pull về so được bản nào mới hơn.
+ */
+export function snapshotSession(sessionId: string, destFile: string): { modifiedAt: string } {
+  const entry = entries.get(sessionId);
+  if (!entry) throw new Error(`Session not found: ${sessionId}`);
+  entry.db.prepare(`VACUUM INTO ?`).run(destFile);
+  return { modifiedAt: fs.statSync(entry.file).mtime.toISOString() };
+}
+
+/** Mọi session đang đăng ký (KỂ CẢ tab đang Close — file vẫn nằm trong data/) kèm file + mtime — Cloud
+ *  Sync dùng để so local với cloud (cloudSync.ts status()). Bản trùng id chờ SessionConflictDialog
+ *  không có ở đây, chỉ bản đang dùng. */
+export function listSessionFiles(): { id: string; name: string; closed: boolean; file: string; mtimeMs: number }[] {
+  rescan();
+  return [...entries.entries()].map(([id, e]) => {
+    const row = e.db.prepare(`SELECT name, closed FROM sessions LIMIT 1`).get() as { name: string; closed: number | null };
+    return { id, name: row.name, closed: !!row.closed, file: e.file, mtimeMs: fs.statSync(e.file).mtimeMs };
+  });
 }
 
 export function closeAll() {
