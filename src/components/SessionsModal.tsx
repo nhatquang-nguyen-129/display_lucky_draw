@@ -6,21 +6,21 @@ import { onConflictResolved } from "@/lib/cloudSyncEvents";
 import Modal from "./Modal";
 import Button from "./Button";
 
-// So local với cloud từng session (window.api.cloud.status, xem status() trong electron/cloudSync.ts) rồi
-// gợi ý đúng nhãn: Push khi local mới hơn/chưa có trên cloud, Sync khi cloud mới hơn/chưa có trên máy,
-// cả 2 khi 2 bên cùng đổi. Không tự làm gì — chỉ kiểm tra lúc mở/bấm Refresh. Tick chọn nhiều session
-// (checkbox từng dòng + Select all) rồi bấm 1 trong 2 nút Push/Pull chung ở footer — mỗi nút chỉ áp
-// dụng cho đúng những dòng ĐANG CHỌN mà đủ điều kiện (vd tick cả dòng "Not in cloud" lẫn "Only in
-// cloud" rồi bấm Push thì chỉ dòng đầu được gửi, không lỗi gì với dòng còn lại). KHÔNG có ô khai báo
-// kết nối — 1 app chỉ dùng 1 cloud, khai báo ở trang Settings. Sync không ghi đè gì — trùng session
-// đang mở thì SessionConflictDialog.tsx tự hiện sau refresh(). Xem docs/architecture/cloud-sync.md.
-// Mở từ nút "Cloud" cạnh "Open"/"Restore" ở TabBar.tsx — cùng khuôn với RestoreModal.tsx.
-export default function CloudSyncModal({ onClose, quitPending = false }: { onClose: () => void; quitPending?: boolean }) {
-  const { refresh, deleteTab } = useSession();
+// Gộp "Open" (chọn 1 file .db qua dialog) + "Cloud Sync" (so local ↔ cloud) thành 1 UI DUY NHẤT: liệt
+// kê MỌI session (local — kể cả tab Closed — + cloud, window.api.cloud.status, xem status() trong
+// electron/cloudSync.ts) kèm trạng thái rõ ràng, chọn 1 hoặc nhiều dòng rồi bấm Open để vào thẳng app
+// (tự Pull nếu session chỉ có trên cloud). status() giờ chạy được cả khi CHƯA Connect Cloud Sync
+// (cloudConfigured: false trong kết quả trả về) — mọi dòng khi đó chỉ là "local-only", Push/Pull ẩn
+// đi, chỉ còn Open/Delete — modal vẫn dùng được để mở session local như nút "Open" cũ. Dialog browse
+// OS giờ chỉ còn là lối phụ ("Browse for a file not shown here...") cho file ngoài data/ (USB, backup
+// máy khác) chưa/không hiện trong danh sách. Mở từ nút "Open" ở TabBar.tsx. Xem docs/architecture/cloud-sync.md.
+export default function SessionsModal({ onClose, quitPending = false }: { onClose: () => void; quitPending?: boolean }) {
+  const { refresh, deleteTab, switchTab, openFile } = useSession();
   const navigate = useNavigate();
-  const [configured, setConfigured] = useState<boolean | null>(null);
   const [rows, setRows] = useState<CloudSessionStatus[] | null>(null);
   const [canWrite, setCanWrite] = useState(false);
+  // null lúc chưa load xong lần đầu — Push/Pull/hint "Connect Cloud Sync" chỉ hiện sau khi biết chắc.
+  const [cloudConfigured, setCloudConfigured] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // nhãn thao tác đang chạy, null = rảnh
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -33,9 +33,9 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
   // từng phần (upload) có thể cách nhau rất lâu (xem UPLOAD_PART_TIMEOUT_MS=0 trong cloudSync.ts) nên
   // con số này chỉ là trung bình giữa 2 mốc gần nhất, không phải tốc độ "sống" liên tục như lúc Pull.
   const [speed, setSpeed] = useState<number | null>(null);
-  // Danh sách CỐ ĐỊNH các session trong lượt Push/Pull đang chạy (chụp lại lúc bấm nút, không đổi theo
-  // selection/rows có thể refresh giữa chừng) — để biết đang ở session thứ mấy/tên gì trong cùng lượt,
-  // hiện ngay trên progress bar thay vì chỉ 1 dòng chung "Pushing 3 sessions...".
+  // Danh sách CỐ ĐỊNH các session trong lượt Push/Pull/Open đang chạy (chụp lại lúc bấm nút, không đổi
+  // theo selection/rows có thể refresh giữa chừng) — để biết đang ở session thứ mấy/tên gì trong cùng
+  // lượt, hiện ngay trên progress bar thay vì chỉ 1 dòng chung "Pushing 3 sessions...".
   const [activeBatch, setActiveBatch] = useState<{ verb: string; items: { sessionId: string; name: string }[] } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Đóng modal được dù đang Push/Pull (xem handleClose) — await của lượt đang chạy có thể resolve
@@ -51,23 +51,17 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
     };
   }, []);
 
+  // Luôn load ngay khi mở — KHÔNG còn chờ xác nhận đã Connect Cloud Sync (status() tự xử lý cả 2
+  // trường hợp, xem electron/cloudSync.ts), nên modal luôn hữu ích để mở session local kể cả máy chưa
+  // từng cấu hình Cloud Sync.
   useEffect(() => {
-    window.api.cloud.getSettings().then((saved) => {
-      const ok = !!saved.workerUrl && !!(saved.readCode || saved.writeToken);
-      setConfigured(ok);
-      if (ok) void run("Checking for changes...", loadStatus);
-    });
+    void run("Loading sessions...", loadStatus);
   }, []);
 
   // SessionConflictDialog.tsx báo khi 1 conflict vừa resolve xong ở nơi khác (vd sau 1 lượt Pull tạo
   // file trùng) — tự load lại status() ngay, không chờ người dùng bấm Refresh. Guard !busy để không
-  // chồng lên 1 lượt Push/Pull đang chạy dở.
-  useEffect(
-    () => onConflictResolved(() => {
-      if (configured && !busy) void run("Checking for changes...", loadStatus);
-    }),
-    [configured, busy]
-  );
+  // chồng lên 1 lượt Push/Pull/Open đang chạy dở.
+  useEffect(() => onConflictResolved(() => { if (!busy) void run("Checking for changes...", loadStatus); }), [busy]);
 
   // Tính tốc độ byte/giây từ cửa sổ trượt ~2s các mốc progress gần nhất — không lấy nguyên khoảng từ
   // đầu lượt vì byte vẫn còn tính cả lúc mạng đang chậm/khựng trước đó, dễ ra số sai lệch quá khứ.
@@ -111,9 +105,12 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
     const r = await window.api.cloud.status();
     if (!mountedRef.current) return;
     if ("error" in r) return setError(r.error);
-    const sorted = r.sessions.sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.name.localeCompare(b.name));
+    const sorted = r.sessions.sort(
+      (a, b) => tabRank(a) - tabRank(b) || STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.name.localeCompare(b.name)
+    );
     setRows(sorted);
     setCanWrite(r.canWrite);
+    setCloudConfigured(r.cloudConfigured);
     // Bỏ chọn session không còn trong danh sách (vd đã Up to date, hoặc vừa xoá) — tránh giữ selection
     // "ma" trỏ vào session đã biến mất khỏi danh sách.
     setSelected((prev) => new Set([...prev].filter((id) => sorted.some((row) => row.sessionId === id))));
@@ -135,6 +132,7 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
 
   const pushTargets = rows?.filter((r) => selected.has(r.sessionId) && isPushEligible(r)) ?? [];
   const pullTargets = rows?.filter((r) => selected.has(r.sessionId) && isPullEligible(r)) ?? [];
+  const openTargets = rows?.filter((r) => selected.has(r.sessionId)) ?? [];
   // Soft delete (chuyển vào Trash) chỉ cho local-only — session có mặt ở cloud rồi thì xoá local không
   // mất dữ liệu thật (Pull lại được), nhưng local-only xoá sai thì mất hẳn, nên chỉ cho đúng trạng thái
   // an toàn nhất; vẫn là Trash (không phải permanently delete) nên luôn khôi phục được qua Restore.
@@ -205,6 +203,66 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
     });
   }
 
+  // Open — LUÔN qua tick chọn + nút Open ở footer (không có nút riêng từng dòng, tránh rối với checkbox
+  // chọn hàng loạt). Áp dụng cho từng dòng đang chọn: Pull trước (1 lượt, cho mọi dòng cloud-only), rồi
+  // setClosed(false) cho MỌI dòng local-ish (kể cả vừa Pull xong) — idempotent với dòng đã mở sẵn nên
+  // không cần tách riêng. Chỉ switchTab khi đúng 1 session mở thành công trong lượt này (và tự đóng
+  // modal); > 1 thì giữ nguyên tab đang active, chỉ báo notice số lượng — người dùng tự bấm tab muốn xem.
+  async function handleOpenSelected() {
+    const targets = openTargets;
+    if (targets.length === 0) return;
+    setNotice(null);
+    setError(null);
+    const toPull = targets.filter((r) => !r.local && r.versions[0]?.file);
+    setActiveBatch({ verb: "Opening", items: targets.map((r) => ({ sessionId: r.sessionId, name: r.name })) });
+    const failed: string[] = [];
+    const openedIds: string[] = [];
+    await run(`Opening ${targets.length} session${targets.length === 1 ? "" : "s"}...`, async () => {
+      if (toPull.length) {
+        const items = toPull.map((r) => ({ sessionId: r.sessionId, file: r.versions[0]!.file }));
+        const r = await window.api.cloud.pull(items);
+        if ("error" in r) {
+          if (mountedRef.current) setError(r.error);
+        } else {
+          for (const res of r.results) {
+            if (res.status === "error") failed.push(`${res.name}: ${res.message}`);
+            else openedIds.push(res.sessionId);
+          }
+        }
+      }
+      for (const r of targets) {
+        if (toPull.includes(r) && !openedIds.includes(r.sessionId)) continue; // Pull thất bại — bỏ qua
+        try {
+          await window.api.sessions.setClosed({ id: r.sessionId, closed: false });
+          if (!openedIds.includes(r.sessionId)) openedIds.push(r.sessionId);
+        } catch (err) {
+          failed.push(`${r.name}: ${(err as Error).message}`);
+        }
+      }
+      await refresh();
+    });
+    if (!mountedRef.current) return;
+    if (failed.length) setError(failed.join(" · "));
+    if (openedIds.length === 1) {
+      switchTab(openedIds[0]);
+      if (!failed.length) {
+        onClose();
+        return;
+      }
+    } else if (openedIds.length > 1) {
+      setNotice(`${openedIds.length} sessions opened.`);
+    }
+    await loadStatus();
+  }
+
+  // Lối phụ cho file KHÔNG hiện trong danh sách (USB, backup máy khác chưa từng Push) — tái dùng
+  // nguyên openFile() của SessionContext.tsx (dialog OS mặc định data/, tự refresh + switchTab +
+  // báo "already open" nếu trùng tab đang mở), chỉ thêm đóng modal khi thành công.
+  async function handleBrowse() {
+    await openFile();
+    onClose();
+  }
+
   function summarizePush(results: CloudPushResult[]) {
     const pushed = results.filter((x) => x.status === "pushed").length;
     const unchanged = results.filter((x) => x.status === "unchanged").length;
@@ -237,7 +295,7 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
   // "cloud:cancel") rồi đóng ngay — không chờ promise của lượt đó resolve xong mới đóng.
   function handleClose() {
     if (busy) {
-      if (!confirm("Closing now will cancel the current Push/Pull. Continue?")) return;
+      if (!confirm("Closing now will cancel the current action. Continue?")) return;
       void window.api.cloud.cancel();
     }
     onClose();
@@ -251,76 +309,77 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
     void window.api.cloud.forceQuit();
   }
 
-  const pending = rows?.filter((r) => r.state !== "in-sync").length ?? 0;
+  const pending = cloudConfigured ? (rows?.filter((r) => r.state !== "in-sync").length ?? 0) : 0;
   const allSelected = !!rows && rows.length > 0 && selected.size === rows.length;
 
   return (
-    <Modal open title="Cloud Sync" onClose={handleClose} maxWidth="max-w-4xl" hideCloseButton>
-      {configured === false && (
-        <div className="space-y-3 text-sm text-base-300">
-          <p>Cloud Sync isn't set up on this computer yet.</p>
-          <Button onClick={openSettings}>Open Settings</Button>
+    <Modal open title="Open Session" onClose={handleClose} maxWidth="max-w-4xl" hideCloseButton>
+      {quitPending && (
+        <div className="mb-3 rounded-md border border-highlight-500/30 bg-highlight-500/10 px-3 py-2 text-sm text-highlight-600">
+          You're about to close the app with sessions not yet pushed to the cloud. Push first, or use{" "}
+          <span className="font-medium">Force Exit</span> to leave anyway.
+        </div>
+      )}
+      {cloudConfigured === false && (
+        <div className="mb-3 rounded-md border border-base-700 bg-base-800/60 px-3 py-2 text-xs text-base-400">
+          Cloud Sync isn't set up on this computer — only sessions on this computer are shown.{" "}
+          <button onClick={openSettings} className="font-medium text-teal-400 hover:underline">
+            Connect in Settings
+          </button>{" "}
+          to also see and sync sessions from the cloud.
         </div>
       )}
 
-      {configured && (
-        <>
-          {quitPending && (
-            <div className="mb-3 rounded-md border border-highlight-500/30 bg-highlight-500/10 px-3 py-2 text-sm text-highlight-600">
-              You're about to close the app with sessions not yet pushed to the cloud. Push first, or use{" "}
-              <span className="font-medium">Force Exit</span> to leave anyway.
-            </div>
-          )}
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-xs text-base-500">
-              {rows === null
-                ? "Comparing this computer with the cloud..."
-                : pending === 0
-                  ? "Everything is up to date."
-                  : `${pending} session${pending === 1 ? " needs" : "s need"} attention. Sync never overwrites anything on this computer.`}
-            </p>
-            <button
-              onClick={() => run("Checking for changes...", loadStatus)}
-              disabled={!!busy}
-              className="shrink-0 text-xs text-base-400 hover:text-base-100 disabled:opacity-40"
-            >
-              Refresh
-            </button>
-          </div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-base-500">
+          {rows === null
+            ? "Loading sessions..."
+            : cloudConfigured === false
+              ? `${rows.length} session${rows.length === 1 ? "" : "s"} on this computer.`
+              : pending === 0
+                ? "Everything is up to date."
+                : `${pending} session${pending === 1 ? " needs" : "s need"} attention. Sync never overwrites anything on this computer.`}
+        </p>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button variant="secondary" size="sm" onClick={handleBrowse} disabled={!!busy}>
+            Browse...
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => run("Checking for changes...", loadStatus)} disabled={!!busy}>
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-          {error && (
-            <div className="mb-2 rounded-md border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-sm text-danger-500">
-              {error}
-            </div>
-          )}
-          {notice && <p className="mb-2 text-xs text-teal-500">{notice}</p>}
-          {rows && rows.length === 0 && <p className="text-xs text-base-500">No sessions on this computer or in the cloud.</p>}
+      {error && (
+        <div className="mb-2 rounded-md border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-sm text-danger-500">
+          {error}
+        </div>
+      )}
+      {notice && <p className="mb-2 text-xs text-teal-500">{notice}</p>}
+      {rows && rows.length === 0 && <p className="text-xs text-base-500">No sessions on this computer or in the cloud.</p>}
 
-          {rows && rows.length > 0 && (
-            <label className="mb-1.5 flex items-center gap-2 px-1 text-xs text-base-400">
-              <input type="checkbox" checked={allSelected} onChange={toggleAll} className="accent-gold-500" />
-              Select all
-            </label>
-          )}
+      {rows && rows.length > 0 && (
+        <label className="mb-1.5 flex items-center gap-2 px-1 text-xs text-base-400">
+          <input type="checkbox" checked={allSelected} onChange={toggleAll} className="accent-gold-500" />
+          Select all
+        </label>
+      )}
 
-          <div className="max-h-[26rem] space-y-2 overflow-y-auto">
-            {rows?.map((row) => (
-              <SessionRow key={row.sessionId} row={row} checked={selected.has(row.sessionId)} onToggle={() => toggleOne(row.sessionId)} />
-            ))}
-          </div>
-          {rows && !canWrite && rows.some(isPushEligible) && (
-            <p className="mt-2 text-xs text-base-500">
-              This computer is read-only — add the write token in Settings to push.
-            </p>
-          )}
-        </>
+      <div className="max-h-[26rem] space-y-2 overflow-y-auto">
+        {rows?.map((row) => (
+          <SessionRow key={row.sessionId} row={row} checked={selected.has(row.sessionId)} onToggle={() => toggleOne(row.sessionId)} />
+        ))}
+      </div>
+      {rows && cloudConfigured && !canWrite && rows.some(isPushEligible) && (
+        <p className="mt-2 text-xs text-base-500">This computer is read-only — add the write token in Settings to push.</p>
       )}
 
       {busy && (
         <div className="mt-5 flex min-w-0 flex-col gap-1 text-xs text-base-500">
-          {/* Push/Pull nhiều session chạy TUẦN TỰ từng cái một (xem push()/pull() trong cloudSync.ts) —
-              activeBatch (chụp lúc bấm nút) + sessionId của progress hiện tại cho biết đang ở session
-              thứ mấy/tên gì, thay vì chỉ 1 dòng chung chung "Pushing 3 sessions..." không rõ tới đâu. */}
+          {/* Push/Pull/Open nhiều session chạy TUẦN TỰ từng cái một (xem push()/pull() trong
+              cloudSync.ts) — activeBatch (chụp lúc bấm nút) + sessionId của progress hiện tại cho biết
+              đang ở session thứ mấy/tên gì, thay vì chỉ 1 dòng chung chung "Pushing 3 sessions..."
+              không rõ tới đâu. */}
           <span className="truncate">
             {activeBatch && progress
               ? (() => {
@@ -347,44 +406,63 @@ export default function CloudSyncModal({ onClose, quitPending = false }: { onClo
         </div>
       )}
 
-      {/* 2 cụm tách 2 bên: Close/Force Exit (huỷ hoặc thoát hẳn) bên trái, Delete/Pull/Push (thao tác
-          dữ liệu) bên phải — mỗi nút rộng cố định (w-28) để không nhảy kích thước khi đổi số lượng
-          (vd "Push" -> "Push (3)"), cách nhau 1 khoảng nhỏ (gap-2). */}
+      {/* 2 cụm tách 2 bên: Close/Force Exit (huỷ hoặc thoát hẳn) bên trái, thao tác dữ liệu bên phải —
+          gom theo chức năng (Pull+Push cạnh nhau, cùng là "đồng bộ với cloud"), mỗi cụm cách nhau 1
+          đường kẻ dọc mảnh để dễ thao tác. Mọi nút cùng màu nhạt (variant="secondary") TRỪ Delete (màu
+          đỏ — thao tác cần nổi bật vì đưa vào Trash). Nút rộng cố định (w-20) để không nhảy kích thước
+          khi đổi số lượng (vd "Push" -> "Push (3)"). Push/Pull ẩn hẳn khi chưa Connect Cloud Sync (không
+          chỉ disable) — không có gì để Push/Pull tới. */}
       <div className="mt-5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={handleClose} className="w-28">
+          <Button variant="secondary" size="sm" onClick={handleClose} className="w-20">
             Close
           </Button>
           {quitPending && (
-            <Button variant="danger" onClick={handleForceExit} className="w-28">
+            <Button variant="danger" size="sm" onClick={handleForceExit} className="w-20">
               Force Exit
             </Button>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="danger" onClick={handleDeleteSelected} disabled={!!busy || deleteTargets.length === 0} className="w-28">
+          <Button variant="danger" size="sm" onClick={handleDeleteSelected} disabled={!!busy || deleteTargets.length === 0} className="w-20">
             Delete{deleteTargets.length > 0 ? ` (${deleteTargets.length})` : ""}
           </Button>
-          <Button variant="secondary" onClick={handlePullSelected} disabled={!!busy || pullTargets.length === 0} className="w-28">
-            Pull{pullTargets.length > 0 ? ` (${pullTargets.length})` : ""}
-          </Button>
-          <Button onClick={handlePushSelected} disabled={!!busy || !canWrite || pushTargets.length === 0} className="w-28">
-            Push{pushTargets.length > 0 ? ` (${pushTargets.length})` : ""}
-          </Button>
+          {cloudConfigured && (
+            <div className="flex items-center gap-2 border-l border-base-800 pl-2">
+              <Button variant="secondary" size="sm" onClick={handlePullSelected} disabled={!!busy || pullTargets.length === 0} className="w-20">
+                Pull{pullTargets.length > 0 ? ` (${pullTargets.length})` : ""}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={handlePushSelected} disabled={!!busy || !canWrite || pushTargets.length === 0} className="w-20">
+                Push{pushTargets.length > 0 ? ` (${pushTargets.length})` : ""}
+              </Button>
+            </div>
+          )}
+          <div className="flex items-center border-l border-base-800 pl-2">
+            <Button variant="secondary" size="sm" onClick={handleOpenSelected} disabled={!!busy || openTargets.length === 0} className="w-20">
+              Open{openTargets.length > 0 ? ` (${openTargets.length})` : ""}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
   );
 }
 
-// Session cần xử lý lên trước, "Up to date" xuống cuối.
+// Thứ tự sort CHÍNH là theo trạng thái tab (tabRank — Open trước, Closed sau, cloud-only cuối cùng vì
+// không có tab); trong cùng 1 nhóm tab mới xét tới trạng thái Local/Cloud, và "Up to date" lên đầu
+// (khác hẳn ý định cũ "cần xử lý lên trước" — đổi theo yêu cầu người dùng).
+function tabRank(r: CloudSessionStatus): number {
+  if (!r.local) return 2; // cloud-only — không có tab nào cả
+  return r.local.closed ? 1 : 0; // Open tab trước Closed tab
+}
+
 const STATE_ORDER: Record<CloudSyncState, number> = {
-  diverged: 0,
-  "local-newer": 1,
-  "cloud-newer": 2,
-  "local-only": 3,
-  "cloud-only": 4,
-  "in-sync": 5,
+  "in-sync": 0,
+  diverged: 1,
+  "local-newer": 2,
+  "cloud-newer": 3,
+  "local-only": 4,
+  "cloud-only": 5,
 };
 
 // Kiểu "Delivery" của Facebook Ads: 1 chấm tròn màu + chữ ngắn gọn, KHÔNG phải pill nền màu — xem
@@ -392,7 +470,7 @@ const STATE_ORDER: Record<CloudSyncState, number> = {
 // thái để không rối mắt như pill cũ.
 const STATE_LABEL: Record<CloudSyncState, { text: string; hint: string; dot: string }> = {
   "in-sync": { text: "Up to date", hint: "Same as the latest version in the cloud", dot: "bg-blue-500" },
-  "local-only": { text: "Local-only", hint: "Only on this computer", dot: "bg-base-500" },
+  "local-only": { text: "On this computer", hint: "Only on this computer", dot: "bg-base-500" },
   "cloud-only": { text: "Cloud-only", hint: "Not on this computer yet", dot: "bg-green-500" },
   "local-newer": { text: "Local newer", hint: "Edited on this computer since the last push", dot: "bg-amber-500" },
   "cloud-newer": { text: "Cloud newer", hint: "The cloud has a newer version than this computer", dot: "bg-sky-500" },
@@ -437,14 +515,27 @@ function SessionRow({ row, checked, onToggle }: { row: CloudSessionStatus; check
         : { text: "Recommended: Pull", className: "text-teal-400" }
       : null;
 
+  // Cột riêng cho trạng thái tab (KHÁC trạng thái Local/Cloud ở cột kế bên) — cloud-only (chưa có file
+  // local) không có khái niệm tab, hiện "—".
+  const tabState = !row.local
+    ? { text: "—", className: "text-base-600" }
+    : row.local.closed
+      ? { text: "Closed", className: "text-base-600" }
+      : { text: "Open", className: "text-base-300" };
+
   return (
     <div
       onClick={onToggle}
-      className={`grid cursor-pointer grid-cols-[auto_9rem_1fr_14rem] items-center gap-3 rounded-md border px-3 py-2 ${checked ? "border-gold-500/50 bg-gold-500/5" : "border-base-800"}`}
+      className={`grid cursor-pointer grid-cols-[auto_6rem_9rem_1fr_14rem] items-center gap-3 rounded-md border px-3 py-2 ${checked ? "border-gold-500/50 bg-gold-500/5" : "border-base-800"}`}
     >
       <input type="checkbox" readOnly checked={checked} className="shrink-0 accent-gold-500" />
 
-      {/* Cột 1: status (chấm tròn + nhãn ngắn) + gợi ý Recommended riêng dòng dưới, chỉ Diverged mới có. */}
+      {/* Cột 1 (mới, ra trước): trạng thái tab — Open/Closed/— (cloud-only), tách riêng khỏi trạng thái
+          Local/Cloud ở cột kế bên theo đúng yêu cầu (2 trục thông tin độc lập, không gộp chung 1 ô). */}
+      <span className={`truncate text-xs ${tabState.className}`}>{tabState.text}</span>
+
+      {/* Cột 2: trạng thái Local/Cloud (chấm tròn + nhãn ngắn) + gợi ý Recommended riêng dòng dưới, chỉ
+          Diverged mới có. */}
       <div className="flex min-w-0 flex-col gap-0.5">
         <span title={label.hint} className="flex min-w-0 items-center gap-1.5 text-xs text-base-400">
           <span className={`h-2 w-2 shrink-0 rounded-full ${label.dot}`} />
@@ -453,15 +544,12 @@ function SessionRow({ row, checked, onToggle }: { row: CloudSessionStatus; check
         {recommendation && <span className={`text-[11px] font-medium ${recommendation.className}`}>{recommendation.text}</span>}
       </div>
 
-      {/* Cột 2: Tên session — crop + "...", hover hiện tên đầy đủ qua title. */}
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-sm text-base-100" title={row.name}>
-          {row.name}
-        </span>
-        {row.local?.closed && <span className="shrink-0 text-[10px] text-base-500">closed tab</span>}
-      </div>
+      {/* Cột 3: Tên session — crop + "...", hover hiện tên đầy đủ qua title. */}
+      <span className="min-w-0 truncate text-sm text-base-100" title={row.name}>
+        {row.name}
+      </span>
 
-      {/* Cột 3: Thời gian sửa gần nhất — text thuần, không còn dropdown chọn phiên bản. */}
+      {/* Cột 4: Thời gian sửa gần nhất — text thuần, không còn dropdown chọn phiên bản. */}
       {lastEdited && (
         <span className="truncate text-right text-[11px] text-base-500" title={lastEditedFull ?? undefined}>
           {lastEdited}

@@ -7,8 +7,8 @@ import Button from "@/components/Button";
 const DEFAULT_WORKER_URL = "https://lucky-draw-sync.luckydrawstudio.workers.dev";
 
 // Trang Settings (sidebar). Hiện chỉ có Cloud Sync: khai báo kết nối (URL + read code + write token, lưu
-// ở data/.cloud-sync.json). So sánh local ↔ cloud + Push/Sync nằm ở nút "Cloud" trên TabBar
-// (CloudSyncModal.tsx). Xem docs/architecture/cloud-sync.md.
+// ở data/.cloud-sync.json). So sánh local ↔ cloud + Push/Pull/Open nằm ở nút "Open" trên TabBar
+// (SessionsModal.tsx). Xem docs/architecture/cloud-sync.md.
 export default function Settings() {
   return (
     <div>

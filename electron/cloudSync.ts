@@ -296,6 +296,10 @@ function localHash(sessionId: string, file: string, mtimeMs: number): string {
 
 /* ---------------- So sánh local ↔ cloud ---------------- */
 
+function isConfigured(settings: CloudSettings): boolean {
+  return !!settings.workerUrl && !!readToken(settings);
+}
+
 /**
  * Gộp session local (kể cả tab đang Close) với session trên cloud theo sessionId, xếp loại từng cái:
  * 1. Chỉ 1 bên có → local-only / cloud-only.
@@ -304,12 +308,16 @@ function localHash(sessionId: string, file: string, mtimeMs: number): string {
  * 3. Còn lại so với syncBase (bản 2 bên giống nhau lần cuối): chỉ local đổi → local-newer, chỉ cloud
  *    đổi → cloud-newer, cả 2 đổi / không có gốc → diverged (kèm `newer` theo thời điểm sửa file).
  * Chỉ ĐỌC + ghi syncBase; không tự Push/Pull gì.
+ *
+ * KHÔNG bắt buộc đã kết nối Cloud Sync — modal gộp Open+Cloud (SessionsModal.tsx) dùng hàm này để liệt
+ * kê session local ngay cả khi chưa cấu hình, trả thêm `cloudConfigured` để renderer biết có nên hiện
+ * phần Push/Pull/cloud-only hay chỉ hint gợi ý kết nối.
  */
-export function status(): Promise<CloudResult<{ sessions: CloudSessionStatus[]; canWrite: boolean }>> {
+export function status(): Promise<CloudResult<{ sessions: CloudSessionStatus[]; canWrite: boolean; cloudConfigured: boolean }>> {
   return guard(async () => {
     const settings = readCloudSettings();
-    requireConnected(settings);
-    const versions = await fetchVersions(settings);
+    const configured = isConfigured(settings);
+    const versions = configured ? await fetchVersions(settings) : [];
 
     const byId = new Map<string, CloudVersion[]>();
     for (const v of versions) {
@@ -352,7 +360,7 @@ export function status(): Promise<CloudResult<{ sessions: CloudSessionStatus[]; 
     }
 
     if (Object.keys(newBase).length) updateCloudSettings((s) => Object.assign(s.syncBase, newBase));
-    return { sessions: out, canWrite: !!settings.writeToken };
+    return { sessions: out, canWrite: !!settings.writeToken, cloudConfigured: configured };
   });
 }
 

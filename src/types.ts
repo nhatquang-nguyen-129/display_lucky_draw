@@ -290,8 +290,10 @@ declare global {
         // Kiểm tra URL + mã với Worker, đúng thì lưu lại. role "write" khi writeToken hợp lệ.
         connect: (data: CloudSettings) => Promise<CloudResult<CloudSpace>>;
         disconnect: () => Promise<void>;
-        // So local với cloud từng session (gộp theo sessionId) — gợi ý Push/Sync theo `state`.
-        status: () => Promise<CloudResult<{ sessions: CloudSessionStatus[]; canWrite: boolean }>>;
+        // So local với cloud từng session (gộp theo sessionId) — gợi ý Push/Sync theo `state`. Chạy
+        // được cả khi CHƯA Connect (cloudConfigured: false) — khi đó mọi dòng là "local-only", dùng
+        // để liệt kê session local trong SessionsModal.tsx (gộp Open+Cloud) ngay cả chưa cấu hình.
+        status: () => Promise<CloudResult<{ sessions: CloudSessionStatus[]; canWrite: boolean; cloudConfigured: boolean }>>;
         // Đẩy từng session thành 1 bản mới; bản giống hệt bản mới nhất trên cloud → "unchanged".
         push: (sessionIds: string[]) => Promise<CloudResult<{ results: CloudPushResult[] }>>;
         // Tải 1 bản về data/ dưới tên tránh trùng — không ghi đè; trùng id → SessionConflictDialog.

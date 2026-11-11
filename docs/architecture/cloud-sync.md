@@ -1,7 +1,7 @@
 # Cloud Sync — Push/Pull file session qua Cloudflare Worker + R2
 
 Lời gọi network DUY NHẤT trong toàn bộ app (`electron/cloudSync.ts`) — ngoại lệ CHỦ Ý: chỉ chạy khi
-người dùng tự bấm (nút "Cloud" ở `TabBar.tsx` / trang Settings), không thêm dependency (`fetch`
+người dùng tự bấm (nút "Open" ở `TabBar.tsx` / trang Settings), không thêm dependency (`fetch`
 global), mọi tính năng khác vẫn 100% offline.
 
 Máy hoàn toàn mới (chưa cài gì) cần chạy được app trước — xem [`docs/local/setup.md`](../local/setup.md)
@@ -117,16 +117,24 @@ Chạy thử local không cần deploy: `npm run dev` với `cloud/worker/.dev.v
 
 ## Dùng trong app
 
-1 app chỉ dùng 1 cloud — khai báo kết nối 1 lần ở trang **Settings** (sidebar), không nằm trong cửa sổ
-Cloud.
+1 app chỉ dùng 1 cloud — khai báo kết nối 1 lần ở trang **Settings** (sidebar), không nằm trong modal
+session.
 
 1. **Settings → Cloud Sync**: Server URL (điền sẵn `DEFAULT_WORKER_URL` trong `src/pages/Settings.tsx`)
    + Read code (+ Write token nếu máy này cần Push) → **Connect**. App gọi `GET /v1/space` kiểm tra
    từng mã, đúng thì lưu lại; lần sau mở Settings tự Connect lại để hiện tên Space.
-2. Nút **Cloud** trên thanh tab (`CloudSyncModal.tsx`): mở ra là app tự so local với cloud (IPC
-   `cloud:status`, mục bên dưới), mỗi session 1 dòng kèm trạng thái + đúng nút nên bấm — Push (IPC
-   `cloud:push`, chỉ máy có write token) và/hoặc Sync (IPC `cloud:pull`, dropdown chọn bản, mặc định
-   "Latest"). Session cần xử lý xếp lên đầu. Chưa khai báo kết nối → nút "Open Settings".
+2. Nút **Open** trên thanh tab (`SessionsModal.tsx`) — **1 UI DUY NHẤT gộp "mở session" với "Cloud
+   Sync"**: mở ra là app tự so local với cloud (IPC `cloud:status`, mục bên dưới), mỗi session 1 dòng
+   kèm trạng thái + đúng nút nên bấm. Mỗi dòng có nút **Open** riêng để vào thẳng app (tab Closed → mở
+   lại; chỉ có trên cloud → tự Pull bản mới nhất rồi mở luôn — gộp 2 bước "Sync rồi tự tìm mở" thành 1
+   click); tick nhiều dòng rồi bấm **Open** ở footer để mở hàng loạt. Push (IPC `cloud:push`, chỉ máy
+   có write token) và Pull (IPC `cloud:pull`, luôn bản mới nhất) vẫn ở đây cho trường hợp cần đồng bộ
+   thật sự (không chỉ mở). Session cần xử lý xếp lên đầu.
+   `status()` KHÔNG còn bắt buộc đã Connect — **chưa khai báo kết nối vẫn dùng modal này được**, chỉ
+   để liệt kê/mở session LOCAL (mọi dòng là "On this computer"), ẩn nút Push/Pull, hiện 1 dòng hint
+   nhỏ gợi ý Connect trong Settings. File ngoài `data/` (USB, backup máy khác chưa từng Push) không
+   hiện trong danh sách thì dùng link phụ "Browse for a file not shown here..." (dialog OS, tái dùng
+   `sessions:openFile` — đây là lối MỞ FILE DUY NHẤT còn lại, trước kia là nút "Open" riêng).
    KHÔNG có gì tự chạy nền — chỉ kiểm tra lúc mở cửa sổ/bấm Refresh (từng cân nhắc Auto sync định kỳ,
    chủ dự án quyết định bỏ).
 
@@ -151,11 +159,11 @@ tải về thì lần kiểm tra sau tự thành `in-sync`.
 
 **Diverged — chỉ recommend, không tự quyết**: đây là trạng thái DUY NHẤT mà cả Push và Pull đều "hợp
 lệ" cùng lúc, nên `row.newer` (`"local" | "cloud"`, so `modifiedAt`) được hiện thành dòng "Recommended:
-Push/Pull" ngay dưới nhãn trạng thái trong `CloudSyncModal.tsx` (`SessionRow`) — chỉ là gợi ý hiển thị,
+Push/Pull" ngay dưới nhãn trạng thái trong `SessionsModal.tsx` (`SessionRow`) — chỉ là gợi ý hiển thị,
 người dùng vẫn tự tick + bấm nút, không có gì tự Push/Pull hộ. Nếu người dùng chọn Pull cho 1 session
 Diverged (thay vì theo gợi ý), nó tạo thêm 1 file cục bộ (xem phần Pull-never-overwrite ở trên) rồi
 `SessionConflictDialog` tự hiện để chọn giữ bản nào — resolve xong dialog gọi
-`notifyConflictResolved()` (`src/lib/cloudSyncEvents.ts`, pub/sub thuần renderer) để `CloudSyncModal`
+`notifyConflictResolved()` (`src/lib/cloudSyncEvents.ts`, pub/sub thuần renderer) để `SessionsModal`
 (nếu đang mở) tự `loadStatus()` lại ngay, không cần bấm Refresh tay. Lưu ý: resolve xong chỉ xử lý
 file trùng ở local — session có thể VẪN hiện Diverged/"Local newer" sau đó, vì nội dung local/cloud
 chưa chắc đã khớp; cần Push thật để về "Up to date".
@@ -172,12 +180,14 @@ chỉ chụp lại session vừa có thay đổi (mỗi lần chụp đồng b�
 Phần trên là bức tranh tổng quát; đây là đúng trình tự code chạy trong `electron/cloudSync.ts`, để sửa
 hoặc debug không phải đọc lại code từ đầu.
 
-### `status()` — so sánh từng session (chỉ đọc, 1 lượt network)
+### `status()` — so sánh từng session (chỉ đọc, tối đa 1 lượt network)
 
-1. `requireConnected()` — chưa Connect thì báo lỗi ngay, không gọi network.
-2. `fetchVersions()` — gọi `GET /v1/sessions` ĐÚNG 1 LẦN, lấy toàn bộ bản của toàn bộ session trong
-   Space, nhóm theo `sessionId` (`byId`); mỗi nhóm Worker đã trả sẵn mới nhất trước nên `cloud[0]` luôn
-   là bản mới nhất, không cần tự sort lại.
+1. `isConfigured()` — chưa Connect thì BỎ QUA bước gọi network (`versions = []`), không báo lỗi — mọi
+   session local rơi thẳng xuống bước 3 với `cloud.length === 0` → `local-only`. Trả thêm
+   `cloudConfigured: false` để renderer (`SessionsModal.tsx`) biết ẩn Push/Pull, chỉ còn Open/Delete.
+2. Đã Connect: `fetchVersions()` — gọi `GET /v1/sessions` ĐÚNG 1 LẦN, lấy toàn bộ bản của toàn bộ
+   session trong Space, nhóm theo `sessionId` (`byId`); mỗi nhóm Worker đã trả sẵn mới nhất trước nên
+   `cloud[0]` luôn là bản mới nhất, không cần tự sort lại.
 3. Với MỖI session local (`listSessionFiles()` — gồm cả tab đã Close, không chỉ tab đang mở):
    - Cloud chưa có bản nào (`cloud.length === 0`) → `local-only`, dừng ở đây.
    - Tính `hash = localHash(...)`: bản chụp hiện tại (mục Hash nội dung bên dưới), có cache theo
@@ -309,8 +319,8 @@ không ghi file.
 | `electron/main.ts` | IPC `cloud:getSettings`/`connect`/`disconnect`/`status`/`push`/`pull` |
 | `electron/db.ts` | `snapshotSession()` (VACUUM INTO), `listSessionFiles()`, `fileNameFor()`, `uniquePath()`, `rescan()`/`listConflicts()` |
 | `src/pages/Settings.tsx` | Khai báo kết nối (Connect/Disconnect) — route `/settings`, mục "Settings" ở `Sidebar.tsx` |
-| `src/components/CloudSyncModal.tsx` | So local ↔ cloud từng session, nút Push/Sync theo gợi ý |
-| `src/components/TabBar.tsx` | Nút "Cloud" cạnh "Open"/"Restore" |
+| `src/components/SessionsModal.tsx` | 1 UI DUY NHẤT: liệt kê + Open mọi session (local/cloud), Push/Pull theo gợi ý, Browse phụ cho file ngoài `data/` |
+| `src/components/TabBar.tsx` | Nút "Open" cạnh "Restore" (đã gộp "Cloud" vào đây) |
 | `src/components/SessionConflictDialog.tsx` | Tự hiện khi Pull về trùng `sessions.id` — không đổi gì cho Cloud Sync |
 
 File `data/.drive-sync.json` còn sót trên máy từng dùng Drive Sync không còn ai đọc — để nguyên vô
