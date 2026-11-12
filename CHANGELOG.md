@@ -2,6 +2,31 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [1.4.1] — 2026-11-12
+
+### Session manager — gộp Open với Cloud Sync
+
+Chi tiết: `docs/architecture/cloud-sync.md`.
+
+- Nút **Open** trên thanh tab mở 1 danh sách duy nhất mọi session (trên máy + trên cloud) kèm trạng
+  thái; tick 1 hay nhiều rồi Open là vào thẳng app (chỉ có trên cloud → tự Pull rồi mở). Chọn file
+  ngoài `data/` (USB, máy khác) chuyển thành link phụ "Browse...". Dùng được cả khi chưa Connect cloud.
+- Tự kiểm tra lúc **mở app** (có session lệch với cloud → tự mở danh sách) và lúc **đóng app** (còn
+  session chưa Push → hiện danh sách kèm nút **Force Exit**). Mất mạng thì đóng bình thường.
+- Session "Changed on both" hiện rõ dòng "Recommended: Push/Pull"; hộp thoại chọn bản trùng báo rõ
+  thành công/lỗi và danh sách tự cập nhật sau khi chọn.
+
+### Landing Builder
+
+- **Line height** cho Text và Winner Name (trống = như cũ).
+- **Frame**: đặt được nhiều Frame trên 1 trang (vd nhiều cánh LED rời); bỏ tuỳ chọn Dim outside.
+
+### Khác
+
+- Tab **Full lock** giờ đóng được bằng nút × (chỉ ẩn tab, không đụng dữ liệu).
+- Data Editor: báo lỗi `Name Contains Unexpected Punctuation` (vd 2 tên dính nhau qua "/") và
+  `Missing URL` cho cột đã gán Data Type URL.
+
 ## [1.4.0] — 2026-11-02
 
 ### Cloud Sync — Push/Pull session qua Cloudflare

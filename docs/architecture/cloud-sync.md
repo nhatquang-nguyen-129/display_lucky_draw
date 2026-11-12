@@ -1,8 +1,9 @@
 # Cloud Sync — Push/Pull file session qua Cloudflare Worker + R2
 
-Lời gọi network DUY NHẤT trong toàn bộ app (`electron/cloudSync.ts`) — ngoại lệ CHỦ Ý: chỉ chạy khi
-người dùng tự bấm (nút "Open" ở `TabBar.tsx` / trang Settings), không thêm dependency (`fetch`
-global), mọi tính năng khác vẫn 100% offline.
+Lời gọi network DUY NHẤT trong toàn bộ app (`electron/cloudSync.ts`) — ngoại lệ CHỦ Ý: chạy khi
+người dùng tự bấm (nút "Open" ở `TabBar.tsx` / trang Settings) + 2 lượt KIỂM TRA chỉ-đọc tự động lúc mở
+và lúc đóng app (mục [Tự kiểm tra lúc mở/đóng app](#tự-kiểm-tra-lúc-mởđóng-app)) — không bao giờ tự
+Push/Pull, không thêm dependency (`fetch` global), mọi tính năng khác vẫn 100% offline.
 
 Máy hoàn toàn mới (chưa cài gì) cần chạy được app trước — xem [`docs/local/setup.md`](../local/setup.md)
 (clone, Node 20, `npm install`, `electron-rebuild`). Mục này chỉ nói phần Cloud Sync riêng.
@@ -135,8 +136,27 @@ session.
    nhỏ gợi ý Connect trong Settings. File ngoài `data/` (USB, backup máy khác chưa từng Push) không
    hiện trong danh sách thì dùng link phụ "Browse for a file not shown here..." (dialog OS, tái dùng
    `sessions:openFile` — đây là lối MỞ FILE DUY NHẤT còn lại, trước kia là nút "Open" riêng).
-   KHÔNG có gì tự chạy nền — chỉ kiểm tra lúc mở cửa sổ/bấm Refresh (từng cân nhắc Auto sync định kỳ,
-   chủ dự án quyết định bỏ).
+   KHÔNG tự Push/Pull — chỉ kiểm tra lúc mở cửa sổ/bấm Refresh, cộng 2 lượt kiểm tra tự động lúc
+   mở/đóng app ở mục ngay dưới (từng cân nhắc Auto sync định kỳ, chủ dự án quyết định bỏ).
+
+### Tự kiểm tra lúc mở/đóng app
+
+Chỉ chạy khi đã Connect ở Settings, chỉ ĐỌC (`status()`), không bao giờ tự Push/Pull — code ở
+`checkCloudSyncOnStartup()`/`checkCloudSyncBeforeQuit()` trong `electron/main.ts`, renderer nghe ở
+`TabBar.tsx` rồi mở `SessionsModal.tsx`.
+
+| Lúc | Điều kiện tự mở modal | Ghi chú |
+|---|---|---|
+| Mở app (`did-finish-load`, 1 lần) | Có session bất kỳ KHÁC `in-sync` (kể cả `cloud-newer`/`cloud-only`) | IPC `cloud:startup-pending`. Chỉ là gợi ý — để biết sớm máy khác đã Push bản mới TRƯỚC khi sửa tiếp lên bản cũ |
+| Đóng cửa sổ chính (`close`) | Có session `local-only`/`local-newer`/`diverged` (chưa Push) | IPC `cloud:quit-pending` — chặn đóng, modal hiện banner + nút **Force Exit** (IPC `app:forceQuit`) |
+
+- Lúc đóng: chưa Connect, hoặc `status()` lỗi (mất mạng ở venue, server không phản hồi trong 30s) →
+  đóng luôn, không giữ chân người dùng. Chỉ chặn khi BIẾT CHẮC có thay đổi chưa Push.
+- `status()` duyệt CẢ tab đã Close → session cũ chưa từng Push sẽ bị hỏi mỗi lần đóng app (Push 1 lần
+  hoặc bấm Force Exit).
+- Renderer treo/crash thì không ai mở được modal → nút X không đóng được, phải tắt qua Task Manager.
+- Mỗi lượt có thể khựng vài giây với session nặng (chụp `VACUUM INTO` đồng bộ trên main process, chỉ
+  session vừa đổi — xem Hash nội dung bên dưới).
 
 ## So sánh local ↔ cloud (`status()` trong `cloudSync.ts`)
 

@@ -13,6 +13,7 @@ Nhãn/tiêu đề tĩnh do người dựng trang tự gõ. Mặc định 400×80
 | Color | `color` | `#FFFFFF` | `ColorField` |
 | Weight | `fontWeight` | normal | normal / bold |
 | Align | `align` | left | left / center / right |
+| Line height | `lineHeight` | trống ("Normal") | Hệ số CSS `line-height` (vd 1.4, tối thiểu 0.5) — chỉ thấy khác khi `content` nhiều dòng. Trống = bỏ hẳn style, landing cũ không đổi gì |
 
 **Interactions with Draw** — `DrawCycleFields` với domain **Appear/Disappear** (không có Dim/Blur).
 Tắt (mặc định) = luôn hiện. Model đầy đủ: [presentation.md mục 4](./presentation.md#4-interactions-with-draw--model-idledrawredraw).

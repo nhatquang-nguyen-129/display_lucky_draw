@@ -7,7 +7,8 @@ chung (`DrawCycleFields`) mà có cơ chế riêng `useRevealed` + `useRevealTra
 
 ## Properties Panel (`LiveTextPanel.tsx`)
 
-**Basic options**: Font size (40), Color (`#FFCA2D`), Weight (bold), Align (center), **Source**, rồi
+**Basic options**: Font size (40), Color (`#FFCA2D`), Weight (bold), Align (center), Line height (`lineHeight`,
+trống = "Normal", cùng ý nghĩa với [Text](./text.md)), **Source**, rồi
 X/Y/Width/Height (Position gộp vào đây, ẩn Effect entrance chung).
 
 - **Source** (`nameSourceColumn`): cột nào dùng làm tên — nhánh 2 của quy tắc Source
