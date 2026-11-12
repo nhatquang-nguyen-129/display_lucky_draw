@@ -1,6 +1,6 @@
 import { CORE_FIELDS, EditorState, getCell } from "./types";
 import { findDuplicateIdsToRemove } from "./commands";
-import { isValidUrl, isValidVietnamesePhone, toTitleCase } from "./transforms";
+import { isValidUrl, isValidVietnamesePhone, NAME_SUSPICIOUS_CHARS_RE, toTitleCase } from "./transforms";
 
 export interface CellIssue {
   rowId: string;
@@ -22,11 +22,11 @@ export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
 /** Hint shown under the "Data type" dropdown — explains the validation rule applied to the selected type. */
 export const COLUMN_TYPE_HINTS: Record<ColumnType, string> = {
   text: "No format validation.",
-  name: "Flags values containing digits, and rows whose capitalization differs from the most common style in the column (does not force Title Case).",
+  name: "Flags values containing digits, unexpected punctuation (e.g. two names joined by \"/\"), and rows whose capitalization differs from the most common style in the column (does not force Title Case).",
   phone: "Applies Vietnamese phone rules: starts with 0, 10-11 digits. Select this column on the table header to check for duplicates (Automate ▸ Deduplication).",
   email: "Must be a valid email format with a domain (e.g. name@example.com).",
   code: "No format validation.",
-  url: "Must be a valid URL (e.g. https://example.com).",
+  url: "Required and must be a valid URL (e.g. https://example.com).",
 };
 
 /** Loại mặc định của 1 cột khi chưa được gán tay — core field có type cố định theo đúng bản chất field. */
@@ -164,7 +164,9 @@ export function validateState(
     if (type === "url") {
       state.rows.forEach((r) => {
         const value = getCell(r, col);
-        if (value.trim() && !isValidUrl(value)) {
+        if (!value.trim()) {
+          issues.push({ rowId: r.id, col, message: "Missing URL" });
+        } else if (!isValidUrl(value)) {
           issues.push({ rowId: r.id, col, message: "Invalid URL Format" });
         }
       });
@@ -179,6 +181,16 @@ export function validateState(
         const value = getCell(r, col);
         if (/\d/.test(value)) {
           issues.push({ rowId: r.id, col, message: "Name Contains Number" });
+        }
+      });
+
+      // Cùng 1 định nghĩa "đáng ngờ" với Normalize Name (transforms.ts) — bắt cả trường hợp
+      // Normalize không được chạy tới, vd 2 tên dính nhau qua "/" như "Lê Thanh Sang / Đào Thị Mỹ
+      // Linh" (couple/+1 import chung 1 ô) vẫn hợp lệ Title Case nên lọt qua check bên dưới.
+      state.rows.forEach((r) => {
+        const value = getCell(r, col);
+        if (NAME_SUSPICIOUS_CHARS_RE.test(value)) {
+          issues.push({ rowId: r.id, col, message: "Name Contains Unexpected Punctuation" });
         }
       });
 

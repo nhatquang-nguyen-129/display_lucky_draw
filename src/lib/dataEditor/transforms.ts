@@ -32,9 +32,12 @@ export const normalizePhoneValue = (v: string): string => normalizePhoneResult(v
 
 export const normalizeNameValue = (v: string) => toTitleCase(trimSpace(v));
 
-/** Dấu câu không thuộc về 1 cái tên (vd ô bị dán kèm link/ghi chú) — có ký tự này thì Title Case sẽ
- * cho ra kết quả vô nghĩa (vd "(link Mới Này Mới Đúng A)"), nên không tự tin xử lý. */
-const NAME_SUSPICIOUS_CHARS_RE = /[()[\]{}<>,.:;"'`~@#$%^&*_+=|\\/]/;
+/** Dấu câu không thuộc về 1 cái tên (vd ô bị dán kèm link/ghi chú, hoặc 2 tên dính nhau qua "/" —
+ * vd "Lê Thanh Sang / Đào Thị Mỹ Linh") — có ký tự này thì Title Case sẽ cho ra kết quả vô nghĩa (vd
+ * "(link Mới Này Mới Đúng A)"), nên không tự tin xử lý. Export để validate.ts dùng chung — cột gán
+ * Data Type Name cần tự báo "Name Contains Unexpected Punctuation" ngay cả khi KHÔNG ai chạy
+ * Normalize Name (2 nơi phải cùng 1 định nghĩa "đáng ngờ", không lệch nhau). */
+export const NAME_SUSPICIOUS_CHARS_RE = /[()[\]{}<>,.:;"'`~@#$%^&*_+=|\\/]/;
 
 /** Giống `normalizePhoneResult`: trả `null` khi ô chứa dấu câu bất thường ((), ",", ".", ":", "\"...)
  * thay vì Title Case bừa lên toàn bộ chuỗi (kể cả phần không phải tên). */

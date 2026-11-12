@@ -158,8 +158,10 @@ Field đầu tiên của mọi popup Generate là **Name** (tên cột mới), k
 | `Missing Name` / `Missing Phone` | Name / Phone | Ô rỗng ở cột đang đóng vai trò đó — chỉ sau khi đã gán Data Type |
 | `Invalid Phone Format` | Phone | Không bắt đầu bằng 0 hoặc không đủ 10–11 chữ số |
 | `Invalid Email Format` | Email | Không khớp `user@domain.tld` |
-| `Invalid URL Format` | URL | `isValidUrl` fail |
+| `Missing URL` | URL | Ô rỗng — khác Email/Code (vẫn coi là optional), URL bắt buộc một khi đã gán Data Type |
+| `Invalid URL Format` | URL | `isValidUrl` fail (chỉ check khi ô có giá trị) |
 | `Name Contains Number` | Name | Có chữ số — bắt cả trường hợp gán NHẦM cột SĐT/mã làm Name |
+| `Name Contains Unexpected Punctuation` | Name | Dấu câu không thuộc 1 cái tên (`NAME_SUSPICIOUS_CHARS_RE`, `transforms.ts`) — vd 2 tên dính nhau qua "/" ("Lê Thanh Sang / Đào Thị Mỹ Linh"), ô dán kèm link/ghi chú. Cùng định nghĩa với Normalize Name nên bắt được kể cả khi không ai chạy Normalize (Title Case không tự phát hiện ra) |
 | `Capitalization Inconsistent` | Name | Lệch kiểu viết hoa so với số đông của cột (bên dưới) |
 | `Duplicated Rows on N selected column(s)` | — | Theo cột đang bôi ở header (bên dưới) |
 
