@@ -1,5 +1,5 @@
 {
-  "name": "lucky-draw-sync-worker",
+  "name": "lucky-draw-studio-worker",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useSession } from "@/context/SessionContext";
 import { Session } from "@/types";
 import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
@@ -17,21 +17,6 @@ export default function TabBar() {
   const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
   const [showRestore, setShowRestore] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
-  // true = modal đang mở vì người dùng bấm đóng app mà còn session chưa Push (xem
-  // "cloud:quit-pending" trong main.ts) — SessionsModal hiện thêm nút Force Exit trong trường hợp này.
-  const [quitPending, setQuitPending] = useState(false);
-  useEffect(
-    () =>
-      window.api.cloud.onQuitPending(() => {
-        setQuitPending(true);
-        setShowSessions(true);
-      }),
-    []
-  );
-  // Main báo ngay sau khi vừa mở app xong mà có session lệch với cloud (xem checkCloudSyncOnStartup
-  // trong main.ts) — tự mở modal để người dùng biết sớm, KHÔNG set quitPending (chỉ là gợi ý, không có
-  // nút Force Exit/banner cảnh báo như lúc thoát app).
-  useEffect(() => window.api.cloud.onStartupPending(() => setShowSessions(true)), []);
   // Ô nhập tên tab mới nghe cả onKeyDown (Enter) lẫn onBlur — 1 số trường hợp Enter cũng kéo theo blur
   // gần như cùng lúc, khiến handleAddTab() bị gọi 2 lần trước khi newName kịp reset, tạo nhầm 2 session
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
@@ -224,9 +209,9 @@ export default function TabBar() {
           </button>
         )}
       </div>
-      {/* Danh sách MỌI session (local + cloud, cả tab Closed) để mở thẳng 1 hoặc nhiều session vào app —
-          gộp "chọn file .db qua dialog" (nay chỉ còn là lối phụ "Browse..." trong modal) với Cloud Sync
-          (Push/Pull vẫn ở đây). Xem SessionsModal.tsx. */}
+      {/* Danh sách mọi session của account đang login (kể cả tab Closed) để mở thẳng 1 hoặc nhiều session
+          vào app — Push/Pull giờ tự động hoàn toàn, modal chỉ còn để MỞ session + lối phụ "Browse..."
+          cho file ngoài data/. Xem SessionsModal.tsx. */}
       <button
         onClick={() => setShowSessions(true)}
         title="Open a session — reopen a closed tab, pull one from the cloud, or browse for a file"
@@ -252,15 +237,7 @@ export default function TabBar() {
       </button>
 
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
-      {showSessions && (
-        <SessionsModal
-          quitPending={quitPending}
-          onClose={() => {
-            setShowSessions(false);
-            setQuitPending(false);
-          }}
-        />
-      )}
+      {showSessions && <SessionsModal onClose={() => setShowSessions(false)} />}
 
       {lockMenu && (
         <SessionLockMenu

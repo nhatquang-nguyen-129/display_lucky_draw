@@ -109,11 +109,17 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
 }
 
 const LEGACY_DIR = resolveLegacyDir();
-export const DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
-const TRASH_DIR = path.join(DATA_DIR, ".trash");
+// Thư mục data/ "gốc" của máy này — cố định theo bản portable/cài đặt, KHÔNG đổi khi chuyển account.
+// DATA_DIR thật sự dùng (bên dưới) trỏ vào 1 thư mục con riêng của account đang login
+// (`accounts/<accountId>/`, xem switchAccount()) — null (chưa login) = chính gốc này, giữ đúng hành vi
+// cũ (dữ liệu nằm thẳng trong data/) cho tới khi tính năng Account được bật.
+const ROOT_DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
+ensureWritableDir(ROOT_DATA_DIR);
+
+export let DATA_DIR = ROOT_DATA_DIR;
 // Bản sao lưu file TRƯỚC khi bị cấp id mới (xem giveNewSessionId) — thư mục ẩn, rescan() không quét.
-const BACKUP_DIR = path.join(DATA_DIR, ".backup");
-ensureWritableDir(DATA_DIR);
+let TRASH_DIR = path.join(DATA_DIR, ".trash");
+let BACKUP_DIR = path.join(DATA_DIR, ".backup");
 
 /* ---------------- Schema + migration (áp cho TỪNG file) ---------------- */
 
@@ -571,7 +577,65 @@ export function rescan() {
   }
 }
 
-// Khởi động: tách lucky-draw.db kiểu cũ (nếu còn) rồi quét data/.
+/** true nếu account này đã có thư mục riêng trên máy (đã login ở đây trước đó) — dùng để biết đây có
+ *  phải lần đầu login account này trên máy, cần hỏi nhận file rời ở gốc hay không (xem
+ *  listRootLooseSessionFiles()/importLooseFileToAccount() bên dưới). */
+export function accountFolderExists(accountId: string): boolean {
+  return fs.existsSync(path.join(ROOT_DATA_DIR, "accounts", accountId));
+}
+
+export interface LooseSessionFile {
+  file: string; // đường dẫn đầy đủ
+  id: string;
+  name: string;
+}
+
+/** File `.db` rời còn nằm thẳng trong thư mục gốc (trước khi có tính năng Account, hoặc chưa ai nhận) —
+ *  dùng cho hộp thoại "Tìm thấy N session trên máy này, thêm vào account không?" lúc login lần đầu.
+ *  KHÔNG đệ quy vào accounts/ (readdirSync không tự xuống thư mục con) nên tự động không lẫn session
+ *  đã thuộc về account khác. */
+export function listRootLooseSessionFiles(): LooseSessionFile[] {
+  return fs
+    .readdirSync(ROOT_DATA_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".db") && !f.startsWith("."))
+    .map((f) => path.join(ROOT_DATA_DIR, f))
+    .map((file) => {
+      const rows = readSessionIds(file);
+      return rows && rows.length === 1 ? { file, id: rows[0].id, name: rows[0].name } : null;
+    })
+    .filter((x): x is LooseSessionFile => x !== null);
+}
+
+/** Chuyển 1 file rời ở gốc (xem listRootLooseSessionFiles) vào thư mục account — gọi TRƯỚC
+ *  switchAccount(accountId) cho account đó (thư mục đích lúc này còn trống hoặc chưa tồn tại). */
+export function importLooseFileToAccount(file: string, accountId: string) {
+  const destDir = path.join(ROOT_DATA_DIR, "accounts", accountId);
+  fs.mkdirSync(destDir, { recursive: true });
+  fs.renameSync(file, path.join(destDir, path.basename(file)));
+}
+
+/**
+ * Chuyển `data/` đang thao tác sang thư mục RIÊNG của 1 account (lúc login), hoặc về đúng thư mục gốc
+ * (`accountId = null`, lúc logout hoặc trước khi có tính năng Account) — đóng hết kết nối đang mở, xoá
+ * sạch registry, trỏ lại DATA_DIR/TRASH_DIR/BACKUP_DIR/TAB_ORDER_FILE rồi rescan() thư mục mới. Build
+ * Electron main là CommonJS nên `export let DATA_DIR` là live binding — main.ts/cloudSync.ts đọc giá trị
+ * mới ngay, không cần sửa gì ở 2 file đó. Gọi bởi `electron/auth.ts` (login/logout), KHÔNG tự gọi ở đây
+ * lúc khởi động (giữ nguyên hành vi cũ: `rescan()` bên dưới chạy thẳng trên ROOT_DATA_DIR).
+ */
+export function switchAccount(accountId: string | null) {
+  closeAll();
+  entries.clear();
+  conflictFiles.clear();
+
+  DATA_DIR = accountId ? path.join(ROOT_DATA_DIR, "accounts", accountId) : ROOT_DATA_DIR;
+  TRASH_DIR = path.join(DATA_DIR, ".trash");
+  BACKUP_DIR = path.join(DATA_DIR, ".backup");
+  TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
+  ensureWritableDir(DATA_DIR);
+  rescan();
+}
+
+// Khởi động: tách lucky-draw.db kiểu cũ (nếu còn) rồi quét data/ gốc (chưa login tài khoản nào).
 const legacyFile = path.join(LEGACY_DIR, "lucky-draw.db");
 if (fs.existsSync(legacyFile)) splitMultiSessionFile(legacyFile);
 rescan();
@@ -612,7 +676,7 @@ export function listSessions(): any[] {
 // thuộc tính của cả thư mục data/, không của riêng 1 session), không phải localStorage (để bản portable
 // mang data/ sang máy khác vẫn giữ thứ tự). Dấu "." đầu tên giống .trash/.backup: rescan() bỏ qua.
 // Hỏng/thiếu file → coi như chưa sắp xếp, không lỗi.
-const TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
+let TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
 
 function readTabOrder(): string[] {
   try {

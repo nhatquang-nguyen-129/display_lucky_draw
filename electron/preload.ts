@@ -61,6 +61,7 @@ const api = {
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list"),
+    listAll: () => ipcRenderer.invoke("sessions:listAll"),
     get: (id: string) => ipcRenderer.invoke("sessions:get", id),
     create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
       ipcRenderer.invoke("sessions:create", data),
@@ -91,41 +92,31 @@ const api = {
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
-  cloud: {
-    // Push/Pull nguyên file session qua Cloudflare Worker + R2 — xem electron/cloudSync.ts.
-    getSettings: () => ipcRenderer.invoke("cloud:getSettings"),
-    connect: (data: { workerUrl: string; readCode: string; writeToken: string }) =>
-      ipcRenderer.invoke("cloud:connect", data),
-    disconnect: () => ipcRenderer.invoke("cloud:disconnect"),
-    status: () => ipcRenderer.invoke("cloud:status"),
-    push: (sessionIds: string[]) => ipcRenderer.invoke("cloud:push", sessionIds),
-    pull: (items: { sessionId: string; file: string }[]) => ipcRenderer.invoke("cloud:pull", items),
-    // Huỷ lượt Push/Pull đang chạy (đóng modal lúc đang busy, sau khi người dùng xác nhận) — xem
-    // main.ts, biến currentCloudOp.
-    cancel: () => ipcRenderer.invoke("cloud:cancel"),
-    // Tiến độ Push/Pull đang chạy (byte đã gửi/nhận trên tổng) — main gửi qua cloud:progress trong
-    // lúc push()/pull() còn đang chạy dở, trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
-    onProgress: (cb: (p: { sessionId: string; sent: number; total: number }) => void) => {
-      const listener = (_e: unknown, p: { sessionId: string; sent: number; total: number }) => cb(p);
-      ipcRenderer.on("cloud:progress", listener);
-      return () => ipcRenderer.removeListener("cloud:progress", listener);
-    },
-    // Main báo khi người dùng bấm đóng cửa sổ chính mà còn session chưa Push (xem
-    // checkCloudSyncBeforeQuit trong main.ts) — renderer tự mở Cloud Sync kèm nút Force Exit.
-    onQuitPending: (cb: () => void) => {
+  auth: {
+    // Đăng nhập account qua Cloudflare Worker — xem electron/auth.ts, electron/cloudSync.ts.
+    getSession: () => ipcRenderer.invoke("auth:getSession"),
+    login: (data: { workerUrl: string; loginCode: string }) => ipcRenderer.invoke("auth:login", data),
+    logout: () => ipcRenderer.invoke("auth:logout"),
+    importLooseFiles: (files: string[]) => ipcRenderer.invoke("auth:importLooseFiles", files),
+    pendingPushSessionIds: () => ipcRenderer.invoke("auth:pendingPushSessionIds"),
+    createAccount: (name: string) => ipcRenderer.invoke("auth:createAccount", name),
+    listAccounts: () => ipcRenderer.invoke("auth:listAccounts"),
+    regenerateCode: (accountId: string) => ipcRenderer.invoke("auth:regenerateCode", accountId),
+    forceLogoutAccount: (accountId: string) => ipcRenderer.invoke("auth:forceLogoutAccount", accountId),
+    setAccountDisabled: (data: { accountId: string; disabled: boolean }) =>
+      ipcRenderer.invoke("auth:setAccountDisabled", data),
+    // Phiên bị thu hồi thật (401 — đăng nhập nơi khác) — main tự dọn session, renderer hiện màn Login lại.
+    onRevoked: (cb: () => void) => {
       const listener = () => cb();
-      ipcRenderer.on("cloud:quit-pending", listener);
-      return () => ipcRenderer.removeListener("cloud:quit-pending", listener);
+      ipcRenderer.on("auth:revoked", listener);
+      return () => ipcRenderer.removeListener("auth:revoked", listener);
     },
-    // "Force Exit" trong Cloud Sync — bỏ qua cảnh báo, đóng cửa sổ chính thật sự.
-    forceQuit: () => ipcRenderer.invoke("app:forceQuit"),
-    // Main báo NGAY SAU KHI vừa mở app xong mà có session lệch với cloud (xem
-    // checkCloudSyncOnStartup trong main.ts) — renderer tự mở Cloud Sync (không kèm Force Exit, khác
-    // onQuitPending — chỉ là gợi ý, không chặn gì).
-    onStartupPending: (cb: () => void) => {
-      const listener = () => cb();
-      ipcRenderer.on("cloud:startup-pending", listener);
-      return () => ipcRenderer.removeListener("cloud:startup-pending", listener);
+    // Mất/được lại kết nối tạm thời (heartbeat fail do mạng, KHÁC bị thu hồi) — renderer hiện banner
+    // "Reconnecting...", không đóng cửa sổ phụ nào.
+    onConnectivityChange: (cb: (offline: boolean) => void) => {
+      const listener = (_e: unknown, offline: boolean) => cb(offline);
+      ipcRenderer.on("auth:connectivity", listener);
+      return () => ipcRenderer.removeListener("auth:connectivity", listener);
     },
   },
   draw: {

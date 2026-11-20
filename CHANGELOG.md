@@ -2,6 +2,30 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Cloud Sync — đổi hẳn sang mô hình Account đăng nhập, tự động Push/Pull
+
+Chi tiết: `docs/architecture/cloud-sync.md`. **Thay đổi kiến trúc** (không tương thích ngược với Space
+cũ, không có migration tự động — xem mục "Migration từ Space cũ" trong doc).
+
+- Bỏ hẳn Space ẩn danh (Read code/Write token dùng chung) — thay bằng **Account**: mỗi account dữ liệu
+  riêng hoàn toàn, đăng nhập bằng 1 login code do admin cấp (Settings → Accounts). Đúng 1 account admin
+  duy nhất được tạo account khác.
+- **1 account chỉ 1 thiết bị đăng nhập hoạt động tại 1 thời điểm** — Cloudflare Worker enforce bằng
+  khoá phiên độc quyền + heartbeat 30s (ngưỡng "nguội" 90s). Admin có **Force logout** để thoát khẩn,
+  **Regenerate code** khi team làm mất mã, **Disable/Enable** khi team ngừng mượn app.
+- **Push/Pull tự động hoàn toàn** — không còn nút bấm tay: sửa dữ liệu tự đẩy lên cloud sau 5 giây
+  (debounce), login tự tải về mọi session account đang sở hữu mà máy chưa có. Bỏ hẳn trạng thái
+  "diverged"/so 2 chiều của mô hình cũ (không còn cần thiết — chỉ 1 thiết bị ghi tại 1 thời điểm).
+- App giờ **bắt buộc có mạng lúc đăng nhập** — đổi khỏi định vị "100% offline" trước đây (quyết định
+  kiến trúc đã duyệt). Mất mạng tạm thời lúc đang dùng app KHÔNG tự đăng xuất/đóng cửa sổ Present/
+  Builder/Editor nào — chỉ hiện banner "Reconnecting...".
+- Lần đầu 1 account đăng nhập trên 1 máy có sẵn session cũ (từ trước khi có tính năng này): hỏi 1 lần
+  có muốn nhận các session đó vào account không.
+- Session đăng nhập lưu mã hoá qua `safeStorage` (OS keychain) ở thư mục ứng dụng, KHÔNG còn trong
+  `data/` như file cấu hình Cloud Sync cũ — không đi theo khi copy `data/` sang máy/USB khác.
+
 ## [1.4.1] — 2026-11-12
 
 ### Session manager — gộp Open với Cloud Sync
