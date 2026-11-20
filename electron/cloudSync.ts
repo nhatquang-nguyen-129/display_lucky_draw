@@ -1,24 +1,43 @@
 /**
- * Cloud Sync — Push/Pull NGUYÊN file session (.db) qua Cloudflare Worker + R2 (cloud/worker/), dưới
- * account đang login (xem `electron/auth.ts` — module đó gọi `setAuthContext()` sau khi login/logout,
- * module NÀY không tự biết đăng nhập, chỉ nhận context, tránh 2 module phụ thuộc vòng tròn lẫn nhau).
+ * Cloud Sync — đồng bộ NGUYÊN file session (.db) qua Cloudflare Worker + R2 (cloud/worker/), dưới account
+ * đang login (xem `electron/auth.ts` — module đó gọi `setAuthContext()` sau khi login/logout, module NÀY
+ * không tự biết đăng nhập, chỉ nhận context, tránh 2 module phụ thuộc vòng tròn lẫn nhau).
  *
- * Tự động hoàn toàn — không còn nút Push/Pull tay: `scheduleAutoPush(sessionId)` debounce sau mỗi lần
- * sửa dữ liệu (gọi ở cuối các IPC handler ghi dữ liệu trong main.ts), `catchUpPull()` chạy đúng 1 lần
- * ngay sau khi login để tải về mọi session account đang sở hữu mà máy chưa có. Vì server chỉ cho ĐÚNG 1
- * thiết bị giữ khoá ghi tại 1 thời điểm (xem cloud/worker/src/index.ts), không còn khái niệm
- * "diverged"/so 2 chiều rồi người dùng tự chọn Push hay Pull như mô hình Space cũ — Push luôn đi 1 chiều
- * local → cloud, so với bản ĐÃ push/pull gần nhất của CHÍNH máy này (`lastPushedHash`) là đủ.
+ * Đồng bộ theo ĐIỂM CHỐT, không liên tục:
+ * - Mọi IPC ghi dữ liệu gọi `markDirty(sid)` — chỉ đặt cờ "chưa đồng bộ" (lưu xuống
+ *   `<data account>/.sync-state.json`, còn nguyên khi tắt app/crash/mất mạng), KHÔNG gọi mạng.
+ * - Điểm chốt gọi `syncSoon(sid)`/`syncSession(sid)`: thao tác edit/delete ở cửa sổ chính, Confirm người
+ *   trúng, đóng cửa sổ Landing Builder/Data Editor/Present, đóng/chuyển tab (xem main.ts). Login + có mạng
+ *   lại → `syncAll()`. Thoát app → `flushDirty()`.
+ * - Mỗi lần đồng bộ = KIỂM TRA rồi mới làm: hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head`, rất
+ *   nhẹ), so với `baseVersion` (bản cloud mà file local được dựng từ đó):
+ *     local không sửa + cloud không đổi → không làm gì
+ *     local có sửa    + cloud không đổi → Push (Worker kiểm tra lại baseVersion, lệch thì 409)
+ *     local không sửa + cloud mới hơn   → Pull (thay file local, bản cũ sao lưu vào .backup/)
+ *     cả 2 cùng đổi                     → giữ cả 2: bản local tách thành session "(this computer)"
+ *     cloud đánh dấu đã xoá             → chuyển bản local vào Trash (trừ khi local còn sửa chưa đẩy)
+ *   Lỗi mạng → giữ nguyên cờ, thử lại ở điểm chốt kế tiếp hoặc khi có mạng lại.
  *
- * Vẫn là lời gọi network DUY NHẤT trong app (`fetch` global, không thêm dependency) — chỉ khác trước:
- * chạy NGẦM tự động thay vì chờ người bấm. Xem docs/architecture/cloud-sync.md.
+ * Vẫn là lời gọi network DUY NHẤT trong app cùng auth.ts (`fetch` global, không thêm dependency). Xem
+ * docs/architecture/cloud-sync.md.
  */
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { createHash, randomUUID } from "crypto";
 import { app } from "electron";
-import { DATA_DIR, fileNameFor, getDb, listSessionFiles, snapshotSession, uniquePath } from "./db";
+import {
+  DATA_DIR,
+  deleteSession,
+  fileNameFor,
+  forkSessionAsLocalCopy,
+  getDb,
+  hasSession,
+  listSessionFiles,
+  replaceSessionFile,
+  snapshotSession,
+  uniquePath,
+} from "./db";
 
 export interface AuthContext {
   workerUrl: string;
@@ -28,21 +47,24 @@ export interface AuthContext {
 
 let authCtx: AuthContext | null = null;
 
-/** Gọi bởi auth.ts lúc login (context mới)/logout/bị revoke (null) — null thì huỷ mọi auto-push đang
- *  chờ (không có gì để push tới nữa). */
+/** Gọi bởi auth.ts lúc login (context mới)/logout/bị revoke (null). null thì huỷ mọi lượt đồng bộ đang
+ *  chờ — cờ "chưa đồng bộ" vẫn còn trong file trạng thái, lần login sau tự đẩy tiếp. */
 export function setAuthContext(ctx: AuthContext | null) {
   authCtx = ctx;
   if (!ctx) {
-    for (const timer of pendingPush.values()) clearTimeout(timer);
-    pendingPush.clear();
+    for (const timer of soonTimers.values()) clearTimeout(timer);
+    soonTimers.clear();
   }
 }
 
-class CloudError extends Error {}
+class CloudError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+  }
+}
 
-// Xem giải thích đầy đủ ở bản gốc (trước khi có Account) — timeout rộng cho riêng lời gọi PUT 1 phần
-// upload vì mạng upload chậm (phổ biến ở Việt Nam) có thể khiến 1 phần 5MB "treo" > 15 phút nhưng vẫn
-// đang tiến triển bình thường, không phải lỗi thật.
+// Timeout rộng cho riêng lời gọi PUT 1 phần upload vì mạng upload chậm (phổ biến ở Việt Nam) có thể khiến
+// 1 phần 5MB "treo" lâu nhưng vẫn đang tiến triển bình thường, không phải lỗi thật.
 const REQUEST_TIMEOUT_MS = 30_000;
 const UPLOAD_PART_TIMEOUT_MS = 0;
 
@@ -73,21 +95,21 @@ async function call(
       const label = secs >= 60 ? `${Math.round(secs / 60)} min` : `${secs}s`;
       throw new CloudError(`Server not responding (timed out after ${label}). Check your internet connection.`);
     }
-    throw new CloudError(`Network error reaching the cloud server: ${(err as Error).message}. Check your internet connection and the server URL.`);
+    throw new CloudError(`Network error reaching the cloud server: ${(err as Error).message}. Check your internet connection.`);
   } finally {
     clearTimeout(timer);
     cancelSignal?.removeEventListener("abort", onCancel);
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new CloudError(body?.error ? `${body.error} (HTTP ${res.status})` : `Cloud server error (HTTP ${res.status})`);
+    throw new CloudError(body?.error ? `${body.error} (HTTP ${res.status})` : `Cloud server error (HTTP ${res.status})`, res.status);
   }
   return res;
 }
 
 export interface CloudVersion {
   sessionId: string;
-  file: string; // "<pushedAtMs>.db"
+  file: string; // "<pushedAtMs>.db" — cũng chính là "phiên bản" dùng cho baseVersion
   size: number;
   pushedAt: string;
   sessionName: string;
@@ -97,9 +119,22 @@ export interface CloudVersion {
   participantCount: number;
 }
 
-async function fetchVersions(cancelSignal?: AbortSignal): Promise<CloudVersion[]> {
-  const res = await call("/v1/sessions", {}, cancelSignal);
-  return ((await res.json()) as { versions: CloudVersion[] }).versions;
+interface CloudHead {
+  version: string | null;
+  sha256: string;
+  sessionName: string;
+  deleted: boolean;
+}
+
+async function fetchListing(): Promise<{ versions: CloudVersion[]; deleted: string[] }> {
+  const res = await call("/v1/sessions");
+  const data = (await res.json()) as { versions: CloudVersion[]; deleted?: string[] };
+  return { versions: data.versions, deleted: data.deleted ?? [] };
+}
+
+async function fetchHead(sessionId: string): Promise<CloudHead> {
+  const res = await call(`/v1/sessions/${encodeURIComponent(sessionId)}/head`);
+  return (await res.json()) as CloudHead;
 }
 
 /* ---------------- Hash nội dung ---------------- */
@@ -130,17 +165,16 @@ function snapshotToBuffer(sessionId: string): { buffer: Buffer; modifiedAt: stri
 
 /* ---------------- Upload (multipart) ---------------- */
 
-export type ProgressFn = (sentOrReceived: number, total: number) => void;
-
-// R2 multipart yêu cầu mỗi phần (trừ phần cuối) tối thiểu 5MB — tự chia theo mốc này để có nhiều mốc
-// báo tiến độ hơn cho 1 file vài chục MB, thay vì 1 khối duy nhất không báo được gì tới khi xong hẳn.
+// R2 multipart yêu cầu mỗi phần (trừ phần cuối) tối thiểu 5MB.
 const CLIENT_PART_SIZE = 5 * 1024 * 1024;
 const MAX_PART_RETRIES = 3;
 const PART_RETRY_BACKOFF_MS = 5_000;
 
-async function uploadFile(buffer: Buffer, meta: Record<string, string>, onProgress?: ProgressFn, cancelSignal?: AbortSignal) {
+/** Upload 1 bản mới — `baseVersion` gửi ở bước complete để Worker từ chối (409) nếu cloud đã có bản mới
+ *  hơn bản local đang dựa trên. Trả về phiên bản mới (tên file trên cloud). */
+async function uploadFile(buffer: Buffer, meta: Record<string, string>, baseVersion: string | null): Promise<string> {
   const json = { "Content-Type": "application/json" };
-  const start = (await (await call("/v1/uploads", { method: "POST", headers: json, body: JSON.stringify(meta) }, cancelSignal)).json()) as {
+  const start = (await (await call("/v1/uploads", { method: "POST", headers: json, body: JSON.stringify(meta) })).json()) as {
     key: string;
     uploadId: string;
     partSize: number;
@@ -151,42 +185,274 @@ async function uploadFile(buffer: Buffer, meta: Record<string, string>, onProgre
 
   try {
     const parts: { partNumber: number; etag: string }[] = [];
-    onProgress?.(0, buffer.length);
     for (let offset = 0, n = 1; offset < buffer.length; offset += partSize, n++) {
       const chunk = new Uint8Array(buffer.subarray(offset, offset + partSize));
       let res: Response | undefined;
       for (let attempt = 1; ; attempt++) {
         try {
-          res = await call(`${base}/parts/${n}`, { method: "PUT", headers: keyHeader, body: chunk }, cancelSignal, UPLOAD_PART_TIMEOUT_MS);
+          res = await call(`${base}/parts/${n}`, { method: "PUT", headers: keyHeader, body: chunk }, undefined, UPLOAD_PART_TIMEOUT_MS);
           break;
         } catch (err) {
           const msg = (err as Error).message;
           const retriable = /timed out|Network error/.test(msg);
-          if (!retriable || attempt >= MAX_PART_RETRIES || cancelSignal?.aborted) throw err;
+          if (!retriable || attempt >= MAX_PART_RETRIES) throw err;
           await new Promise((r) => setTimeout(r, attempt * PART_RETRY_BACKOFF_MS));
         }
       }
       parts.push((await res.json()) as { partNumber: number; etag: string });
-      onProgress?.(Math.min(offset + chunk.length, buffer.length), buffer.length);
     }
-    await call(`${base}/complete`, { method: "POST", headers: { ...keyHeader, ...json }, body: JSON.stringify({ parts }) }, cancelSignal);
+    const done = (await (
+      await call(`${base}/complete`, { method: "POST", headers: { ...keyHeader, ...json }, body: JSON.stringify({ parts, baseVersion }) })
+    ).json()) as { key: string; version?: string };
+    return done.version ?? done.key.slice(done.key.lastIndexOf("/") + 1);
   } catch (err) {
-    await call(base, { method: "DELETE", headers: keyHeader }).catch(() => undefined);
+    // 409 = Worker đã tự abort upload rồi; các lỗi khác tự dọn upload dở.
+    if (!(err instanceof CloudError && err.status === 409)) await call(base, { method: "DELETE", headers: keyHeader }).catch(() => undefined);
     throw err;
   }
 }
 
-/* ---------------- Auto-push ---------------- */
+async function downloadVersion(sessionId: string, version: string, expectedSha?: string): Promise<{ buffer: Buffer; hash: string }> {
+  const res = await call(`/v1/objects/${encodeURIComponent(sessionId)}/${encodeURIComponent(version)}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const expected = res.headers.get("X-Sha256") || expectedSha;
+  const hash = contentHash(buffer);
+  if (expected && hash !== expected) throw new CloudError("Downloaded file is corrupted (checksum mismatch).");
+  return { buffer, hash };
+}
 
-const AUTO_PUSH_DEBOUNCE_MS = 5_000;
-const pendingPush = new Map<string, ReturnType<typeof setTimeout>>();
-// sha256 của bản ĐÃ push/pull gần nhất của CHÍNH máy này cho từng session — vì server chỉ cho đúng 1
-// thiết bị ghi tại 1 thời điểm, cache cục bộ này đủ để biết "có gì mới để push không", không cần hỏi lại
-// server trước mỗi lần push (khác hẳn mô hình diverged cũ phải so 2 chiều với cloud).
-const lastPushedHash = new Map<string, string>();
+/* ---------------- Trạng thái đồng bộ local (.sync-state.json) ---------------- */
 
-async function pushOne(sessionId: string): Promise<void> {
+interface SessionSyncState {
+  baseVersion: string | null; // bản cloud mà file local được dựng từ đó (null = chưa từng lên cloud)
+  baseHash: string | null; // contentHash của bản đó — bỏ qua upload nếu sửa xong nội dung vẫn y hệt
+  dirty: boolean; // local có sửa chưa đồng bộ
+}
+
+interface SyncStateFile {
+  sessions: Record<string, SessionSyncState>;
+  pendingDeletes: string[]; // dấu "đã xoá" chưa gửi được lên Worker (mất mạng lúc xoá)
+}
+
+// Cache theo DATA_DIR (đổi khi switchAccount) — mỗi account 1 file trạng thái riêng.
+let stateDir: string | null = null;
+let state: SyncStateFile = { sessions: {}, pendingDeletes: [] };
+
+function stateFile(): string {
+  return path.join(DATA_DIR, ".sync-state.json");
+}
+
+function loadState(): SyncStateFile {
+  if (stateDir === DATA_DIR) return state;
+  stateDir = DATA_DIR;
+  try {
+    const raw = JSON.parse(fs.readFileSync(stateFile(), "utf8")) as Partial<SyncStateFile>;
+    state = { sessions: raw.sessions ?? {}, pendingDeletes: raw.pendingDeletes ?? [] };
+  } catch {
+    state = { sessions: {}, pendingDeletes: [] };
+  }
+  return state;
+}
+
+function saveState() {
+  const s = loadState();
+  const tmp = `${stateFile()}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(s, null, 2), "utf8");
+    fs.renameSync(tmp, stateFile());
+  } catch (err) {
+    console.warn("[cloudSync] could not save sync state:", err);
+  }
+}
+
+// Session CHƯA có trong file trạng thái (vừa tạo, Duplicate, Restore từ Trash, Import file rời, hoặc có
+// từ trước khi có tính năng này) → coi như "chưa đồng bộ" — điểm chốt kế tiếp tự đẩy lên.
+function getState(sessionId: string): SessionSyncState {
+  const s = loadState();
+  return s.sessions[sessionId] ?? { baseVersion: null, baseHash: null, dirty: true };
+}
+
+function setState(sessionId: string, next: SessionSyncState) {
+  loadState().sessions[sessionId] = next;
+  saveState();
+}
+
+/* ---------------- Trạng thái hiển thị (chấm trên tab) ---------------- */
+
+export type SyncStatus = "synced" | "dirty" | "syncing" | "error";
+
+const running = new Set<string>();
+const failed = new Set<string>();
+type StatusListener = (sessionId: string, status: SyncStatus) => void;
+let statusListener: StatusListener | null = null;
+let sessionsChangedListener: (() => void) | null = null;
+
+export function onStatusChange(cb: StatusListener) {
+  statusListener = cb;
+}
+/** Đồng bộ vừa thêm/thay/chuyển vào Trash 1 session (Pull, tách bản, tombstone) — cửa sổ chính refresh tab. */
+export function onSessionsChanged(cb: () => void) {
+  sessionsChangedListener = cb;
+}
+
+function statusOf(sessionId: string): SyncStatus {
+  if (running.has(sessionId)) return "syncing";
+  if (failed.has(sessionId)) return "error";
+  return getState(sessionId).dirty ? "dirty" : "synced";
+}
+
+function emitStatus(sessionId: string) {
+  statusListener?.(sessionId, statusOf(sessionId));
+}
+
+/** Trạng thái mọi session local — renderer gọi 1 lần lúc mở, sau đó nghe onStatusChange. */
+export function getStatuses(): Record<string, SyncStatus> {
+  const out: Record<string, SyncStatus> = {};
+  for (const f of listSessionFiles()) out[f.id] = statusOf(f.id);
+  return out;
+}
+
+/* ---------------- API cho main.ts ---------------- */
+
+// Tăng mỗi lần markDirty — push xong chỉ xoá cờ nếu KHÔNG có lần sửa nào chen vào trong lúc upload.
+const dirtySeq = new Map<string, number>();
+
+/** Gọi ở MỌI IPC ghi dữ liệu — chỉ đặt cờ, không gọi mạng. */
+export function markDirty(sessionId: string): void {
+  dirtySeq.set(sessionId, (dirtySeq.get(sessionId) ?? 0) + 1);
+  const st = getState(sessionId);
+  if (!st.dirty || !loadState().sessions[sessionId]) setState(sessionId, { ...st, dirty: true });
+  emitStatus(sessionId);
+}
+
+const SYNC_SOON_MS = 1_500;
+const soonTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Điểm chốt ở cửa sổ chính / Confirm — gom các thao tác liên tiếp (vd xoá nhiều prize) thành 1 lần. */
+export function syncSoon(sessionId: string): void {
   if (!authCtx) return;
+  const existing = soonTimers.get(sessionId);
+  if (existing) clearTimeout(existing);
+  soonTimers.set(
+    sessionId,
+    setTimeout(() => {
+      soonTimers.delete(sessionId);
+      void syncSession(sessionId);
+    }, SYNC_SOON_MS)
+  );
+}
+
+// main.ts báo session nào đang mở cửa sổ phụ (Present/Builder/Data Editor) — KHÔNG Pull đè file của
+// session đó (renderer đang giữ dữ liệu trong bộ nhớ, Save sau đó sẽ đè lại bản vừa Pull).
+let isSessionBusy: (sessionId: string) => boolean = () => false;
+export function setBusyCheck(fn: (sessionId: string) => boolean) {
+  isSessionBusy = fn;
+}
+
+// Mỗi session chạy lần lượt (không bao giờ 2 lượt đồng bộ cùng 1 session chồng nhau). Tối đa 1 lượt
+// CHỜ phía sau lượt đang chạy — nhiều Confirm liên tiếp lúc mạng chậm chỉ gộp thành 1 lượt kế tiếp (lượt
+// đó chụp bản mới nhất), không xếp hàng N lần upload nguyên file.
+const chains = new Map<string, Promise<void>>();
+const queued = new Map<string, Promise<void>>();
+
+/** Kiểm tra rồi đồng bộ 1 session (xem bảng ở đầu file). Không throw — lỗi chỉ log + đánh dấu "error". */
+export function syncSession(sessionId: string, prefetchedHead?: CloudHead): Promise<void> {
+  const pendingTimer = soonTimers.get(sessionId);
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    soonTimers.delete(sessionId);
+  }
+  const waiting = queued.get(sessionId);
+  if (waiting) return waiting;
+  const inFlight = chains.get(sessionId);
+  // Đang có lượt chạy dở → head lấy sẵn (syncAll) có thể đã cũ so với bản lượt đó vừa đẩy — bỏ, hỏi lại.
+  const head = inFlight ? undefined : prefetchedHead;
+  const prev = inFlight ?? Promise.resolve();
+  const next = prev.then(() => {
+    queued.delete(sessionId);
+    return runSync(sessionId, head);
+  });
+  queued.set(sessionId, next);
+  chains.set(sessionId, next);
+  void next.finally(() => {
+    if (chains.get(sessionId) === next) chains.delete(sessionId);
+  });
+  return next;
+}
+
+async function runSync(sessionId: string, prefetchedHead?: CloudHead): Promise<void> {
+  if (!authCtx || !hasSession(sessionId)) return;
+  running.add(sessionId);
+  emitStatus(sessionId);
+  try {
+    await doSync(sessionId, prefetchedHead);
+    failed.delete(sessionId);
+  } catch (err) {
+    failed.add(sessionId);
+    console.warn(`[cloudSync] sync failed for ${sessionId}:`, err);
+  } finally {
+    running.delete(sessionId);
+    if (hasSession(sessionId)) emitStatus(sessionId);
+  }
+}
+
+async function doSync(sessionId: string, prefetchedHead?: CloudHead): Promise<void> {
+  const st = getState(sessionId);
+  const head = prefetchedHead ?? (await fetchHead(sessionId));
+
+  // Đã bị xoá trên cloud (từ máy khác) và máy này không có gì chưa đẩy → theo luôn: chuyển vào Trash.
+  // Local còn sửa chưa đẩy → Push bên dưới (Worker tự gỡ dấu xoá) — ưu tiên KHÔNG mất dữ liệu.
+  if (head.deleted && !st.dirty) {
+    if (isSessionBusy(sessionId)) return;
+    deleteSession(sessionId);
+    delete loadState().sessions[sessionId];
+    saveState();
+    sessionsChangedListener?.();
+    return;
+  }
+
+  // Chưa có trạng thái (mất file .sync-state.json, hoặc session có từ trước khi có cơ chế này) mà cloud
+  // đã có bản: nội dung local y hệt bản cloud mới nhất thì nhận luôn làm baseVersion, không tách bản thừa.
+  if (!loadState().sessions[sessionId] && head.version && head.sha256) {
+    const localHash = contentHash(snapshotToBuffer(sessionId).buffer);
+    if (localHash === head.sha256) {
+      setState(sessionId, { baseVersion: head.version, baseHash: localHash, dirty: false });
+      return;
+    }
+  }
+
+  const cloudChanged = (head.version ?? null) !== st.baseVersion;
+
+  if (!st.dirty) {
+    if (cloudChanged && head.version && !isSessionBusy(sessionId)) {
+      const { buffer, hash } = await downloadVersion(sessionId, head.version, head.sha256);
+      replaceSessionFile(sessionId, buffer);
+      setState(sessionId, { baseVersion: head.version, baseHash: hash, dirty: false });
+      sessionsChangedListener?.();
+    }
+    return;
+  }
+
+  if (cloudChanged && head.version) {
+    await forkAndPull(sessionId, head);
+    return;
+  }
+
+  try {
+    // Cloud không còn bản nào (chưa từng Push) → đẩy như bản đầu tiên.
+    await pushOne(sessionId, head.version ? st : { ...st, baseVersion: null, baseHash: null });
+  } catch (err) {
+    // Cloud đổi đúng lúc đang đẩy (Worker kiểm tra lại baseVersion) → xử lý như "cả 2 cùng đổi".
+    if (err instanceof CloudError && err.status === 409) {
+      await forkAndPull(sessionId, await fetchHead(sessionId));
+      return;
+    }
+    throw err;
+  }
+}
+
+async function pushOne(sessionId: string, st: SessionSyncState): Promise<void> {
+  const seqAtStart = dirtySeq.get(sessionId) ?? 0;
   const db = getDb(sessionId);
   const row = db.prepare(`SELECT name FROM sessions WHERE id = ?`).get(sessionId) as { name: string } | undefined;
   if (!row) return;
@@ -195,113 +461,136 @@ async function pushOne(sessionId: string): Promise<void> {
   ).n;
   const { buffer, modifiedAt } = snapshotToBuffer(sessionId);
   const hash = contentHash(buffer);
-  if (lastPushedHash.get(sessionId) === hash) return;
-  await uploadFile(buffer, {
-    sessionId,
-    sessionName: row.name,
-    modifiedAt,
-    sha256: hash,
-    appVersion: app.getVersion(),
-    participantCount: String(participantCount),
-  });
-  lastPushedHash.set(sessionId, hash);
+
+  let version = st.baseVersion;
+  if (hash !== st.baseHash || !st.baseVersion) {
+    version = await uploadFile(
+      buffer,
+      {
+        sessionId,
+        sessionName: row.name,
+        modifiedAt,
+        sha256: hash,
+        appVersion: app.getVersion(),
+        participantCount: String(participantCount),
+      },
+      st.baseVersion
+    );
+  }
+  const stillDirty = (dirtySeq.get(sessionId) ?? 0) !== seqAtStart;
+  setState(sessionId, { baseVersion: version, baseHash: hash, dirty: stillDirty });
 }
 
-/** Gọi ở cuối mỗi IPC handler ghi dữ liệu (participants/prizes/sessions/draw/media) — debounce theo
- *  từng session, không chặn IPC gọi nó (fire-and-forget, lỗi chỉ log, không throw lên renderer). */
-export function scheduleAutoPush(sessionId: string): void {
+async function forkAndPull(sessionId: string, head: CloudHead): Promise<void> {
+  if (!head.version) return;
+  if (isSessionBusy(sessionId)) return; // giữ nguyên cờ, thử lại khi đóng cửa sổ phụ
+  const { buffer, hash } = await downloadVersion(sessionId, head.version, head.sha256);
+  const copyId = forkSessionAsLocalCopy(sessionId);
+  replaceSessionFile(sessionId, buffer);
+  setState(sessionId, { baseVersion: head.version, baseHash: hash, dirty: false });
+  // Bản tách ra chưa có trên cloud (state chưa có → dirty) — đẩy lên luôn.
+  markDirty(copyId);
+  syncSoon(copyId);
+  sessionsChangedListener?.();
+  console.warn(`[cloudSync] ${sessionId} changed both locally and on cloud — kept local copy as ${copyId}`);
+}
+
+/** Xoá session (sessions:delete) — gửi dấu "đã xoá" lên Worker để máy khác không tải lại. Mất mạng thì
+ *  giữ lại trong pendingDeletes, gửi ở lần syncAll kế tiếp. */
+export async function markSessionDeleted(sessionId: string): Promise<void> {
+  const s = loadState();
+  delete s.sessions[sessionId];
+  if (!s.pendingDeletes.includes(sessionId)) s.pendingDeletes.push(sessionId);
+  saveState();
+  await flushPendingDeletes();
+}
+
+async function flushPendingDeletes() {
   if (!authCtx) return;
-  const existing = pendingPush.get(sessionId);
-  if (existing) clearTimeout(existing);
-  pendingPush.set(
-    sessionId,
-    setTimeout(() => {
-      pendingPush.delete(sessionId);
-      pushOne(sessionId).catch((err) => console.warn(`[cloudSync] auto-push failed for ${sessionId}:`, err));
-    }, AUTO_PUSH_DEBOUNCE_MS)
-  );
-}
-
-export function pendingPushSessionIds(): string[] {
-  return [...pendingPush.keys()];
-}
-
-/** Đẩy ngay mọi session đang chờ debounce — dùng lúc quit (giới hạn thời gian, KHÔNG chặn quit) và lúc
- *  window mất focus (không giới hạn thời gian, chạy nền bình thường). */
-export async function flushPendingPushes(timeoutMs?: number): Promise<void> {
-  const sessionIds = [...pendingPush.keys()];
-  for (const id of sessionIds) clearTimeout(pendingPush.get(id)!);
-  pendingPush.clear();
-  if (!authCtx || sessionIds.length === 0) return;
-  const flush = Promise.allSettled(sessionIds.map((id) => pushOne(id).catch((err) => console.warn(`[cloudSync] flush push failed for ${id}:`, err))));
-  if (!timeoutMs) {
-    await flush;
-    return;
-  }
-  await Promise.race([flush, new Promise((r) => setTimeout(r, timeoutMs))]);
-}
-
-/* ---------------- Pull (chỉ lúc login — xem catchUpPull) ---------------- */
-
-async function readBodyWithProgress(res: Response, onProgress?: ProgressFn, cancelSignal?: AbortSignal): Promise<Buffer> {
-  const total = Number(res.headers.get("Content-Length") ?? 0);
-  if (!res.body || !onProgress) return Buffer.from(await res.arrayBuffer());
-
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  onProgress(0, total);
-  for (;;) {
-    if (cancelSignal?.aborted) {
-      await reader.cancel().catch(() => undefined);
-      throw new CloudError("Cancelled.");
+  const s = loadState();
+  for (const id of [...s.pendingDeletes]) {
+    try {
+      await call(`/v1/sessions/${encodeURIComponent(id)}/delete`, { method: "POST" });
+      s.pendingDeletes = s.pendingDeletes.filter((x) => x !== id);
+      saveState();
+    } catch (err) {
+      console.warn(`[cloudSync] could not mark ${id} deleted on cloud:`, err);
+      return;
     }
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-    onProgress(received, total || received);
   }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }
 
-async function pullOne(version: CloudVersion): Promise<string> {
-  const res = await call(`/v1/objects/${encodeURIComponent(version.sessionId)}/${encodeURIComponent(version.file)}`);
-  const buffer = await readBodyWithProgress(res);
-  const expected = res.headers.get("X-Sha256") || version.sha256;
-  const hash = contentHash(buffer);
-  if (expected && hash !== expected) throw new CloudError("Downloaded file is corrupted (checksum mismatch) — try again.");
+let syncAllRunning: Promise<void> | null = null;
 
-  const dest = uniquePath(DATA_DIR, fileNameFor(version.sessionName || "Session", version.sessionId));
-  const tmp = `${dest}.downloading`;
-  fs.writeFileSync(tmp, buffer);
-  fs.renameSync(tmp, dest);
-  const modified = new Date(version.modifiedAt);
-  if (!Number.isNaN(modified.getTime())) fs.utimesSync(dest, modified, modified);
+/**
+ * Đồng bộ toàn bộ account — chạy lúc login và mỗi khi có mạng lại. Tải về session có trên cloud mà máy
+ * chưa có (trừ session đã bị xoá), rồi kiểm tra từng session local theo đúng quy tắc của syncSession
+ * (dùng luôn dữ liệu listing, không gọi head riêng từng session).
+ */
+export function syncAll(): Promise<void> {
+  if (!syncAllRunning) {
+    syncAllRunning = doSyncAll()
+      .catch((err) => console.warn("[cloudSync] syncAll failed:", err))
+      .finally(() => {
+        syncAllRunning = null;
+      });
+  }
+  return syncAllRunning;
+}
 
-  lastPushedHash.set(version.sessionId, hash);
-  return path.basename(dest);
+async function doSyncAll(): Promise<void> {
+  if (!authCtx) return;
+  await flushPendingDeletes();
+  const { versions, deleted } = await fetchListing();
+  const deletedSet = new Set(deleted);
+  const latest = new Map<string, CloudVersion>();
+  for (const v of versions) if (!latest.has(v.sessionId)) latest.set(v.sessionId, v);
+
+  const localIds = new Set(listSessionFiles().map((f) => f.id));
+  let added = false;
+  for (const [sessionId, v] of latest) {
+    if (localIds.has(sessionId) || deletedSet.has(sessionId)) continue;
+    try {
+      const { buffer, hash } = await downloadVersion(sessionId, v.file, v.sha256);
+      const dest = uniquePath(DATA_DIR, fileNameFor(v.sessionName || "Session", sessionId));
+      const tmp = `${dest}.downloading`;
+      fs.writeFileSync(tmp, buffer);
+      fs.renameSync(tmp, dest);
+      setState(sessionId, { baseVersion: v.file, baseHash: hash, dirty: false });
+      added = true;
+    } catch (err) {
+      console.warn(`[cloudSync] could not download ${sessionId}:`, err);
+    }
+  }
+  if (added) {
+    listSessionFiles(); // rescan để đăng ký file vừa tải
+    sessionsChangedListener?.();
+  }
+
+  for (const id of localIds) {
+    const v = latest.get(id);
+    await syncSession(id, { version: v?.file ?? null, sha256: v?.sha256 ?? "", sessionName: v?.sessionName ?? "", deleted: deletedSet.has(id) });
+  }
+}
+
+/** Session còn cờ "chưa đồng bộ". */
+export function dirtySessionIds(): string[] {
+  return listSessionFiles()
+    .map((f) => f.id)
+    .filter((id) => getState(id).dirty);
 }
 
 /**
- * Chạy ĐÚNG 1 LẦN ngay sau khi login xong (auth.ts gọi) — tải về mọi session account đang sở hữu trên
- * cloud mà máy này CHƯA có (máy mới, hoặc máy khác vừa login account này lần đầu). KHÔNG chạy nền định
- * kỳ, KHÔNG so sánh/reconcile 2 chiều — máy đã có session đó rồi thì bỏ qua (local luôn là bản đang dùng,
- * vì chỉ máy này được ghi tại thời điểm login).
+ * Thoát app / logout — đồng bộ mọi session còn cờ, chờ tối đa `timeoutMs`. Trả về các session VẪN chưa
+ * đồng bộ được (main.ts hỏi người dùng "Wait / Quit anyway"). Cờ vẫn lưu trên đĩa dù chọn gì — lần login
+ * sau tự đẩy tiếp.
  */
-export async function catchUpPull(): Promise<void> {
-  if (!authCtx) return;
-  const versions = await fetchVersions();
-  const latestBySession = new Map<string, CloudVersion>();
-  for (const v of versions) if (!latestBySession.has(v.sessionId)) latestBySession.set(v.sessionId, v);
-
-  const localIds = new Set(listSessionFiles().map((f) => f.id));
-  for (const [sessionId, version] of latestBySession) {
-    if (localIds.has(sessionId)) continue;
-    try {
-      await pullOne(version);
-    } catch (err) {
-      console.warn(`[cloudSync] catch-up pull failed for ${sessionId}:`, err);
-    }
+export async function flushDirty(timeoutMs: number): Promise<string[]> {
+  if (!authCtx) return [];
+  const ids = dirtySessionIds();
+  if (ids.length > 0) {
+    const all = Promise.allSettled(ids.map((id) => syncSession(id)));
+    await Promise.race([all, new Promise((r) => setTimeout(r, timeoutMs))]);
   }
+  return dirtySessionIds();
 }

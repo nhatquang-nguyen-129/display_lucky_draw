@@ -49,8 +49,7 @@ export interface Session {
   // electron/db.ts, docs/architecture/session-lock.md.
   locked: 0 | 1 | 2;
   // Đóng tab (nút ×) — chỉ ẩn khỏi danh sách trả về (sessions:list), file KHÔNG di chuyển. Khác
-  // sessions:delete (chuyển vào data/.trash/). Xem sessions.setClosed/openFile, openDbFile() trong
-  // electron/db.ts.
+  // sessions:delete (chuyển vào data/.trash/). Mở lại qua danh sách Open (sessions.setClosed).
   closed: 0 | 1;
   // Danh sách tên cột của lần Import/Replace gần nhất (JSON string[], null nếu chưa import lần nào
   // qua luồng mới hoặc session tạo trước khi có tính năng này) — Dashboard.tsx dùng để hiện lại đúng
@@ -112,6 +111,19 @@ export interface LoginResult extends PublicSession {
   looseFiles: LooseSessionFile[];
 }
 
+// Cổng vào app (<RequireAuth> trong src/App.tsx) — app bắt buộc có mạng: "offline" = không tới được
+// server lúc mở app → màn "No internet connection" + Retry (phiên đã lưu vẫn giữ).
+// "logged-out" kèm `activated`: false = chưa có admin → màn Access Code (kích hoạt lần đầu); true = màn
+// đăng nhập username/password.
+export type StartupStatus =
+  | { status: "ok"; session: PublicSession }
+  | { status: "logged-out"; activated: boolean }
+  | { status: "offline" };
+
+// Trạng thái đồng bộ 1 session (chấm trên tab) — xem electron/cloudSync.ts.
+// synced = đã lên cloud · dirty = có sửa chưa đồng bộ · syncing = đang đồng bộ · error = lần gần nhất lỗi (mất mạng...)
+export type SyncStatus = "synced" | "dirty" | "syncing" | "error";
+
 // Mọi session đang đăng ký, KỂ CẢ tab Closed — xem listSessionFiles() trong electron/db.ts,
 // dùng cho SessionsModal.tsx (khác Session/sessions.list ở trên, chỉ trả tab đang mở).
 export interface SessionFileInfo {
@@ -125,6 +137,7 @@ export interface SessionFileInfo {
 export interface AccountRow {
   accountId: string;
   name: string;
+  username: string;
   createdAt: string;
   isAdmin: boolean;
   disabled: boolean;
@@ -261,11 +274,6 @@ declare global {
         restoreFromTrash: (data: { file: string }) => Promise<void>;
         // Xoá vĩnh viễn khỏi data/.trash/ — KHÔNG còn đường lấy lại, khác restoreFromTrash.
         permanentlyDelete: (data: { file: string }) => Promise<void>;
-        // Nút "Open" — chọn 1 file .db bất kỳ, mở lại session đang Closed hoặc nạp session ở ngoài
-        // data/ (USB, backup máy khác...). `alreadyOpen` = session này đã là 1 tab đang mở từ trước
-        // (không phải tab Closed) — renderer báo rõ thay vì âm thầm switchTab. Xem openDbFile() trong
-        // electron/db.ts.
-        openFile: () => Promise<{ id: string; name: string; alreadyOpen: boolean } | null>;
         // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
         // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
@@ -276,25 +284,42 @@ declare global {
       auth: {
         // null = chưa đăng nhập — renderer hiện <Login/> (xem <RequireAuth> trong src/App.tsx).
         getSession: () => Promise<PublicSession | null>;
-        login: (data: { workerUrl: string; loginCode: string }) => Promise<AuthResult<LoginResult>>;
+        // Địa chỉ Worker cố định theo môi trường ở main process (electron/config/cloudEnv.ts).
+        login: (data: { username: string; password: string }) => Promise<AuthResult<LoginResult>>;
+        // Lần đầu (chưa kích hoạt): Access Code (= secret ADMIN_TOKEN của Worker) + tạo admin → đăng nhập luôn.
+        // Bước 1 màn kích hoạt: chỉ kiểm tra Access Code (chưa tạo gì).
+        verifyAccessCode: (accessCode: string) => Promise<AuthResult<{ ok: true }>>;
+        activate: (data: { accessCode: string; username: string; password: string }) => Promise<AuthResult<LoginResult>>;
+        // Quên mật khẩu admin — trả lại username admin.
+        resetAdminPassword: (data: { accessCode: string; password: string }) => Promise<AuthResult<{ username: string }>>;
+        getStartupStatus: () => Promise<StartupStatus>;
+        // Nút Retry ở màn "No internet connection".
+        retryStartup: () => Promise<StartupStatus>;
         logout: () => Promise<AuthResult<{ ok: true }>>;
         // Người dùng chọn Import ở hộp thoại "Tìm thấy N session trên máy này" (LoginResult.looseFiles).
         importLooseFiles: (files: string[]) => Promise<AuthResult<{ imported: number }>>;
-        // Session nào đang chờ auto-push (debounce) — chấm trạng thái nhỏ trong SessionsModal.tsx.
-        pendingPushSessionIds: () => Promise<string[]>;
         // 4 hàm dưới CHỈ dùng được khi getSession().isAdmin === true (Worker tự chặn 403 nếu không).
-        createAccount: (name: string) => Promise<AuthResult<{ accountId: string; name: string; loginCode: string }>>;
+        createAccount: (data: { username: string; password: string }) => Promise<AuthResult<{ accountId: string; username: string }>>;
         listAccounts: () => Promise<AuthResult<{ accounts: AccountRow[] }>>;
-        // Mã cũ hết hiệu lực ngay — dùng khi team làm mất mã.
-        regenerateCode: (accountId: string) => Promise<AuthResult<{ accountId: string; loginCode: string }>>;
+        // Admin đặt mật khẩu mới cho 1 account (team quên mật khẩu).
+        resetAccountPassword: (data: { accountId: string; password: string }) => Promise<AuthResult<{ ok: true }>>;
         // Nhả khoá phiên của account đó NGAY, không cần đợi 90s nguội.
         forceLogoutAccount: (accountId: string) => Promise<AuthResult<{ ok: true }>>;
         setAccountDisabled: (data: { accountId: string; disabled: boolean }) => Promise<AuthResult<{ ok: true; disabled: boolean }>>;
         // Phiên bị thu hồi thật (401 — đăng nhập nơi khác), KHÁC mất mạng tạm thời (onConnectivityChange).
         onRevoked: (cb: () => void) => () => void;
-        // true = vừa mất kết nối tạm thời (renderer hiện banner "Reconnecting..."), false = đã lại —
+        // true = vừa mất kết nối tạm thời (renderer hiện popup "Reconnecting..."), false = đã lại —
         // KHÔNG phải đăng xuất, không đóng cửa sổ phụ nào (app chạy live tại sự kiện).
         onConnectivityChange: (cb: (offline: boolean) => void) => () => void;
+      };
+      sync: {
+        getStatuses: () => Promise<Record<string, SyncStatus>>;
+        // Điểm chốt từ renderer (chuyển/mở tab) — kiểm tra cloud rồi Push/Pull nếu cần.
+        session: (sessionId: string) => Promise<void>;
+        // Nút Refresh trong SessionsModal — tải session cloud mà máy chưa có + kiểm tra mọi session.
+        all: () => Promise<void>;
+        onStatus: (cb: (data: { sessionId: string; status: SyncStatus }) => void) => () => void;
+        onSessionsChanged: (cb: () => void) => () => void;
       };
       draw: {
         one: (sessionId: string) => Promise<DrawCandidate>;

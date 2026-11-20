@@ -1,43 +1,97 @@
 import { useState } from "react";
-import { LooseSessionFile, PublicSession } from "@/types";
+import { LoginResult, LooseSessionFile, PublicSession } from "@/types";
 import Button from "@/components/Button";
+import AuthShell from "@/components/AuthShell";
 
-// Cố định trong mã nguồn, KHÔNG có ô nào trong UI để sửa (xem docs/architecture/cloud-sync.md). Tự
-// chọn môi trường theo CÁCH APP ĐANG CHẠY, không cần cờ/biến gì thêm lúc build:
-// - `npm run electron:dev` (Vite dev server, `import.meta.env.DEV === true`) → Worker dev
-//   (`cloud/worker/wrangler.toml`'s `[env.dev]`, deploy bằng `wrangler deploy --env dev`).
-// - `npm run package` (Vite production build) → Worker prod.
-const WORKER_URL = import.meta.env.DEV
-  ? "https://dev.lucky-draw-studio.workers.dev"
-  : "https://prod.lucky-draw-studio.workers.dev";
+// Địa chỉ Worker (dev/prod) cố định ở main process theo cách app đang chạy — xem
+// electron/config/cloudEnv.ts. Renderer chỉ gửi thông tin đăng nhập.
 
-// Màn hình ĐẦU TIÊN người dùng thấy khi mở app lần đầu (hoặc sau khi logout) — cố tình tối giản như 1
-// màn "Activate" sản phẩm: chỉ 1 ô nhập mã + 1 nút, không lặp lại tên app (đã có ở thanh tiêu đề cửa
-// sổ), không giải thích dài dòng. Mã đăng nhập do admin tạo (Settings → Accounts) — KHÔNG có username/
-// password/"quên mật khẩu" (hệ thống không lưu email để khôi phục), mất mã thì admin Regenerate code.
-export default function Login({ onSuccess }: { onSuccess: (session: PublicSession) => void }) {
-  const [loginCode, setLoginCode] = useState("");
+type Mode = "welcome" | "createAdmin" | "login" | "reset";
+
+// Màn hình ĐẦU TIÊN khi chưa đăng nhập:
+// - App CHƯA kích hoạt (chưa có admin trên Worker) — 2 bước:
+//   1. "welcome": "Welcome to Lucky Draw Studio" + 1 ô Access Code (= secret ADMIN_TOKEN của Worker). Bấm
+//      Continue → Worker CHỈ kiểm tra mã (auth.verifyAccessCode, chưa tạo gì). Sai → ô rung nhẹ + báo lỗi.
+//   2. "createAdmin": đúng mã → trượt sang "Create Admin Account" (username + mật khẩu ×2) → tạo admin
+//      (Worker kiểm tra lại Access Code) rồi đăng nhập luôn.
+//   Đã kích hoạt rồi thì mọi máy chỉ thấy màn đăng nhập (máy khác không "kích hoạt lại" được).
+// - "login": username + password (mọi tài khoản, admin lẫn tài khoản team do admin tạo).
+// - "reset": quên mật khẩu ADMIN — Access Code + mật khẩu mới. Tài khoản team quên mật khẩu thì nhờ admin
+//   đặt lại trong Settings → Accounts.
+export default function Login({ activated, onSuccess }: { activated: boolean; onSuccess: (session: PublicSession) => void }) {
+  const [mode, setMode] = useState<Mode>(activated ? "login" : "welcome");
+  const [accessCode, setAccessCode] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Tăng mỗi lần nhập sai Access Code — đổi `key` để chạy lại animation rung.
+  const [shakeKey, setShakeKey] = useState(0);
   // Lần đầu account này login trên máy này mà máy đã có sẵn file .db rời (từ trước khi có tính năng
   // Account) — hỏi 1 lần có muốn nhận vào account không (xem auth.login()/listRootLooseSessionFiles()).
   const [loose, setLoose] = useState<{ session: PublicSession; files: LooseSessionFile[] } | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
 
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setPassword("");
+    setConfirm("");
+    if (next !== "login") setNotice(null);
+  }
+
+  function afterLogin(r: LoginResult) {
+    const { looseFiles, ...session } = r;
+    if (looseFiles.length > 0) {
+      setLoose({ session, files: looseFiles });
+      setChosen(new Set(looseFiles.map((f) => f.file)));
+    } else {
+      onSuccess(session);
+    }
+  }
+
+  const needsConfirm = mode === "createAdmin" || mode === "reset";
+  const canSubmit =
+    !busy &&
+    (mode === "welcome"
+      ? !!accessCode.trim()
+      : !!password &&
+        (mode === "reset" || !!username.trim()) &&
+        (mode !== "reset" || !!accessCode.trim()) &&
+        (!needsConfirm || !!confirm));
+
   async function submit() {
-    if (busy || !loginCode.trim()) return;
+    if (!canSubmit) return;
+    if (needsConfirm && password !== confirm) return setError("Passwords don't match.");
     setBusy(true);
     setError(null);
     try {
-      const r = await window.api.auth.login({ workerUrl: WORKER_URL, loginCode: loginCode.trim() });
-      if ("error" in r) return setError(r.error);
-      const { looseFiles, ...session } = r;
-      if (looseFiles.length > 0) {
-        setLoose({ session, files: looseFiles });
-        setChosen(new Set(looseFiles.map((f) => f.file)));
+      if (mode === "welcome") {
+        const r = await window.api.auth.verifyAccessCode(accessCode.trim());
+        if ("error" in r) {
+          setError(r.error);
+          setShakeKey((k) => k + 1);
+          return;
+        }
+        switchMode("createAdmin");
+      } else if (mode === "createAdmin") {
+        const r = await window.api.auth.activate({ accessCode: accessCode.trim(), username: username.trim(), password });
+        if ("error" in r) return setError(r.error);
+        afterLogin(r);
+      } else if (mode === "login") {
+        const r = await window.api.auth.login({ username: username.trim(), password });
+        if ("error" in r) return setError(r.error);
+        afterLogin(r);
       } else {
-        onSuccess(session);
+        const r = await window.api.auth.resetAdminPassword({ accessCode: accessCode.trim(), password });
+        if ("error" in r) return setError(r.error);
+        switchMode("login");
+        setUsername(r.username);
+        setAccessCode("");
+        setNotice(`Password updated for admin "${r.username}". Sign in with the new password.`);
       }
     } finally {
       setBusy(false);
@@ -99,25 +153,117 @@ export default function Login({ onSuccess }: { onSuccess: (session: PublicSessio
     );
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
-      <div className="w-full max-w-xs">
-        <label className="mb-1.5 block text-center text-xs font-medium text-base-500">Access Code</label>
-        <input
-          value={loginCode}
-          onChange={(e) => setLoginCode(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="XXXXX-XXXXX"
-          autoFocus
-          className="w-full rounded-md border border-base-700 bg-base-950 px-3 py-2 text-center font-mono text-sm text-base-100 outline-none"
-        />
+  const onEnter = (e: React.KeyboardEvent) => e.key === "Enter" && submit();
 
+  const title = {
+    welcome: "Welcome to Lucky Draw Studio",
+    createAdmin: "Create Admin Account",
+    login: "Sign in",
+    reset: "Reset admin password",
+  }[mode];
+  const subtitle = {
+    welcome: null,
+    createAdmin: null,
+    login: null,
+    reset: "Enter the Access Code to set a new password for the admin account.",
+  }[mode];
+  const submitLabel = {
+    welcome: busy ? "Checking..." : "Continue",
+    createAdmin: busy ? "Creating..." : "Create account",
+    login: busy ? "Signing in..." : "Sign in",
+    reset: busy ? "Saving..." : "Set new password",
+  }[mode];
+
+  return (
+    <AuthShell>
+      {/* key = mode → đổi bước là mount lại khối này, chạy animation trượt vào (login-step-in, index.css). */}
+      <div key={mode} className={mode === "createAdmin" ? "login-step-in" : ""}>
+        {mode === "welcome" ? (
+          <div className="text-center">
+            <p className="text-sm text-base-400">Welcome to</p>
+            <h1 className="font-display text-2xl font-semibold text-base-100">Lucky Draw Studio</h1>
+          </div>
+        ) : (
+          <h1 className="text-center font-display text-xl font-semibold text-base-100">{title}</h1>
+        )}
+        {subtitle && <p className="mt-1.5 text-center text-xs text-base-400">{subtitle}</p>}
+
+        <div className="mt-6 space-y-3">
+          {(mode === "welcome" || mode === "reset") && (
+            <div key={shakeKey} className={shakeKey > 0 && mode === "welcome" ? "login-shake" : ""}>
+              <input
+                type="password"
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                onKeyDown={onEnter}
+                placeholder="Access Code"
+                aria-label="Access Code"
+                autoFocus
+                className={`${inputClass} ${mode === "welcome" ? "py-2.5 text-center" : ""}`}
+              />
+            </div>
+          )}
+          {(mode === "createAdmin" || mode === "login") && (
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={onEnter}
+              placeholder="Username"
+              aria-label="Username"
+              autoFocus={mode === "createAdmin" || !username}
+              autoComplete="username"
+              className={inputClass}
+            />
+          )}
+          {mode !== "welcome" && (
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={onEnter}
+              placeholder={mode === "login" ? "Password" : "New password (at least 8 characters)"}
+              aria-label={mode === "login" ? "Password" : "New password"}
+              autoFocus={mode === "login" && !!username}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              className={inputClass}
+            />
+          )}
+          {needsConfirm && (
+            <input
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              onKeyDown={onEnter}
+              placeholder="Confirm password"
+              aria-label="Confirm password"
+              autoComplete="new-password"
+              className={inputClass}
+            />
+          )}
+        </div>
+
+        {notice && <p className="mt-3 text-center text-sm text-teal-500">{notice}</p>}
+
+        <Button onClick={submit} disabled={!canSubmit} className="mt-4 w-full">
+          {submitLabel}
+        </Button>
+        {/* Lỗi (vd sai Access Code) hiện NGAY DƯỚI nút bấm. */}
         {error && <p className="mt-3 text-center text-sm text-danger-500">{error}</p>}
 
-        <Button onClick={submit} disabled={busy || !loginCode.trim()} className="mt-4 w-full">
-          {busy ? "Activating..." : "Activate"}
-        </Button>
+        {mode === "login" && (
+          <button onClick={() => switchMode("reset")} className="mt-3 block w-full text-center text-xs text-base-500 hover:text-base-200">
+            Forgot admin password?
+          </button>
+        )}
+        {mode === "reset" && (
+          <button onClick={() => switchMode("login")} className="mt-3 block w-full text-center text-xs text-base-500 hover:text-base-200">
+            Back to sign in
+          </button>
+        )}
       </div>
-    </div>
+    </AuthShell>
   );
 }
+
+const inputClass =
+  "w-full rounded-md border border-base-700 bg-base-950 px-3 py-2 text-sm text-base-100 outline-none placeholder:text-base-500 focus:border-gold-500";

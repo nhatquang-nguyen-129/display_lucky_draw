@@ -10,24 +10,54 @@ import LandingPage from "./pages/LandingPage";
 import LandingBuilderWindow from "./pages/LandingBuilderWindow";
 import DataEditorWindow from "./pages/DataEditorWindow";
 import Login from "./pages/Login";
-import { PublicSession } from "@/types";
+import Button from "./components/Button";
+import AuthShell from "./components/AuthShell";
+import { StartupStatus } from "@/types";
 
 // Cổng đăng nhập cho CỬA SỔ CHÍNH — 3 cửa sổ phụ (Present/Landing Builder/Data Editor) không đi qua
 // đây, vốn chỉ mở được TỪ cửa sổ chính (đã qua gate) nên không cần gate riêng (main.ts vẫn tự chặn
 // phòng xa, xem present:open/landingBuilder:open/dataEditor:open trong electron/main.ts).
+// App bắt buộc có mạng: mở app lúc không tới được server → màn "No internet connection" (Retry), không
+// vào được app. Phiên đã lưu vẫn giữ — có mạng lại bấm Retry là vào luôn (xem auth.ts getStartupStatus).
 function RequireAuth({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<PublicSession | null | "loading">("loading");
+  // logged-out kèm activated: false = chưa có admin trên Worker → màn kích hoạt bằng Access Code.
+  const [gate, setGate] = useState<StartupStatus | "loading">("loading");
+  const [retrying, setRetrying] = useState(false);
+
+  async function retry() {
+    setRetrying(true);
+    try {
+      setGate(await window.api.auth.retryStartup());
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   useEffect(() => {
-    void window.api.auth.getSession().then(setSession);
-    // Phiên bị thu hồi thật (401 — đăng nhập nơi khác, KHÁC mất mạng tạm thời) — quay lại màn Login.
-    // KHÔNG đụng cửa sổ phụ nào (nếu đang mở Present/Builder/Editor, chúng là renderer process riêng,
-    // vẫn chạy bình thường — xem electron/auth.ts).
-    return window.api.auth.onRevoked(() => setSession(null));
+    void window.api.auth.getStartupStatus().then(setGate);
+    // Phiên bị thu hồi thật (401/403 — đăng nhập nơi khác, Force logout, Disable; KHÁC mất mạng tạm thời)
+    // — quay lại màn đăng nhập. KHÔNG đụng cửa sổ phụ nào (nếu đang mở Present/Builder/Editor, chúng là
+    // renderer process riêng, vẫn chạy bình thường — xem electron/auth.ts).
+    return window.api.auth.onRevoked(() => setGate({ status: "logged-out", activated: true }));
   }, []);
 
-  if (session === "loading") return null;
-  if (!session) return <Login onSuccess={setSession} />;
+  if (gate === "loading") return null;
+  if (gate.status === "offline") {
+    return (
+      <AuthShell>
+        <div className="text-center">
+          <h1 className="font-display text-xl font-semibold text-base-100">No internet connection</h1>
+          <p className="mt-1.5 text-xs text-base-400">Lucky Draw Studio needs an internet connection to start. Check the connection and try again.</p>
+          <Button onClick={retry} disabled={retrying} className="mt-6 w-full">
+            {retrying ? "Connecting..." : "Retry"}
+          </Button>
+        </div>
+      </AuthShell>
+    );
+  }
+  if (gate.status === "logged-out") {
+    return <Login activated={gate.activated} onSuccess={(session) => setGate({ status: "ok", session })} />;
+  }
   return <>{children}</>;
 }
 

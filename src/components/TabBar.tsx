@@ -5,6 +5,35 @@ import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
 import SessionLockMenu from "./SessionLockMenu";
 import RestoreModal from "./RestoreModal";
 import SessionsModal from "./SessionsModal";
+import { SYNC_STATUS_LABEL, useSyncStatuses } from "@/lib/syncStatus";
+import { SyncStatus } from "@/types";
+
+// Biểu tượng đồng bộ cạnh tên tab (xem electron/cloudSync.ts) — chỉ 2 trạng thái hiện ra: đang đồng bộ
+// (vòng xoay loading) và lỗi (chấm than đỏ, sẽ tự thử lại). Đã lên cloud hoặc chỉ "có sửa chưa đồng bộ"
+// (vd đang mở Data Editor, chờ điểm chốt) thì KHÔNG hiện gì — tránh rối thanh tab.
+function SyncDot({ status }: { status?: SyncStatus }) {
+  if (status === "syncing") {
+    return (
+      <span
+        title={SYNC_STATUS_LABEL[status]}
+        className="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-teal-500 border-t-transparent"
+      >
+        <span className="sr-only">{SYNC_STATUS_LABEL[status]}</span>
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0 text-danger-500">
+        <title>{SYNC_STATUS_LABEL[status]}</title>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7.5v5.5" strokeLinecap="round" />
+        <circle cx="12" cy="16.5" r="0.6" fill="currentColor" />
+      </svg>
+    );
+  }
+  return null;
+}
 
 export default function TabBar() {
   const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, reorderTabs, refresh } = useSession();
@@ -21,6 +50,7 @@ export default function TabBar() {
   // gần như cùng lúc, khiến handleAddTab() bị gọi 2 lần trước khi newName kịp reset, tạo nhầm 2 session
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
   const addingRef = useRef(false);
+  const syncStatuses = useSyncStatuses();
 
   function handleContextMenu(e: React.MouseEvent, s: Session) {
     e.preventDefault();
@@ -176,6 +206,7 @@ export default function TabBar() {
                     </svg>
                   )}
                   <span className="truncate">{s.name}</span>
+                  <SyncDot status={syncStatuses[s.id]} />
                 </span>
               )}
               <button
@@ -210,8 +241,8 @@ export default function TabBar() {
         )}
       </div>
       {/* Danh sách mọi session của account đang login (kể cả tab Closed) để mở thẳng 1 hoặc nhiều session
-          vào app — Push/Pull giờ tự động hoàn toàn, modal chỉ còn để MỞ session + lối phụ "Browse..."
-          cho file ngoài data/. Xem SessionsModal.tsx. */}
+          vào app — đồng bộ cloud tự động theo điểm chốt, modal chỉ còn để MỞ session. Xem
+          SessionsModal.tsx. */}
       <button
         onClick={() => setShowSessions(true)}
         title="Open a session — reopen a closed tab, pull one from the cloud, or browse for a file"

@@ -20,3 +20,43 @@ body {
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
+
+/* Màn kích hoạt (Login.tsx): chuyển bước Welcome → Create Admin Account — trượt nhẹ + hiện dần. */
+@keyframes login-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.login-step-in {
+  animation: login-step-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.login-shake {
+  animation: login-shake 320ms ease-in-out;
+}
+
+/* Nền màn đăng nhập/kích hoạt: các đốm màu thương hiệu mờ trôi rất chậm phía sau card. */
+@keyframes auth-blob-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -30px) scale(1.08); }
+  100% { transform: translate(-30px, 25px) scale(0.95); }
+}
+.auth-blob {
+  animation: auth-blob-drift 22s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-blob,
+  .login-step-in,
+  .login-shake {
+    animation: none;
+  }
+}

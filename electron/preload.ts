@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DrawCandidate } from "./drawEngine";
+import type { SyncStatus } from "./cloudSync";
 
 const api = {
   participants: {
@@ -87,7 +88,6 @@ const api = {
     listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
     restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
     permanentlyDelete: (data: { file: string }) => ipcRenderer.invoke("sessions:permanentlyDelete", data),
-    openFile: () => ipcRenderer.invoke("sessions:openFile"),
     setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
@@ -95,13 +95,20 @@ const api = {
   auth: {
     // Đăng nhập account qua Cloudflare Worker — xem electron/auth.ts, electron/cloudSync.ts.
     getSession: () => ipcRenderer.invoke("auth:getSession"),
-    login: (data: { workerUrl: string; loginCode: string }) => ipcRenderer.invoke("auth:login", data),
+    login: (data: { username: string; password: string }) => ipcRenderer.invoke("auth:login", data),
+    // Lần đầu (chưa kích hoạt): Access Code + tạo tài khoản admin, rồi đăng nhập luôn.
+    verifyAccessCode: (accessCode: string) => ipcRenderer.invoke("auth:verifyAccessCode", accessCode),
+    activate: (data: { accessCode: string; username: string; password: string }) => ipcRenderer.invoke("auth:activate", data),
+    // Quên mật khẩu admin: Access Code + mật khẩu mới.
+    resetAdminPassword: (data: { accessCode: string; password: string }) => ipcRenderer.invoke("auth:resetAdminPassword", data),
+    // Cổng vào app: đã đăng nhập / cần login / không có mạng (màn "No internet connection" + Retry).
+    getStartupStatus: () => ipcRenderer.invoke("auth:getStartupStatus"),
+    retryStartup: () => ipcRenderer.invoke("auth:retryStartup"),
     logout: () => ipcRenderer.invoke("auth:logout"),
     importLooseFiles: (files: string[]) => ipcRenderer.invoke("auth:importLooseFiles", files),
-    pendingPushSessionIds: () => ipcRenderer.invoke("auth:pendingPushSessionIds"),
-    createAccount: (name: string) => ipcRenderer.invoke("auth:createAccount", name),
+    createAccount: (data: { username: string; password: string }) => ipcRenderer.invoke("auth:createAccount", data),
     listAccounts: () => ipcRenderer.invoke("auth:listAccounts"),
-    regenerateCode: (accountId: string) => ipcRenderer.invoke("auth:regenerateCode", accountId),
+    resetAccountPassword: (data: { accountId: string; password: string }) => ipcRenderer.invoke("auth:resetAccountPassword", data),
     forceLogoutAccount: (accountId: string) => ipcRenderer.invoke("auth:forceLogoutAccount", accountId),
     setAccountDisabled: (data: { accountId: string; disabled: boolean }) =>
       ipcRenderer.invoke("auth:setAccountDisabled", data),
@@ -111,12 +118,31 @@ const api = {
       ipcRenderer.on("auth:revoked", listener);
       return () => ipcRenderer.removeListener("auth:revoked", listener);
     },
-    // Mất/được lại kết nối tạm thời (heartbeat fail do mạng, KHÁC bị thu hồi) — renderer hiện banner
-    // "Reconnecting...", không đóng cửa sổ phụ nào.
+    // Mất/được lại kết nối tạm thời (mất mạng/server lỗi tạm, KHÁC bị thu hồi) — renderer hiện popup
+    // "Reconnecting..." (cửa sổ chính/Builder/Data Editor — KHÔNG gửi tới Present), không đóng gì.
     onConnectivityChange: (cb: (offline: boolean) => void) => {
       const listener = (_e: unknown, offline: boolean) => cb(offline);
       ipcRenderer.on("auth:connectivity", listener);
       return () => ipcRenderer.removeListener("auth:connectivity", listener);
+    },
+  },
+  sync: {
+    // Đồng bộ theo điểm chốt — xem electron/cloudSync.ts.
+    getStatuses: () => ipcRenderer.invoke("sync:getStatuses"),
+    // Điểm chốt từ renderer (chuyển tab): kiểm tra + đồng bộ 1 session.
+    session: (sessionId: string) => ipcRenderer.invoke("sync:session", sessionId),
+    // Nút Refresh trong SessionsModal — đồng bộ toàn bộ account.
+    all: () => ipcRenderer.invoke("sync:all"),
+    onStatus: (cb: (data: { sessionId: string; status: SyncStatus }) => void) => {
+      const listener = (_e: unknown, data: { sessionId: string; status: SyncStatus }) => cb(data);
+      ipcRenderer.on("sync:status", listener);
+      return () => ipcRenderer.removeListener("sync:status", listener);
+    },
+    // Đồng bộ vừa thêm/thay/chuyển vào Trash session (Pull, tách bản, đã xoá ở máy khác) — refresh tab.
+    onSessionsChanged: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on("sync:sessionsChanged", listener);
+      return () => ipcRenderer.removeListener("sync:sessionsChanged", listener);
     },
   },
   draw: {

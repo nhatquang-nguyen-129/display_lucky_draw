@@ -25,7 +25,8 @@ import {
   switchAccount,
   type LooseSessionFile,
 } from "./db";
-import { catchUpPull, setAuthContext } from "./cloudSync";
+import { flushDirty, setAuthContext, syncAll } from "./cloudSync";
+import { WORKER_URL } from "./config/cloudEnv";
 
 const SESSION_FILE = path.join(app.getPath("userData"), "auth-session.enc");
 const DEVICE_ID_FILE = path.join(app.getPath("userData"), "device-id.txt");
@@ -49,15 +50,27 @@ export interface PublicSession {
 
 export type AuthResult<T> = { error: string } | T;
 
-export class AuthError extends Error {}
+export class AuthError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+  }
+}
 // Lỗi KHÔNG tới được server (offline/DNS/timeout) — khác hẳn lỗi server TRẢ VỀ rõ ràng (401/403/409...).
-// Heartbeat đang chạy chỉ tự đăng xuất khi gặp lỗi THỨ 2 (bị phiên khác chiếm thật), không phải lỗi 1.
 export class AuthNetworkError extends AuthError {}
+
+// Phiên đăng nhập THẬT SỰ không còn hợp lệ (bị máy khác chiếm, admin Force logout, account bị Disable).
+// Mọi lỗi khác (mất mạng, 5xx, 429 — server lỗi tạm thời) KHÔNG được làm đăng xuất người dùng.
+function isSessionInvalid(err: unknown): boolean {
+  return err instanceof AuthError && !(err instanceof AuthNetworkError) && (err.status === 401 || err.status === 403);
+}
 
 let current: StoredSession | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnecting = false;
 let initPromise: Promise<void> | null = null;
+// Mở app lúc không tới được server — app bắt buộc có mạng: renderer hiện màn "No internet connection"
+// (nút Retry), KHÔNG xoá phiên đã lưu (có mạng lại bấm Retry là vào luôn, không phải nhập lại mã).
+let startupOffline = false;
 
 type Listener<T> = (payload: T) => void;
 let revokedListener: Listener<void> | null = null;
@@ -102,7 +115,10 @@ async function call(workerUrl: string, token: string | null, pathname: string, i
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     console.warn(`[auth] ${pathname} failed (HTTP ${res.status}):`, body?.error);
-    throw new AuthError(body?.error || "Something went wrong. Please try again.");
+    if (res.status >= 500 || res.status === 429) {
+      throw new AuthNetworkError("The server is temporarily unavailable. Please try again in a moment.", res.status);
+    }
+    throw new AuthError(body?.error || "Something went wrong. Please try again.", res.status);
   }
   return res;
 }
@@ -161,18 +177,24 @@ function startHeartbeat() {
       if (reconnecting) {
         reconnecting = false;
         connectivityListener?.(false);
+        // Có mạng lại — đẩy nốt mọi thứ đã sửa/Confirm trong lúc mất mạng.
+        void syncAll();
       }
     } catch (err) {
-      if (err instanceof AuthNetworkError) {
-        // Rớt mạng tạm thời — KHÔNG đăng xuất, KHÔNG đóng cửa sổ nào (app chạy live tại sự kiện). Chỉ
-        // báo renderer hiện banner "Reconnecting...", tự hết khi heartbeat kế tiếp thành công.
+      if (!isSessionInvalid(err)) {
+        // Rớt mạng / server lỗi tạm thời — KHÔNG đăng xuất, KHÔNG đóng cửa sổ nào (app chạy live tại sự
+        // kiện). Chỉ báo renderer hiện popup "Reconnecting...", tự đóng khi heartbeat kế tiếp thành công.
         if (!reconnecting) {
           reconnecting = true;
           connectivityListener?.(true);
         }
         return;
       }
-      // Lỗi server trả về rõ ràng (401 "logged in elsewhere") — phiên này thật sự không còn hợp lệ.
+      // 401/403 — phiên này thật sự không còn hợp lệ (bị chiếm, Force logout, Disable).
+      if (reconnecting) {
+        reconnecting = false;
+        connectivityListener?.(false);
+      }
       stopHeartbeat();
       current = null;
       clearSavedSession();
@@ -182,24 +204,53 @@ function startHeartbeat() {
   }, HEARTBEAT_INTERVAL_MS);
 }
 
+// App đã kích hoạt chưa (đã có account admin trên Worker) — quyết định màn đầu tiên: Access Code (chưa)
+// hay đăng nhập username/password (rồi). null = không tới được server (mất mạng/5xx).
+let activated = true;
+
+async function fetchActivated(): Promise<boolean | null> {
+  try {
+    const res = await call(WORKER_URL, null, "/v1/status");
+    return ((await res.json()) as { activated: boolean }).activated;
+  } catch (err) {
+    if (err instanceof AuthNetworkError) return null;
+    // Worker cũ chưa có route /v1/status (404...) — coi như đã kích hoạt, hiện màn đăng nhập.
+    return true;
+  }
+}
+
 async function doInit(): Promise<void> {
+  startupOffline = false;
   const saved = loadSavedSession();
-  if (!saved) {
+  // Phiên lưu từ môi trường khác (vd đăng nhập ở bản dev cũ, trước khi tách userData) — bỏ qua, không
+  // bao giờ để bản prod nói chuyện với Worker dev hay ngược lại.
+  if (saved && saved.workerUrl !== WORKER_URL) clearSavedSession();
+  const usable = saved && saved.workerUrl === WORKER_URL ? saved : null;
+
+  if (!usable) {
     switchAccount(null);
+    const result = await fetchActivated();
+    startupOffline = result === null;
+    activated = result ?? true;
     return;
   }
   try {
-    await call(saved.workerUrl, saved.sessionToken, "/v1/heartbeat", { method: "POST" });
-    current = saved;
-    switchAccount(saved.accountId);
-    setAuthContext({ workerUrl: saved.workerUrl, sessionToken: saved.sessionToken, accountId: saved.accountId });
+    await call(usable.workerUrl, usable.sessionToken, "/v1/heartbeat", { method: "POST" });
+    current = usable;
+    switchAccount(usable.accountId);
+    setAuthContext({ workerUrl: usable.workerUrl, sessionToken: usable.sessionToken, accountId: usable.accountId });
     startHeartbeat();
-  } catch {
-    // Không xác nhận được lúc khởi động (hết hạn/bị chiếm/mất mạng) — app vừa mở, chưa làm gì nên không
-    // mất thao tác gì, an toàn hơn là bắt login lại thay vì đoán (khác hẳn heartbeat lúc ĐANG dùng app,
-    // xem startHeartbeat() — ở đó mất mạng tạm thời KHÔNG tự đăng xuất).
-    clearSavedSession();
+    void syncAll();
+  } catch (err) {
     switchAccount(null);
+    if (isSessionInvalid(err)) {
+      // Phiên hết hiệu lực thật (bị chiếm/Force logout/Disable) → bắt login lại.
+      clearSavedSession();
+    } else {
+      // Mất mạng/server lỗi lúc mở app — app bắt buộc có mạng nên chặn ở màn "No internet connection",
+      // nhưng GIỮ phiên đã lưu để Retry vào lại được ngay.
+      startupOffline = true;
+    }
   }
 }
 
@@ -213,24 +264,95 @@ export async function getSession(): Promise<PublicSession | null> {
   return current ? toPublic(current) : null;
 }
 
+export type StartupStatus =
+  | { status: "ok"; session: PublicSession }
+  | { status: "logged-out"; activated: boolean }
+  | { status: "offline" };
+
+/** Cổng vào app (`<RequireAuth>` trong App.tsx): đã đăng nhập / cần login (kèm đã kích hoạt chưa) / không
+ *  có mạng. Chưa đăng nhập thì hỏi lại trạng thái kích hoạt mỗi lần (vd vừa logout, máy khác vừa kích hoạt). */
+export async function getStartupStatus(): Promise<StartupStatus> {
+  await ensureInit();
+  if (current) return { status: "ok", session: toPublic(current) };
+  if (startupOffline) return { status: "offline" };
+  const result = await fetchActivated();
+  if (result === null) return { status: "offline" };
+  activated = result;
+  return { status: "logged-out", activated };
+}
+
+/** Nút Retry ở màn "No internet connection" — chạy lại bước khởi động. */
+export async function retryStartup(): Promise<StartupStatus> {
+  if (!current) initPromise = null;
+  return getStartupStatus();
+}
+
 export interface LoginResult extends PublicSession {
   // Chỉ có giá trị khi đây là LẦN ĐẦU account này login trên máy này — renderer hỏi người dùng có muốn
   // nhận các session rời (xem listRootLooseSessionFiles() ở db.ts) vào account không.
   looseFiles: LooseSessionFile[];
 }
 
-export function login(params: { workerUrl: string; loginCode: string }): Promise<AuthResult<LoginResult>> {
+function workerUrlOrThrow(): string {
+  // Địa chỉ Worker cố định theo môi trường (electron/config/cloudEnv.ts) — người dùng không nhập.
+  const workerUrl = normalizeWorkerUrl(WORKER_URL);
+  if (!workerUrl) throw new AuthError("Invalid server URL configured in this build.");
+  return workerUrl;
+}
+
+/** Bước 1 màn kích hoạt: chỉ kiểm tra Access Code đúng (chưa tạo gì) để chuyển sang bước tạo admin. */
+export function verifyAccessCode(accessCode: string): Promise<AuthResult<{ ok: true }>> {
+  return guard(async () => {
+    const res = await call(workerUrlOrThrow(), null, "/v1/admin/verify-access-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessCode: accessCode.trim() }),
+    });
+    return res.json();
+  });
+}
+
+/** Lần đầu (chưa kích hoạt): Access Code (= secret ADMIN_TOKEN trên Worker) + username/password admin →
+ *  tạo account admin rồi đăng nhập luôn. */
+export function activate(params: { accessCode: string; username: string; password: string }): Promise<AuthResult<LoginResult>> {
   return guard(async () => {
     await ensureInit();
-    const workerUrl = normalizeWorkerUrl(params.workerUrl);
-    if (!workerUrl) throw new AuthError("Invalid server URL — it should look like https://prod.lucky-draw-studio.workers.dev");
-    const loginCode = params.loginCode.trim();
-    if (!loginCode) throw new AuthError("Enter the login code.");
+    const workerUrl = workerUrlOrThrow();
+    await call(workerUrl, null, "/v1/admin/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessCode: params.accessCode.trim(), username: params.username.trim(), password: params.password }),
+    });
+    activated = true;
+    const r = await login({ username: params.username, password: params.password });
+    if ("error" in r) throw new AuthError(r.error);
+    return r;
+  });
+}
+
+/** Quên mật khẩu admin: Access Code + mật khẩu mới → trả lại username admin (phòng quên cả username). */
+export function resetAdminPassword(params: { accessCode: string; password: string }): Promise<AuthResult<{ username: string }>> {
+  return guard(async () => {
+    const res = await call(workerUrlOrThrow(), null, "/v1/admin/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessCode: params.accessCode.trim(), password: params.password }),
+    });
+    return res.json();
+  });
+}
+
+export function login(params: { username: string; password: string }): Promise<AuthResult<LoginResult>> {
+  return guard(async () => {
+    await ensureInit();
+    const workerUrl = workerUrlOrThrow();
+    const username = params.username.trim();
+    if (!username || !params.password) throw new AuthError("Enter your username and password.");
 
     const res = await call(workerUrl, null, "/v1/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ loginCode, deviceId: deviceId() }),
+      body: JSON.stringify({ username, password: params.password, deviceId: deviceId() }),
     });
     const data = (await res.json()) as { accountId: string; sessionToken: string; name: string; isAdmin: boolean };
     const session: StoredSession = {
@@ -247,14 +369,15 @@ export function login(params: { workerUrl: string; loginCode: string }): Promise
     const looseFiles = accountFolderExists(session.accountId) ? [] : listRootLooseSessionFiles();
 
     current = session;
+    startupOffline = false;
     saveSession(session);
     switchAccount(session.accountId);
     setAuthContext({ workerUrl, sessionToken: session.sessionToken, accountId: session.accountId });
     startHeartbeat();
 
-    // Pull 1 lần mọi session cloud mà máy này chưa có (máy mới, hoặc máy khác vừa login account này lần
-    // đầu) — KHÔNG chạy nền định kỳ, chỉ đúng lúc login xong. Lỗi ở đây không chặn đăng nhập thành công.
-    await catchUpPull().catch(() => undefined);
+    // Đồng bộ toàn bộ account ngay lúc login: tải session máy chưa có, cập nhật session đã cũ so với
+    // cloud, đẩy phần còn cờ "chưa đồng bộ" từ lần trước (xem cloudSync.syncAll). Lỗi không chặn login.
+    await syncAll();
 
     return { ...toPublic(session), looseFiles };
   });
@@ -266,6 +389,8 @@ export function importLooseFiles(files: string[]): AuthResult<{ imported: number
   if (!current) return { error: "Not logged in." };
   for (const file of files) importLooseFileToAccount(file, current.accountId);
   rescan();
+  // Session vừa nhận chưa có trạng thái đồng bộ = "chưa đồng bộ" — đẩy lên cloud luôn.
+  void syncAll();
   return { imported: files.length };
 }
 
@@ -273,6 +398,9 @@ export function logout(): Promise<AuthResult<{ ok: true }>> {
   return guard(async () => {
     await ensureInit();
     if (current) {
+      // Đẩy nốt phần chưa đồng bộ trước khi nhả khoá (không xong cũng không sao — cờ còn trên đĩa, lần
+      // login sau account này tự đẩy tiếp).
+      await flushDirty(10_000);
       await call(current.workerUrl, current.sessionToken, "/v1/logout", { method: "POST" }).catch(() => undefined);
     }
     stopHeartbeat();
@@ -289,6 +417,7 @@ export function logout(): Promise<AuthResult<{ ok: true }>> {
 export interface AccountRow {
   accountId: string;
   name: string;
+  username: string;
   createdAt: string;
   isAdmin: boolean;
   disabled: boolean;
@@ -301,13 +430,13 @@ function requireLoggedIn(): StoredSession {
   return current;
 }
 
-export function createAccount(name: string): Promise<AuthResult<{ accountId: string; name: string; loginCode: string }>> {
+export function createAccount(params: { username: string; password: string }): Promise<AuthResult<{ accountId: string; username: string }>> {
   return guard(async () => {
     const s = requireLoggedIn();
     const res = await call(s.workerUrl, s.sessionToken, "/v1/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ username: params.username.trim(), password: params.password }),
     });
     return res.json();
   });
@@ -321,10 +450,15 @@ export function listAccounts(): Promise<AuthResult<{ accounts: AccountRow[] }>> 
   });
 }
 
-export function regenerateCode(accountId: string): Promise<AuthResult<{ accountId: string; loginCode: string }>> {
+/** Admin đặt mật khẩu mới cho 1 account (team quên mật khẩu). */
+export function resetAccountPassword(params: { accountId: string; password: string }): Promise<AuthResult<{ ok: true }>> {
   return guard(async () => {
     const s = requireLoggedIn();
-    const res = await call(s.workerUrl, s.sessionToken, `/v1/accounts/${encodeURIComponent(accountId)}/regenerate-code`, { method: "POST" });
+    const res = await call(s.workerUrl, s.sessionToken, `/v1/accounts/${encodeURIComponent(params.accountId)}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: params.password }),
+    });
     return res.json();
   });
 }

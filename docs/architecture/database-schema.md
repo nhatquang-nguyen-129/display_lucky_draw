@@ -59,11 +59,10 @@ to trash / Open / Restore" bên dưới).
 
   Cột `sessions.closed` (migration additive, mặc định 0) đánh dấu Close — `listSessions()` lọc bỏ
   session có `closed = 1` khỏi danh sách tab, nhưng `rescan()` vẫn mở kết nối cho file đó bình thường
-  (không phân biệt closed/không), nên **Open** chỉ cần đặt lại `closed = 0` mà KHÔNG cần di chuyển file
-  khi file đã sẵn trong `data/`. Chọn 1 file đang ở `.trash/` qua **Open** thì coi như bấm Restore
-  (`openDbFile()` tự nhận diện theo thư mục cha của file được chọn); chọn 1 file ở ngoài `data/` hẳn
-  (USB, backup máy khác) thì copy vào `data/`, giữ nguyên bản gốc — trùng id với session có sẵn thì
-  `rescan()` tự phát hiện thành conflict như bình thường (xem "2 bản của cùng 1 session" bên dưới).
+  (không phân biệt closed/không), nên **Open** (danh sách session, `SessionsModal.tsx`) chỉ cần đặt lại
+  `closed = 0` mà KHÔNG cần di chuyển file. Không còn lối mở file `.db` rời bên ngoài (USB, backup máy
+  khác) — dữ liệu nằm trên cloud của account (xem `cloud-sync.md`); session trong `.trash/` khôi phục qua
+  RestoreModal.
 - **Tách DB kiểu cũ**: lúc khởi động, `lucky-draw.db` 1-file-mọi-session (vị trí cũ: `userData`, hoặc
   `data/` của bản portable) — hoặc bất kỳ file nào trong `data/` chứa nhiều session — được tách thành
   từng file theo session (`ATTACH` + `INSERT … SELECT` đúng tên cột), file gốc đổi tên thành

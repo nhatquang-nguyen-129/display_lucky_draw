@@ -1,31 +1,49 @@
 /**
  * Cloud Sync — Cloudflare Worker + R2 cho Lucky Draw Studio. Mô hình account (thay cho Space ẩn danh
- * cũ): mỗi account có dữ liệu riêng, đăng nhập bằng 1 login code do admin cấp, CHỈ 1 thiết bị được giữ
- * phiên hoạt động tại 1 thời điểm (server enforce, không phải app tự nhường nhau). Worker vẫn chỉ
- * lưu/trả NGUYÊN file session (.db), KHÔNG đọc nội dung bên trong. Xem docs/architecture/cloud-sync.md.
+ * cũ): mỗi account có dữ liệu riêng, đăng nhập bằng USERNAME + PASSWORD, CHỈ 1 thiết bị được giữ phiên
+ * hoạt động tại 1 thời điểm (server enforce, không phải app tự nhường nhau). Worker vẫn chỉ lưu/trả
+ * NGUYÊN file session (.db), KHÔNG đọc nội dung bên trong. Xem docs/architecture/cloud-sync.md.
+ *
+ * Kích hoạt: lần đầu (chưa có admin) app hiện màn Access Code — Access Code CHÍNH LÀ secret ADMIN_TOKEN.
+ * Nhập đúng → tạo account admin (username + password). Đã kích hoạt thì mọi máy chỉ thấy màn đăng nhập
+ * username/password. Quên mật khẩu admin → nhập lại Access Code để đặt mật khẩu mới.
  *
  * Bố cục R2 (bucket binding BUCKET):
- *   accounts/<accountId>/account.json         → { name, loginCodeHash, createdAt, isAdmin, disabled }
- *   logincodes/<sha256(code)>.json             → { accountId }
+ *   accounts/<accountId>/account.json         → { name, username, password, createdAt, isAdmin, disabled, failedLogins, lockedUntil }
+ *   usernames/<username>.json                  → { accountId } — index username (chữ thường) → account
  *   accounts/<accountId>/active-session.json  → { sessionTokenHash, deviceId, loginAt, lastSeen } — khoá độc quyền
  *   sessionTokens/<sha256(token)>.json         → { accountId } — index tra Bearer token → account
  *   accounts/<accountId>/sessions/<sessionId>/<pushedAtMs>.db → file session, customMetadata xem pushMeta
- *   admin/bootstrapped.json                    → { accountId } — đánh dấu đã tạo account admin, chặn tạo lần 2
+ *   accounts/<accountId>/deleted/<sessionId>.json → { deletedAt } — dấu "đã xoá" (tombstone), KHÔNG xoá các
+ *     bản .db ở trên (còn đường khôi phục); Push thành công lần sau (Restore từ Trash) tự gỡ dấu này
+ *   admin/activated.json                       → { accountId } — đã kích hoạt (có admin), chặn kích hoạt lần 2
  *
- * Mã/token chỉ lưu dạng hash — lộ bucket cũng không lộ được mã dùng thật.
+ * Mật khẩu lưu dạng PBKDF2-SHA256 (salt riêng mỗi account), token chỉ lưu dạng hash — lộ bucket cũng không
+ * lộ được mật khẩu/token dùng thật.
  */
 
 export interface Env {
   BUCKET: R2Bucket;
-  ADMIN_TOKEN: string; // secret, đặt bằng `wrangler secret put ADMIN_TOKEN` — CHỈ dùng cho POST /v1/admin/bootstrap
+  // Secret, đặt ở Dashboard (Settings → Variables and Secrets, tick Secret) hoặc `wrangler secret put
+  // ADMIN_TOKEN`. Dùng làm ACCESS CODE: kích hoạt lần đầu + đặt lại mật khẩu admin.
+  ADMIN_TOKEN: string;
+}
+
+interface PasswordHash {
+  salt: string; // base64
+  iterations: number;
+  hash: string; // base64
 }
 
 interface Account {
-  name: string;
-  loginCodeHash: string;
+  name: string; // tên hiển thị — hiện = username
+  username: string;
+  password: PasswordHash;
   createdAt: string;
   isAdmin: boolean;
   disabled: boolean;
+  failedLogins?: number;
+  lockedUntil?: string | null;
 }
 
 interface ActiveSession {
@@ -51,7 +69,17 @@ const META_FIELDS = ["sessionName", "modifiedAt", "sha256", "appVersion", "parti
 // Quá ngưỡng này không có heartbeat thì coi phiên là đã "nguội" (máy cũ crash/mất mạng) — login máy khác
 // được phép giành khoá. Gấp 3 chu kỳ heartbeat (30s) để chịu được 1-2 nhịp rớt mạng tạm thời.
 const HEARTBEAT_STALE_MS = 90_000;
-const BOOTSTRAP_MARKER_KEY = "admin/bootstrapped.json";
+// Key MỚI (khác "admin/bootstrapped.json" của bản login-code cũ) — admin tạo theo kiểu cũ (không có
+// username/password) không được tính là đã kích hoạt, kích hoạt lại theo luồng mới được.
+const ACTIVATED_MARKER_KEY = "admin/activated.json";
+// PBKDF2: workerd giới hạn tối đa 100k vòng; 50k đủ chậm để dò mật khẩu tốn kém mà vẫn nằm trong giới hạn
+// CPU của gói Workers miễn phí. Lưu số vòng theo từng account → tăng sau được mà không phá mật khẩu cũ.
+const PBKDF2_ITERATIONS = 50_000;
+const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+const MIN_PASSWORD_LENGTH = 8;
+// Sai mật khẩu liên tiếp chừng này lần → khoá đăng nhập account đó LOCKOUT_MS (chống dò mật khẩu).
+const MAX_FAILED_LOGINS = 5;
+const LOCKOUT_MS = 5 * 60_000;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -78,7 +106,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (parts[0] !== "v1") throw new HttpError(404, "Not found");
   const [, resource, a, b, c] = parts;
 
-  if (resource === "admin" && a === "bootstrap" && !b && method === "POST") return bootstrapAdmin(request, env);
+  if (resource === "status" && !a && method === "GET") return status(env);
+  if (resource === "admin" && a === "verify-access-code" && !b && method === "POST") return verifyAccessCode(request, env);
+  if (resource === "admin" && a === "activate" && !b && method === "POST") return activateAdmin(request, env);
+  if (resource === "admin" && a === "reset-password" && !b && method === "POST") return resetAdminPassword(request, env);
   if (resource === "login" && !a && method === "POST") return login(request, env);
 
   if (resource === "logout" && !a && method === "POST") return withSession(request, env, (auth) => logout(env, auth));
@@ -86,6 +117,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     return withSession(request, env, (auth, account) => heartbeat(env, auth, account));
 
   if (resource === "sessions" && !a && method === "GET") return withSession(request, env, (auth) => listSessions(env, auth));
+  if (resource === "sessions" && a && b === "head" && !c && method === "GET")
+    return withSession(request, env, (auth) => sessionHead(env, auth, a));
+  if (resource === "sessions" && a && b === "delete" && !c && method === "POST")
+    return withSession(request, env, (auth) => markDeleted(env, auth, a));
   if (resource === "objects" && a && b && !c && method === "GET")
     return withSession(request, env, (auth) => download(env, auth, a, b));
 
@@ -99,7 +134,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (resource === "accounts") {
     if (!a && method === "POST") return withSession(request, env, (auth) => createAccount(request, env, auth));
     if (!a && method === "GET") return withSession(request, env, (auth) => listAccounts(env, auth));
-    if (a && b === "regenerate-code" && method === "POST") return withSession(request, env, (auth) => regenerateCode(env, auth, a));
+    if (a && b === "reset-password" && method === "POST") return withSession(request, env, (auth) => resetAccountPassword(request, env, auth, a));
     if (a && b === "force-logout" && method === "POST") return withSession(request, env, (auth) => forceLogout(env, auth, a));
     if (a && b === "disable" && method === "POST") return withSession(request, env, (auth) => setDisabled(env, auth, a, true));
     if (a && b === "enable" && method === "POST") return withSession(request, env, (auth) => setDisabled(env, auth, a, false));
@@ -115,27 +150,53 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-// Crockford base32 — bỏ I/L/O/U cho khỏi nhầm khi đọc mã qua điện thoại.
-const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-function randomCode(length: number): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return [...bytes].map((x) => CODE_ALPHABET[x % 32]).join("");
-}
-
 function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function formatCode(code: string): string {
-  return `${code.slice(0, 5)}-${code.slice(5)}`;
+function toBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes));
 }
 
-// Login code người dùng gõ tay: bỏ gạch/khoảng trắng, không phân biệt hoa thường.
-function normalizeLoginCode(raw: string): string {
-  const t = raw.trim();
-  return /^[0-9A-Za-z-\s]{10,16}$/.test(t) ? t.replace(/[-\s]/g, "").toUpperCase() : t;
+function fromBase64(text: string): Uint8Array {
+  return Uint8Array.from(atob(text), (ch) => ch.charCodeAt(0));
+}
+
+async function hashPassword(password: string, salt?: Uint8Array, iterations = PBKDF2_ITERATIONS): Promise<PasswordHash> {
+  const useSalt = salt ?? crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: useSalt, iterations }, key, 256);
+  return { salt: toBase64(useSalt), iterations, hash: toBase64(new Uint8Array(bits)) };
+}
+
+async function verifyPassword(password: string, stored: PasswordHash): Promise<boolean> {
+  const computed = await hashPassword(password, fromBase64(stored.salt), stored.iterations);
+  return safeEqual(computed.hash, stored.hash);
+}
+
+// Username không phân biệt hoa thường, bỏ khoảng trắng 2 đầu.
+function normalizeUsername(raw: unknown): string {
+  return String(raw ?? "").trim().toLowerCase();
+}
+
+function validateUsername(username: string) {
+  if (!USERNAME_PATTERN.test(username)) {
+    throw new HttpError(400, "Username must be 3–32 characters: letters, numbers, dot, dash or underscore");
+  }
+}
+
+function validatePassword(password: unknown): string {
+  const p = String(password ?? "");
+  if (p.length < MIN_PASSWORD_LENGTH) throw new HttpError(400, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+  if (p.length > 128) throw new HttpError(400, "Password is too long");
+  return p;
+}
+
+// Access Code = secret ADMIN_TOKEN. So sánh không lộ thời gian.
+function checkAccessCode(env: Env, accessCode: unknown) {
+  if (!env.ADMIN_TOKEN) throw new HttpError(500, "ADMIN_TOKEN secret is not set on this Worker");
+  if (!safeEqual(String(accessCode ?? "").trim(), env.ADMIN_TOKEN)) throw new HttpError(401, "Invalid access code");
 }
 
 // So sánh không lộ thời gian, tránh dò ADMIN_TOKEN theo từng ký tự.
@@ -157,13 +218,45 @@ function activeSessionKey(id: string): string {
 function sessionTokenKey(hash: string): string {
   return `sessionTokens/${hash}.json`;
 }
-function loginCodeKey(hash: string): string {
-  return `logincodes/${hash}.json`;
+function usernameKey(username: string): string {
+  return `usernames/${username}.json`;
 }
 
 async function getAccount(env: Env, accountId: string): Promise<Account | null> {
   const obj = await env.BUCKET.get(accountKey(accountId));
   return obj ? ((await obj.json()) as Account) : null;
+}
+
+async function findAccountIdByUsername(env: Env, username: string): Promise<string | null> {
+  const obj = await env.BUCKET.get(usernameKey(username));
+  return obj ? ((await obj.json()) as { accountId: string }).accountId : null;
+}
+
+// Tạo account mới (admin lúc kích hoạt, hoặc account thường do admin tạo) — username phải chưa ai dùng.
+async function createAccountRecord(env: Env, username: string, password: string, isAdmin: boolean): Promise<string> {
+  validateUsername(username);
+  if (await findAccountIdByUsername(env, username)) throw new HttpError(409, "This username is already taken");
+  const accountId = crypto.randomUUID();
+  const account: Account = {
+    name: username,
+    username,
+    password: await hashPassword(password),
+    createdAt: new Date().toISOString(),
+    isAdmin,
+    disabled: false,
+    failedLogins: 0,
+    lockedUntil: null,
+  };
+  await env.BUCKET.put(accountKey(accountId), JSON.stringify(account));
+  await env.BUCKET.put(usernameKey(username), JSON.stringify({ accountId }));
+  return accountId;
+}
+
+async function setPassword(env: Env, accountId: string, account: Account, password: string) {
+  account.password = await hashPassword(password);
+  account.failedLogins = 0;
+  account.lockedUntil = null;
+  await env.BUCKET.put(accountKey(accountId), JSON.stringify(account));
 }
 
 /* ---------------- Auth: login / logout / heartbeat ---------------- */
@@ -214,39 +307,88 @@ async function clearActiveSession(env: Env, accountId: string): Promise<void> {
   await env.BUCKET.delete(activeSessionKey(accountId));
 }
 
-// Làm ĐÚNG 1 LẦN NGOÀI APP (curl/script, dùng ADMIN_TOKEN) để tạo account admin đầu tiên. Từ chối nếu
-// đã có admin — tránh tạo nhầm account admin thứ 2 do gọi lại endpoint này.
-async function bootstrapAdmin(request: Request, env: Env): Promise<Response> {
-  const header = request.headers.get("Authorization") ?? "";
-  if (!env.ADMIN_TOKEN || !safeEqual(header, `Bearer ${env.ADMIN_TOKEN}`)) throw new HttpError(401, "Invalid admin token");
-  if (await env.BUCKET.get(BOOTSTRAP_MARKER_KEY)) throw new HttpError(409, "Admin account already exists");
+/* ---------------- Kích hoạt + đặt lại mật khẩu admin (Access Code = ADMIN_TOKEN) ---------------- */
 
-  const body = (await request.json().catch(() => ({}))) as { name?: string };
-  const name = (body.name ?? "").trim() || "Admin";
-  const accountId = crypto.randomUUID();
-  const loginCode = randomCode(10);
-  const loginCodeHash = await sha256Hex(loginCode);
-  const account: Account = { name, loginCodeHash, createdAt: new Date().toISOString(), isAdmin: true, disabled: false };
+async function getActivatedAdminId(env: Env): Promise<string | null> {
+  const obj = await env.BUCKET.get(ACTIVATED_MARKER_KEY);
+  return obj ? ((await obj.json()) as { accountId: string }).accountId : null;
+}
 
-  await env.BUCKET.put(accountKey(accountId), JSON.stringify(account));
-  await env.BUCKET.put(loginCodeKey(loginCodeHash), JSON.stringify({ accountId }));
-  await env.BUCKET.put(BOOTSTRAP_MARKER_KEY, JSON.stringify({ accountId }));
+// Công khai (không cần đăng nhập) — app hỏi lúc mở để biết hiện màn Access Code (chưa kích hoạt) hay màn
+// đăng nhập username/password (đã kích hoạt). Không lộ thông tin gì khác.
+async function status(env: Env): Promise<Response> {
+  return json({ activated: !!(await getActivatedAdminId(env)) });
+}
 
-  // Mã chỉ trả về đúng 1 lần này — mất thì dùng account khác tạo lại qua regenerate-code.
-  return json({ accountId, name, loginCode: formatCode(loginCode) }, 201);
+// Bước 1 của màn kích hoạt: chỉ KIỂM TRA Access Code (chưa tạo gì) để app chuyển sang bước "Create Admin
+// Account". Bước 2 (activateAdmin) vẫn kiểm tra lại Access Code — bước này không cấp quyền gì cả.
+async function verifyAccessCode(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { accessCode?: string };
+  checkAccessCode(env, body.accessCode);
+  if (await getActivatedAdminId(env)) throw new HttpError(409, "This app has already been activated");
+  return json({ ok: true });
+}
+
+// Lần đầu (chưa có admin): Access Code đúng → tạo account admin. Đã kích hoạt rồi thì từ chối (409) — máy
+// khác không thể "kích hoạt lại" để chiếm quyền admin.
+async function activateAdmin(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { accessCode?: string; username?: string; password?: string };
+  checkAccessCode(env, body.accessCode);
+  if (await getActivatedAdminId(env)) throw new HttpError(409, "This app has already been activated");
+  const username = normalizeUsername(body.username);
+  const password = validatePassword(body.password);
+  const accountId = await createAccountRecord(env, username, password, true);
+  await env.BUCKET.put(ACTIVATED_MARKER_KEY, JSON.stringify({ accountId }));
+  return json({ accountId, username }, 201);
+}
+
+// Quên mật khẩu admin: Access Code đúng → đặt mật khẩu mới, trả lại username (phòng quên cả username).
+// Nhả luôn khoá phiên đang giữ (nếu có) — máy đang đăng nhập bằng mật khẩu cũ bị đăng xuất.
+async function resetAdminPassword(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { accessCode?: string; password?: string };
+  checkAccessCode(env, body.accessCode);
+  const adminId = await getActivatedAdminId(env);
+  if (!adminId) throw new HttpError(404, "This app has not been activated yet");
+  const account = await getAccount(env, adminId);
+  if (!account) throw new HttpError(404, "Admin account not found");
+  await setPassword(env, adminId, account, validatePassword(body.password));
+  await clearActiveSession(env, adminId);
+  return json({ username: account.username });
 }
 
 async function login(request: Request, env: Env): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as { loginCode?: string; deviceId?: string };
-  const code = normalizeLoginCode(String(body.loginCode ?? ""));
-  if (!code) throw new HttpError(400, "Missing login code");
+  const body = (await request.json().catch(() => ({}))) as { username?: string; password?: string; deviceId?: string };
+  const username = normalizeUsername(body.username);
+  const password = String(body.password ?? "");
+  if (!username || !password) throw new HttpError(400, "Enter your username and password");
 
-  const idxObj = await env.BUCKET.get(loginCodeKey(await sha256Hex(code)));
-  if (!idxObj) throw new HttpError(401, "Invalid login code");
-  const { accountId } = (await idxObj.json()) as { accountId: string };
-  const account = await getAccount(env, accountId);
-  if (!account) throw new HttpError(401, "Invalid login code");
+  const invalid = () => new HttpError(401, "Invalid username or password");
+  const accountId = await findAccountIdByUsername(env, username);
+  const account = accountId ? await getAccount(env, accountId) : null;
+  if (!accountId || !account?.password) {
+    // Vẫn băm 1 lần cho thời gian phản hồi giống trường hợp sai mật khẩu — không lộ username có tồn tại.
+    await hashPassword(password);
+    throw invalid();
+  }
+  const nowMs = Date.now();
+  if (account.lockedUntil && Date.parse(account.lockedUntil) > nowMs) {
+    throw new HttpError(423, "Too many failed attempts. Try again in a few minutes.");
+  }
+  if (!(await verifyPassword(password, account.password))) {
+    account.failedLogins = (account.failedLogins ?? 0) + 1;
+    if (account.failedLogins >= MAX_FAILED_LOGINS) {
+      account.failedLogins = 0;
+      account.lockedUntil = new Date(nowMs + LOCKOUT_MS).toISOString();
+    }
+    await env.BUCKET.put(accountKey(accountId), JSON.stringify(account));
+    throw invalid();
+  }
   if (account.disabled) throw new HttpError(403, "This account has been disabled");
+  if (account.failedLogins || account.lockedUntil) {
+    account.failedLogins = 0;
+    account.lockedUntil = null;
+    await env.BUCKET.put(accountKey(accountId), JSON.stringify(account));
+  }
 
   const now = Date.now();
   const existingObj = await env.BUCKET.get(activeSessionKey(accountId));
@@ -286,18 +428,11 @@ async function heartbeat(env: Env, auth: Auth, account: Account): Promise<Respon
 
 async function createAccount(request: Request, env: Env, auth: Auth): Promise<Response> {
   requireAdmin(auth);
-  const body = (await request.json().catch(() => ({}))) as { name?: string };
-  const name = (body.name ?? "").trim() || "Untitled account";
-  const accountId = crypto.randomUUID();
-  const loginCode = randomCode(10);
-  const loginCodeHash = await sha256Hex(loginCode);
-  const account: Account = { name, loginCodeHash, createdAt: new Date().toISOString(), isAdmin: false, disabled: false };
-
-  await env.BUCKET.put(accountKey(accountId), JSON.stringify(account));
-  await env.BUCKET.put(loginCodeKey(loginCodeHash), JSON.stringify({ accountId }));
-
-  // Mã chỉ trả về đúng 1 lần này — mất thì admin tự Regenerate code.
-  return json({ accountId, name, loginCode: formatCode(loginCode) }, 201);
+  const body = (await request.json().catch(() => ({}))) as { username?: string; password?: string };
+  const username = normalizeUsername(body.username);
+  const password = validatePassword(body.password);
+  const accountId = await createAccountRecord(env, username, password, false);
+  return json({ accountId, username }, 201);
 }
 
 async function listAccounts(env: Env, auth: Auth): Promise<Response> {
@@ -309,13 +444,15 @@ async function listAccounts(env: Env, auth: Auth): Promise<Response> {
     keys.map(async (key) => {
       const accountId = key.slice("accounts/".length, -"/account.json".length);
       const account = await getAccount(env, accountId);
-      if (!account) return null;
+      // Account kiểu login-code cũ (không có username/password) — không đăng nhập được nữa, ẩn khỏi danh sách.
+      if (!account?.username) return null;
       const activeObj = await env.BUCKET.get(activeSessionKey(accountId));
       const active = activeObj ? ((await activeObj.json()) as ActiveSession) : null;
       const online = !!active && now - Date.parse(active.lastSeen) < HEARTBEAT_STALE_MS;
       return {
         accountId,
         name: account.name,
+        username: account.username,
         createdAt: account.createdAt,
         isAdmin: account.isAdmin,
         disabled: account.disabled,
@@ -329,18 +466,15 @@ async function listAccounts(env: Env, auth: Auth): Promise<Response> {
   return json({ accounts });
 }
 
-async function regenerateCode(env: Env, auth: Auth, targetId: string): Promise<Response> {
+// Admin đặt mật khẩu mới cho 1 account (team quên mật khẩu). Mật khẩu của CHÍNH admin thì đặt lại bằng
+// Access Code ở màn đăng nhập (resetAdminPassword) — ở đây cũng cho phép nếu admin đang đăng nhập.
+async function resetAccountPassword(request: Request, env: Env, auth: Auth, targetId: string): Promise<Response> {
   requireAdmin(auth);
   const account = await getAccount(env, targetId);
-  if (!account) throw new HttpError(404, "Account not found");
-
-  await env.BUCKET.delete(loginCodeKey(account.loginCodeHash));
-  const loginCode = randomCode(10);
-  account.loginCodeHash = await sha256Hex(loginCode);
-  await env.BUCKET.put(accountKey(targetId), JSON.stringify(account));
-  await env.BUCKET.put(loginCodeKey(account.loginCodeHash), JSON.stringify({ accountId: targetId }));
-
-  return json({ accountId: targetId, loginCode: formatCode(loginCode) });
+  if (!account?.username) throw new HttpError(404, "Account not found");
+  const body = (await request.json().catch(() => ({}))) as { password?: string };
+  await setPassword(env, targetId, account, validatePassword(body.password));
+  return json({ ok: true });
 }
 
 async function forceLogout(env: Env, auth: Auth, targetId: string): Promise<Response> {
@@ -398,7 +532,49 @@ async function listSessions(env: Env, auth: Auth): Promise<Response> {
     })
     .filter((v) => v.sessionId && v.file && VERSION_FILE_PATTERN.test(v.file))
     .sort((x, y) => (x.pushedAt < y.pushedAt ? 1 : -1));
-  return json({ versions });
+  // Session đã bị xoá (tombstone) — app chuyển bản local vào Trash thay vì tải về lại.
+  const deleted = (await listAll(env, deletedPrefix(auth.accountId)))
+    .map((o) => o.key.slice(deletedPrefix(auth.accountId).length).replace(/\.json$/, ""))
+    .filter((id) => ID_PATTERN.test(id));
+  return json({ versions, deleted });
+}
+
+/* ---------------- Head / tombstone (đồng bộ theo điểm chốt) ---------------- */
+
+function sessionPrefix(accountId: string, sessionId: string): string {
+  return `accounts/${accountId}/sessions/${sessionId}/`;
+}
+function deletedPrefix(accountId: string): string {
+  return `accounts/${accountId}/deleted/`;
+}
+
+// Bản MỚI NHẤT của 1 session (tên file = phiên bản, vd "1763620000000.db") — null nếu chưa từng Push.
+async function latestVersion(env: Env, accountId: string, sessionId: string): Promise<R2Object | null> {
+  const prefix = sessionPrefix(accountId, sessionId);
+  const objects = (await listAll(env, prefix)).filter((o) => VERSION_FILE_PATTERN.test(o.key.slice(prefix.length)));
+  if (!objects.length) return null;
+  return objects.reduce((a, b) => (a.key > b.key ? a : b));
+}
+
+// Request rất nhẹ (không tải file) — app gọi ở mỗi điểm chốt để biết cloud có bản mới hơn bản local
+// đang dựa trên (`baseVersion`) hay không, rồi mới quyết Push/Pull/không làm gì.
+async function sessionHead(env: Env, auth: Auth, sessionId: string): Promise<Response> {
+  if (!ID_PATTERN.test(sessionId)) throw new HttpError(400, "Invalid sessionId");
+  const latest = await latestVersion(env, auth.accountId, sessionId);
+  const deleted = !!(await env.BUCKET.head(`${deletedPrefix(auth.accountId)}${sessionId}.json`));
+  const prefix = sessionPrefix(auth.accountId, sessionId);
+  return json({
+    version: latest ? latest.key.slice(prefix.length) : null,
+    sha256: latest?.customMetadata?.sha256 ?? "",
+    sessionName: decodeURIComponent(latest?.customMetadata?.sessionName ?? ""),
+    deleted,
+  });
+}
+
+async function markDeleted(env: Env, auth: Auth, sessionId: string): Promise<Response> {
+  if (!ID_PATTERN.test(sessionId)) throw new HttpError(400, "Invalid sessionId");
+  await env.BUCKET.put(`${deletedPrefix(auth.accountId)}${sessionId}.json`, JSON.stringify({ deletedAt: new Date().toISOString() }));
+  return json({ ok: true });
 }
 
 async function download(env: Env, auth: Auth, sessionId: string, file: string): Promise<Response> {
@@ -451,11 +627,30 @@ async function uploadPart(request: Request, env: Env, auth: Auth, uploadId: stri
 
 async function completeUpload(request: Request, env: Env, auth: Auth, uploadId: string): Promise<Response> {
   const key = uploadKey(auth, request);
-  const body = (await request.json().catch(() => null)) as { parts?: R2UploadedPart[] } | null;
+  const body = (await request.json().catch(() => null)) as { parts?: R2UploadedPart[]; baseVersion?: string | null } | null;
   if (!body?.parts?.length) throw new HttpError(400, "Missing parts");
+
+  // Kiểm tra trước khi ghi: bản local được dựng từ `baseVersion` — nếu cloud đã có bản mới hơn thế (máy
+  // khác đã Push trong lúc máy này mất mạng/khoá nguội) thì TỪ CHỐI, không đè. App nhận 409 rồi tự tải bản
+  // cloud về + giữ bản local thành session riêng. Không cần atomic tuyệt đối: khoá phiên độc quyền đã đảm
+  // bảo chỉ 1 thiết bị ghi tại 1 thời điểm, check này chỉ chặn trường hợp "dựa trên bản cũ".
+  // `baseVersion` undefined = client cũ không gửi → bỏ qua check (tương thích ngược).
+  const sessionDir = key.slice(0, key.lastIndexOf("/") + 1);
+  const sessionId = sessionDir.split("/").filter(Boolean).pop() ?? "";
+  if (body.baseVersion !== undefined) {
+    const latest = await latestVersion(env, auth.accountId, sessionId);
+    const latestName = latest ? latest.key.slice(sessionDir.length) : null;
+    if (latestName !== (body.baseVersion ?? null)) {
+      await env.BUCKET.resumeMultipartUpload(key, uploadId).abort().catch(() => undefined);
+      throw new HttpError(409, "Session changed on another device");
+    }
+  }
+
   const obj = await env.BUCKET.resumeMultipartUpload(key, uploadId).complete(body.parts);
   await pruneOldVersions(env, key);
-  return json({ key, size: obj.size });
+  // Push thành công = session đang "sống" — gỡ dấu đã xoá nếu có (vd vừa Restore từ Trash).
+  await env.BUCKET.delete(`${deletedPrefix(auth.accountId)}${sessionId}.json`);
+  return json({ key, size: obj.size, version: key.slice(sessionDir.length) });
 }
 
 async function abortUpload(request: Request, env: Env, auth: Auth, uploadId: string): Promise<Response> {

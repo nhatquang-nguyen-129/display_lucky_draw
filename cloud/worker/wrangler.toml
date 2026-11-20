@@ -8,17 +8,19 @@
 # Tên worker CỐ TÌNH ngắn gọn ("prod"/"dev") — subdomain workers.dev của tài khoản đã đổi thành
 # "lucky-draw-studio" (đổi ở Cloudflare Dashboard, không phải file này) để URL đọc được là
 # prod.lucky-draw-studio.workers.dev / dev.lucky-draw-studio.workers.dev.
+# Bucket R2 đặt tên có tiền tố project ("lucky-draw-prod"/"lucky-draw-dev") — trên Dashboard mục R2 nằm
+# riêng, tách khỏi danh sách Worker, tên trần "prod"/"dev" không cho biết bucket thuộc project nào.
 name = "prod"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "prod"
+bucket_name = "lucky-draw-prod"
 
 [env.dev]
 name = "dev"
 
 [[env.dev.r2_buckets]]
 binding = "BUCKET"
-bucket_name = "dev"
+bucket_name = "lucky-draw-dev"

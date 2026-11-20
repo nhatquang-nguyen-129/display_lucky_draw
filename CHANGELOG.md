@@ -10,17 +10,32 @@ Chi tiết: `docs/architecture/cloud-sync.md`. **Thay đổi kiến trúc** (kh�
 cũ, không có migration tự động — xem mục "Migration từ Space cũ" trong doc).
 
 - Bỏ hẳn Space ẩn danh (Read code/Write token dùng chung) — thay bằng **Account**: mỗi account dữ liệu
-  riêng hoàn toàn, đăng nhập bằng 1 login code do admin cấp (Settings → Accounts). Đúng 1 account admin
-  duy nhất được tạo account khác.
+  riêng hoàn toàn. Đúng 1 account admin duy nhất được tạo account khác.
+- **Kích hoạt + đăng nhập username/password**: lần đầu mở app hiện màn **Activate** — nhập Access Code
+  (secret `ADMIN_TOKEN` của Worker) và tạo tài khoản admin; sau đó mọi máy chỉ thấy màn đăng nhập
+  username/password. Quên mật khẩu admin → **Forgot admin password?** + Access Code. Tài khoản team do
+  admin tạo (username + mật khẩu) và đặt lại mật khẩu trong Settings → Accounts. Sai mật khẩu 5 lần →
+  khoá 5 phút.
 - **1 account chỉ 1 thiết bị đăng nhập hoạt động tại 1 thời điểm** — Cloudflare Worker enforce bằng
   khoá phiên độc quyền + heartbeat 30s (ngưỡng "nguội" 90s). Admin có **Force logout** để thoát khẩn,
-  **Regenerate code** khi team làm mất mã, **Disable/Enable** khi team ngừng mượn app.
-- **Push/Pull tự động hoàn toàn** — không còn nút bấm tay: sửa dữ liệu tự đẩy lên cloud sau 5 giây
-  (debounce), login tự tải về mọi session account đang sở hữu mà máy chưa có. Bỏ hẳn trạng thái
-  "diverged"/so 2 chiều của mô hình cũ (không còn cần thiết — chỉ 1 thiết bị ghi tại 1 thời điểm).
-- App giờ **bắt buộc có mạng lúc đăng nhập** — đổi khỏi định vị "100% offline" trước đây (quyết định
-  kiến trúc đã duyệt). Mất mạng tạm thời lúc đang dùng app KHÔNG tự đăng xuất/đóng cửa sổ Present/
-  Builder/Editor nào — chỉ hiện banner "Reconnecting...".
+  **Reset password** khi team quên mật khẩu, **Disable/Enable** khi team ngừng mượn app.
+- **Đồng bộ tự động theo điểm chốt** — không còn nút bấm tay, không đồng bộ liên tục: đồng bộ khi
+  **Confirm** người trúng, khi sửa/xoá ở cửa sổ chính (prize, participant, session), khi **đóng** Landing
+  Builder / Data Editor / Present, khi chuyển tab, login và thoát app. Mỗi lần đều **kiểm tra bản trên
+  cloud trước**: cloud mới hơn thì tải về, cả 2 cùng đổi thì giữ cả 2 (bản máy này thành session
+  "(this computer)") — không bao giờ âm thầm đè bản mới hơn.
+- Xoá session được ghi nhận lên cloud — máy khác login không tải lại session đã xoá.
+- Danh sách **Open** bỏ nút "Browse..." (mở file `.db` rời trên máy) — dữ liệu nằm trên cloud của
+  account; nút **Refresh** giờ hỏi lại cloud trước khi liệt kê.
+- Trạng thái đồng bộ trên tab: vòng xoay loading = đang đồng bộ, chấm than đỏ = lỗi (sẽ tự thử lại).
+- Thoát app khi còn session chưa đồng bộ: thử 5 giây, chưa xong thì hỏi **Wait / Quit anyway**.
+- App giờ **bắt buộc có mạng** — đổi khỏi định vị "100% offline" trước đây (quyết định kiến trúc đã
+  duyệt). Mở app không có mạng → màn **No internet connection** (Retry, không phải nhập lại mã). Mất mạng
+  lúc đang dùng KHÔNG tự đăng xuất/đóng cửa sổ nào — hiện popup **Reconnecting...** (không hiện trên cửa
+  sổ Present đang chiếu); chỉ đăng xuất khi bị máy khác chiếm/Force logout/Disable, server lỗi tạm thời
+  không làm đăng xuất.
+- Bản dev (`npm run electron:dev`) dùng Worker `dev` + R2 `lucky-draw-dev` và thư mục dữ liệu riêng — không lẫn với bản
+  cài đặt thật trên cùng máy.
 - Lần đầu 1 account đăng nhập trên 1 máy có sẵn session cũ (từ trước khi có tính năng này): hỏi 1 lần
   có muốn nhận các session đó vào account không.
 - Session đăng nhập lưu mã hoá qua `safeStorage` (OS keychain) ở thư mục ứng dụng, KHÔNG còn trong

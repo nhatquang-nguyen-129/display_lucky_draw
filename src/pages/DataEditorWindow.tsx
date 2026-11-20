@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import DataEditorModal from "@/components/DataEditorModal";
+import ReconnectPopup from "@/components/ReconnectPopup";
 import { Session } from "@/types";
 
 // Cửa sổ phụ chứa Data Editor — tách riêng khỏi cửa sổ chính, giống hệt Landing Builder/Present Mode
@@ -31,5 +32,10 @@ export default function DataEditorWindow() {
     return <div className="flex h-screen items-center justify-center bg-base-950 text-sm text-base-400">Loading…</div>;
   }
 
-  return <DataEditorModal open sessionId={sessionId} session={session} onSaved={() => {}} onSessionRefresh={loadSession} />;
+  return (
+    <>
+      <DataEditorModal open sessionId={sessionId} session={session} onSaved={() => {}} onSessionRefresh={loadSession} />
+      <ReconnectPopup />
+    </>
+  );
 }

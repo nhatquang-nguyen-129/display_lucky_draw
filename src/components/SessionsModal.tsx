@@ -1,21 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { SessionFileInfo } from "@/types";
+import { SessionFileInfo, SyncStatus } from "@/types";
+import { SYNC_STATUS_LABEL, useSyncStatuses } from "@/lib/syncStatus";
 import { useSession } from "@/context/SessionContext";
 import { onConflictResolved } from "@/lib/cloudSyncEvents";
 import Modal from "./Modal";
 import Button from "./Button";
 
 // Danh sách MỌI session của account đang login (kể cả tab Closed, xem sessions.listAll() trong
-// electron/db.ts) — chọn 1 hoặc nhiều dòng rồi bấm Open để vào thẳng app. Push/Pull giờ tự động hoàn
-// toàn (xem electron/cloudSync.ts scheduleAutoPush/catchUpPull) — modal này chỉ còn để MỞ session,
-// không còn nút Push/Pull/Connect nào nữa. Dialog browse OS vẫn còn là lối phụ ("Browse for a file not
-// shown here...") cho file ngoài data/ (USB, backup máy khác). Mở từ nút "Open" ở TabBar.tsx. Xem
+// electron/db.ts) — chọn 1 hoặc nhiều dòng rồi bấm Open để vào thẳng app. Đồng bộ cloud chạy tự động
+// theo điểm chốt (xem electron/cloudSync.ts) — modal này chỉ còn để MỞ session, không còn nút
+// Push/Pull/Connect nào. Không còn lối "Browse..." mở file .db rời trên máy (dữ liệu nằm trên cloud của
+// account). Refresh = hỏi lại cloud (syncAll) rồi liệt kê. Mở từ nút "Open" ở TabBar.tsx. Xem
 // docs/architecture/cloud-sync.md.
 export default function SessionsModal({ onClose }: { onClose: () => void }) {
-  const { refresh, switchTab, openFile } = useSession();
+  const { refresh, switchTab } = useSession();
   const [rows, setRows] = useState<SessionFileInfo[] | null>(null);
-  // Session nào đang chờ auto-push (debounce) — chấm "Saving..." nhỏ, chỉ thông tin, không phải nút.
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  // Trạng thái đồng bộ từng session (Synced / chưa đồng bộ / đang đồng bộ) — chỉ thông tin, không phải nút.
+  const statuses = useSyncStatuses();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,18 +35,9 @@ export default function SessionsModal({ onClose }: { onClose: () => void }) {
     void load();
   }, []);
 
-  // SessionConflictDialog.tsx báo khi 1 conflict vừa resolve xong ở nơi khác (vd Browse trùng id với
-  // session có sẵn) — tự load lại ngay, không chờ người dùng bấm Refresh.
+  // SessionConflictDialog.tsx báo khi 1 conflict vừa resolve xong ở nơi khác (vd file trùng id được copy
+  // tay vào data/) — tự load lại ngay, không chờ người dùng bấm Refresh.
   useEffect(() => onConflictResolved(() => { if (!busy) void load(); }), [busy]);
-
-  // Poll nhẹ — chỉ để người dùng yên tâm dữ liệu đang được tự đẩy lên cloud, không cần chính xác
-  // real-time (auto-push vốn đã debounce 5s, xem cloudSync.ts).
-  useEffect(() => {
-    const tick = () => void window.api.auth.pendingPushSessionIds().then((ids) => mountedRef.current && setPending(new Set(ids)));
-    tick();
-    const timer = setInterval(tick, 2000);
-    return () => clearInterval(timer);
-  }, []);
 
   async function load() {
     setBusy(true);
@@ -118,12 +110,19 @@ export default function SessionsModal({ onClose }: { onClose: () => void }) {
     await load();
   }
 
-  // Lối phụ cho file KHÔNG hiện trong danh sách (USB, backup máy khác) — tái dùng nguyên openFile() của
-  // SessionContext.tsx (dialog OS mặc định data/, tự refresh + switchTab + báo "already open" nếu trùng
-  // tab đang mở), chỉ thêm đóng modal khi thành công.
-  async function handleBrowse() {
-    await openFile();
-    onClose();
+  // Refresh: hỏi lại cloud (tải session account có trên cloud mà máy chưa có, cập nhật bản cũ) rồi mới
+  // liệt kê — dữ liệu nằm trên cloud, không chỉ quét lại thư mục local.
+  async function handleRefresh() {
+    setBusy(true);
+    try {
+      await window.api.sync.all();
+      await refresh();
+    } catch {
+      /* mất mạng — vẫn liệt kê bản trên máy bên dưới */
+    } finally {
+      if (mountedRef.current) setBusy(false);
+    }
+    await load();
   }
 
   const allSelected = !!rows && rows.length > 0 && selected.size === rows.length;
@@ -135,10 +134,7 @@ export default function SessionsModal({ onClose }: { onClose: () => void }) {
           {rows === null ? "Loading sessions..." : `${rows.length} session${rows.length === 1 ? "" : "s"} in your account.`}
         </p>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button variant="secondary" size="sm" onClick={handleBrowse} disabled={busy}>
-            Browse...
-          </Button>
-          <Button variant="secondary" size="sm" onClick={load} disabled={busy}>
+          <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={busy}>
             Refresh
           </Button>
         </div>
@@ -161,7 +157,7 @@ export default function SessionsModal({ onClose }: { onClose: () => void }) {
 
       <div className="max-h-[26rem] space-y-2 overflow-y-auto">
         {rows?.map((row) => (
-          <SessionRow key={row.id} row={row} checked={selected.has(row.id)} saving={pending.has(row.id)} onToggle={() => toggleOne(row.id)} />
+          <SessionRow key={row.id} row={row} checked={selected.has(row.id)} status={statuses[row.id]} onToggle={() => toggleOne(row.id)} />
         ))}
       </div>
 
@@ -180,12 +176,12 @@ export default function SessionsModal({ onClose }: { onClose: () => void }) {
 function SessionRow({
   row,
   checked,
-  saving,
+  status,
   onToggle,
 }: {
   row: SessionFileInfo;
   checked: boolean;
-  saving: boolean;
+  status?: SyncStatus;
   onToggle: () => void;
 }) {
   return (
@@ -198,7 +194,7 @@ function SessionRow({
       <span className="min-w-0 truncate text-sm text-base-100" title={row.name}>
         {row.name}
       </span>
-      <span className="truncate text-right text-[11px] text-base-500">{saving ? "Saving..." : "Saved"}</span>
+      <span className="truncate text-right text-[11px] text-base-500">{status ? (status === "synced" ? "Synced" : SYNC_STATUS_LABEL[status]) : ""}</span>
     </div>
   );
 }
