@@ -12,6 +12,7 @@ import DataEditorWindow from "./pages/DataEditorWindow";
 import Login from "./pages/Login";
 import Button from "./components/Button";
 import AuthShell from "./components/AuthShell";
+import { BusyIndicator } from "./components/Spinner";
 import { StartupStatus } from "@/types";
 
 // Cổng đăng nhập cho CỬA SỔ CHÍNH — 3 cửa sổ phụ (Present/Landing Builder/Data Editor) không đi qua
@@ -49,8 +50,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
           <h1 className="font-display text-xl font-semibold text-base-100">No internet connection</h1>
           <p className="mt-1.5 text-xs text-base-400">Lucky Draw Studio needs an internet connection to start. Check the connection and try again.</p>
           <Button onClick={retry} disabled={retrying} className="mt-6 w-full">
-            {retrying ? "Connecting..." : "Retry"}
+            Retry
           </Button>
+          <BusyIndicator busy={retrying} />
         </div>
       </AuthShell>
     );
