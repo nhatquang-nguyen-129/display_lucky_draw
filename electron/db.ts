@@ -966,17 +966,6 @@ export function restoreFromTrash(fileName: string): string {
   return target;
 }
 
-/** Xoá VĨNH VIỄN 1 file khỏi data/.trash/ — KHÔNG còn đường lấy lại (khác restoreFromTrash). Renderer
- *  (RestoreModal.tsx) phải tự hỏi xác nhận trước khi gọi, giống các thao tác không hoàn tác khác. */
-export function permanentlyDelete(fileName: string) {
-  const file = path.join(TRASH_DIR, fileName);
-  if (!fs.existsSync(file)) return;
-  fs.unlinkSync(file);
-  for (const suffix of ["-wal", "-shm", "-journal"]) {
-    if (fs.existsSync(file + suffix)) fs.unlinkSync(file + suffix);
-  }
-}
-
 /**
  * Bản sao NHẤT QUÁN của 1 session đang mở ra `destFile` (VACUUM INTO, giống duplicateSession — an toàn
  * ngay cả khi session đang được ghi), không đụng file gốc. Dùng cho Push lên Cloud Sync (cloudSync.ts).
