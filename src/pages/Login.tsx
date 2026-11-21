@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoginResult, LooseSessionFile, PublicSession } from "@/types";
 import Button from "@/components/Button";
+import { BusyIndicator } from "@/components/Spinner";
 import AuthShell, { AuthBackground } from "@/components/AuthShell";
 
 // Địa chỉ Worker (dev/prod) cố định ở main process theo cách app đang chạy — xem
@@ -201,9 +202,10 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
               Skip
             </Button>
             <Button onClick={() => finishImport(true)} disabled={importing || chosen.size === 0}>
-              {importing ? "Importing..." : `Import${chosen.size ? ` (${chosen.size})` : ""}`}
+              {`Import${chosen.size ? ` (${chosen.size})` : ""}`}
             </Button>
           </div>
+          <BusyIndicator busy={importing} />
         </div>
       </div>
     );
@@ -213,7 +215,7 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
 
   const title = {
     welcome: "Welcome to Lucky Draw Studio",
-    createAdmin: "Set up your administrator account",
+    createAdmin: "Create admin account",
     login: "Sign in",
     reset: "Reset admin password",
   }[mode];
@@ -224,10 +226,10 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
     reset: "Enter the Access Code to set a new password for the admin account.",
   }[mode];
   const submitLabel = {
-    welcome: busy ? "Checking..." : "Continue",
-    createAdmin: busy ? "Creating account..." : "Create account",
-    login: busy ? "Signing in..." : "Sign in",
-    reset: busy ? "Saving..." : "Set new password",
+    welcome: "Continue",
+    createAdmin: "Create account",
+    login: "Sign in",
+    reset: "Set new password",
   }[mode];
 
   return (
@@ -238,7 +240,7 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
           <h1 className="text-center font-display text-3xl font-semibold text-base-100">Activate your workspace</h1>
         ) : (
           // Cỡ chữ khớp với màn Access Code (text-3xl) — đồng bộ kích thước giữa các bước của auth flow.
-          <h1 className="text-center font-display text-3xl font-semibold text-base-100">{title}</h1>
+          <h1 className="whitespace-nowrap text-center font-display text-3xl font-semibold text-base-100">{title}</h1>
         )}
         {subtitle && <p className="mt-1.5 text-center text-xs text-base-400">{subtitle}</p>}
 
@@ -307,7 +309,9 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
         <Button onClick={submit} disabled={!canSubmit} size="lg" className="mt-4 w-full">
           {submitLabel}
         </Button>
-        {/* Lỗi (vd sai Access Code) hiện NGAY DƯỚI nút bấm. */}
+        {/* Đang đợi: vòng xoay nhỏ ngay dưới nút (chữ trên nút giữ nguyên). Lỗi (vd sai Access Code) hiện
+            cùng chỗ đó — lỗi được xoá lúc bấm nút nên 2 thứ không hiện cùng lúc. */}
+        <BusyIndicator busy={busy} />
         {error && <p className="mt-3 text-center text-sm text-danger-500">{error}</p>}
 
         {mode === "login" && (
