@@ -135,6 +135,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!a && method === "POST") return withSession(request, env, (auth) => createAccount(request, env, auth));
     if (!a && method === "GET") return withSession(request, env, (auth) => listAccounts(env, auth));
     if (a && b === "reset-password" && method === "POST") return withSession(request, env, (auth) => resetAccountPassword(request, env, auth, a));
+    if (a && b === "sessions" && !c && method === "GET") return withSession(request, env, (auth) => listAccountSessions(env, auth, a));
+    if (a && b === "restore-session" && !c && method === "POST") return withSession(request, env, (auth) => restoreDeletedSession(request, env, auth, a));
     if (a && b === "force-logout" && method === "POST") return withSession(request, env, (auth) => forceLogout(env, auth, a));
     if (a && b === "disable" && method === "POST") return withSession(request, env, (auth) => setDisabled(env, auth, a, true));
     if (a && b === "enable" && method === "POST") return withSession(request, env, (auth) => setDisabled(env, auth, a, false));
@@ -437,12 +439,31 @@ async function createAccount(request: Request, env: Env, auth: Auth): Promise<Re
 
 async function listAccounts(env: Env, auth: Auth): Promise<Response> {
   requireAdmin(auth);
-  const keys = (await listAll(env, "accounts/")).map((o) => o.key).filter((k) => k.endsWith("/account.json"));
+  // 1 lần list toàn bộ "accounts/" (đằng nào cũng cần để tìm account.json) → tính luôn số liệu từng
+  // account từ chính danh sách object này, không tốn thêm request nào.
+  const objects = await listAll(env, "accounts/");
+  const keys = objects.map((o) => o.key).filter((k) => k.endsWith("/account.json"));
+  const stats = new Map<string, { sessions: Set<string>; deleted: Set<string>; storageBytes: number; lastSyncedAt: number }>();
+  for (const o of objects) {
+    const [, accountId, kind, rest, file] = o.key.split("/");
+    if (!accountId) continue;
+    if (!stats.has(accountId)) stats.set(accountId, { sessions: new Set(), deleted: new Set(), storageBytes: 0, lastSyncedAt: 0 });
+    const st = stats.get(accountId)!;
+    if (kind === "sessions" && rest && file && VERSION_FILE_PATTERN.test(file)) {
+      st.sessions.add(rest);
+      st.storageBytes += o.size;
+      st.lastSyncedAt = Math.max(st.lastSyncedAt, Number(file.slice(0, 13)));
+    } else if (kind === "deleted" && rest) {
+      st.deleted.add(rest.replace(/\.json$/, ""));
+    }
+  }
   const now = Date.now();
 
   const rows = await Promise.all(
     keys.map(async (key) => {
       const accountId = key.slice("accounts/".length, -"/account.json".length);
+      const st = stats.get(accountId);
+      const deletedIds = st ? [...st.deleted].filter((id) => st.sessions.has(id)) : [];
       const account = await getAccount(env, accountId);
       // Account kiểu login-code cũ (không có username/password) — không đăng nhập được nữa, ẩn khỏi danh sách.
       if (!account?.username) return null;
@@ -458,6 +479,12 @@ async function listAccounts(env: Env, auth: Auth): Promise<Response> {
         disabled: account.disabled,
         online,
         lastSeen: active?.lastSeen ?? null,
+        // Session còn hiện với account (có bản trên cloud, không bị đánh dấu xoá) / đã xoá hình thức.
+        sessionCount: st ? st.sessions.size - deletedIds.length : 0,
+        deletedCount: deletedIds.length,
+        // Dung lượng thật trên R2 = MỌI bản đang giữ (tối đa KEEP_VERSIONS bản/session), kể cả session đã xoá.
+        storageBytes: st?.storageBytes ?? 0,
+        lastSyncedAt: st && st.lastSyncedAt ? new Date(st.lastSyncedAt).toISOString() : null,
       };
     })
   );
@@ -569,6 +596,67 @@ async function sessionHead(env: Env, auth: Auth, sessionId: string): Promise<Res
     sessionName: decodeURIComponent(latest?.customMetadata?.sessionName ?? ""),
     deleted,
   });
+}
+
+// Admin xem MỌI session của 1 account kèm tình trạng (còn hiện / đã xoá hình thức), lần đồng bộ gần nhất,
+// số bản đang giữ, dung lượng. KHÔNG mở file .db: tên/số participant/phiên bản app lấy từ metadata của bản
+// mới nhất. 2 lần list (sessions/ + deleted/), không GET từng object.
+async function listAccountSessions(env: Env, auth: Auth, targetId: string): Promise<Response> {
+  requireAdmin(auth);
+  if (!ID_PATTERN.test(targetId)) throw new HttpError(400, "Invalid account id");
+  const sessionsPrefix = `accounts/${targetId}/sessions/`;
+  const tombstonePrefix = deletedPrefix(targetId);
+  const [versions, tombstones] = await Promise.all([listAll(env, sessionsPrefix), listAll(env, tombstonePrefix)]);
+
+  const deletedAt = new Map<string, string>();
+  for (const o of tombstones) deletedAt.set(o.key.slice(tombstonePrefix.length).replace(/.json$/, ""), o.uploaded.toISOString());
+
+  const groups = new Map<string, { latest: R2Object; latestFile: string; versions: number; totalSize: number }>();
+  for (const o of versions) {
+    const [sessionId, file] = o.key.slice(sessionsPrefix.length).split("/");
+    if (!sessionId || !file || !VERSION_FILE_PATTERN.test(file)) continue;
+    const g = groups.get(sessionId);
+    if (!g) groups.set(sessionId, { latest: o, latestFile: file, versions: 1, totalSize: o.size });
+    else {
+      g.versions++;
+      g.totalSize += o.size;
+      if (file > g.latestFile) {
+        g.latest = o;
+        g.latestFile = file;
+      }
+    }
+  }
+
+  const sessions = [...groups.entries()]
+    .map(([sessionId, g]) => {
+      const meta = g.latest.customMetadata ?? {};
+      return {
+        sessionId,
+        sessionName: decodeURIComponent(meta.sessionName ?? "") || "Untitled session",
+        status: deletedAt.has(sessionId) ? "deleted" : "active",
+        deletedAt: deletedAt.get(sessionId) ?? null,
+        lastSyncedAt: new Date(Number(g.latestFile.slice(0, 13))).toISOString(),
+        modifiedAt: meta.modifiedAt ?? "",
+        participantCount: Number(meta.participantCount ?? 0),
+        appVersion: meta.appVersion ?? "",
+        versions: g.versions,
+        latestSize: g.latest.size,
+        totalSize: g.totalSize,
+      };
+    })
+    .sort((x, y) => (x.status !== y.status ? (x.status === "active" ? -1 : 1) : x.lastSyncedAt < y.lastSyncedAt ? 1 : -1));
+  return json({ sessions });
+}
+
+// Admin khôi phục: chỉ gỡ dấu "đã xoá" — lần đồng bộ kế tiếp (login, Refresh trong danh sách Open, có mạng
+// lại) máy của account đó tự tải session về lại.
+async function restoreDeletedSession(request: Request, env: Env, auth: Auth, targetId: string): Promise<Response> {
+  requireAdmin(auth);
+  const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
+  const sessionId = String(body.sessionId ?? "");
+  if (!ID_PATTERN.test(targetId) || !ID_PATTERN.test(sessionId)) throw new HttpError(400, "Invalid id");
+  await env.BUCKET.delete(`${deletedPrefix(targetId)}${sessionId}.json`);
+  return json({ ok: true });
 }
 
 async function markDeleted(env: Env, auth: Auth, sessionId: string): Promise<Response> {
