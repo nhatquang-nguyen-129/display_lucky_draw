@@ -3,10 +3,11 @@ import { AccountRow, PublicSession } from "@/types";
 import Button from "@/components/Button";
 import Modal from "@/components/Modal";
 
-// Trang Settings (sidebar) — app-wide, dùng chung cho mọi session trên máy này. Hiện Account đang login
-// (+ Log out) và, CHỈ với account isAdmin, bảng quản lý mọi account (tạo mới bằng username/password, đặt
-// lại mật khẩu, force logout, disable). Mở session/đổi tab nằm ở nút "Open" trên TabBar (SessionsModal.tsx). Xem
-// docs/architecture/cloud-sync.md.
+// Trang Settings (sidebar) — app-wide, dùng chung cho mọi session trên máy này. Account đang login +
+// Log out giờ nằm ở TabBar.tsx (cạnh Open/Restore), KHÔNG còn card riêng ở đây. Admin thấy ĐÚNG 1 khung
+// — quản lý mọi account (tạo mới bằng username/password, đặt lại mật khẩu, force logout, disable); tài
+// khoản thường không có gì để cấu hình ở trang này. Mở session/đổi tab nằm ở nút "Open" trên TabBar
+// (SessionsModal.tsx). Xem docs/architecture/cloud-sync.md.
 export default function Settings() {
   const [session, setSession] = useState<PublicSession | null>(null);
 
@@ -15,48 +16,8 @@ export default function Settings() {
   }, []);
 
   return (
-    <div>
-      <header className="mb-6">
-        <p className="text-sm text-base-400">App-wide settings — shared by every session on this computer.</p>
-      </header>
-      <div className="max-w-2xl space-y-6">
-        <AccountCard session={session} />
-        {session?.isAdmin && <AccountsAdminCard />}
-      </div>
-    </div>
-  );
-}
-
-function AccountCard({ session }: { session: PublicSession | null }) {
-  const [busy, setBusy] = useState(false);
-
-  async function logout() {
-    if (!confirm("Log out of this account on this computer?")) return;
-    setBusy(true);
-    try {
-      await window.api.auth.logout();
-      // Reload — gọn nhất để toàn bộ renderer (SessionContext, danh sách tab...) khởi động lại sạch
-      // theo trạng thái "chưa đăng nhập" (<RequireAuth> trong src/App.tsx sẽ tự hiện màn Login).
-      window.location.reload();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-base-800 bg-base-900 p-6">
-      <h2 className="font-display text-base font-medium text-base-100">Account</h2>
-      <p className="mt-1 text-xs text-base-400">Signed in on this computer. Only 1 device can be signed in to an account at a time.</p>
-
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-base-800 px-3 py-2 text-sm">
-        <div className="min-w-0">
-          <div className="truncate text-base-100">{session?.name ?? "..."}</div>
-          <div className="text-xs text-base-500">{session?.isAdmin ? "Admin" : "Member"}</div>
-        </div>
-        <Button variant="danger" size="sm" onClick={logout} disabled={busy}>
-          Log out
-        </Button>
-      </div>
+    <div className="max-w-2xl">
+      {session?.isAdmin ? <AccountsAdminCard /> : <p className="text-sm text-base-500">Nothing to configure here yet.</p>}
     </div>
   );
 }
@@ -240,15 +201,12 @@ function CreateAccountModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   return (
     <Modal open title="Create account" onClose={onClose} hideCloseButton>
-      <p className="mb-4 text-center text-xs text-base-400">
-        One account per team borrowing the app — its data stays completely separate from every other account.
-      </p>
       <div className="space-y-3">
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           onKeyDown={onEnter}
-          placeholder="Username"
+          placeholder="Username (3–32 characters)"
           aria-label="Username"
           autoComplete="off"
           autoFocus
@@ -259,7 +217,7 @@ function CreateAccountModal({ onClose, onCreated }: { onClose: () => void; onCre
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={onEnter}
-          placeholder="Password"
+          placeholder="Password (at least 8 characters)"
           aria-label="Password"
           autoComplete="new-password"
           className={modalInputClass}
@@ -275,9 +233,6 @@ function CreateAccountModal({ onClose, onCreated }: { onClose: () => void; onCre
           className={modalInputClass}
         />
       </div>
-      <p className="mt-2 text-[11px] text-base-500">
-        Username: 3–32 characters — letters, numbers, dot, dash or underscore. Password: at least 8 characters.
-      </p>
       {error && <p className="mt-3 text-center text-sm text-danger-500">{error}</p>}
       <div className="mt-5 flex justify-between gap-2">
         <Button variant="secondary" size="sm" onClick={onClose} className="w-20">
@@ -322,7 +277,7 @@ function ResetPasswordModal({ account, onClose, onDone }: { account: AccountRow;
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={onEnter}
-          placeholder="New password"
+          placeholder="New password (at least 8 characters)"
           aria-label="New password"
           autoComplete="new-password"
           autoFocus
@@ -339,7 +294,6 @@ function ResetPasswordModal({ account, onClose, onDone }: { account: AccountRow;
           className={modalInputClass}
         />
       </div>
-      <p className="mt-2 text-[11px] text-base-500">At least 8 characters.</p>
       {error && <p className="mt-3 text-center text-sm text-danger-500">{error}</p>}
       <div className="mt-5 flex justify-between gap-2">
         <Button variant="secondary" size="sm" onClick={onClose} className="w-20">
