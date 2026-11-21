@@ -5,20 +5,21 @@ import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
 import SessionLockMenu from "./SessionLockMenu";
 import RestoreModal from "./RestoreModal";
 import SessionsModal from "./SessionsModal";
+import Modal from "./Modal";
+import Button from "./Button";
+import { BusyIndicator } from "./Spinner";
+import CloudSyncIcon from "./CloudSyncIcon";
 import { SYNC_STATUS_LABEL, useSyncStatuses } from "@/lib/syncStatus";
 import { SyncStatus } from "@/types";
 
 // Biểu tượng đồng bộ cạnh tên tab (xem electron/cloudSync.ts) — chỉ 2 trạng thái hiện ra: đang đồng bộ
-// (vòng xoay loading) và lỗi (chấm than đỏ, sẽ tự thử lại). Đã lên cloud hoặc chỉ "có sửa chưa đồng bộ"
+// (đám mây có mũi tên chạy lên, CloudSyncIcon.tsx) và lỗi (chấm than đỏ, sẽ tự thử lại). Đã lên cloud hoặc chỉ "có sửa chưa đồng bộ"
 // (vd đang mở Data Editor, chờ điểm chốt) thì KHÔNG hiện gì — tránh rối thanh tab.
 function SyncDot({ status }: { status?: SyncStatus }) {
   if (status === "syncing") {
     return (
-      <span
-        title={SYNC_STATUS_LABEL[status]}
-        className="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-teal-500 border-t-transparent"
-      >
-        <span className="sr-only">{SYNC_STATUS_LABEL[status]}</span>
+      <span className="shrink-0 text-teal-500">
+        <CloudSyncIcon title={SYNC_STATUS_LABEL[status]} className="h-4 w-4" />
       </span>
     );
   }
@@ -52,9 +53,12 @@ export default function TabBar() {
   const addingRef = useRef(false);
   const syncStatuses = useSyncStatuses();
   const [loggingOut, setLoggingOut] = useState(false);
+  // Popup xác nhận Log out trong app — KHÔNG dùng window.confirm(): trên Windows, sau khi hộp thoại native
+  // của trình duyệt đóng, Electron hay làm trang mất focus bàn phím → màn Sign in hiện ra nhưng không gõ
+  // được vào ô Username/Password cho tới khi cửa sổ được focus lại (lỗi đã gặp thật).
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   async function handleLogout() {
-    if (!confirm("Log out of this account on this computer?")) return;
     setLoggingOut(true);
     try {
       await window.api.auth.logout();
@@ -284,7 +288,7 @@ export default function TabBar() {
       {/* Đăng xuất account đang dùng trên máy này — xem electron/auth.ts. Đặt cạnh Open/Restore (trước
           đây nằm trong Settings → Account, đã bỏ card đó, Settings giờ chỉ còn quản lý Accounts). */}
       <button
-        onClick={handleLogout}
+        onClick={() => setConfirmLogout(true)}
         disabled={loggingOut}
         title="Log out of this account"
         className="mb-1 flex h-7 shrink-0 items-center rounded-md px-2 text-xs text-danger-500 hover:bg-danger-500/10 disabled:opacity-50"
@@ -292,6 +296,19 @@ export default function TabBar() {
         Log out
       </button>
 
+      {confirmLogout && (
+        <Modal open title="Log out?" onClose={() => !loggingOut && setConfirmLogout(false)} maxWidth="max-w-[16rem]" hideCloseButton>
+          <div className="flex justify-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setConfirmLogout(false)} disabled={loggingOut} className="w-24">
+              Cancel
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleLogout} disabled={loggingOut} className="w-24">
+              Log out
+            </Button>
+          </div>
+          <BusyIndicator busy={loggingOut} />
+        </Modal>
+      )}
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
       {showSessions && <SessionsModal onClose={() => setShowSessions(false)} />}
 
