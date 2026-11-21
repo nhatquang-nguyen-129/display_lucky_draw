@@ -87,7 +87,6 @@ const api = {
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
     listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
     restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
-    permanentlyDelete: (data: { file: string }) => ipcRenderer.invoke("sessions:permanentlyDelete", data),
     setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
@@ -109,6 +108,8 @@ const api = {
     createAccount: (data: { username: string; password: string }) => ipcRenderer.invoke("auth:createAccount", data),
     listAccounts: () => ipcRenderer.invoke("auth:listAccounts"),
     resetAccountPassword: (data: { accountId: string; password: string }) => ipcRenderer.invoke("auth:resetAccountPassword", data),
+    listAccountSessions: (accountId: string) => ipcRenderer.invoke("auth:listAccountSessions", accountId),
+    restoreDeletedSession: (data: { accountId: string; sessionId: string }) => ipcRenderer.invoke("auth:restoreDeletedSession", data),
     forceLogoutAccount: (accountId: string) => ipcRenderer.invoke("auth:forceLogoutAccount", accountId),
     setAccountDisabled: (data: { accountId: string; disabled: boolean }) =>
       ipcRenderer.invoke("auth:setAccountDisabled", data),
