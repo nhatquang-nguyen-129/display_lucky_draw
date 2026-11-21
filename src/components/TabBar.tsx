@@ -51,6 +51,20 @@ export default function TabBar() {
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
   const addingRef = useRef(false);
   const syncStatuses = useSyncStatuses();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (!confirm("Log out of this account on this computer?")) return;
+    setLoggingOut(true);
+    try {
+      await window.api.auth.logout();
+      // Reload — gọn nhất để toàn bộ renderer (SessionContext, danh sách tab...) khởi động lại sạch
+      // theo trạng thái "chưa đăng nhập" (<RequireAuth> trong src/App.tsx sẽ tự hiện màn Login).
+      window.location.reload();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   function handleContextMenu(e: React.MouseEvent, s: Session) {
     e.preventDefault();
@@ -265,6 +279,17 @@ export default function TabBar() {
           <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" />
         </svg>
         Restore
+      </button>
+
+      {/* Đăng xuất account đang dùng trên máy này — xem electron/auth.ts. Đặt cạnh Open/Restore (trước
+          đây nằm trong Settings → Account, đã bỏ card đó, Settings giờ chỉ còn quản lý Accounts). */}
+      <button
+        onClick={handleLogout}
+        disabled={loggingOut}
+        title="Log out of this account"
+        className="mb-1 flex h-7 shrink-0 items-center rounded-md px-2 text-xs text-danger-500 hover:bg-danger-500/10 disabled:opacity-50"
+      >
+        Log out
       </button>
 
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
