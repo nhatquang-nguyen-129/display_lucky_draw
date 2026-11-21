@@ -8,14 +8,19 @@ import AuthShell, { AuthBackground } from "@/components/AuthShell";
 
 type Mode = "welcome" | "createAdmin" | "login" | "reset";
 
-// Màn "Welcome" (khác `mode === "welcome"` ở trên — đây là màn CHÀO MỪNG hiện SAU KHI tạo admin xong,
-// xem `showWelcome` trong component): chỉ còn đúng chữ "WELCOME" (bỏ dòng phụ "to Lucky Draw Studio" —
-// 1 chữ là đủ), hiện NGUYÊN KHỐI bằng 1 hiệu ứng mép hiện dần trái→phải kết hợp fade (clip-path +
-// opacity, xem `.welcome-heading` trong index.css). Giữ màn hình thêm 1 khoảng sau khi hiện xong rồi
-// mới chuyển vào app thật.
-const HEADING_ANIM_MS = 2200;
-const WELCOME_HOLD_MS = 2800;
-const WELCOME_SCREEN_MS = HEADING_ANIM_MS + WELCOME_HOLD_MS; // 5s tổng
+// Màn "Welcome" (khác `mode === "welcome"` ở trên — đây là màn CHÀO MỪNG hiện SAU MỌI lần đăng nhập
+// thành công (tạo admin lần đầu LẪN đăng nhập username/password thường — xem showWelcomeThen()), không
+// chỉ riêng lúc kích hoạt. xem `showWelcome` trong component): 2 dòng hiện TUẦN TỰ, giữ ĐÚNG case như
+// viết (không uppercase) —
+// "Welcome to" hiện trước (nhỏ hơn, màu xanh đậm `gold`), "Lucky Draw Studio" hiện sau (to, gradient
+// xanh đậm→xanh nhạt `gold`→`teal`) — cùng 1 hiệu ứng mép hiện dần trái→phải + fade (clip-path, xem
+// `.welcome-heading` trong index.css). Giữ màn hình thêm 1 khoảng sau khi hiện xong rồi mới chuyển vào
+// app thật.
+const LINE1_ANIM_MS = 1200; // "Welcome to"
+const LINE2_DELAY_MS = 1000; // "Lucky Draw Studio" bắt đầu trước khi dòng 1 hiện xong hẳn — chồng nhẹ
+const LINE2_ANIM_MS = 1800; // chậm hơn — dòng chính, là tên thương hiệu
+const WELCOME_HOLD_MS = 2200;
+const WELCOME_SCREEN_MS = LINE2_DELAY_MS + LINE2_ANIM_MS + WELCOME_HOLD_MS; // 5s tổng
 
 // Màn hình ĐẦU TIÊN khi chưa đăng nhập:
 // - App CHƯA kích hoạt (chưa có admin trên Worker) — 2 bước:
@@ -74,6 +79,13 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
     }
   }
 
+  // Hiện màn "Welcome to Lucky Draw Studio" ~5s trước khi vào app thật — MỌI lần đăng nhập thành công
+  // (tạo admin lần đầu LẪN đăng nhập username/password thường), không chỉ riêng lúc kích hoạt.
+  function showWelcomeThen(r: LoginResult) {
+    setShowWelcome(true);
+    welcomeTimerRef.current = setTimeout(() => afterLogin(r), WELCOME_SCREEN_MS);
+  }
+
   const needsConfirm = mode === "createAdmin" || mode === "reset";
   const canSubmit =
     !busy &&
@@ -101,13 +113,11 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
       } else if (mode === "createAdmin") {
         const r = await window.api.auth.activate({ accessCode: accessCode.trim(), username: username.trim(), password });
         if ("error" in r) return setError(r.error);
-        // Hiện màn "Welcome..." ~3s trước khi vào app thật — chỉ lần kích hoạt đầu tiên.
-        setShowWelcome(true);
-        welcomeTimerRef.current = setTimeout(() => afterLogin(r), WELCOME_SCREEN_MS);
+        showWelcomeThen(r);
       } else if (mode === "login") {
         const r = await window.api.auth.login({ username: username.trim(), password });
         if ("error" in r) return setError(r.error);
-        afterLogin(r);
+        showWelcomeThen(r);
       } else {
         const r = await window.api.auth.resetAdminPassword({ accessCode: accessCode.trim(), password });
         if ("error" in r) return setError(r.error);
@@ -143,16 +153,22 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
 
   if (showWelcome) {
     // KHÔNG dùng AuthShell ở đây — không hiện logo nữa, chỉ nền trôi (AuthBackground variant="welcome")
-    // + đúng chữ "WELCOME" (mép hiện dần trái→phải + fade, xem .welcome-heading trong index.css — tách
-    // từng ký tự nhìn giật/khó chịu nên bỏ).
+    // + 2 dòng hiện tuần tự, giữ đúng case như viết (mép hiện dần trái→phải + fade, xem .welcome-heading
+    // trong index.css — tách từng ký tự nhìn giật/khó chịu nên bỏ).
     return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-base-900 px-4">
+      <div className="relative flex min-h-screen flex-col items-center justify-center gap-1 overflow-hidden bg-base-900 px-4">
         <AuthBackground variant="welcome" />
-        <h1
-          className="welcome-heading relative z-10 bg-gradient-to-r from-gold-500 via-gold-400 to-teal-400 bg-clip-text text-center font-display text-7xl font-extrabold tracking-tight text-transparent"
-          style={{ animationDuration: `${HEADING_ANIM_MS}ms` }}
+        <p
+          className="welcome-heading relative z-10 text-center font-display text-[2.93rem] font-semibold text-gold-500"
+          style={{ animationDuration: `${LINE1_ANIM_MS}ms` }}
         >
-          WELCOME
+          Welcome to
+        </p>
+        <h1
+          className="welcome-heading relative z-10 max-w-6xl bg-gradient-to-r from-gold-500 via-gold-400 to-teal-500 bg-clip-text text-center font-display text-[5.86rem] font-extrabold leading-tight tracking-tight text-transparent"
+          style={{ animationDelay: `${LINE2_DELAY_MS}ms`, animationDuration: `${LINE2_ANIM_MS}ms` }}
+        >
+          Lucky Draw Studio
         </h1>
       </div>
     );
@@ -215,7 +231,7 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
   }[mode];
 
   return (
-    <AuthShell>
+    <AuthShell backgroundVariant={mode === "welcome" || mode === "createAdmin" ? "welcome" : "default"}>
       {/* key = mode → đổi bước là mount lại khối này, chạy animation trượt vào (login-step-in, index.css). */}
       <div key={mode} className={mode === "createAdmin" ? "login-step-in" : ""}>
         {mode === "welcome" ? (
