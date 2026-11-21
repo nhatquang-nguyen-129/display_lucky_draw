@@ -129,7 +129,7 @@ Không đồng bộ liên tục, không có nút Push/Pull tay. Mọi IPC ghi d�
 | Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor** (mỗi lần Save, đổi Data type, import video) | Chỉ đánh dấu → đồng bộ **1 lần lúc đóng cửa sổ** |
 | **Đóng** Landing Builder / Data Editor / Present | Đồng bộ session đó |
 | **Chuyển tab** (`sync:session` từ `SessionContext.tsx`) | Session vừa rời + kiểm tra session vừa mở |
-| **Xoá** session | Gửi dấu "đã xoá" lên cloud (`POST /v1/sessions/:id/delete`) |
+| **Xoá** session | Xoá HÌNH THỨC: file local vào Trash + gửi dấu "đã xoá" lên cloud (`POST /v1/sessions/:id/delete`). Dữ liệu (mọi bản lưu) vẫn còn nguyên trên cloud — xem mục "Xoá session = xoá hình thức" |
 | **Login**, mở app với phiên đã lưu, **có mạng lại** | `syncAll()` — toàn bộ account |
 | **Thoát app**, Logout | `flushDirty()` — xem bên dưới |
 
@@ -174,7 +174,7 @@ trên đĩa — lần login sau account này trên máy này tự đẩy tiếp.
 
 ### Chấm trạng thái
 
-Tab (`TabBar.tsx`) chỉ hiện 2 biểu tượng: vòng xoay loading = đang đồng bộ, chấm than đỏ = lần gần nhất lỗi (tự thử
+Tab (`TabBar.tsx`) chỉ hiện 2 biểu tượng: đám mây có mũi tên chạy lên (`CloudSyncIcon.tsx`) = đang đồng bộ, chấm than đỏ = lần gần nhất lỗi (tự thử
 lại ở điểm chốt kế tiếp/khi có mạng lại). Đã lên cloud, hoặc chỉ "có sửa chưa đồng bộ" (chờ điểm chốt, vd
 đang mở Data Editor), thì không hiện gì. `SessionsModal.tsx` ghi rõ trạng thái từng session.
 Nguồn: `sync:getStatuses` + sự kiện `sync:status` (`src/lib/syncStatus.ts`).
@@ -191,6 +191,22 @@ thư mục dữ liệu.
 `data/` với bản Setup cài trên cùng máy); bản đóng gói → Worker `prod`, `userData` mặc định. Phiên đã lưu
 có `workerUrl` khác môi trường đang chạy → bỏ qua.
 
+## Xoá session = xoá hình thức
+
+Xoá session trong app (chuột phải tab → Delete) KHÔNG xoá dữ liệu trên cloud — chỉ ẩn khỏi account đó:
+
+- Máy đang dùng: file vào Trash, dấu "đã xoá" (`accounts/<id>/deleted/<sessionId>.json`) gửi lên Worker. Session
+  không còn hiện ở danh sách Open; máy khác của account đó khi đồng bộ cũng chuyển bản local vào Trash, và
+  không bao giờ tải lại session đã xoá.
+- Account tự khôi phục được: **Restore** trong Trash → lần đồng bộ kế tiếp đẩy lên lại, Worker tự gỡ dấu xoá.
+- **Admin** xem + khôi phục session đã xoá của bất kỳ account nào: Settings → Accounts → chọn account → **View Session**
+  (bảng mọi session của account đó, lọc Deleted, nút Restore). Restore chỉ gỡ
+  dấu xoá — máy của account đó tự tải session về lại ở lần đồng bộ kế tiếp (login, Open → Refresh, có mạng
+  lại). Admin không mở được nội dung session (Worker không đọc file `.db`). Session chưa từng lên cloud thì
+  không hiện trong bảng (Worker không có bản nào).
+- Không có thao tác xoá vĩnh viễn nào trong app (hộp thoại Restore chỉ có Restore) — kể cả Trash trên máy
+  cũng không xoá hẳn. Muốn xoá hẳn dữ liệu trên cloud thì dọn tay qua Cloudflare Dashboard.
+
 ## Lưu session đăng nhập local — `safeStorage`, KHÔNG phải `data/`
 
 `electron/auth.ts` lưu `{workerUrl, accountId, sessionToken}` mã hoá qua Electron `safeStorage` (OS
@@ -205,8 +221,9 @@ thầm ghi plaintext.
 | Việc | Route Worker | Ghi chú |
 |---|---|---|
 | Tạo account mới | `POST /v1/accounts` | `{username, password}` — admin tự đưa username/mật khẩu cho team |
-| Liệt kê mọi account | `GET /v1/accounts` | Username, Online/Offline (có khoá phiên còn tươi không), Disabled |
+| Liệt kê mọi account | `GET /v1/accounts` | Username, Online/Offline + lần cuối thấy, Disabled, **số session** (còn hiện / đã xoá), **dung lượng cloud** (mọi bản đang giữ, kể cả session đã xoá), **lần đồng bộ gần nhất** — tính từ đúng 1 lần list `accounts/`, không tốn thêm request |
 | Team quên mật khẩu | `POST /v1/accounts/:id/reset-password` | `{password}` — đặt mật khẩu mới, mở khoá nếu đang bị khoá do sai nhiều lần |
+| Xem mọi session của account + khôi phục session đã xoá | `GET /v1/accounts/:id/sessions`, `POST /v1/accounts/:id/restore-session` `{sessionId}` | Tick chọn 1 account rồi bấm **View Session** trên thanh công cụ (cạnh Reset Password / Logout / Disable / Create — Logout và Disable hỏi lại "Are you sure?"): bảng mọi session (lọc All/Active/Deleted) — tên, trạng thái, lần đồng bộ gần nhất, số participant, dung lượng bản mới nhất, dung lượng cloud + số bản đang giữ, phiên bản app; Restore cho session đã xoá |
 | Máy bị treo, cần vào gấp ở máy khác | `POST /v1/accounts/:id/force-logout` | Nhả khoá ngay, không đợi 90s |
 | Team ngừng mượn app | `POST /v1/accounts/:id/disable` / `/enable` | KHÔNG xoá dữ liệu trong R2 |
 
@@ -294,6 +311,8 @@ Mọi request (trừ status/activate/reset-password admin/login) gửi `Authoriz
 | `GET /v1/sessions` | sessionToken | Mọi bản mọi session CỦA ACCOUNT ĐÓ, mới nhất trước, kèm metadata + `deleted[]` (session đã bị xoá) |
 | `GET /v1/sessions/:id/head` | sessionToken | Bản mới nhất của 1 session (`version`, `sha256`) + cờ `deleted` — không tải file |
 | `POST /v1/sessions/:id/delete` | sessionToken | Đánh dấu đã xoá (tombstone), KHÔNG xoá các bản đã lưu |
+| `GET /v1/accounts/:id/sessions` | sessionToken (`isAdmin`) | Mọi session của 1 account: `status` (active/deleted), `deletedAt`, `lastSyncedAt`, `participantCount`, `appVersion`, `versions`, `latestSize`, `totalSize` (từ metadata bản mới nhất, không mở file; 2 lần list, không GET từng object) |
+| `POST /v1/accounts/:id/restore-session` | sessionToken (`isAdmin`) | `{sessionId}` — gỡ dấu đã xoá |
 | `GET /v1/objects/<sessionId>/<pushedAtMs>.db` | sessionToken | Tải 1 bản, header `X-Sha256` |
 | `POST /v1/uploads` → `PUT .../parts/<n>` → `POST .../complete` / `DELETE` | sessionToken | Multipart upload. `complete` nhận `baseVersion`: cloud đã có bản khác `baseVersion` → huỷ upload, 409. Thành công trả `version` + gỡ dấu đã xoá |
 | `POST /v1/accounts` | sessionToken (`isAdmin`) | Tạo account thường mới `{username, password}` |
