@@ -2,7 +2,7 @@ import { ButtonHTMLAttributes } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "md" | "sm"; // "sm" = toolbar/modal footer dày đặc nút (vd SessionsModal.tsx) — gọn hơn mặc định
+  size?: "md" | "sm" | "lg"; // "sm" = toolbar/modal footer dày đặc nút; "lg" = màn Activate/Login 1 nút duy nhất
 }
 
 const variants = {
@@ -15,6 +15,7 @@ const variants = {
 const sizes = {
   md: "px-4 py-2 text-sm",
   sm: "px-2.5 py-1 text-xs",
+  lg: "px-5 py-3 text-base",
 };
 
 export default function Button({ variant = "primary", size = "md", className = "", ...props }: ButtonProps) {
