@@ -11,6 +11,9 @@ cũ, không có migration tự động — xem mục "Migration từ Space cũ" 
 
 - Bỏ hẳn Space ẩn danh (Read code/Write token dùng chung) — thay bằng **Account**: mỗi account dữ liệu
   riêng hoàn toàn. Đúng 1 account admin duy nhất được tạo account khác.
+- **Settings → Accounts** cho admin: mỗi account hiện số session (còn hiện / đã xoá), dung lượng đang
+  chiếm trên cloud, lần đồng bộ gần nhất, lần cuối online; tick chọn 1 account rồi dùng thanh công cụ (**View Session**, **Reset Password**, **Logout**, **Disable** — Logout/Disable hỏi lại "Are you sure?", **Create**); View Session mở bảng mọi session của account
+  (trạng thái Active/Deleted, lần đồng bộ, số participant, dung lượng, số bản đang giữ) kèm Restore.
 - **Kích hoạt + đăng nhập username/password**: lần đầu mở app hiện màn **Activate** — nhập Access Code
   (secret `ADMIN_TOKEN` của Worker) và tạo tài khoản admin; sau đó mọi máy chỉ thấy màn đăng nhập
   username/password. Quên mật khẩu admin → **Forgot admin password?** + Access Code. Tài khoản team do
@@ -24,10 +27,13 @@ cũ, không có migration tự động — xem mục "Migration từ Space cũ" 
   Builder / Data Editor / Present, khi chuyển tab, login và thoát app. Mỗi lần đều **kiểm tra bản trên
   cloud trước**: cloud mới hơn thì tải về, cả 2 cùng đổi thì giữ cả 2 (bản máy này thành session
   "(this computer)") — không bao giờ âm thầm đè bản mới hơn.
-- Xoá session được ghi nhận lên cloud — máy khác login không tải lại session đã xoá.
+- Xoá session = **xoá hình thức**: session ẩn khỏi account đó (không hiện ở Open, máy khác không tải lại),
+  dữ liệu vẫn còn trên cloud. Account tự Restore từ Trash được; admin xem + khôi phục session đã xoá của
+  từng account ở Settings → Accounts (chọn account → **View Session**). Bỏ nút xoá vĩnh viễn (Delete) trong hộp thoại
+  Restore.
 - Danh sách **Open** bỏ nút "Browse..." (mở file `.db` rời trên máy) — dữ liệu nằm trên cloud của
   account; nút **Refresh** giờ hỏi lại cloud trước khi liệt kê.
-- Trạng thái đồng bộ trên tab: vòng xoay loading = đang đồng bộ, chấm than đỏ = lỗi (sẽ tự thử lại).
+- Trạng thái đồng bộ trên tab: đám mây có mũi tên chạy lên = đang đồng bộ, chấm than đỏ = lỗi (sẽ tự thử lại).
 - Thoát app khi còn session chưa đồng bộ: thử 5 giây, chưa xong thì hỏi **Wait / Quit anyway**.
 - App giờ **bắt buộc có mạng** — đổi khỏi định vị "100% offline" trước đây (quyết định kiến trúc đã
   duyệt). Mở app không có mạng → màn **No internet connection** (Retry, không phải nhập lại mã). Mất mạng
