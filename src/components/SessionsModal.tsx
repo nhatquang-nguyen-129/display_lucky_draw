@@ -5,6 +5,7 @@ import { useSession } from "@/context/SessionContext";
 import { onConflictResolved } from "@/lib/cloudSyncEvents";
 import Modal from "./Modal";
 import Button from "./Button";
+import CloudSyncIcon from "./CloudSyncIcon";
 
 // Danh sách MỌI session của account đang login (kể cả tab Closed, xem sessions.listAll() trong
 // electron/db.ts) — chọn 1 hoặc nhiều dòng rồi bấm Open để vào thẳng app. Đồng bộ cloud chạy tự động
@@ -194,7 +195,10 @@ function SessionRow({
       <span className="min-w-0 truncate text-sm text-base-100" title={row.name}>
         {row.name}
       </span>
-      <span className="truncate text-right text-[11px] text-base-500">{status ? (status === "synced" ? "Synced" : SYNC_STATUS_LABEL[status]) : ""}</span>
+      <span className="flex items-center justify-end gap-1 truncate text-right text-[11px] text-base-500">
+        {status === "syncing" && <CloudSyncIcon className="h-3.5 w-3.5 shrink-0 text-teal-500" />}
+        {status ? (status === "synced" ? "Synced" : SYNC_STATUS_LABEL[status]) : ""}
+      </span>
     </div>
   );
 }
