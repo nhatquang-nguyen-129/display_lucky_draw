@@ -100,3 +100,19 @@ body {
     clip-path: none;
   }
 }
+
+/* CloudSyncIcon.tsx: mũi tên trong đám mây chạy lên liên tục khi đang đồng bộ lên cloud. */
+@keyframes cloud-arrow-up {
+  0% { transform: translateY(5px); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateY(-4px); opacity: 0; }
+}
+.cloud-arrow-up {
+  animation: cloud-arrow-up 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloud-arrow-up {
+    animation: none;
+  }
+}
