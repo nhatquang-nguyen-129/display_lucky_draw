@@ -5,10 +5,11 @@ import Modal from "./Modal";
 import Button from "./Button";
 
 // Session đã bị "Move to trash" (menu chuột phải trên tab, SessionLockMenu.tsx — KHÁC Close/nút ×,
-// xem TabBar.tsx) nằm ở data/.trash/, chưa xoá hẳn — hộp thoại này liệt kê để Restore lại thành tab,
-// hoặc Delete VĨNH VIỄN (KHÔNG còn đường lấy lại, khác Restore). Mở theo yêu cầu (nút "Restore" cạnh
-// "Open" ở TabBar.tsx), khác SessionConflictDialog.tsx (tự hiện khi có conflict). Chọn nhiều session
-// bằng checkbox rồi Restore/Delete cả loạt 1 lần.
+// xem TabBar.tsx) nằm ở data/.trash/ — hộp thoại này liệt kê để Restore lại thành tab. KHÔNG có nút xoá
+// vĩnh viễn: xoá session chỉ là xoá hình thức (dữ liệu vẫn trên cloud, admin khôi phục được — xem
+// docs/architecture/cloud-sync.md), nên Trash cũng không xoá hẳn gì. Mở theo yêu cầu (nút "Restore"
+// cạnh "Open" ở TabBar.tsx), khác SessionConflictDialog.tsx (tự hiện khi có conflict). Chọn nhiều
+// session bằng checkbox rồi Restore cả loạt 1 lần.
 export default function RestoreModal({ onClose }: { onClose: () => void }) {
   const { refresh } = useSession();
   const [items, setItems] = useState<TrashEntry[]>([]);
@@ -40,21 +41,6 @@ export default function RestoreModal({ onClose }: { onClose: () => void }) {
     try {
       for (const file of selected) await window.api.sessions.restoreFromTrash({ file });
       await refresh();
-      setSelected(new Set());
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handlePermanentDelete() {
-    const ok = confirm(
-      `Permanently delete ${selected.size} session(s)? This removes them from data/.trash/ for good — there is no way to bring them back.`
-    );
-    if (!ok) return;
-    setBusy(true);
-    try {
-      for (const file of selected) await window.api.sessions.permanentlyDelete({ file });
       setSelected(new Set());
       await load();
     } finally {
@@ -110,9 +96,6 @@ export default function RestoreModal({ onClose }: { onClose: () => void }) {
         </Button>
         <Button onClick={handleRestore} disabled={selected.size === 0 || busy}>
           Restore
-        </Button>
-        <Button variant="danger" onClick={handlePermanentDelete} disabled={selected.size === 0 || busy}>
-          Delete
         </Button>
       </div>
     </Modal>
