@@ -1,12 +1,21 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LoginResult, LooseSessionFile, PublicSession } from "@/types";
 import Button from "@/components/Button";
-import AuthShell from "@/components/AuthShell";
+import AuthShell, { AuthBackground } from "@/components/AuthShell";
 
 // Địa chỉ Worker (dev/prod) cố định ở main process theo cách app đang chạy — xem
 // electron/config/cloudEnv.ts. Renderer chỉ gửi thông tin đăng nhập.
 
 type Mode = "welcome" | "createAdmin" | "login" | "reset";
+
+// Màn "Welcome" (khác `mode === "welcome"` ở trên — đây là màn CHÀO MỪNG hiện SAU KHI tạo admin xong,
+// xem `showWelcome` trong component): chỉ còn đúng chữ "WELCOME" (bỏ dòng phụ "to Lucky Draw Studio" —
+// 1 chữ là đủ), hiện NGUYÊN KHỐI bằng 1 hiệu ứng mép hiện dần trái→phải kết hợp fade (clip-path +
+// opacity, xem `.welcome-heading` trong index.css). Giữ màn hình thêm 1 khoảng sau khi hiện xong rồi
+// mới chuyển vào app thật.
+const HEADING_ANIM_MS = 2200;
+const WELCOME_HOLD_MS = 2800;
+const WELCOME_SCREEN_MS = HEADING_ANIM_MS + WELCOME_HOLD_MS; // 5s tổng
 
 // Màn hình ĐẦU TIÊN khi chưa đăng nhập:
 // - App CHƯA kích hoạt (chưa có admin trên Worker) — 2 bước:
@@ -34,12 +43,24 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
   const [loose, setLoose] = useState<{ session: PublicSession; files: LooseSessionFile[] } | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  // Icon con mắt show/hide — riêng từng ô, không ảnh hưởng nhau.
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  // Màn "Welcome to Lucky Draw Studio" hiện ~3s ngay sau khi tạo admin thành công, TRƯỚC khi vào app
+  // thật (afterLogin) — chỉ cho lần kích hoạt đầu tiên, không áp dụng cho đăng nhập thường.
+  const [showWelcome, setShowWelcome] = useState(false);
+  const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
     setPassword("");
     setConfirm("");
+    setShowPassword(false);
+    setShowConfirm(false);
     if (next !== "login") setNotice(null);
   }
 
@@ -80,7 +101,9 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
       } else if (mode === "createAdmin") {
         const r = await window.api.auth.activate({ accessCode: accessCode.trim(), username: username.trim(), password });
         if ("error" in r) return setError(r.error);
-        afterLogin(r);
+        // Hiện màn "Welcome..." ~3s trước khi vào app thật — chỉ lần kích hoạt đầu tiên.
+        setShowWelcome(true);
+        welcomeTimerRef.current = setTimeout(() => afterLogin(r), WELCOME_SCREEN_MS);
       } else if (mode === "login") {
         const r = await window.api.auth.login({ username: username.trim(), password });
         if ("error" in r) return setError(r.error);
@@ -116,6 +139,23 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
     } finally {
       setImporting(false);
     }
+  }
+
+  if (showWelcome) {
+    // KHÔNG dùng AuthShell ở đây — không hiện logo nữa, chỉ nền trôi (AuthBackground variant="welcome")
+    // + đúng chữ "WELCOME" (mép hiện dần trái→phải + fade, xem .welcome-heading trong index.css — tách
+    // từng ký tự nhìn giật/khó chịu nên bỏ).
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-base-900 px-4">
+        <AuthBackground variant="welcome" />
+        <h1
+          className="welcome-heading relative z-10 bg-gradient-to-r from-gold-500 via-gold-400 to-teal-400 bg-clip-text text-center font-display text-7xl font-extrabold tracking-tight text-transparent"
+          style={{ animationDuration: `${HEADING_ANIM_MS}ms` }}
+        >
+          WELCOME
+        </h1>
+      </div>
+    );
   }
 
   if (loose) {
@@ -157,7 +197,7 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
 
   const title = {
     welcome: "Welcome to Lucky Draw Studio",
-    createAdmin: "Create Admin Account",
+    createAdmin: "Set up your administrator account",
     login: "Sign in",
     reset: "Reset admin password",
   }[mode];
@@ -169,7 +209,7 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
   }[mode];
   const submitLabel = {
     welcome: busy ? "Checking..." : "Continue",
-    createAdmin: busy ? "Creating..." : "Create account",
+    createAdmin: busy ? "Creating account..." : "Create account",
     login: busy ? "Signing in..." : "Sign in",
     reset: busy ? "Saving..." : "Set new password",
   }[mode];
@@ -179,12 +219,10 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
       {/* key = mode → đổi bước là mount lại khối này, chạy animation trượt vào (login-step-in, index.css). */}
       <div key={mode} className={mode === "createAdmin" ? "login-step-in" : ""}>
         {mode === "welcome" ? (
-          <div className="text-center">
-            <p className="text-sm text-base-400">Welcome to</p>
-            <h1 className="font-display text-2xl font-semibold text-base-100">Lucky Draw Studio</h1>
-          </div>
+          <h1 className="text-center font-display text-3xl font-semibold text-base-100">Activate your workspace</h1>
         ) : (
-          <h1 className="text-center font-display text-xl font-semibold text-base-100">{title}</h1>
+          // Cỡ chữ khớp với màn Access Code (text-3xl) — đồng bộ kích thước giữa các bước của auth flow.
+          <h1 className="text-center font-display text-3xl font-semibold text-base-100">{title}</h1>
         )}
         {subtitle && <p className="mt-1.5 text-center text-xs text-base-400">{subtitle}</p>}
 
@@ -196,10 +234,10 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 onKeyDown={onEnter}
-                placeholder="Access Code"
+                placeholder={mode === "welcome" ? "Enter your access code to get started" : "Access Code"}
                 aria-label="Access Code"
                 autoFocus
-                className={`${inputClass} ${mode === "welcome" ? "py-2.5 text-center" : ""}`}
+                className={`${inputClass} ${mode === "welcome" ? "text-center" : ""}`}
               />
             </div>
           )}
@@ -216,35 +254,41 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
             />
           )}
           {mode !== "welcome" && (
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={onEnter}
-              placeholder={mode === "login" ? "Password" : "New password (at least 8 characters)"}
-              aria-label={mode === "login" ? "Password" : "New password"}
-              autoFocus={mode === "login" && !!username}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={onEnter}
+                placeholder={mode === "login" ? "Password" : "New password (at least 8 characters)"}
+                aria-label={mode === "login" ? "Password" : "New password"}
+                autoFocus={mode === "login" && !!username}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                className={`${inputClass} pr-11`}
+              />
+              <EyeToggleButton visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+            </div>
           )}
           {needsConfirm && (
-            <input
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              onKeyDown={onEnter}
-              placeholder="Confirm password"
-              aria-label="Confirm password"
-              autoComplete="new-password"
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type={showConfirm ? "text" : "password"}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                onKeyDown={onEnter}
+                placeholder="Confirm password"
+                aria-label="Confirm password"
+                autoComplete="new-password"
+                className={`${inputClass} pr-11`}
+              />
+              <EyeToggleButton visible={showConfirm} onToggle={() => setShowConfirm((v) => !v)} />
+            </div>
           )}
         </div>
 
         {notice && <p className="mt-3 text-center text-sm text-teal-500">{notice}</p>}
 
-        <Button onClick={submit} disabled={!canSubmit} className="mt-4 w-full">
+        <Button onClick={submit} disabled={!canSubmit} size="lg" className="mt-4 w-full">
           {submitLabel}
         </Button>
         {/* Lỗi (vd sai Access Code) hiện NGAY DƯỚI nút bấm. */}
@@ -266,4 +310,29 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
 }
 
 const inputClass =
-  "w-full rounded-md border border-base-700 bg-base-950 px-3 py-2 text-sm text-base-100 outline-none placeholder:text-base-500 focus:border-gold-500";
+  "w-full rounded-lg border border-base-700 bg-base-950 px-4 py-3 text-base text-base-100 outline-none placeholder:text-base-500 focus:border-gold-500";
+
+// Icon con mắt show/hide mật khẩu — tabIndex=-1 để Tab không dừng ở đây (đi thẳng qua input kế tiếp).
+function EyeToggleButton({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      tabIndex={-1}
+      aria-label={visible ? "Hide password" : "Show password"}
+      className="absolute inset-y-0 right-0 flex items-center px-3 text-base-500 hover:text-base-300"
+    >
+      {visible ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+          <path d="M3 3l18 18" />
+          <path d="M10.6 10.6a3 3 0 0 0 4.24 4.24M9.47 5.11A10.6 10.6 0 0 1 12 4.85c7 0 10.5 7 10.5 7a13.2 13.2 0 0 1-3.17 4.14M6.6 6.73C3.88 8.46 1.5 12 1.5 12s3.5 7 10.5 7a10.5 10.5 0 0 0 3.1-.47" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+          <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )}
+    </button>
+  );
+}
