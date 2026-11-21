@@ -423,6 +423,10 @@ export interface AccountRow {
   disabled: boolean;
   online: boolean;
   lastSeen: string | null;
+  sessionCount: number;
+  deletedCount: number;
+  storageBytes: number;
+  lastSyncedAt: string | null;
 }
 
 function requireLoggedIn(): StoredSession {
@@ -446,6 +450,42 @@ export function listAccounts(): Promise<AuthResult<{ accounts: AccountRow[] }>> 
   return guard(async () => {
     const s = requireLoggedIn();
     const res = await call(s.workerUrl, s.sessionToken, "/v1/accounts");
+    return res.json();
+  });
+}
+
+export interface AdminSessionRow {
+  sessionId: string;
+  sessionName: string;
+  status: "active" | "deleted";
+  deletedAt: string | null;
+  lastSyncedAt: string;
+  modifiedAt: string;
+  participantCount: number;
+  appVersion: string;
+  versions: number;
+  latestSize: number;
+  totalSize: number;
+}
+
+/** Admin xem MỌI session (còn hiện + đã xoá hình thức) của 1 account kèm tình trạng, dung lượng cloud. */
+export function listAccountSessions(accountId: string): Promise<AuthResult<{ sessions: AdminSessionRow[] }>> {
+  return guard(async () => {
+    const s = requireLoggedIn();
+    const res = await call(s.workerUrl, s.sessionToken, `/v1/accounts/${encodeURIComponent(accountId)}/sessions`);
+    return res.json();
+  });
+}
+
+/** Admin khôi phục 1 session đã xoá — gỡ dấu xoá, máy của account đó tự tải về ở lần đồng bộ kế tiếp. */
+export function restoreDeletedSession(params: { accountId: string; sessionId: string }): Promise<AuthResult<{ ok: true }>> {
+  return guard(async () => {
+    const s = requireLoggedIn();
+    const res = await call(s.workerUrl, s.sessionToken, `/v1/accounts/${encodeURIComponent(params.accountId)}/restore-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: params.sessionId }),
+    });
     return res.json();
   });
 }
