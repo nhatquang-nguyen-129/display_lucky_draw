@@ -53,10 +53,47 @@ body {
 .auth-blob {
   animation: auth-blob-drift 22s ease-in-out infinite alternate;
 }
+
+/* Riêng màn Welcome (AuthBackground variant="welcome") — trôi XA + RÕ hẳn, kiểu bong bóng lơ lửng: biên
+   độ di chuyển lớn (tới ~140px), nhiều mốc đổi hướng KHÔNG đối xứng (không phải lặp lại 1 chiều) để
+   không có cảm giác "qua lại" máy móc. Mỗi đốm 1 animation-duration khác hẳn nhau (set inline ở
+   AuthShell.tsx, 9s/11s/14s) nên không đồng bộ — cộng với 5 mốc lệch pha, trong ~3s màn Welcome hiển
+   thị gần như không bao giờ thấy lặp y hệt. */
+@keyframes welcome-blob-float {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.9; }
+  20%  { transform: translate(100px, -75px) scale(1.2); opacity: 1; }
+  40%  { transform: translate(-70px, 55px) scale(0.88); opacity: 0.75; }
+  60%  { transform: translate(80px, 95px) scale(1.15); opacity: 1; }
+  80%  { transform: translate(-95px, -45px) scale(0.92); opacity: 0.85; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.9; }
+}
+.welcome-blob {
+  animation-name: welcome-blob-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Màn Welcome sau khi tạo admin thành công (Login.tsx) — "WELCOME" hiện NGUYÊN KHỐI (không tách ký tự,
+   tách ra nhìn giật) bằng mép hiện dần trái→phải (clip-path) + fade cùng lúc. */
+@keyframes welcome-heading-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+.welcome-heading {
+  animation-name: welcome-heading-in;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auth-blob,
+  .welcome-blob,
   .login-step-in,
-  .login-shake {
+  .login-shake,
+  .welcome-heading {
     animation: none;
+    opacity: 1;
+    transform: none;
+    clip-path: none;
   }
 }
