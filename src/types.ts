@@ -134,6 +134,23 @@ export interface SessionFileInfo {
   mtimeMs: number;
 }
 
+// 1 session của 1 account, admin xem trong Settings → Accounts → Sessions (lấy từ metadata trên cloud,
+// không mở nội dung). "deleted" = account đó đã xoá trong app — chỉ là xoá hình thức, dữ liệu vẫn còn,
+// admin khôi phục được.
+export interface AdminSessionRow {
+  sessionId: string;
+  sessionName: string;
+  status: "active" | "deleted";
+  deletedAt: string | null; // ISO
+  lastSyncedAt: string; // ISO — lần đẩy lên cloud gần nhất
+  modifiedAt: string; // ISO — lần sửa gần nhất trên máy (theo bản mới nhất)
+  participantCount: number;
+  appVersion: string; // phiên bản app đã đẩy bản mới nhất
+  versions: number; // số bản đang giữ trên cloud (tối đa 10)
+  latestSize: number; // byte — bản mới nhất
+  totalSize: number; // byte — mọi bản đang giữ (dung lượng thật trên R2)
+}
+
 export interface AccountRow {
   accountId: string;
   name: string;
@@ -143,6 +160,10 @@ export interface AccountRow {
   disabled: boolean;
   online: boolean;
   lastSeen: string | null;
+  sessionCount: number; // session còn hiện với account (không tính đã xoá)
+  deletedCount: number; // session đã xoá hình thức (vẫn trên cloud)
+  storageBytes: number; // dung lượng thật trên cloud — mọi bản đang giữ, kể cả session đã xoá
+  lastSyncedAt: string | null; // ISO — lần đồng bộ gần nhất của account
 }
 
 export interface DrawResultRow {
@@ -272,8 +293,6 @@ declare global {
         // Session đã bị Delete (data/.trash/, khác Close) — xem RestoreModal.tsx.
         listTrash: () => Promise<TrashEntry[]>;
         restoreFromTrash: (data: { file: string }) => Promise<void>;
-        // Xoá vĩnh viễn khỏi data/.trash/ — KHÔNG còn đường lấy lại, khác restoreFromTrash.
-        permanentlyDelete: (data: { file: string }) => Promise<void>;
         // "Close" (nút ×) — chỉ ẩn khỏi sessions:list, KHÁC "Delete" (sessions:delete, chuyển vào trash).
         setClosed: (data: { id: string; closed: boolean }) => Promise<void>;
         // Kéo-thả đổi thứ tự tab — ids = mọi tab đang hiện theo thứ tự mới, lưu ở data/.tab-order.json.
@@ -303,6 +322,9 @@ declare global {
         listAccounts: () => Promise<AuthResult<{ accounts: AccountRow[] }>>;
         // Admin đặt mật khẩu mới cho 1 account (team quên mật khẩu).
         resetAccountPassword: (data: { accountId: string; password: string }) => Promise<AuthResult<{ ok: true }>>;
+        // Admin: mọi session của 1 account (tình trạng, dung lượng cloud) + khôi phục session đã xoá hình thức.
+        listAccountSessions: (accountId: string) => Promise<AuthResult<{ sessions: AdminSessionRow[] }>>;
+        restoreDeletedSession: (data: { accountId: string; sessionId: string }) => Promise<AuthResult<{ ok: true }>>;
         // Nhả khoá phiên của account đó NGAY, không cần đợi 90s nguội.
         forceLogoutAccount: (accountId: string) => Promise<AuthResult<{ ok: true }>>;
         setAccountDisabled: (data: { accountId: string; disabled: boolean }) => Promise<AuthResult<{ ok: true; disabled: boolean }>>;
