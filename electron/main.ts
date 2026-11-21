@@ -15,7 +15,6 @@ import {
   listSessionFiles,
   listSessions,
   listTrash,
-  permanentlyDelete,
   renameSession,
   resolveConflict,
   keepBothConflict,
@@ -155,6 +154,13 @@ function createMainWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
+
+  // Mỗi lần trang tải xong (mở app, reload sau Log out) — trả focus bàn phím về nội dung trang. Trên
+  // Windows, sau hộp thoại native (confirm/alert) hoặc reload, Electron đôi khi để trang mất focus: màn
+  // Sign in hiện ra nhưng không gõ được vào ô nhập cho tới khi cửa sổ được focus lại.
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) mainWindow.webContents.focus();
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -724,7 +730,6 @@ ipcMain.handle("sessions:restoreFromTrash", (_e, data: { file: string }) => {
   void cloudSync.syncAll();
   return target;
 });
-ipcMain.handle("sessions:permanentlyDelete", (_e, data: { file: string }) => permanentlyDelete(data.file));
 
 // Account/Auth — đăng nhập qua Cloudflare Worker (cloud/worker/), thay mô hình Space ẩn danh cũ. Lời
 // gọi network DUY NHẤT trong app vẫn như trước (xem electron/auth.ts + electron/cloudSync.ts), chỉ
@@ -750,6 +755,9 @@ ipcMain.handle("sync:all", () => cloudSync.syncAll());
 ipcMain.handle("auth:createAccount", (_e, data: { username: string; password: string }) => auth.createAccount(data));
 ipcMain.handle("auth:listAccounts", () => auth.listAccounts());
 ipcMain.handle("auth:resetAccountPassword", (_e, data: { accountId: string; password: string }) => auth.resetAccountPassword(data));
+// Admin: mọi session của 1 account (kèm tình trạng, dung lượng cloud) + khôi phục session đã xoá hình thức.
+ipcMain.handle("auth:listAccountSessions", (_e, accountId: string) => auth.listAccountSessions(accountId));
+ipcMain.handle("auth:restoreDeletedSession", (_e, data: { accountId: string; sessionId: string }) => auth.restoreDeletedSession(data));
 ipcMain.handle("auth:forceLogoutAccount", (_e, accountId: string) => auth.forceLogoutAccount(accountId));
 ipcMain.handle("auth:setAccountDisabled", (_e, data: { accountId: string; disabled: boolean }) =>
   auth.setAccountDisabled(data.accountId, data.disabled)
