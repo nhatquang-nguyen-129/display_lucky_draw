@@ -27,6 +27,10 @@ cũ, không có migration tự động — xem mục "Migration từ Space cũ" 
   Builder / Data Editor / Present, khi chuyển tab, login và thoát app. Mỗi lần đều **kiểm tra bản trên
   cloud trước**: cloud mới hơn thì tải về, cả 2 cùng đổi thì giữ cả 2 (bản máy này thành session
   "(this computer)") — không bao giờ âm thầm đè bản mới hơn.
+- Đồng bộ **không tốn request thừa** (mục tiêu: cloud gần realtime nhất mà không lãng phí): trong lúc
+  đang đăng nhập, session không sửa gì thì chuyển tab/đóng cửa sổ không gọi mạng; có sửa thì đẩy thẳng
+  (Worker tự kiểm tra phiên bản), bớt 1 request mỗi lần; Worker liệt kê thư mục 1 lần thay vì 2 khi hoàn
+  tất upload.
 - Xoá session = **xoá hình thức**: session ẩn khỏi account đó (không hiện ở Open, máy khác không tải lại),
   dữ liệu vẫn còn trên cloud. Account tự Restore từ Trash được; admin xem + khôi phục session đã xoá của
   từng account ở Settings → Accounts (chọn account → **View Session**). Bỏ nút xoá vĩnh viễn (Delete) trong hộp thoại
@@ -36,7 +40,8 @@ cũ, không có migration tự động — xem mục "Migration từ Space cũ" 
 - Trạng thái đồng bộ trên tab: đám mây có mũi tên chạy lên = đang đồng bộ, chấm than đỏ = lỗi (sẽ tự thử lại).
 - Thoát app khi còn session chưa đồng bộ: thử 5 giây, chưa xong thì hỏi **Wait / Quit anyway**.
 - App giờ **bắt buộc có mạng** — đổi khỏi định vị "100% offline" trước đây (quyết định kiến trúc đã
-  duyệt). Mở app không có mạng → màn **No internet connection** (Retry, không phải nhập lại mã). Mất mạng
+  duyệt). Mở app không có mạng → màn **No internet connection** (Retry). **Thoát app = đăng xuất**: lần mở sau
+  luôn phải đăng nhập lại (app crash/tắt ngang thì lần mở sau tự nhả khoá cũ, đăng nhập lại được ngay). Mất mạng
   lúc đang dùng KHÔNG tự đăng xuất/đóng cửa sổ nào — hiện popup **Reconnecting...** (không hiện trên cửa
   sổ Present đang chiếu); chỉ đăng xuất khi bị máy khác chiếm/Force logout/Disable, server lỗi tạm thời
   không làm đăng xuất.
