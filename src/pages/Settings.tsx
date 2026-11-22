@@ -4,7 +4,7 @@ import Modal from "@/components/Modal";
 import { BusyIndicator } from "@/components/Spinner";
 
 // Trang Settings (sidebar) — app-wide, dùng chung cho mọi session trên máy này. Account đang login +
-// Log out giờ nằm ở TabBar.tsx (cạnh Open/Restore), KHÔNG còn card riêng ở đây. Admin thấy ĐÚNG 1 khung
+// Log out giờ nằm dưới cùng menu trái (Sidebar.tsx), KHÔNG còn card riêng ở đây. Admin thấy ĐÚNG 1 khung
 // — quản lý mọi account (tạo mới bằng username/password, đặt lại mật khẩu, force logout, disable); tài
 // khoản thường không có gì để cấu hình ở trang này. Mở session/đổi tab nằm ở nút "Open" trên TabBar
 // (SessionsModal.tsx). Xem docs/architecture/cloud-sync.md.
