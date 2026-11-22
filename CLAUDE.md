@@ -6,7 +6,7 @@ Hướng dẫn cho Claude Code khi làm việc trong repo này.
 
 Lucky Draw Studio — app desktop Electron chạy quay số trúng thưởng cho sự kiện. Dữ liệu lưu SQLite cục bộ (participant/prize/draw/landing vẫn chạy trên 1 file `.db` local để nhanh, `better-sqlite3` đồng bộ — không phải mọi thao tác cần mạng). Mỗi "phiên quay số" là 1 tab kiểu Chrome, độc lập hoàn toàn về participants/prizes với nhau, gắn vào 1 **account** đã đăng nhập.
 
-App dùng mô hình **account đăng nhập, BẮT BUỘC có mạng lúc login + để đồng bộ nền** — KHÔNG còn "100% offline" như trước (quyết định kiến trúc đã duyệt, xem `docs/architecture/cloud-sync.md`). Lần đầu mở app (Worker chưa có admin) hiện màn **Activate**: Access Code (= secret `ADMIN_TOKEN` của Worker) + tạo admin; đã kích hoạt thì mọi máy chỉ thấy màn đăng nhập **username/password** (quên mật khẩu admin → Access Code đặt lại; tài khoản team do admin tạo/đặt lại mật khẩu trong Settings → Accounts, `src/pages/Settings.tsx`). Chỉ **1 thiết bị đăng nhập hoạt động tại 1 thời điểm** (khoá phiên độc quyền + heartbeat phía Cloudflare Worker, `cloud/worker/`). Đăng nhập xong, `data/` của máy tự trỏ sang thư mục riêng của account đó (`electron/db.ts`'s `switchAccount()`) và đồng bộ cloud **tự động theo điểm chốt** (`electron/cloudSync.ts`): mọi IPC ghi dữ liệu chỉ `markDirty`, đồng bộ thật chạy khi Confirm/edit-delete ở cửa sổ chính/đóng cửa sổ Builder-Data Editor-Present/chuyển tab/login/thoát app — mỗi lần đồng bộ kiểm tra phiên bản cloud (`baseVersion`) trước, không bao giờ đè bản mới hơn. IPC ghi dữ liệu MỚI phải gọi `touched(e, sessionId)` ở cuối handler (`main.ts`). Không còn nút Push/Pull tay, không còn Space ẩn danh/Read-Write code cũ. Mở app không có mạng → màn "No internet connection" (không vào được app); mất mạng lúc đang dùng KHÔNG tự đăng xuất/đóng cửa sổ nào (chỉ hiện popup "Reconnecting...", không hiện ở cửa sổ Present); chỉ bị đăng xuất khi server trả 401/403 (`auth:revoked`). Bản dev dùng Worker `dev` + `userData` riêng (`electron/config/cloudEnv.ts`). Xem `docs/architecture/cloud-sync.md` cho đầy đủ: route Worker, R2 layout, điểm chốt đồng bộ, lưu session local qua `safeStorage`, quản lý account (admin).
+App dùng mô hình **account đăng nhập, BẮT BUỘC có mạng lúc login + để đồng bộ nền** — KHÔNG còn "100% offline" như trước (quyết định kiến trúc đã duyệt, xem `docs/architecture/cloud-sync.md`). Lần đầu mở app (Worker chưa có admin) hiện màn **Activate**: Access Code (= secret `ADMIN_TOKEN` của Worker) + tạo admin; đã kích hoạt thì mọi máy chỉ thấy màn đăng nhập **username/password** (quên mật khẩu admin → Access Code đặt lại; tài khoản team do admin tạo/đặt lại mật khẩu trong Settings → Accounts, `src/pages/Settings.tsx`). Chỉ **1 thiết bị đăng nhập hoạt động tại 1 thời điểm** (khoá phiên độc quyền + heartbeat phía Cloudflare Worker, `cloud/worker/`). Đăng nhập xong, `data/` của máy tự trỏ sang thư mục riêng của account đó (`electron/db.ts`'s `switchAccount()`) và đồng bộ cloud **tự động theo điểm chốt** (`electron/cloudSync.ts`) — **mục tiêu: cloud gần realtime nhất có thể so với app, không tốn request thừa, không làm app chờ mạng** (mọi thay đổi về đồng bộ đánh giá theo độ trễ / số request / dung lượng mỗi lần đẩy — xem mục "Mục tiêu" + "Lộ trình tối ưu" trong `docs/architecture/cloud-sync.md`): mọi IPC ghi dữ liệu chỉ `markDirty`, đồng bộ thật chạy khi Confirm/edit-delete ở cửa sổ chính/đóng cửa sổ Builder-Data Editor-Present/chuyển tab/login/thoát app — mỗi lần đồng bộ kiểm tra phiên bản cloud (`baseVersion`) trước, không bao giờ đè bản mới hơn. IPC ghi dữ liệu MỚI phải gọi `touched(e, sessionId)` ở cuối handler (`main.ts`). Không còn nút Push/Pull tay, không còn Space ẩn danh/Read-Write code cũ. Thoát app = đăng xuất (`auth.logoutOnQuit` sau khi đẩy nốt dữ liệu) — mở app luôn phải đăng nhập lại. Mở app không có mạng → màn "No internet connection" (không vào được app); mất mạng lúc đang dùng KHÔNG tự đăng xuất/đóng cửa sổ nào (chỉ hiện popup "Reconnecting...", không hiện ở cửa sổ Present); chỉ bị đăng xuất khi server trả 401/403 (`auth:revoked`). Bản dev dùng Worker `dev` + `userData` riêng (`electron/config/cloudEnv.ts`). Xem `docs/architecture/cloud-sync.md` cho đầy đủ: route Worker, R2 layout, điểm chốt đồng bộ, lưu session local qua `safeStorage`, quản lý account (admin).
 
 Stack: Electron + Vite + React + TypeScript + better-sqlite3 + Tailwind CSS.
 
@@ -100,6 +100,64 @@ participantFields.ts` cần export thêm 1 set tên core field (hoặc tái dùn
 file, đổi thành `export`) để `main.ts` dùng khi prune.
 
 ## TODO — plan đang dang dở (xoá mục này sau khi làm xong)
+
+**[NHẮC CHỦ DỰ ÁN ĐẦU MỖI PHIÊN LÀM VIỆC cho tới khi xong — 2026-11-22] Tách ảnh/video thành asset
+riêng trên R2 để cloud gần realtime.** Chủ dự án muốn làm TỪ TỪ theo từng giai đoạn bên dưới — mỗi
+phiên chỉ làm 1 giai đoạn, xong hỏi lại rồi mới sang giai đoạn kế. Plan đã viết, CHƯA duyệt chi tiết
+(đọc lại + xác nhận với chủ dự án trước khi code giai đoạn 1).
+
+Vì sao: mỗi lần Confirm đang đẩy NGUYÊN file session ~13MB (đo `HCM-BE-BO-Final`: video bảng `media`
+5,5MB + ảnh base64 trong `landing_config` 4,1MB + `prizes.display_image` 2,2MB + participants 1,1MB,
+`draw_results` chỉ vài KB) → mạng upload ~3Mbps mất 30–40s/lần. Tách xong còn ~1MB/lần. Bối cảnh đầy đủ:
+`docs/architecture/cloud-sync.md` mục "Mục tiêu" + "Lộ trình tối ưu".
+
+Hướng đã chọn — **tách ở TẦNG ĐỒNG BỘ, không đổi cách lưu local**: file `.db` trên máy GIỮ NGUYÊN
+(video vẫn BLOB trong `media`, ảnh vẫn data URL trong JSON) → KHÔNG đổi schema local, KHÔNG migration,
+KHÔNG sửa renderer/Landing/Prize/Present/Lucky Wheel (Wheel đã chốt production). Chỉ bản chụp gửi lên
+cloud là bản "nhẹ":
+- **Push** (`cloudSync.ts`, nên tách module mới `electron/cloudAssets.ts`): `VACUUM INTO` bản chụp
+  như hiện tại → mở bản chụp → (1) `media.data` thay bằng blob rỗng, (2) duyệt JSON `landing_config` +
+  `prizes.display_image` (+ `image_path` nếu là data URL), mọi chuỗi `data:` dài > ~16KB thay bằng
+  `"cloudasset:<sha256>"` → ghi danh sách vào bảng mới CHỈ có trong bản chụp `_cloud_assets(sha256,
+  mime, size, ...)` → `VACUUM` lại cho nhỏ. Asset nào cloud chưa có → upload TRƯỚC, đủ hết mới upload
+  `.db` (thiếu asset = Landing thiếu ảnh sau khi Pull). Nhớ sha đã upload trong `.sync-state.json`
+  (`uploadedAssets`) để khỏi hỏi lại; `media` id không bao giờ đổi nội dung → cache sha theo id.
+- **Pull** (`downloadVersion`/`syncAll`): tải `.db` nhẹ → đọc `_cloud_assets` → tải asset còn thiếu
+  vào cache `data/accounts/<id>/.assets/<sha>` → ghi ngược lại (rehydrate) vào đúng chỗ → xoá bảng
+  `_cloud_assets` → mới `replaceSessionFile` (nguyên tử: không bao giờ có file local thiếu ảnh). File
+  cloud cũ không có `_cloud_assets` (bản đầy đủ từ trước) → dùng nguyên như hiện tại (tương thích ngược).
+- `baseHash`/sha256 metadata tính trên bản NHẸ (cùng nội dung → cùng bản nhẹ → cùng hash).
+- **Worker**: `POST /v1/assets/check {hashes}` → trả hash còn thiếu; upload asset dùng lại luồng
+  multipart sẵn có với key `accounts/<id>/assets/<sha256>` (video tới 500MB); `GET /v1/assets/:sha`;
+  `listAccounts`/`listAccountSessions` cộng thêm dung lượng prefix `assets/`. Chưa cần dọn asset mồ côi
+  (soft delete vẫn giữ mọi bản — làm sau nếu storage thành vấn đề).
+- Lưu ý: app bản cũ (1.4.x) Pull bản nhẹ sẽ thiếu ảnh — prod chưa phát hành nên chấp nhận được, nhưng
+  phải ghi rõ trong CHANGELOG/release là mọi máy phải lên bản mới cùng lúc.
+
+Giai đoạn (mỗi giai đoạn 1 phiên, xong thì đánh ✅ ở đây):
+1. Worker: route asset + thống kê dung lượng + test local (`wrangler dev`) + deploy dev.
+2. App: `cloudAssets.ts` (dehydrate/rehydrate + cache + thứ tự asset-trước-db), test bằng session thật
+   (copy file `.db` của account dev, KHÔNG sửa bản gốc): đo dung lượng bản nhẹ, Push → Pull máy sạch →
+   so sánh nội dung giống hệt bản gốc, Landing/Present hiển thị đủ ảnh/video.
+3. Gần realtime: `touched()` trong `main.ts` cho Landing Builder/Data Editor cũng `syncSoon` (gom dài hơn,
+   vd 5s) thay vì chờ đóng cửa sổ; cân nhắc đẩy cả `draw:pick`. Cập nhật bảng điểm chốt trong
+   `cloud-sync.md`.
+   - **3b (phần phụ, tuỳ chọn — chủ dự án muốn có, CHƯA chốt (a)/(b), hỏi lại trước khi làm): bỏ nút
+     Save → tự lưu + tự đồng bộ** ở Landing Builder (`LandingBuilderWindow.tsx` `handleSave`) và Data
+     Editor (`DataEditorModal.tsx`, hiện đã tự lưu sau 20s `AUTOSAVE_DELAY_MS` + nút Save). Giữ nguyên
+     Undo/Redo (lịch sử trong bộ nhớ cửa sổ, không phụ thuộc Save — Undo sau khi đã lưu chỉ là 1 thay đổi
+     mới, tự lưu tiếp; đóng cửa sổ thì mất lịch sử như hiện tại). Đổi "Discard all unsaved changes" thành
+     "Revert to when opened" (hoặc bỏ); sửa các cảnh báo Data Editor kiểu "can't be undone after Save".
+     **Rủi ro chính:** Present tự đọc lại landing từ DB định kỳ (`PresentMode.tsx` `CONFIG_POLL_MS`) —
+     hiện nút Save đóng vai "phát hành", tự lưu sẽ đưa thao tác đang sửa dở lên màn LED trước khán giả.
+     Hướng xử lý: **(a, đề xuất)** chỉ tự lưu khi session KHÔNG có cửa sổ Present nào đang mở, đang chiếu
+     thì Builder quay về nút Save/"Publish" (không đổi DB); **(b)** tách bản nháp (tự lưu + đồng bộ) và bản
+     đang chiếu (chỉ đổi khi Publish) — an toàn nhất nhưng đổi schema, cần migration. Phải làm SAU giai
+     đoạn 2 (không thì mỗi lần tự lưu đẩy ~13MB).
+4. Lịch sử theo thời gian trên Worker (10 bản gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất.
+5. (Tuỳ chọn) Xác thực Worker 3 lần đọc R2/request → 1.
+Xong hết: cập nhật `docs/architecture/cloud-sync.md` (Lộ trình, bảng chi phí, R2 layout), `CHANGELOG.md`,
+xoá mục này.
 
 **[HOÃN — 2026-10-02]** Đã làm giải pháp tạm component "Frame" (`outputFrame`,
 xem `docs/landing/output-frame.md`) vì sát giờ sự kiện, canvas vẫn 1920×1080. Plan bên dưới giữ lại để làm sau.
