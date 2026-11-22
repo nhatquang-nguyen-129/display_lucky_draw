@@ -1,14 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/context/SessionContext";
 import { Session } from "@/types";
 import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
 import SessionLockMenu from "./SessionLockMenu";
 import RestoreModal from "./RestoreModal";
 import SessionsModal from "./SessionsModal";
-import Modal from "./Modal";
-import Button from "./Button";
-import { BusyIndicator } from "./Spinner";
 import CloudSyncIcon from "./CloudSyncIcon";
+import TabListMenu from "./TabListMenu";
 import { SYNC_STATUS_LABEL, useSyncStatuses } from "@/lib/syncStatus";
 import { SyncStatus } from "@/types";
 
@@ -52,23 +50,12 @@ export default function TabBar() {
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
   const addingRef = useRef(false);
   const syncStatuses = useSyncStatuses();
-  const [loggingOut, setLoggingOut] = useState(false);
-  // Popup xác nhận Log out trong app — KHÔNG dùng window.confirm(): trên Windows, sau khi hộp thoại native
-  // của trình duyệt đóng, Electron hay làm trang mất focus bàn phím → màn Sign in hiện ra nhưng không gõ
-  // được vào ô Username/Password cho tới khi cửa sổ được focus lại (lỗi đã gặp thật).
-  const [confirmLogout, setConfirmLogout] = useState(false);
 
-  async function handleLogout() {
-    setLoggingOut(true);
-    try {
-      await window.api.auth.logout();
-      // Reload — gọn nhất để toàn bộ renderer (SessionContext, danh sách tab...) khởi động lại sạch
-      // theo trạng thái "chưa đăng nhập" (<RequireAuth> trong src/App.tsx sẽ tự hiện màn Login).
-      window.location.reload();
-    } finally {
-      setLoggingOut(false);
-    }
-  }
+  // Tab đang chọn luôn nằm trong vùng nhìn thấy (vd vừa chọn 1 tab bị khuất qua nút ⌄ danh sách tab).
+  useEffect(() => {
+    if (!activeSessionId) return;
+    document.querySelector(`[data-tab-id="${activeSessionId}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeSessionId]);
 
   function handleContextMenu(e: React.MouseEvent, s: Session) {
     e.preventDefault();
@@ -153,7 +140,14 @@ export default function TabBar() {
 
   return (
     <div className="flex items-end gap-1 border-b border-base-800 bg-base-900 px-2 pt-2">
-      <div className="flex flex-1 items-end gap-1 overflow-x-auto">
+      {/* Hàng tab: vẫn cuộn ngang được (lăn chuột, kéo-thả, nút ⌄ danh sách tab) nhưng ẨN thanh cuộn
+          (no-scrollbar, index.css). Lăn chuột dọc được đổi thành cuộn ngang cho tiện. */}
+      <div
+        className="no-scrollbar flex flex-1 items-end gap-1 overflow-x-auto"
+        onWheel={(e) => {
+          if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+        }}
+      >
         {sessions.map((s) => {
           const active = s.id === activeSessionId;
           // Tab Full lock: không đổi tên (double-click) — main.ts chặn sessions:rename bằng
@@ -164,6 +158,7 @@ export default function TabBar() {
           return (
             <div
               key={s.id}
+              data-tab-id={s.id}
               // Kéo-thả đổi thứ tự (HTML5 drag & drop, không thêm thư viện). Không kéo được lúc đang sửa
               // tên tab đó (để bôi đen chữ trong ô nhập). Tab khoá vẫn kéo được — chỉ là thứ tự hiển thị.
               draggable={editingId !== s.id}
@@ -258,18 +253,22 @@ export default function TabBar() {
           </button>
         )}
       </div>
-      {/* Danh sách mọi session của account đang login (kể cả tab Closed) để mở thẳng 1 hoặc nhiều session
-          vào app — đồng bộ cloud tự động theo điểm chốt, modal chỉ còn để MỞ session. Xem
-          SessionsModal.tsx. */}
+      {/* Nút ⌄ — danh sách mọi tab đang mở (có ô tìm), nhảy thẳng tới tab bị khuất khi hàng tab tràn. */}
+      <TabListMenu sessions={sessions} activeSessionId={activeSessionId} onSelect={switchTab} />
+
+      <span className="mb-2 h-4 w-px shrink-0 bg-base-700" />
+
+      {/* Open/Restore thu gọn thành nút chỉ có icon (rê chuột hiện tên) — nhường chỗ cho hàng tab.
+          Open: danh sách mọi session của account (kể cả tab Closed), xem SessionsModal.tsx. */}
       <button
         onClick={() => setShowSessions(true)}
-        title="Open a session — reopen a closed tab, pull one from the cloud, or browse for a file"
-        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+        title="Open a session"
+        aria-label="Open a session"
+        className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         </svg>
-        Open
       </button>
 
       {/* Session bị Delete (menu chuột phải, khác Close/nút ×) nằm ở data/.trash/, chưa xoá hẳn — xem
@@ -277,38 +276,14 @@ export default function TabBar() {
       <button
         onClick={() => setShowRestore(true)}
         title="Restore a deleted session"
-        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+        aria-label="Restore a deleted session"
+        className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
           <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" />
         </svg>
-        Restore
       </button>
 
-      {/* Đăng xuất account đang dùng trên máy này — xem electron/auth.ts. Đặt cạnh Open/Restore (trước
-          đây nằm trong Settings → Account, đã bỏ card đó, Settings giờ chỉ còn quản lý Accounts). */}
-      <button
-        onClick={() => setConfirmLogout(true)}
-        disabled={loggingOut}
-        title="Log out of this account"
-        className="mb-1 flex h-7 shrink-0 items-center rounded-md px-2 text-xs text-danger-500 hover:bg-danger-500/10 disabled:opacity-50"
-      >
-        Log out
-      </button>
-
-      {confirmLogout && (
-        <Modal open title="Log out?" onClose={() => !loggingOut && setConfirmLogout(false)} maxWidth="max-w-[16rem]" hideCloseButton>
-          <div className="flex justify-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setConfirmLogout(false)} disabled={loggingOut} className="w-24">
-              Cancel
-            </Button>
-            <Button variant="danger" size="sm" onClick={handleLogout} disabled={loggingOut} className="w-24">
-              Log out
-            </Button>
-          </div>
-          <BusyIndicator busy={loggingOut} />
-        </Modal>
-      )}
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
       {showSessions && <SessionsModal onClose={() => setShowSessions(false)} />}
 
