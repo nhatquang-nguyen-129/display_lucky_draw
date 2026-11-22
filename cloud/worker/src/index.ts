@@ -725,9 +725,11 @@ async function completeUpload(request: Request, env: Env, auth: Auth, uploadId: 
   // `baseVersion` undefined = client cũ không gửi → bỏ qua check (tương thích ngược).
   const sessionDir = key.slice(0, key.lastIndexOf("/") + 1);
   const sessionId = sessionDir.split("/").filter(Boolean).pop() ?? "";
+  // Liệt kê thư mục session ĐÚNG 1 lần, dùng cho cả kiểm tra baseVersion lẫn dọn bản cũ (trước đây 2 lần).
+  const existingKeys = (await listAll(env, sessionDir)).map((o) => o.key);
   if (body.baseVersion !== undefined) {
-    const latest = await latestVersion(env, auth.accountId, sessionId);
-    const latestName = latest ? latest.key.slice(sessionDir.length) : null;
+    const versionNames = existingKeys.map((k) => k.slice(sessionDir.length)).filter((n) => VERSION_FILE_PATTERN.test(n));
+    const latestName = versionNames.length ? versionNames.reduce((x, y) => (x > y ? x : y)) : null;
     if (latestName !== (body.baseVersion ?? null)) {
       await env.BUCKET.resumeMultipartUpload(key, uploadId).abort().catch(() => undefined);
       throw new HttpError(409, "Session changed on another device");
@@ -735,7 +737,7 @@ async function completeUpload(request: Request, env: Env, auth: Auth, uploadId: 
   }
 
   const obj = await env.BUCKET.resumeMultipartUpload(key, uploadId).complete(body.parts);
-  await pruneOldVersions(env, key);
+  await pruneOldVersions(env, [...existingKeys, key]);
   // Push thành công = session đang "sống" — gỡ dấu đã xoá nếu có (vd vừa Restore từ Trash).
   await env.BUCKET.delete(`${deletedPrefix(auth.accountId)}${sessionId}.json`);
   return json({ key, size: obj.size, version: key.slice(sessionDir.length) });
@@ -747,11 +749,9 @@ async function abortUpload(request: Request, env: Env, auth: Auth, uploadId: str
   return json({ ok: true });
 }
 
-async function pruneOldVersions(env: Env, newKey: string) {
-  const sessionPrefix = newKey.slice(0, newKey.lastIndexOf("/") + 1);
-  const objects = await listAll(env, sessionPrefix);
-  const old = objects
-    .map((o) => o.key)
+// `keys` = mọi key trong thư mục session SAU khi vừa ghi bản mới (listing lấy sẵn ở completeUpload + key mới).
+async function pruneOldVersions(env: Env, keys: string[]) {
+  const old = [...new Set(keys)]
     .sort()
     .reverse()
     .slice(KEEP_VERSIONS);
