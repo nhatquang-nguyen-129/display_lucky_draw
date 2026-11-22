@@ -9,7 +9,11 @@
  * - Điểm chốt gọi `syncSoon(sid)`/`syncSession(sid)`: thao tác edit/delete ở cửa sổ chính, Confirm người
  *   trúng, đóng cửa sổ Landing Builder/Data Editor/Present, đóng/chuyển tab (xem main.ts). Login + có mạng
  *   lại → `syncAll()`. Thoát app → `flushDirty()`.
- * - Mỗi lần đồng bộ = KIỂM TRA rồi mới làm: hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head`, rất
+ * - Mục tiêu: cloud gần realtime nhất có thể với app — mọi thay đổi lên cloud sớm nhất, nhưng KHÔNG tốn
+ *   request thừa. Trong lúc đang đăng nhập (khoá phiên độc quyền): không sửa → 0 request; có sửa → Push
+ *   thẳng (Worker tự kiểm tra baseVersion). Bảng dưới chỉ chạy đầy đủ ở syncAll (login/có mạng lại),
+ *   session chưa có trạng thái, hoặc khi Push nhận 409.
+ * - Kiểm tra đầy đủ: hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head`, rất
  *   nhẹ), so với `baseVersion` (bản cloud mà file local được dựng từ đó):
  *     local không sửa + cloud không đổi → không làm gì
  *     local có sửa    + cloud không đổi → Push (Worker kiểm tra lại baseVersion, lệch thì 409)
@@ -398,6 +402,24 @@ async function runSync(sessionId: string, prefetchedHead?: CloudHead): Promise<v
 
 async function doSync(sessionId: string, prefetchedHead?: CloudHead): Promise<void> {
   const st = getState(sessionId);
+
+  // Đường nhanh (điểm chốt trong lúc đang đăng nhập, không có head lấy sẵn từ syncAll): khoá phiên độc
+  // quyền đảm bảo trong phiên này KHÔNG máy nào khác ghi được lên account → cloud chỉ đổi do chính máy
+  // này. Nên:
+  // - không sửa gì → không gọi mạng (thay đổi từ máy khác đã được bắt ở syncAll lúc login);
+  // - có sửa → Push thẳng, không hỏi head trước — bước complete của Worker tự kiểm tra lại baseVersion,
+  //   lệch (409, rất hiếm: vd bucket bị xoá/sửa tay) thì rơi xuống luồng đầy đủ bên dưới với head mới.
+  // Session chưa có trạng thái (vừa tạo/Duplicate/Restore) vẫn đi luồng đầy đủ.
+  if (!prefetchedHead && loadState().sessions[sessionId]) {
+    if (!st.dirty) return;
+    try {
+      await pushOne(sessionId, st);
+      return;
+    } catch (err) {
+      if (!(err instanceof CloudError && err.status === 409)) throw err;
+    }
+  }
+
   const head = prefetchedHead ?? (await fetchHead(sessionId));
 
   // Đã bị xoá trên cloud (từ máy khác) và máy này không có gì chưa đẩy → theo luôn: chuyển vào Trash.
