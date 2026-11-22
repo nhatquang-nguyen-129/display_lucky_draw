@@ -219,39 +219,42 @@ async function fetchActivated(): Promise<boolean | null> {
   }
 }
 
+// Nhả khoá phiên trên Worker (POST /v1/logout) nhưng không bao giờ chờ quá `timeoutMs` — dùng lúc thoát
+// app và lúc mở app dọn phiên sót lại. Lỗi/mất mạng bỏ qua (khoá tự nguội sau 90s không heartbeat).
+async function releaseLock(session: StoredSession, timeoutMs: number): Promise<void> {
+  await Promise.race([
+    call(session.workerUrl, session.sessionToken, "/v1/logout", { method: "POST" }).catch(() => undefined),
+    new Promise((r) => setTimeout(r, timeoutMs)),
+  ]);
+}
+
 async function doInit(): Promise<void> {
   startupOffline = false;
+  // Mỗi lần mở app LUÔN bắt đăng nhập lại (thoát app = đăng xuất, xem logoutOnQuit). Phiên đã lưu chỉ còn
+  // tồn tại khi lần trước app bị crash/tắt ngang không kịp đăng xuất — nhả khoá của phiên đó trên Worker
+  // (để đăng nhập lại ngay không bị báo "đang đăng nhập ở máy khác" trong 90s) rồi xoá. Phiên của môi
+  // trường khác (dev/prod) thì chỉ xoá, không gọi nhầm Worker.
   const saved = loadSavedSession();
-  // Phiên lưu từ môi trường khác (vd đăng nhập ở bản dev cũ, trước khi tách userData) — bỏ qua, không
-  // bao giờ để bản prod nói chuyện với Worker dev hay ngược lại.
-  if (saved && saved.workerUrl !== WORKER_URL) clearSavedSession();
-  const usable = saved && saved.workerUrl === WORKER_URL ? saved : null;
+  if (saved) {
+    if (saved.workerUrl === WORKER_URL) await releaseLock(saved, 3_000);
+    clearSavedSession();
+  }
 
-  if (!usable) {
-    switchAccount(null);
-    const result = await fetchActivated();
-    startupOffline = result === null;
-    activated = result ?? true;
-    return;
-  }
-  try {
-    await call(usable.workerUrl, usable.sessionToken, "/v1/heartbeat", { method: "POST" });
-    current = usable;
-    switchAccount(usable.accountId);
-    setAuthContext({ workerUrl: usable.workerUrl, sessionToken: usable.sessionToken, accountId: usable.accountId });
-    startHeartbeat();
-    void syncAll();
-  } catch (err) {
-    switchAccount(null);
-    if (isSessionInvalid(err)) {
-      // Phiên hết hiệu lực thật (bị chiếm/Force logout/Disable) → bắt login lại.
-      clearSavedSession();
-    } else {
-      // Mất mạng/server lỗi lúc mở app — app bắt buộc có mạng nên chặn ở màn "No internet connection",
-      // nhưng GIỮ phiên đã lưu để Retry vào lại được ngay.
-      startupOffline = true;
-    }
-  }
+  switchAccount(null);
+  const result = await fetchActivated();
+  startupOffline = result === null;
+  activated = result ?? true;
+}
+
+/** Thoát app (main.ts, sau khi đã đẩy nốt phần chưa đồng bộ) — đăng xuất thật: nhả khoá trên Worker (tối
+ *  đa `timeoutMs`), xoá phiên đã lưu. Lần mở app sau luôn hiện màn đăng nhập. */
+export async function logoutOnQuit(timeoutMs: number): Promise<void> {
+  const session = current;
+  stopHeartbeat();
+  current = null;
+  setAuthContext(null);
+  if (session) await releaseLock(session, timeoutMs);
+  clearSavedSession();
 }
 
 function ensureInit(): Promise<void> {

@@ -112,7 +112,8 @@ export interface LoginResult extends PublicSession {
 }
 
 // Cổng vào app (<RequireAuth> trong src/App.tsx) — app bắt buộc có mạng: "offline" = không tới được
-// server lúc mở app → màn "No internet connection" + Retry (phiên đã lưu vẫn giữ).
+// server lúc mở app → màn "No internet connection" + Retry. Thoát app = đăng xuất, nên mở app luôn về
+// "logged-out" (xem auth.ts doInit/logoutOnQuit).
 // "logged-out" kèm `activated`: false = chưa có admin → màn Access Code (kích hoạt lần đầu); true = màn
 // đăng nhập username/password.
 export type StartupStatus =

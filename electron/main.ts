@@ -143,8 +143,11 @@ function createMainWindow() {
     if (quitting) return;
     e.preventDefault();
     quitting = true;
+    // Thoát app = đăng xuất: đẩy nốt phần chưa đồng bộ (confirmQuit) rồi nhả khoá phiên + xoá phiên đã lưu
+    // (auth.logoutOnQuit, tối đa 3 giây) — lần mở sau luôn phải đăng nhập lại.
     void confirmQuit()
       .catch(() => true)
+      .then(() => auth.logoutOnQuit(3_000).catch(() => undefined))
       .then(() => mainWindow?.close());
   });
 
