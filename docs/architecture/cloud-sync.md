@@ -92,7 +92,7 @@ cần đợi 90 giây, dùng khi 1 máy bị treo/mất mà team cần vào acco
 
 - **Mở app lúc không có mạng** (hoặc Worker lỗi 5xx): không vào được app — màn **"No internet
   connection"** + nút Retry (`src/App.tsx` `<RequireAuth>`, `auth.getStartupStatus()`/`retryStartup()`).
-  Phiên đã lưu KHÔNG bị xoá — có mạng lại bấm Retry là vào luôn, không phải nhập lại mã.
+  Có mạng lại bấm Retry → về màn đăng nhập (mỗi lần mở app đều phải đăng nhập, xem mục dưới).
 - **Mất mạng khi ĐANG dùng app KHÔNG tự đăng xuất** (`startHeartbeat()`): hiện **popup "Connection lost —
   reconnecting..."** (`ReconnectPopup.tsx`) ở cửa sổ chính, Landing Builder và Data Editor — KHÔNG hiện ở
   cửa sổ Present (đang chiếu lên LED, khán giả sẽ thấy; main.ts không gửi sự kiện tới cửa sổ đó). Quay số
@@ -118,6 +118,22 @@ Import thì file được CHUYỂN (không copy) vào thư mục account, Skip t
 
 ## Đồng bộ theo điểm chốt (`electron/cloudSync.ts`)
 
+### Mục tiêu (định hướng cho mọi thay đổi về đồng bộ)
+
+**Cloud phải gần realtime nhất có thể so với app** — đó là mục đích của Cloud Sync: máy hỏng/mất giữa sự
+kiện thì máy khác login vào account là có ngay dữ liệu mới nhất (đặc biệt kết quả Confirm). Đi kèm 2 ràng
+buộc:
+
+1. **Không tốn request thừa** — request nào không thể làm thay đổi kết quả thì bỏ (xem "Đường nhanh" bên
+   dưới).
+2. **Không làm chậm/giật app** — file SQLite local vẫn là nguồn chạy chính; mạng chậm thì cloud trễ hơn,
+   app không bao giờ phải chờ mạng.
+
+Bất kỳ đề xuất mới nào (thêm điểm chốt, đổi debounce, đổi định dạng upload) đều đánh giá theo 3 tiêu chí:
+độ trễ dữ liệu lên cloud, số request, dung lượng mỗi lần đẩy. Các điểm chốt "chỉ đánh dấu, đồng bộ lúc
+đóng cửa sổ" (Builder/Data Editor, Draw chưa Confirm) hiện tồn tại **chỉ vì mỗi lần đẩy đang là nguyên
+file nặng** — xem "Lộ trình" ở cuối mục; giảm được dung lượng đẩy thì chuyển dần sang đồng bộ ngay.
+
 Không đồng bộ liên tục, không có nút Push/Pull tay. Mọi IPC ghi dữ liệu chỉ **đánh dấu "chưa đồng bộ"**
 (`markDirty`, không gọi mạng); đồng bộ thật chạy ở các **điểm chốt**:
 
@@ -127,8 +143,8 @@ Không đồng bộ liên tục, không có nút Push/Pull tay. Mọi IPC ghi d�
 | **Confirm** (`draw:commit`), **Reset session** | Đồng bộ ngay (gom 1,5s) — kết quả trúng giải chính thức luôn lên cloud |
 | Edit/delete ở **cửa sổ chính**: prize, participant (kể cả Import/Replace), tạo/đổi tên/khoá/duplicate/đóng tab session | Đồng bộ ngay (gom 1,5s) |
 | Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor** (mỗi lần Save, đổi Data type, import video) | Chỉ đánh dấu → đồng bộ **1 lần lúc đóng cửa sổ** |
-| **Đóng** Landing Builder / Data Editor / Present | Đồng bộ session đó |
-| **Chuyển tab** (`sync:session` từ `SessionContext.tsx`) | Session vừa rời + kiểm tra session vừa mở |
+| **Đóng** Landing Builder / Data Editor / Present | Đồng bộ session đó (không sửa gì thì 0 request) |
+| **Chuyển tab** (`sync:session` từ `SessionContext.tsx`) | Session vừa rời + session vừa mở — chỉ gọi mạng nếu session đó có sửa chưa đẩy |
 | **Xoá** session | Xoá HÌNH THỨC: file local vào Trash + gửi dấu "đã xoá" lên cloud (`POST /v1/sessions/:id/delete`). Dữ liệu (mọi bản lưu) vẫn còn nguyên trên cloud — xem mục "Xoá session = xoá hình thức" |
 | **Login**, mở app với phiên đã lưu, **có mạng lại** | `syncAll()` — toàn bộ account |
 | **Thoát app**, Logout | `flushDirty()` — xem bên dưới |
@@ -142,11 +158,22 @@ dirty }` — `baseVersion` = bản cloud (tên file `<pushedAtMs>.db`) mà file 
 đổi schema SQLite. Session chưa có trong file này (vừa tạo, Duplicate, Restore, Import file rời) = "chưa
 đồng bộ".
 
-Hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head` — rất nhẹ, không tải file), rồi:
+**Đường nhanh — mọi điểm chốt trong lúc đang đăng nhập** (`doSync` không có head lấy sẵn): khoá phiên
+độc quyền đảm bảo trong phiên này KHÔNG máy nào khác ghi được lên account → cloud chỉ đổi do chính máy
+này, nên:
+
+- Không sửa → **0 request** (thay đổi từ máy khác đã được bắt ở `syncAll()` lúc login).
+- Có sửa → **Push thẳng**, không hỏi head trước — bước complete của Worker tự kiểm tra `baseVersion`.
+  Nhận 409 (rất hiếm, vd bucket bị sửa tay) → rơi xuống kiểm tra đầy đủ bên dưới với head mới.
+- Sửa xong nội dung y hệt bản đã đẩy (`baseHash`) → xoá cờ, không upload.
+
+**Kiểm tra đầy đủ** — chỉ chạy ở `syncAll()` (login/có mạng lại/Refresh/Restore), session chưa có
+trạng thái, hoặc sau 409. Hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head` — rất nhẹ, không tải
+file; `syncAll` dùng luôn listing, không gọi head), rồi:
 
 | Local | Cloud so với `baseVersion` | Làm gì |
 |---|---|---|
-| Không sửa | Không đổi | Không làm gì (trường hợp phổ biến nhất — 1 request nhỏ) |
+| Không sửa | Không đổi | Không làm gì |
 | Có sửa | Không đổi | **Push** — Worker kiểm tra lại `baseVersion` ở bước complete, lệch thì 409 |
 | Không sửa | Mới hơn | **Pull** — thay file local (`replaceSessionFile`, bản cũ sao lưu vào `.backup/`) |
 | Có sửa | Mới hơn (hoặc Push nhận 409) | **Giữ cả 2**: bản local tách thành session mới "<tên> (this computer)" (`forkSessionAsLocalCopy`), bản cloud giữ id gốc. Không bao giờ âm thầm đè |
@@ -162,9 +189,36 @@ Hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head` — rất nhẹ, kh
 - Lỗi mạng → giữ nguyên cờ, chấm trên tab báo lỗi, thử lại ở điểm chốt kế tiếp hoặc khi có mạng lại.
 - `syncAll()` dùng luôn listing `GET /v1/sessions` (kèm `deleted[]`), tải về session cloud mà máy chưa có
   (trừ session đã bị xoá), rồi chạy đúng quy tắc trên cho từng session local.
-- **Lưu ý hiệu năng**: mỗi lần đồng bộ vẫn chụp + đẩy NGUYÊN file (`VACUUM INTO`). Session nhúng video
-  lớn (bảng `media`) thì mỗi Confirm là 1 lần upload nặng — nếu thực tế thấy chậm thì cân nhắc tách media
-  hoặc chỉ đẩy riêng kết quả Confirm (đã bàn, chưa làm).
+
+### Chi phí 1 lần đồng bộ (request lên Worker)
+
+| Việc | Request | Ghi chú |
+|---|---|---|
+| Điểm chốt, không sửa | 0 | Đường nhanh |
+| Push 1 session | 2 + số phần 5MB | Mở upload, từng phần, complete (Worker liệt kê thư mục session ĐÚNG 1 lần cho cả kiểm tra `baseVersion` lẫn dọn bản cũ) |
+| Pull 1 session | 2 | head + tải |
+| `syncAll()` | 1 + số session phải tải về | Listing `GET /v1/sessions` |
+| Heartbeat | 1 / 30 giây | Giữ khoá phiên |
+
+### Lộ trình tối ưu (theo thứ tự ưu tiên)
+
+Đo thực tế (2026-11-22, session `HCM-BE-BO-Final`): file ~17,5MB, dữ liệu thật ~13MB = video bảng
+`media` 5,5MB + ảnh nhúng trong `landing_config` 4,1MB + ảnh prize 2,2MB + participants 1,1MB, còn
+`draw_results` chỉ vài KB. → **Mỗi Confirm đẩy ~13MB dù chỉ đổi vài trăm byte** — đây là nút thắt
+chính của mục tiêu "gần realtime" (mạng upload ~3Mbps mất 30–40 giây/lần), không phải số request.
+
+1. ✅ **Bỏ request thừa** (đã làm 2026-11-22): đường nhanh ở trên + Worker gộp 2 lần liệt kê thư mục
+   ở bước complete thành 1.
+2. **Tách ảnh/video ra asset riêng trên R2** (đặt tên theo hash, upload 1 lần, dùng lại giữa các bản và
+   giữa các session) — bản `.db` gửi lên chỉ giữ tham chiếu → mỗi lần đẩy còn ~1MB. Tách ở TẦNG ĐỒNG BỘ
+   (file local giữ nguyên, không đổi schema/renderer). **Chưa làm — plan chi tiết + các giai đoạn nằm ở
+   mục TODO trong `CLAUDE.md`.**
+3. Sau bước 2: chuyển Landing Builder/Data Editor sang **đồng bộ ngay** (gom vài giây) thay vì chờ đóng
+   cửa sổ, cân nhắc đẩy cả Draw chưa Confirm.
+4. Giữ lịch sử theo thời gian (vd 10 bản gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất — hiện 10
+   lần Confirm là xoay hết, không lùi được về trước sự kiện.
+5. Xác thực Worker đọc 3 object R2/request (token → active session → account) — rút còn 1 để giảm độ trễ
+   mỗi request (~20–50ms), không ảnh hưởng chi phí.
 
 ### Thoát app / Logout (`flushDirty`)
 
@@ -208,6 +262,14 @@ Xoá session trong app (chuột phải tab → Delete) KHÔNG xoá dữ liệu t
   cũng không xoá hẳn. Muốn xoá hẳn dữ liệu trên cloud thì dọn tay qua Cloudflare Dashboard.
 
 ## Lưu session đăng nhập local — `safeStorage`, KHÔNG phải `data/`
+
+**Thoát app = đăng xuất.** Đóng cửa sổ chính: đẩy nốt phần chưa đồng bộ (`flushDirty`, hộp thoại Wait/Quit
+anyway nếu cần) rồi `auth.logoutOnQuit()` — nhả khoá phiên trên Worker (`POST /v1/logout`, tối đa 3 giây) và
+xoá phiên đã lưu. Mở app lần sau LUÔN hiện màn đăng nhập (không tự đăng nhập lại).
+
+Phiên vẫn được lưu trong lúc app đang chạy, CHỈ để phòng app bị crash/tắt ngang (không kịp đăng xuất): lần
+mở sau `doInit()` dùng phiên sót lại đó gọi `/v1/logout` nhả khoá cũ (không phải chờ 90s mới đăng nhập lại
+được trên chính máy này) rồi xoá, vẫn hiện màn đăng nhập. Phiên của môi trường khác (dev/prod) chỉ xoá.
 
 `electron/auth.ts` lưu `{workerUrl, accountId, sessionToken}` mã hoá qua Electron `safeStorage` (OS
 keychain) ở `app.getPath("userData")/auth-session.enc` — **CỐ Ý KHÔNG** theo pattern
@@ -344,7 +406,8 @@ tự xoá) nhưng không còn route nào đọc lại được qua app — dọn
 | `electron/main.ts` | IPC `auth:*`/`sync:*`, `touched()` ở cuối các handler ghi dữ liệu, đồng bộ lúc đóng cửa sổ phụ, hộp thoại Wait/Quit anyway |
 | `src/App.tsx` | `<RequireAuth>`: đã đăng nhập / màn Login / màn "No internet connection" |
 | `src/pages/Login.tsx` | Màn đăng nhập (chỉ gửi mã, địa chỉ Worker do main process chọn) |
-| `src/pages/Settings.tsx` | Card Account (Log out) + bảng quản lý Accounts (chỉ admin) |
+| `src/pages/Settings.tsx` | Bảng quản lý Accounts (chỉ admin) |
+| `src/components/Sidebar.tsx` | Nút Log out dưới cùng menu trái (popup xác nhận trong app) |
 | `src/components/SessionsModal.tsx` | Liệt kê + mở session của account đang login, trạng thái đồng bộ từng session, Refresh = `sync:all` |
 | `src/components/ReconnectPopup.tsx` | Popup mất kết nối — dùng ở `Layout.tsx`, `LandingBuilderWindow.tsx`, `DataEditorWindow.tsx` (KHÔNG ở Present) |
 | `src/components/TabBar.tsx`, `src/lib/syncStatus.ts` | Chấm trạng thái đồng bộ trên tab |
