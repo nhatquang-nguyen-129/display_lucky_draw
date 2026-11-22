@@ -116,3 +116,11 @@ body {
     animation: none;
   }
 }
+
+/* Ẩn thanh cuộn nhưng vẫn cuộn được (hàng tab ở TabBar.tsx — đã có nút ⌄ danh sách tab để nhảy tới tab khuất). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
