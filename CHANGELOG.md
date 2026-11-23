@@ -4,6 +4,24 @@ Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục m
 
 ## [Unreleased]
 
+### Cloud Sync — tách ảnh/video thành asset riêng, gần realtime hơn
+
+Chi tiết: `docs/architecture/cloud-sync.md` mục "Lộ trình tối ưu" + `electron/cloudAssets.ts`. File
+`.db` lưu local KHÔNG đổi gì (không migration, không đổi schema) — chỉ bản chụp gửi lên cloud nhẹ hơn.
+
+- Ảnh/video (bảng `media`, `landing_config`, `prizes.display_image`/`image_path`) tách khỏi file đẩy
+  lên cloud, lưu riêng theo nội dung (content-addressed) trên R2 — đo thật 1 session: **giảm 88% dung
+  lượng mỗi lần đồng bộ** (~13MB → ~1,5MB). Asset không đổi nội dung thì không upload/kiểm tra lại ở
+  lần đồng bộ sau.
+- Upload asset lớn (video) **chịu được mạng rớt giữa chừng** — resume đúng phần còn thiếu ở lần đồng bộ
+  sau, không upload lại từ đầu.
+- **Landing Builder/Data Editor giờ tự đồng bộ trong lúc đang mở** (trước đây chỉ đồng bộ lúc đóng cửa
+  sổ) — debounce ngắn (~2,5s) cho sửa text/vị trí, dài hơn (~9s) cho Save có ảnh/video mới. Trừ khi
+  session đang có cửa sổ **Present** mở (đang chiếu cho khán giả) — giữ nguyên hành vi cũ (chỉ đồng bộ
+  lúc đóng cửa sổ), tránh đưa thao tác sửa dở lên màn hình trước khán giả.
+- Bấm **Draw** (trước Confirm) giờ cũng tự đồng bộ (gom lại) — lịch sử pick kịp lên cloud sớm hơn kể cả
+  khi app gặp sự cố ngay sau khi pick.
+
 ### Cloud Sync — đổi hẳn sang mô hình Account đăng nhập, tự động Push/Pull
 
 Chi tiết: `docs/architecture/cloud-sync.md`. **Thay đổi kiến trúc** (không tương thích ngược với Space
