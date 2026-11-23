@@ -63,7 +63,14 @@ export default function Sidebar() {
       </button>
 
       {confirmLogout && (
-        <Modal open title="Log out?" onClose={() => !loggingOut && setConfirmLogout(false)} maxWidth="max-w-[16rem]" hideCloseButton>
+        <Modal
+          open
+          title="Log out?"
+          onClose={() => !loggingOut && setConfirmLogout(false)}
+          maxWidth="max-w-[16rem]"
+          hideCloseButton
+          scroll={false}
+        >
           <div className="flex justify-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => setConfirmLogout(false)} disabled={loggingOut} className="w-24">
               Cancel
