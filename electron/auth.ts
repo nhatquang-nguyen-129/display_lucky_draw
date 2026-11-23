@@ -31,6 +31,12 @@ import { WORKER_URL } from "./config/cloudEnv";
 const SESSION_FILE = path.join(app.getPath("userData"), "auth-session.enc");
 const DEVICE_ID_FILE = path.join(app.getPath("userData"), "device-id.txt");
 const HEARTBEAT_INTERVAL_MS = 30_000;
+// Request bình thường (Worker + R2) chỉ mất ~20-50ms xử lý nội bộ — quá mốc này gần như chắc chắn là
+// mạng kẹt (gói tin rớt âm thầm, không phải lỗi kết nối rõ ràng khiến fetch tự throw ngay). Không có
+// mốc này thì fetch có thể treo rất lâu trước khi tự báo lỗi, UI chỉ thấy vòng xoay vô thời hạn. Khớp
+// với các mốc thông báo "Connecting.../Still connecting.../Taking longer..." ở Login.tsx (10s/30s) — 1
+// phút là giới hạn tối đa chấp nhận được cho 1 lần đăng nhập, dù mạng chậm cỡ nào.
+const REQUEST_TIMEOUT_MS = 60_000;
 
 interface StoredSession {
   workerUrl: string;
@@ -105,10 +111,15 @@ function normalizeWorkerUrl(raw: string): string | null {
 async function call(workerUrl: string, token: string | null, pathname: string, init: RequestInit = {}): Promise<Response> {
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(`${workerUrl}${pathname}`, { ...init, headers });
+    res = await fetch(`${workerUrl}${pathname}`, { ...init, headers, signal: timeout });
   } catch (err) {
+    if (timeout.aborted) {
+      console.warn(`[auth] ${pathname} timed out after ${REQUEST_TIMEOUT_MS}ms`);
+      throw new AuthNetworkError("The server took too long to respond. Check your connection and try again.");
+    }
     console.warn("[auth] network error:", err);
     throw new AuthNetworkError("Can't reach the server. Check your internet connection and try again.");
   }
