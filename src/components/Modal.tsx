@@ -7,6 +7,10 @@ interface ModalProps {
   children: ReactNode;
   maxWidth?: string; // vd "max-w-md" (mặc định), "max-w-6xl" cho bảng rộng
   hideCloseButton?: boolean; // ẩn nút × góc trên — dùng khi đáy modal đã có Cancel/Confirm riêng
+  // false cho popup nội dung cố định nhỏ (vd xác nhận Log out) — tắt overflow-y-auto để không bao giờ
+  // hiện thanh cuộn dọc dù chỉ lệch vài px lúc nội dung đổi cao (vd BusyIndicator xuất hiện thêm bên
+  // dưới nút). Mặc định true cho modal có nội dung dài/động thật sự cần cuộn (bảng, danh sách...).
+  scroll?: boolean;
 }
 
 export default function Modal({
@@ -16,6 +20,7 @@ export default function Modal({
   children,
   maxWidth = "max-w-md",
   hideCloseButton = false,
+  scroll = true,
 }: ModalProps) {
   if (!open) return null;
   return (
@@ -39,7 +44,7 @@ export default function Modal({
             </button>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div className={`min-h-0 flex-1 ${scroll ? "overflow-y-auto" : "overflow-hidden"}`}>{children}</div>
       </div>
     </div>
   );
