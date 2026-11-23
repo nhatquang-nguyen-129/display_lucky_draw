@@ -130,19 +130,22 @@ buộc:
    app không bao giờ phải chờ mạng.
 
 Bất kỳ đề xuất mới nào (thêm điểm chốt, đổi debounce, đổi định dạng upload) đều đánh giá theo 3 tiêu chí:
-độ trễ dữ liệu lên cloud, số request, dung lượng mỗi lần đẩy. Các điểm chốt "chỉ đánh dấu, đồng bộ lúc
-đóng cửa sổ" (Builder/Data Editor, Draw chưa Confirm) hiện tồn tại **chỉ vì mỗi lần đẩy đang là nguyên
-file nặng** — xem "Lộ trình" ở cuối mục; giảm được dung lượng đẩy thì chuyển dần sang đồng bộ ngay.
+độ trễ dữ liệu lên cloud, số request, dung lượng mỗi lần đẩy. Ảnh/video đã tách thành asset riêng trên
+R2 (content-addressed, upload 1 lần dùng lại — xem "Lộ trình" ở cuối mục) nên Builder/Data Editor/Draw
+chưa Confirm giờ ĐÃ đồng bộ trong lúc đang mở (không còn chỉ chờ đóng cửa sổ) — điểm chốt "chỉ đánh dấu,
+đồng bộ lúc đóng cửa sổ" CÒN LẠI DUY NHẤT là khi session đang có Present mở (quyết định có chủ đích,
+không phải vì dung lượng — xem bảng dưới).
 
 Không đồng bộ liên tục, không có nút Push/Pull tay. Mọi IPC ghi dữ liệu chỉ **đánh dấu "chưa đồng bộ"**
 (`markDirty`, không gọi mạng); đồng bộ thật chạy ở các **điểm chốt**:
 
 | Điểm chốt | Cách đồng bộ |
 |---|---|
-| Bấm **Draw** (`draw:pick` — ghi 1 dòng `draw_results` chưa Confirm) | Chỉ đánh dấu |
+| Bấm **Draw** (`draw:pick` — ghi 1 dòng `draw_results` chưa Confirm) | Đánh dấu + đồng bộ ngay (gom 1,5s) — redraw liên tiếp tự gộp 1 lần nhờ debounce, không tốn N request; app crash ngay sau pick (trước Confirm) vẫn kịp lên cloud |
 | **Confirm** (`draw:commit`), **Reset session** | Đồng bộ ngay (gom 1,5s) — kết quả trúng giải chính thức luôn lên cloud |
 | Edit/delete ở **cửa sổ chính**: prize, participant (kể cả Import/Replace), tạo/đổi tên/khoá/duplicate/đóng tab session | Đồng bộ ngay (gom 1,5s) |
-| Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor** (mỗi lần Save, đổi Data type, import video) | Chỉ đánh dấu → đồng bộ **1 lần lúc đóng cửa sổ** |
+| Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor**, session **KHÔNG có Present đang mở** (mỗi lần Save, đổi Data type, import video) | Đồng bộ trong lúc đang mở, debounce **thích ứng**: ~2,5s cho Save chỉ đổi text/vị trí, ~9s cho Save có ảnh/video mới/lớn (tránh dehydrate/upload asset nhiều lần nếu Save liên tục lúc đang chỉnh ảnh) |
+| Cùng các IPC trên nhưng session **CÓ Present đang mở** (đang chiếu cho khán giả) | Chỉ đánh dấu → đồng bộ **1 lần lúc đóng** Builder/Data Editor đó (không đưa thao tác sửa dở lên màn LED) |
 | **Đóng** Landing Builder / Data Editor / Present | Đồng bộ session đó (không sửa gì thì 0 request) |
 | **Chuyển tab** (`sync:session` từ `SessionContext.tsx`) | Session vừa rời + session vừa mở — chỉ gọi mạng nếu session đó có sửa chưa đẩy |
 | **Xoá** session | Xoá HÌNH THỨC: file local vào Trash + gửi dấu "đã xoá" lên cloud (`POST /v1/sessions/:id/delete`). Dữ liệu (mọi bản lưu) vẫn còn nguyên trên cloud — xem mục "Xoá session = xoá hình thức" |
@@ -209,12 +212,17 @@ chính của mục tiêu "gần realtime" (mạng upload ~3Mbps mất 30–40 gi
 
 1. ✅ **Bỏ request thừa** (đã làm 2026-11-22): đường nhanh ở trên + Worker gộp 2 lần liệt kê thư mục
    ở bước complete thành 1.
-2. **Tách ảnh/video ra asset riêng trên R2** (đặt tên theo hash, upload 1 lần, dùng lại giữa các bản và
-   giữa các session) — bản `.db` gửi lên chỉ giữ tham chiếu → mỗi lần đẩy còn ~1MB. Tách ở TẦNG ĐỒNG BỘ
-   (file local giữ nguyên, không đổi schema/renderer). **Chưa làm — plan chi tiết + các giai đoạn nằm ở
-   mục TODO trong `CLAUDE.md`.**
-3. Sau bước 2: chuyển Landing Builder/Data Editor sang **đồng bộ ngay** (gom vài giây) thay vì chờ đóng
-   cửa sổ, cân nhắc đẩy cả Draw chưa Confirm.
+2. ✅ **Tách ảnh/video ra asset riêng trên R2** (đặt tên theo hash, upload 1 lần, dùng lại giữa các bản
+   và giữa các session — `accounts/<id>/assets/<sha256>`, xem `electron/cloudAssets.ts`) — bản `.db`
+   gửi lên chỉ giữ tham chiếu `"cloudasset:<sha256>"` → mỗi lần đẩy còn ~1MB (đo thật `HCM-BE-BO-Final`:
+   12,77MB → 1,50MB, giảm 88,3%). Tách ở TẦNG ĐỒNG BỘ — file local giữ nguyên, không đổi schema/renderer.
+   Upload asset resumable theo chunk (mạng rớt giữa chừng → resume đúng phần còn thiếu, không upload lại
+   từ đầu) — quan trọng với video lớn qua mạng sự kiện thường yếu. Chi tiết đủ ở mục TODO trong
+   `CLAUDE.md` (giai đoạn 1–3).
+3. ✅ Sau bước 2: chuyển Landing Builder/Data Editor sang **đồng bộ trong lúc đang mở** (debounce thích
+   ứng ~2,5s/~9s tuỳ có ảnh/video mới hay không — xem bảng điểm chốt ở trên), và Draw chưa Confirm cũng
+   đồng bộ ngay (gom 1,5s) — chỉ còn chờ đóng cửa sổ khi session có Present đang mở (có chủ đích, không
+   phải vì dung lượng).
 4. Giữ lịch sử theo thời gian (vd 10 bản gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất — hiện 10
    lần Confirm là xoay hết, không lùi được về trước sự kiện.
 5. Xác thực Worker đọc 3 object R2/request (token → active session → account) — rút còn 1 để giảm độ trễ
