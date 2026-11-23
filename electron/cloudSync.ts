@@ -42,6 +42,7 @@ import {
   snapshotSession,
   uniquePath,
 } from "./db";
+import { dehydrateForPush, rehydrateAfterPull } from "./cloudAssets";
 
 export interface AuthContext {
   workerUrl: string;
@@ -61,7 +62,7 @@ export function setAuthContext(ctx: AuthContext | null) {
   }
 }
 
-class CloudError extends Error {
+export class CloudError extends Error {
   constructor(message: string, public status?: number) {
     super(message);
   }
@@ -72,7 +73,9 @@ class CloudError extends Error {
 const REQUEST_TIMEOUT_MS = 30_000;
 const UPLOAD_PART_TIMEOUT_MS = 0;
 
-async function call(
+// Export cho electron/cloudAssets.ts (upload/download asset dùng CHUNG cơ chế auth/timeout/retry này,
+// không viết lại) — vẫn chỉ 2 file này gọi network trong toàn app.
+export async function call(
   pathname: string,
   init: RequestInit = {},
   cancelSignal?: AbortSignal,
@@ -169,10 +172,49 @@ function snapshotToBuffer(sessionId: string): { buffer: Buffer; modifiedAt: stri
 
 /* ---------------- Upload (multipart) ---------------- */
 
-// R2 multipart yêu cầu mỗi phần (trừ phần cuối) tối thiểu 5MB.
-const CLIENT_PART_SIZE = 5 * 1024 * 1024;
+// R2 multipart yêu cầu mỗi phần (trừ phần cuối) tối thiểu 5MB. Export cho cloudAssets.ts dùng chung
+// (asset có thể lớn hơn nhiều session .db — vẫn cùng 1 giới hạn phần).
+export const CLIENT_PART_SIZE = 5 * 1024 * 1024;
 const MAX_PART_RETRIES = 3;
 const PART_RETRY_BACKOFF_MS = 5_000;
+
+/** Upload từng phần (PUT /v1/uploads/:uploadId/parts/:n) kèm retry — route Worker tổng quát theo key,
+ *  không quan tâm kind, nên dùng CHUNG cho cả session (.db, gọi từ uploadFile dưới) và asset
+ *  (electron/cloudAssets.ts, gọi từ ngoài file này — export riêng để khỏi viết lại retry/backoff). */
+export async function uploadParts(
+  buffer: Buffer,
+  uploadId: string,
+  uploadKey: string,
+  partSize: number
+): Promise<{ partNumber: number; etag: string }[]> {
+  const keyHeader = { "X-Upload-Key": uploadKey };
+  const base = `/v1/uploads/${encodeURIComponent(uploadId)}`;
+  const parts: { partNumber: number; etag: string }[] = [];
+  for (let offset = 0, n = 1; offset < buffer.length; offset += partSize, n++) {
+    const chunk = new Uint8Array(buffer.subarray(offset, offset + partSize));
+    let res: Response | undefined;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        res = await call(`${base}/parts/${n}`, { method: "PUT", headers: keyHeader, body: chunk }, undefined, UPLOAD_PART_TIMEOUT_MS);
+        break;
+      } catch (err) {
+        const msg = (err as Error).message;
+        const retriable = /timed out|Network error/.test(msg);
+        if (!retriable || attempt >= MAX_PART_RETRIES) throw err;
+        await new Promise((r) => setTimeout(r, attempt * PART_RETRY_BACKOFF_MS));
+      }
+    }
+    parts.push((await res.json()) as { partNumber: number; etag: string });
+  }
+  return parts;
+}
+
+/** Dọn 1 multipart upload dở (lỗi giữa chừng) — best-effort, không throw. Dùng chung session + asset. */
+export async function abortUploadRequest(uploadId: string, uploadKey: string): Promise<void> {
+  await call(`/v1/uploads/${encodeURIComponent(uploadId)}`, { method: "DELETE", headers: { "X-Upload-Key": uploadKey } }).catch(
+    () => undefined
+  );
+}
 
 /** Upload 1 bản mới — `baseVersion` gửi ở bước complete để Worker từ chối (409) nếu cloud đã có bản mới
  *  hơn bản local đang dựa trên. Trả về phiên bản mới (tên file trên cloud). */
@@ -183,35 +225,20 @@ async function uploadFile(buffer: Buffer, meta: Record<string, string>, baseVers
     uploadId: string;
     partSize: number;
   };
-  const keyHeader = { "X-Upload-Key": start.key };
-  const base = `/v1/uploads/${encodeURIComponent(start.uploadId)}`;
   const partSize = Math.min(CLIENT_PART_SIZE, start.partSize);
-
   try {
-    const parts: { partNumber: number; etag: string }[] = [];
-    for (let offset = 0, n = 1; offset < buffer.length; offset += partSize, n++) {
-      const chunk = new Uint8Array(buffer.subarray(offset, offset + partSize));
-      let res: Response | undefined;
-      for (let attempt = 1; ; attempt++) {
-        try {
-          res = await call(`${base}/parts/${n}`, { method: "PUT", headers: keyHeader, body: chunk }, undefined, UPLOAD_PART_TIMEOUT_MS);
-          break;
-        } catch (err) {
-          const msg = (err as Error).message;
-          const retriable = /timed out|Network error/.test(msg);
-          if (!retriable || attempt >= MAX_PART_RETRIES) throw err;
-          await new Promise((r) => setTimeout(r, attempt * PART_RETRY_BACKOFF_MS));
-        }
-      }
-      parts.push((await res.json()) as { partNumber: number; etag: string });
-    }
+    const parts = await uploadParts(buffer, start.uploadId, start.key, partSize);
     const done = (await (
-      await call(`${base}/complete`, { method: "POST", headers: { ...keyHeader, ...json }, body: JSON.stringify({ parts, baseVersion }) })
+      await call(`/v1/uploads/${encodeURIComponent(start.uploadId)}/complete`, {
+        method: "POST",
+        headers: { "X-Upload-Key": start.key, ...json },
+        body: JSON.stringify({ parts, baseVersion }),
+      })
     ).json()) as { key: string; version?: string };
     return done.version ?? done.key.slice(done.key.lastIndexOf("/") + 1);
   } catch (err) {
     // 409 = Worker đã tự abort upload rồi; các lỗi khác tự dọn upload dở.
-    if (!(err instanceof CloudError && err.status === 409)) await call(base, { method: "DELETE", headers: keyHeader }).catch(() => undefined);
+    if (!(err instanceof CloudError && err.status === 409)) await abortUploadRequest(start.uploadId, start.key);
     throw err;
   }
 }
@@ -332,8 +359,9 @@ export function markDirty(sessionId: string): void {
 const SYNC_SOON_MS = 1_500;
 const soonTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Điểm chốt ở cửa sổ chính / Confirm — gom các thao tác liên tiếp (vd xoá nhiều prize) thành 1 lần. */
-export function syncSoon(sessionId: string): void {
+/** Điểm chốt ở cửa sổ chính / Confirm (và từ giai đoạn 4: Landing Builder/Data Editor, debounce dài hơn
+ *  — xem `touched()` trong main.ts) — gom các thao tác liên tiếp (vd xoá nhiều prize) thành 1 lần. */
+export function syncSoon(sessionId: string, debounceMs: number = SYNC_SOON_MS): void {
   if (!authCtx) return;
   const existing = soonTimers.get(sessionId);
   if (existing) clearTimeout(existing);
@@ -342,7 +370,7 @@ export function syncSoon(sessionId: string): void {
     setTimeout(() => {
       soonTimers.delete(sessionId);
       void syncSession(sessionId);
-    }, SYNC_SOON_MS)
+    }, debounceMs)
   );
 }
 
@@ -436,7 +464,8 @@ async function doSync(sessionId: string, prefetchedHead?: CloudHead): Promise<vo
   // Chưa có trạng thái (mất file .sync-state.json, hoặc session có từ trước khi có cơ chế này) mà cloud
   // đã có bản: nội dung local y hệt bản cloud mới nhất thì nhận luôn làm baseVersion, không tách bản thừa.
   if (!loadState().sessions[sessionId] && head.version && head.sha256) {
-    const localHash = contentHash(snapshotToBuffer(sessionId).buffer);
+    // So sánh phải trên bản NHẸ (cloud lưu sha256 của bản nhẹ, không phải file local thật) — xem pushOne.
+    const localHash = contentHash(await dehydrateForPush(snapshotToBuffer(sessionId).buffer));
     if (localHash === head.sha256) {
       setState(sessionId, { baseVersion: head.version, baseHash: localHash, dirty: false });
       return;
@@ -448,7 +477,8 @@ async function doSync(sessionId: string, prefetchedHead?: CloudHead): Promise<vo
   if (!st.dirty) {
     if (cloudChanged && head.version && !isSessionBusy(sessionId)) {
       const { buffer, hash } = await downloadVersion(sessionId, head.version, head.sha256);
-      replaceSessionFile(sessionId, buffer);
+      // hash tính trên bản NHẸ (buffer) ở trên — rehydrate xong mới ghi ra file local thật.
+      replaceSessionFile(sessionId, await rehydrateAfterPull(buffer));
       setState(sessionId, { baseVersion: head.version, baseHash: hash, dirty: false });
       sessionsChangedListener?.();
     }
@@ -482,12 +512,15 @@ async function pushOne(sessionId: string, st: SessionSyncState): Promise<void> {
     db.prepare(`SELECT COUNT(*) AS n FROM participants WHERE session_id = ? AND status != 'removed'`).get(sessionId) as { n: number }
   ).n;
   const { buffer, modifiedAt } = snapshotToBuffer(sessionId);
-  const hash = contentHash(buffer);
+  // Bản NHẸ gửi lên cloud (ảnh/video tách thành asset riêng, xem cloudAssets.ts) — file local KHÔNG đổi
+  // gì, chỉ bản chụp tạm này. baseHash/sha256 metadata trên cloud đều tính trên bản nhẹ này.
+  const lightBuffer = await dehydrateForPush(buffer);
+  const hash = contentHash(lightBuffer);
 
   let version = st.baseVersion;
   if (hash !== st.baseHash || !st.baseVersion) {
     version = await uploadFile(
-      buffer,
+      lightBuffer,
       {
         sessionId,
         sessionName: row.name,
@@ -507,8 +540,9 @@ async function forkAndPull(sessionId: string, head: CloudHead): Promise<void> {
   if (!head.version) return;
   if (isSessionBusy(sessionId)) return; // giữ nguyên cờ, thử lại khi đóng cửa sổ phụ
   const { buffer, hash } = await downloadVersion(sessionId, head.version, head.sha256);
+  const rehydrated = await rehydrateAfterPull(buffer);
   const copyId = forkSessionAsLocalCopy(sessionId);
-  replaceSessionFile(sessionId, buffer);
+  replaceSessionFile(sessionId, rehydrated);
   setState(sessionId, { baseVersion: head.version, baseHash: hash, dirty: false });
   // Bản tách ra chưa có trên cloud (state chưa có → dirty) — đẩy lên luôn.
   markDirty(copyId);
@@ -574,9 +608,10 @@ async function doSyncAll(): Promise<void> {
     if (localIds.has(sessionId) || deletedSet.has(sessionId)) continue;
     try {
       const { buffer, hash } = await downloadVersion(sessionId, v.file, v.sha256);
+      const rehydrated = await rehydrateAfterPull(buffer);
       const dest = uniquePath(DATA_DIR, fileNameFor(v.sessionName || "Session", sessionId));
       const tmp = `${dest}.downloading`;
-      fs.writeFileSync(tmp, buffer);
+      fs.writeFileSync(tmp, rehydrated);
       fs.renameSync(tmp, dest);
       setState(sessionId, { baseVersion: v.file, baseHash: hash, dirty: false });
       added = true;
