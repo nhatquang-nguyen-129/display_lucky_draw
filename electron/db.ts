@@ -524,7 +524,8 @@ function readSessionIds(file: string): { id: string; name: string }[] | null {
     } finally {
       db.close();
     }
-  } catch {
+  } catch (err) {
+    console.warn(`[db] readSessionIds failed for ${file}:`, err);
     return null; // không phải DB hợp lệ / thiếu bảng sessions → bỏ qua
   }
 }
