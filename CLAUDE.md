@@ -101,10 +101,20 @@ file, đổi thành `export`) để `main.ts` dùng khi prune.
 
 ## TODO — plan đang dang dở (xoá mục này sau khi làm xong)
 
-**[NHẮC CHỦ DỰ ÁN ĐẦU MỖI PHIÊN LÀM VIỆC cho tới khi xong — 2026-11-22] Tách ảnh/video thành asset
-riêng trên R2 để cloud gần realtime.** Chủ dự án muốn làm TỪ TỪ theo từng giai đoạn bên dưới — mỗi
-phiên chỉ làm 1 giai đoạn, xong hỏi lại rồi mới sang giai đoạn kế. Plan đã viết, CHƯA duyệt chi tiết
-(đọc lại + xác nhận với chủ dự án trước khi code giai đoạn 1).
+**[2026-11-24] Tách ảnh/video thành asset riêng trên R2 để cloud gần realtime — PHẦN CỐT LÕI (giai đoạn
+0–4) ĐÃ XONG**, không còn cần nhắc đầu phiên nữa. Giai đoạn 5–7 (bên dưới) đã đánh giá là **chưa cần làm
+ngay** — chờ tín hiệu thật rồi mới làm, không phải việc dang dở cần tiếp tục ngay.
+
+**[NHẮC CHỦ DỰ ÁN — chưa làm, xoá dòng này sau khi test xong] Tự tay test hiệu năng giai đoạn 0–4 trong
+app dev thật** (chỉ mới test bằng mock Worker trong bộ nhớ + mock network, chưa test qua UI/network thật) —
+mở DevTools (`Cmd+Option+I`) → tab Network, lọc `workers.dev`, rồi theo checklist: (A1) sửa 1 participant
+ở session có video/ảnh → đồng bộ chỉ đẩy ~1-2MB (không phải ~13MB); (A2) sửa tiếp (ảnh không đổi) → không
+có request `/v1/assets/*` nào; (A3) đổi ảnh trong Builder → đúng 1 lượt `/v1/assets/check`→`uploads`→
+`complete`; (A4) import video lớn, tắt Wi-Fi giữa lúc đang upload `parts`, bật lại → resume đúng phần
+còn thiếu, không upload lại từ đầu; (B1) sửa text trong Builder (không mở Present) → tự đồng bộ ~2-3s
+mà không cần đóng cửa sổ; (B2) mở thêm Present rồi sửa tiếp → KHÔNG tự đồng bộ tới khi đóng Builder;
+(B3) đổi ảnh trong Builder (không mở Present) → tự đồng bộ chậm hơn B1, ~9s; (B4) bấm Draw nhiều lần
+liên tiếp (redraw) → chỉ 1 lượt upload, không phải N lượt.
 
 Vì sao: mỗi lần Confirm đang đẩy NGUYÊN file session ~13MB (đo `HCM-BE-BO-Final`: video bảng `media`
 5,5MB + ảnh base64 trong `landing_config` 4,1MB + `prizes.display_image` 2,2MB + participants 1,1MB,
@@ -115,49 +125,124 @@ Hướng đã chọn — **tách ở TẦNG ĐỒNG BỘ, không đổi cách l�
 (video vẫn BLOB trong `media`, ảnh vẫn data URL trong JSON) → KHÔNG đổi schema local, KHÔNG migration,
 KHÔNG sửa renderer/Landing/Prize/Present/Lucky Wheel (Wheel đã chốt production). Chỉ bản chụp gửi lên
 cloud là bản "nhẹ":
-- **Push** (`cloudSync.ts`, nên tách module mới `electron/cloudAssets.ts`): `VACUUM INTO` bản chụp
-  như hiện tại → mở bản chụp → (1) `media.data` thay bằng blob rỗng, (2) duyệt JSON `landing_config` +
-  `prizes.display_image` (+ `image_path` nếu là data URL), mọi chuỗi `data:` dài > ~16KB thay bằng
-  `"cloudasset:<sha256>"` → ghi danh sách vào bảng mới CHỈ có trong bản chụp `_cloud_assets(sha256,
-  mime, size, ...)` → `VACUUM` lại cho nhỏ. Asset nào cloud chưa có → upload TRƯỚC, đủ hết mới upload
-  `.db` (thiếu asset = Landing thiếu ảnh sau khi Pull). Nhớ sha đã upload trong `.sync-state.json`
-  (`uploadedAssets`) để khỏi hỏi lại; `media` id không bao giờ đổi nội dung → cache sha theo id.
-- **Pull** (`downloadVersion`/`syncAll`): tải `.db` nhẹ → đọc `_cloud_assets` → tải asset còn thiếu
-  vào cache `data/accounts/<id>/.assets/<sha>` → ghi ngược lại (rehydrate) vào đúng chỗ → xoá bảng
-  `_cloud_assets` → mới `replaceSessionFile` (nguyên tử: không bao giờ có file local thiếu ảnh). File
-  cloud cũ không có `_cloud_assets` (bản đầy đủ từ trước) → dùng nguyên như hiện tại (tương thích ngược).
+- **Push** (`electron/cloudAssets.ts`, đã code ở giai đoạn 2): `VACUUM INTO` bản chụp như hiện tại →
+  mở bản chụp → (1) `media.data` thay bằng placeholder `"cloudasset:<sha256>"` (ghi dạng BLOB chứa
+  chuỗi UTF8 đó, không phải blob rỗng — rehydrate nhận diện bằng regex đúng hình dạng), (2) duyệt JSON
+  `landing_config` + `prizes.display_image`/`image_path`, mọi chuỗi `data:` dài > 16KB thay bằng cùng
+  placeholder → ghi danh sách vào bảng mới CHỈ có trong bản chụp `_cloud_assets(sha256, mime, size)` →
+  `VACUUM` lại cho nhỏ (bỏ qua toàn bộ nếu không có gì để tách — khỏi VACUUM thừa). Asset nào cloud
+  chưa có → upload TRƯỚC, đủ hết mới trả bản nhẹ để upload `.db` (thiếu asset = Landing thiếu ảnh sau
+  khi Pull). Cache "asset đã chắc chắn có trên cloud" = sự có mặt của file tại
+  `data/accounts/<id>/.assets/<sha256>` (không phải 1 field riêng trong `.sync-state.json` như bản phác
+  thảo ban đầu — dùng file-tồn-tại làm cờ, đơn giản hơn, cùng 1 cache phục vụ CẢ Push (khỏi hỏi lại
+  `/v1/assets/check`) lẫn Pull (khỏi tải lại) bên dưới.
+- **Pull** (`electron/cloudAssets.ts::rehydrateAfterPull`, chạy ở ĐÚNG 4 điểm cloudSync.ts tải file từ
+  cloud trước khi dùng làm file local thật): tải `.db` nhẹ → đọc `_cloud_assets` → tải HẾT asset còn
+  thiếu vào cache `data/accounts/<id>/.assets/<sha256>` TRƯỚC (1 asset lỗi mạng → throw ngay, KHÔNG
+  rehydrate nửa vời — retry ở điểm chốt kế tiếp) → ghi ngược lại vào đúng chỗ → xoá bảng `_cloud_assets`
+  → trả buffer đầy đủ cho `replaceSessionFile` (nguyên tử: không bao giờ có file local thiếu ảnh). File
+  cloud cũ không có `_cloud_assets` (bản đầy đủ từ trước) → trả về nguyên buffer, không làm gì (tương
+  thích ngược, đã test).
 - `baseHash`/sha256 metadata tính trên bản NHẸ (cùng nội dung → cùng bản nhẹ → cùng hash).
 - **Worker**: `POST /v1/assets/check {hashes}` → trả hash còn thiếu; upload asset dùng lại luồng
   multipart sẵn có với key `accounts/<id>/assets/<sha256>` (video tới 500MB); `GET /v1/assets/:sha`;
-  `listAccounts`/`listAccountSessions` cộng thêm dung lượng prefix `assets/`. Chưa cần dọn asset mồ côi
-  (soft delete vẫn giữ mọi bản — làm sau nếu storage thành vấn đề).
+  `listAccounts`/`listAccountSessions` cộng thêm dung lượng prefix `assets/`. GC asset mồ côi làm ở
+  giai đoạn 6 (reference-counting theo mọi version còn giữ, không xoá ngay khi 1 session hết tham chiếu
+  — xem giai đoạn 6).
 - Lưu ý: app bản cũ (1.4.x) Pull bản nhẹ sẽ thiếu ảnh — prod chưa phát hành nên chấp nhận được, nhưng
   phải ghi rõ trong CHANGELOG/release là mọi máy phải lên bản mới cùng lúc.
 
 Giai đoạn (mỗi giai đoạn 1 phiên, xong thì đánh ✅ ở đây):
-1. Worker: route asset + thống kê dung lượng + test local (`wrangler dev`) + deploy dev.
-2. App: `cloudAssets.ts` (dehydrate/rehydrate + cache + thứ tự asset-trước-db), test bằng session thật
-   (copy file `.db` của account dev, KHÔNG sửa bản gốc): đo dung lượng bản nhẹ, Push → Pull máy sạch →
-   so sánh nội dung giống hệt bản gốc, Landing/Present hiển thị đủ ảnh/video.
-3. Gần realtime: `touched()` trong `main.ts` cho Landing Builder/Data Editor cũng `syncSoon` (gom dài hơn,
-   vd 5s) thay vì chờ đóng cửa sổ; cân nhắc đẩy cả `draw:pick`. Cập nhật bảng điểm chốt trong
-   `cloud-sync.md`.
-   - **3b (phần phụ, tuỳ chọn — chủ dự án muốn có, CHƯA chốt (a)/(b), hỏi lại trước khi làm): bỏ nút
-     Save → tự lưu + tự đồng bộ** ở Landing Builder (`LandingBuilderWindow.tsx` `handleSave`) và Data
-     Editor (`DataEditorModal.tsx`, hiện đã tự lưu sau 20s `AUTOSAVE_DELAY_MS` + nút Save). Giữ nguyên
-     Undo/Redo (lịch sử trong bộ nhớ cửa sổ, không phụ thuộc Save — Undo sau khi đã lưu chỉ là 1 thay đổi
-     mới, tự lưu tiếp; đóng cửa sổ thì mất lịch sử như hiện tại). Đổi "Discard all unsaved changes" thành
-     "Revert to when opened" (hoặc bỏ); sửa các cảnh báo Data Editor kiểu "can't be undone after Save".
-     **Rủi ro chính:** Present tự đọc lại landing từ DB định kỳ (`PresentMode.tsx` `CONFIG_POLL_MS`) —
-     hiện nút Save đóng vai "phát hành", tự lưu sẽ đưa thao tác đang sửa dở lên màn LED trước khán giả.
-     Hướng xử lý: **(a, đề xuất)** chỉ tự lưu khi session KHÔNG có cửa sổ Present nào đang mở, đang chiếu
-     thì Builder quay về nút Save/"Publish" (không đổi DB); **(b)** tách bản nháp (tự lưu + đồng bộ) và bản
-     đang chiếu (chỉ đổi khi Publish) — an toàn nhất nhưng đổi schema, cần migration. Phải làm SAU giai
-     đoạn 2 (không thì mỗi lần tự lưu đẩy ~13MB).
-4. Lịch sử theo thời gian trên Worker (10 bản gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất.
-5. (Tuỳ chọn) Xác thực Worker 3 lần đọc R2/request → 1.
-Xong hết: cập nhật `docs/architecture/cloud-sync.md` (Lộ trình, bảng chi phí, R2 layout), `CHANGELOG.md`,
-xoá mục này.
+0. ✅ **Chốt hướng 3b = (a)** (chỉ tự lưu + tự đồng bộ khi session KHÔNG có cửa sổ Present đang mở; đang
+   chiếu thì Builder/Data Editor quay về nút Save/"Publish" như hiện tại) — quyết định thuần, không code.
+   Lý do chọn (a) thay vì (b) (tách bản nháp/bản chiếu riêng, đổi schema): (b) giải quyết 1 nhu cầu giả
+   định (soạn landing cho lượt sau trong khi lượt này đang chiếu) chưa có bằng chứng người dùng thật cần
+   — thêm schema + migration cho nhu cầu chưa xác nhận đi ngược nguyên tắc "không thêm phức tạp phòng
+   khi cần" ở mục Định hướng công nghệ phía trên. Nâng (a) lên (b) sau vẫn làm được nếu thực tế đòi hỏi.
+1. ✅ Worker: route asset (check/upload/get theo sha256) + thống kê dung lượng — `POST /v1/assets/check`,
+   `POST /v1/assets/uploads` (start, reuse `PUT /v1/uploads/:id/parts/:n` + `DELETE /v1/uploads/:id` sẵn
+   có cho part/abort), `POST /v1/assets/uploads/:id/complete`, `GET /v1/assets/:sha256`; `listAccounts`/
+   `listAccountSessions` cộng thêm dung lượng `assets/`. Test xong bằng `wrangler dev` + R2 local seed
+   (check/start/part/complete/download + mọi trường hợp biên: sha sai, thiếu token, giả mạo account,
+   asset không tồn tại) + deploy `dev` (`dev.lucky-draw-studio.workers.dev`), xác nhận route phản hồi
+   đúng trên Worker dev thật.
+2. ✅ App: `electron/cloudAssets.ts` (dehydrate/rehydrate + cache theo file + thứ tự asset-trước-db),
+   CHƯA có resumable (giai đoạn 3). Refactor nhỏ đi kèm trong `cloudSync.ts`: tách `uploadParts`/
+   `abortUploadRequest`/export `call`/`CLIENT_PART_SIZE` để `cloudAssets.ts` dùng lại đúng cơ chế
+   auth/timeout/retry, không viết lại; 4 điểm gọi dehydrate/rehydrate nối vào `pushOne`, `doSync` (2 chỗ:
+   so khớp hash lúc chưa có trạng thái + nhánh Pull chính), `forkAndPull`, `doSyncAll`.
+   Test bằng session thật (`HCM-BE-BO-Final`, copy ra ngoài, KHÔNG sửa bản gốc) qua 1 Worker giả lập
+   trong bộ nhớ (mock toàn bộ `/v1/assets/*` — không cần network/Electron thật, chạy bằng
+   `ELECTRON_RUN_AS_NODE=1 electron run-test.cjs` vì `better-sqlite3` đã rebuild theo ABI Electron):
+   - Dung lượng: 12.77MB → 1.50MB (**giảm 88.3%**, đúng mốc "~1MB/lần" ước tính ban đầu) — mốc 16KB
+     dùng được, không cần chỉnh.
+   - So sánh row-by-row (media.data/mime/size, landing_config JSON đã parse, prizes.display_image/
+     image_path, participants không bị đụng tới, bảng `_cloud_assets` đã bị DROP khỏi bản rehydrate):
+     khớp 100%.
+   - Tương thích ngược: buffer không có bảng `_cloud_assets` → `rehydrateAfterPull` trả nguyên, không
+     đụng gì — khớp.
+   - Cache: push lần 2 (asset không đổi nội dung) → 0 lần gọi `/v1/assets/check`, 0 lần upload lại —
+     khớp.
+   - Asset bị mất trên cloud (vd xoá tay) → `rehydrateAfterPull` throw rõ ràng, không rehydrate nửa vời,
+     không crash im lặng — khớp.
+   Chưa test qua network thật (chỉ mock) — ghi lại để biết giới hạn: route Worker THẬT đã test riêng ở
+   giai đoạn 1 (local `wrangler dev` + deploy dev), còn luồng `cloudAssets.ts` thật ghép với Worker dev
+   thật (không mock) chưa chạy vì cần ghi dữ liệu test lên R2 dev THẬT (bị chặn an toàn, không phải lỗi
+   code) — nếu cần chắc chắn hơn nữa thì chạy qua app dev thật 1 lần (login account test, Push 1 session
+   có ảnh/video, Pull trên 1 "máy" khác) trước khi coi giai đoạn này chốt hẳn.
+3. ✅ **Resumable upload theo chunk** cho asset lớn — đã code trong `electron/cloudAssets.ts`
+   (`uploadAsset`/`uploadPartWithRetry`/`UploadProgress`), KHÔNG dùng `.sync-state.json` như phác thảo
+   ban đầu (field riêng ở đó buộc `cloudSync.ts` biết cấu trúc 1 field không liên quan tới nó) — thay
+   bằng 1 file cạnh cache asset: `data/accounts/<id>/.assets/<sha256>.upload.json` chứa `{uploadId, key,
+   partSize, size, parts: [{partNumber, etag}]}`, lưu lại NGAY SAU MỖI phần upload thành công (không chỉ
+   lúc xong hẳn). Lần gọi `uploadAsset` kế tiếp (retry ở điểm chốt sau, hoặc sau khi mở lại app) đọc file
+   này, resume từ `parts.length + 1` — KHÔNG gọi lại `/v1/assets/uploads` (start) nếu đã có tiến trình.
+   `uploadId` không còn hợp lệ trên Worker (R2 tự dọn multipart upload dở quá hạn) → nhận diện qua lỗi
+   HTTP 4xx rõ ràng ở phần ĐẦU TIÊN resume (khác lỗi mạng/timeout — không có mã HTTP) → bỏ tiến trình cũ,
+   bắt đầu lại sạch 1 lần. Khác bản chất với cache "đã upload" ở giai đoạn 2 (cái đó chỉ tránh upload lại
+   file ĐÃ XONG, không cứu được file ĐANG upload bị đứt).
+   Test (mock Worker trong bộ nhớ, cùng cách giai đoạn 2): giả lập mạng rớt ở phần 2 của video (vượt quá
+   3 lần retry nội bộ của 1 lần gọi) → `dehydrateForPush` throw, `.upload.json` còn lại đúng phần 1 đã
+   lưu; gọi lại lần 2 (mạng phục hồi) → KHÔNG upload lại phần 1 (đếm số lần PUT phần 1 qua cả 2 lần gọi
+   = 1), hoàn tất đúng, video sau rehydrate khớp byte-for-byte bản gốc, file `.upload.json` đã bị xoá
+   sau khi complete.
+   **Giới hạn đã biết (ngoài phạm vi CLAUDE.md yêu cầu, chỉ ghi lại để biết)**: chỉ resumable phía
+   UPLOAD (Push) — phía DOWNLOAD asset lúc Pull (`ensureAssetLocal`) vẫn tải nguyên cục trong 1 lần GET,
+   mạng rớt giữa lúc tải 1 video lớn phải tải lại từ đầu. Có thể làm sau bằng HTTP Range nếu thấy cần
+   (R2 hỗ trợ Range tự nhiên), chưa làm vì CLAUDE.md chỉ nêu rõ "upload" ở giai đoạn này.
+4. Gần realtime: `touched()` trong `main.ts` cho Landing Builder/Data Editor cũng `syncSoon`, debounce
+   **thích ứng theo loại thay đổi** (không phải 1 số cố định) — sửa text/vị trí component (không sinh
+   `data:` URI mới) debounce ngắn (~2-3s); kéo-thả/resize ảnh (sinh `data:` URI liên tục) debounce dài
+   hơn (~8-10s) để tránh re-upload asset nhiều lần giữa lúc đang kéo. Áp dụng quyết định giai đoạn 0:
+   auto-push/autosave Builder-Data Editor chỉ chạy khi session không có Present đang mở. Cân nhắc đẩy
+   cả `draw:pick`. Cập nhật bảng điểm chốt trong `cloud-sync.md`.
+5. **[HOÃN — đánh giá 2026-11-24, có thể sau này sẽ cần] Lịch sử theo thời gian trên Worker** (10 bản
+   gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất. Lý do hoãn: KHÔNG có UI nào trong app cho chọn
+   khôi phục 1 version cũ cụ thể — `versions` hiện chỉ là SỐ LƯỢNG hiển thị ở panel admin, mọi logic
+   (`baseVersion`/409) chỉ quan tâm bản MỚI NHẤT. Giữ thêm lịch sử mà không ai đọc được thì chưa tạo giá
+   trị dùng được ngay. Lưu ý thật: giai đoạn 4 (Builder/Data Editor tự đồng bộ mỗi ~2,5–9s) làm 10 slot
+   xoay nhanh hơn trước nhiều (vài chục giây–vài phút lúc đang sửa liên tục, so với vài phút–lâu hơn
+   trước đây) — cửa sổ "cứu hộ thủ công" (`wrangler r2 object get` bản cũ) bị co lại, nhưng vẫn chỉ là
+   cứu hộ thủ công chứ không phải tính năng mất đi. Làm lại CÙNG LÚC với lúc có nhu cầu thật xây tính
+   năng "khôi phục về thời điểm cũ" cho người dùng — làm riêng phần lưu trữ trước khi có tính năng đọc
+   nó là phí công.
+6. **[HOÃN — đánh giá 2026-11-24, có thể sau này sẽ cần] GC asset mồ côi** — reference-counting định kỳ:
+   quét `_cloud_assets` của MỌI version còn giữ (cần giai đoạn 5 trước) của MỌI session trong 1 account
+   → gộp tập sha256 đang "sống" → asset ngoài tập đó quá N ngày (grace period) → xoá. Lý do hoãn: asset
+   mồ côi KHÔNG ảnh hưởng gì tới tốc độ/đúng-sai/trải nghiệm (Pull chỉ lấy đúng sha256 mà bản ĐANG kéo về
+   liệt kê) — tác hại DUY NHẤT là tiền lưu trữ R2 (~$0,015/GB/tháng, không phí tải xuống). Ước tính xấu
+   thực tế (1 team đổi ảnh nền Landing 5 lần/sự kiện ≈ vài chục MB rác/team) ở quy mô hiện tại của app
+   (1 người maintain, không phải SaaS nhiều người dùng) ra chi phí dưới 1 USD/tháng — không đáng công
+   xây 1 cơ chế quét không đơn giản (không có đường tắt an toàn: R2 lifecycle theo tuổi sẽ xoá nhầm
+   asset cũ nhưng còn được 1 version nào đó tham chiếu). Kích hoạt lại khi: tự kiểm tra `storageBytes`
+   (đã có sẵn trong `listAccounts` admin, không cần code thêm để theo dõi) thấy tăng bất thường, hoặc mở
+   rộng quy mô nhiều team hơn hẳn hiện tại.
+7. (Tuỳ chọn, chưa đánh giá — không gấp) Xác thực Worker 3 lần đọc R2/request → 1 (cache giảm chi phí,
+   không ảnh hưởng đúng/sai dữ liệu).
+
+Giai đoạn 0–4 xong, đã cập nhật `docs/architecture/cloud-sync.md` (Lộ trình, bảng điểm chốt, chi phí) +
+`CHANGELOG.md` cho phần đã làm. Giai đoạn 5–7 giữ lại ở đây làm tham khảo — đọc lại mục lý do hoãn của
+từng giai đoạn trước khi quyết làm, không tự ý làm chỉ vì "còn trong TODO".
 
 **[HOÃN — 2026-10-02]** Đã làm giải pháp tạm component "Frame" (`outputFrame`,
 xem `docs/landing/output-frame.md`) vì sát giờ sự kiện, canvas vẫn 1920×1080. Plan bên dưới giữ lại để làm sau.
