@@ -16,6 +16,10 @@
  *   accounts/<accountId>/sessions/<sessionId>/<pushedAtMs>.db → file session, customMetadata xem pushMeta
  *   accounts/<accountId>/deleted/<sessionId>.json → { deletedAt } — dấu "đã xoá" (tombstone), KHÔNG xoá các
  *     bản .db ở trên (còn đường khôi phục); Push thành công lần sau (Restore từ Trash) tự gỡ dấu này
+ *   accounts/<accountId>/assets/<sha256>       → ảnh/video tách khỏi .db (xem "Lộ trình tối ưu" trong
+ *     docs/architecture/cloud-sync.md) — content-addressed, BẤT BIẾN (không version, không baseVersion
+ *     check), dùng chung giữa mọi session của account. Chưa có GC (giai đoạn sau) — asset không còn
+ *     session nào tham chiếu vẫn giữ nguyên trên R2.
  *   admin/activated.json                       → { accountId } — đã kích hoạt (có admin), chặn kích hoạt lần 2
  *
  * Mật khẩu lưu dạng PBKDF2-SHA256 (salt riêng mỗi account), token chỉ lưu dạng hash — lộ bucket cũng không
@@ -64,6 +68,8 @@ const KEEP_VERSIONS = 10;
 const PART_SIZE = 32 * 1024 * 1024;
 const ID_PATTERN = /^[0-9a-zA-Z_-]{1,64}$/;
 const VERSION_FILE_PATTERN = /^\d{13}\.db$/;
+// sha256 hex — khoá của asset (ảnh/video tách khỏi .db), xem assetKey().
+const ASSET_HASH_PATTERN = /^[0-9a-f]{64}$/;
 // Metadata app gửi lên khi Push — đều là chuỗi (R2 customMetadata chỉ nhận string).
 const META_FIELDS = ["sessionName", "modifiedAt", "sha256", "appVersion", "participantCount"] as const;
 // Quá ngưỡng này không có heartbeat thì coi phiên là đã "nguội" (máy cũ crash/mất mạng) — login máy khác
@@ -129,6 +135,16 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (a && b === "parts" && c && method === "PUT") return withSession(request, env, (auth) => uploadPart(request, env, auth, a, c));
     if (a && b === "complete" && !c && method === "POST") return withSession(request, env, (auth) => completeUpload(request, env, auth, a));
     if (a && !b && method === "DELETE") return withSession(request, env, (auth) => abortUpload(request, env, auth, a));
+  }
+
+  // Asset (ảnh/video tách khỏi .db) — part upload/abort dùng CHUNG route /v1/uploads/... ở trên (đã tổng
+  // quát theo key, không quan tâm kind); chỉ start/complete khác hành vi nên tách riêng ở đây.
+  if (resource === "assets") {
+    if (a === "check" && !b && method === "POST") return withSession(request, env, (auth) => assetsCheck(request, env, auth));
+    if (a === "uploads" && !b && method === "POST") return withSession(request, env, (auth) => startAssetUpload(request, env, auth));
+    if (a === "uploads" && b && c === "complete" && method === "POST")
+      return withSession(request, env, (auth) => completeAssetUpload(request, env, auth, b));
+    if (a && !b && method === "GET") return withSession(request, env, (auth) => downloadAsset(env, auth, a));
   }
 
   if (resource === "accounts") {
@@ -455,6 +471,9 @@ async function listAccounts(env: Env, auth: Auth): Promise<Response> {
       st.lastSyncedAt = Math.max(st.lastSyncedAt, Number(file.slice(0, 13)));
     } else if (kind === "deleted" && rest) {
       st.deleted.add(rest.replace(/\.json$/, ""));
+    } else if (kind === "assets" && rest) {
+      // Asset dùng chung giữa mọi session của account — cộng vào tổng dung lượng, không gắn vào 1 session.
+      st.storageBytes += o.size;
     }
   }
   const now = Date.now();
@@ -606,7 +625,13 @@ async function listAccountSessions(env: Env, auth: Auth, targetId: string): Prom
   if (!ID_PATTERN.test(targetId)) throw new HttpError(400, "Invalid account id");
   const sessionsPrefix = `accounts/${targetId}/sessions/`;
   const tombstonePrefix = deletedPrefix(targetId);
-  const [versions, tombstones] = await Promise.all([listAll(env, sessionsPrefix), listAll(env, tombstonePrefix)]);
+  const [versions, tombstones, assets] = await Promise.all([
+    listAll(env, sessionsPrefix),
+    listAll(env, tombstonePrefix),
+    listAll(env, assetsPrefix(targetId)),
+  ]);
+  // Asset dùng chung giữa mọi session của account, không gắn vào 1 session cụ thể — trả riêng 1 tổng.
+  const assetsBytes = assets.reduce((sum, o) => sum + o.size, 0);
 
   const deletedAt = new Map<string, string>();
   for (const o of tombstones) deletedAt.set(o.key.slice(tombstonePrefix.length).replace(/.json$/, ""), o.uploaded.toISOString());
@@ -645,7 +670,7 @@ async function listAccountSessions(env: Env, auth: Auth, targetId: string): Prom
       };
     })
     .sort((x, y) => (x.status !== y.status ? (x.status === "active" ? -1 : 1) : x.lastSyncedAt < y.lastSyncedAt ? 1 : -1));
-  return json({ sessions });
+  return json({ sessions, assetsBytes });
 }
 
 // Admin khôi phục: chỉ gỡ dấu "đã xoá" — lần đồng bộ kế tiếp (login, Refresh trong danh sách Open, có mạng
@@ -681,9 +706,14 @@ async function download(env: Env, auth: Auth, sessionId: string, file: string): 
 /* ---------------- Upload (multipart) ---------------- */
 
 function uploadKey(auth: Auth, request: Request): string {
-  // Key do Worker cấp ở startUpload, app gửi lại qua header — kiểm tra lại đúng account của token.
+  // Key do Worker cấp ở startUpload/startAssetUpload, app gửi lại qua header — kiểm tra lại đúng account
+  // của token. Dùng chung cho cả session (.db) và asset (ảnh/video) vì uploadPart/abortUpload không quan
+  // tâm kind, chỉ cần key thuộc đúng account.
   const key = request.headers.get("X-Upload-Key") ?? "";
-  if (!key.startsWith(`accounts/${auth.accountId}/sessions/`)) throw new HttpError(403, "Upload does not belong to this account");
+  const base = `accounts/${auth.accountId}/`;
+  if (!key.startsWith(`${base}sessions/`) && !key.startsWith(`${base}assets/`)) {
+    throw new HttpError(403, "Upload does not belong to this account");
+  }
   return key;
 }
 
@@ -756,6 +786,58 @@ async function pruneOldVersions(env: Env, keys: string[]) {
     .reverse()
     .slice(KEEP_VERSIONS);
   if (old.length) await env.BUCKET.delete(old);
+}
+
+/* ---------------- Asset (ảnh/video tách khỏi .db, xem "Lộ trình tối ưu" cloud-sync.md) ---------------- */
+
+function assetsPrefix(accountId: string): string {
+  return `accounts/${accountId}/assets/`;
+}
+function assetKey(accountId: string, sha256: string): string {
+  return `${assetsPrefix(accountId)}${sha256}`;
+}
+
+// App gọi TRƯỚC khi push 1 session: hỏi những sha256 nào cloud CHƯA có, để chỉ upload đúng phần thiếu.
+async function assetsCheck(request: Request, env: Env, auth: Auth): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as { hashes?: unknown } | null;
+  const requested = (Array.isArray(body?.hashes) ? body!.hashes : []).map(String).filter((h) => ASSET_HASH_PATTERN.test(h));
+  if (!requested.length) return json({ missing: [] });
+  const prefix = assetsPrefix(auth.accountId);
+  const existing = new Set((await listAll(env, prefix)).map((o) => o.key.slice(prefix.length)));
+  return json({ missing: requested.filter((h) => !existing.has(h)) });
+}
+
+// Asset content-addressed — KHÔNG có baseVersion/pruneOldVersions/tombstone như session: key = sha256 của
+// chính nội dung nên 2 lần upload cùng nội dung tự nhiên ra cùng key, ghi đè vô hại (không cần chặn).
+async function startAssetUpload(request: Request, env: Env, auth: Auth): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as { sha256?: string; mime?: string; size?: number } | null;
+  const sha256 = String(body?.sha256 ?? "");
+  if (!ASSET_HASH_PATTERN.test(sha256)) throw new HttpError(400, "Invalid sha256");
+  const customMetadata: Record<string, string> = { mime: String(body?.mime ?? ""), size: String(body?.size ?? "") };
+  const key = assetKey(auth.accountId, sha256);
+  const upload = await env.BUCKET.createMultipartUpload(key, { customMetadata });
+  return json({ key, uploadId: upload.uploadId, partSize: PART_SIZE }, 201);
+}
+
+async function completeAssetUpload(request: Request, env: Env, auth: Auth, uploadId: string): Promise<Response> {
+  const key = uploadKey(auth, request);
+  if (!key.startsWith(assetsPrefix(auth.accountId))) throw new HttpError(400, "Not an asset upload");
+  const body = (await request.json().catch(() => null)) as { parts?: R2UploadedPart[] } | null;
+  if (!body?.parts?.length) throw new HttpError(400, "Missing parts");
+  const obj = await env.BUCKET.resumeMultipartUpload(key, uploadId).complete(body.parts);
+  return json({ key, size: obj.size });
+}
+
+async function downloadAsset(env: Env, auth: Auth, sha256: string): Promise<Response> {
+  if (!ASSET_HASH_PATTERN.test(sha256)) throw new HttpError(400, "Invalid sha256");
+  const obj = await env.BUCKET.get(assetKey(auth.accountId, sha256));
+  if (!obj) throw new HttpError(404, "Asset not found");
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": obj.customMetadata?.mime || "application/octet-stream",
+      "Content-Length": String(obj.size),
+    },
+  });
 }
 
 function json(data: unknown, status = 200): Response {
