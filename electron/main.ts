@@ -29,6 +29,7 @@ import {
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 import * as cloudSync from "./cloudSync";
+import * as cloudAssets from "./cloudAssets";
 import * as auth from "./auth";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 import { importVideo, purgeUnusedMedia, registerMediaProtocol, registerMediaScheme } from "./media";
@@ -108,15 +109,32 @@ cloudSync.setBusyCheck(
   (sessionId) => presentWindows.has(sessionId) || landingBuilderWindows.has(sessionId) || dataEditorWindows.has(sessionId)
 );
 
+// Giai đoạn 4 (CLAUDE.md): debounce THÍCH ỨNG cho Landing Builder/Data Editor — Save chỉ đổi text/vị trí
+// (không có data: URI mới/lớn) đồng bộ gần như ngay; Save có ảnh/video lớn (sẽ phải dehydrate + có thể
+// upload asset lúc đồng bộ) đợi lâu hơn, tránh làm lại việc đó nhiều lần nếu người dùng Save liên tục
+// trong lúc đang chỉnh ảnh (resize/crop/đổi ảnh khác...).
+const SYNC_SOON_EDIT_WINDOW_FAST_MS = 2_500;
+const SYNC_SOON_EDIT_WINDOW_SLOW_MS = 9_000;
+
 // Điểm chốt đồng bộ cho MỌI IPC ghi dữ liệu: luôn đánh dấu "chưa đồng bộ"; gọi từ cửa sổ chính/Present
-// (thao tác edit/delete rời rạc, Confirm) thì đồng bộ ngay (gom 1,5s). Gọi từ Landing Builder/Data Editor
-// thì CHỈ đánh dấu — đồng bộ 1 lần lúc đóng cửa sổ đó (xem win.on("closed") của 2 cửa sổ).
-function touched(e: Electron.IpcMainInvokeEvent, sessionId: string) {
+// (thao tác edit/delete rời rạc, Confirm) thì đồng bộ ngay (gom 1,5s).
+//
+// Gọi từ Landing Builder/Data Editor: nếu session đang có cửa sổ Present mở (đang chiếu cho khán giả) —
+// CHỈ đánh dấu, đồng bộ 1 lần lúc đóng cửa sổ đó như trước (quyết định giai đoạn 0 — tránh thao tác sửa
+// dở lên màn LED trước khán giả). Nếu KHÔNG có Present nào mở — cũng đồng bộ trong lúc đang sửa, debounce
+// dài hơn cửa sổ chính (`heavy` = Save vừa rồi có khả năng kéo theo dehydrate/upload asset, xem
+// cloudAssets.hasLargeInlineAsset).
+function touched(e: Electron.IpcMainInvokeEvent, sessionId: string, opts?: { heavy?: boolean }) {
   cloudSync.markDirty(sessionId);
   const win = BrowserWindow.fromWebContents(e.sender);
   const fromEditWindow =
     !!win && ([...landingBuilderWindows.values()].includes(win) || [...dataEditorWindows.values()].includes(win));
-  if (!fromEditWindow) cloudSync.syncSoon(sessionId);
+  if (!fromEditWindow) {
+    cloudSync.syncSoon(sessionId);
+    return;
+  }
+  if (presentWindows.has(sessionId)) return;
+  cloudSync.syncSoon(sessionId, opts?.heavy ? SYNC_SOON_EDIT_WINDOW_SLOW_MS : SYNC_SOON_EDIT_WINDOW_FAST_MS);
 }
 
 function createMainWindow() {
@@ -862,7 +880,7 @@ ipcMain.handle(
       JSON.stringify(data.landingConfig),
       data.id
     );
-    touched(_e, data.id);
+    touched(_e, data.id, { heavy: cloudAssets.hasLargeInlineAsset(data.landingConfig) });
   }
 );
 
@@ -979,8 +997,11 @@ ipcMain.handle(
     // Ghi ngay ở trạng thái chưa Confirm — để lại lịch sử kể cả khi candidate này bị Redo bỏ dở
     // (xem doc-comment recordPendingDraw trong drawEngine.ts, dùng cho Dashboard).
     recordPendingDraw(candidate, data.sessionId);
-    // Lượt Draw chưa Confirm chỉ đánh dấu — đẩy lên cloud ở lần Confirm kế tiếp hoặc lúc đóng Present.
+    // Giai đoạn 4: đẩy luôn (gom 1,5s, giống cửa sổ chính) thay vì chỉ đánh dấu — pick nhiều lần liên
+    // tiếp (redraw) tự gộp vào 1 lần đồng bộ nhờ debounce, không tốn N request; nhưng app crash ngay sau
+    // pick (trước khi Confirm) thì lịch sử vẫn kịp lên cloud thay vì chờ tới Confirm/đóng Present.
     cloudSync.markDirty(data.sessionId);
+    cloudSync.syncSoon(data.sessionId);
     return candidate;
   }
 );
@@ -1029,7 +1050,8 @@ ipcMain.handle("landingBuilder:open", async (_e, sessionId: string) => {
 ipcMain.handle("media:importVideo", (e, sessionId: string) => {
   assertSessionUnlocked(sessionId);
   const result = importVideo(sessionId, BrowserWindow.fromWebContents(e.sender));
-  touched(e, sessionId);
+  // Import video = luôn có asset mới, lớn — debounce dài như mọi Save có data: URI lớn (xem touched()).
+  touched(e, sessionId, { heavy: true });
   return result;
 });
 
