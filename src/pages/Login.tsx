@@ -40,6 +40,9 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
+  // Thông báo nhỏ dưới vòng xoay, đổi dần theo thời gian đã chờ — request bình thường xong trong
+  // dưới 1s nên các mốc này hiếm khi kịp hiện; chỉ thấy rõ khi mạng thật sự chậm/kẹt.
+  const [waitMessage, setWaitMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Tăng mỗi lần nhập sai Access Code — đổi `key` để chạy lại animation rung.
@@ -59,6 +62,20 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
   useEffect(() => () => {
     if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!busy) {
+      setWaitMessage(null);
+      return;
+    }
+    setWaitMessage("Connecting to server…");
+    const t1 = setTimeout(() => setWaitMessage("Still connecting…"), 10_000);
+    const t2 = setTimeout(() => setWaitMessage("Taking longer than usual…"), 30_000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [busy]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -309,9 +326,12 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
         <Button onClick={submit} disabled={!canSubmit} size="lg" className="mt-4 w-full">
           {submitLabel}
         </Button>
-        {/* Đang đợi: vòng xoay nhỏ ngay dưới nút (chữ trên nút giữ nguyên). Lỗi (vd sai Access Code) hiện
-            cùng chỗ đó — lỗi được xoá lúc bấm nút nên 2 thứ không hiện cùng lúc. */}
+        {/* Đang đợi: vòng xoay nhỏ ngay dưới nút (chữ trên nút giữ nguyên), kèm 1 dòng nhỏ đổi dần theo
+            thời gian chờ (waitMessage) — chỉ người dùng mạng chậm mới thấy đủ các mốc. Lỗi (vd sai Access
+            Code, hoặc timeout sau 20s ở electron/auth.ts) hiện cùng chỗ đó, đã xoá lúc bấm nút nên 2 thứ
+            không hiện cùng lúc. */}
         <BusyIndicator busy={busy} />
+        {busy && waitMessage && <p className="mt-2 text-center text-xs text-base-400">{waitMessage}</p>}
         {error && <p className="mt-3 text-center text-sm text-danger-500">{error}</p>}
 
         {mode === "login" && (
