@@ -233,7 +233,7 @@ export default function TabBar() {
           );
         })}
 
-        {adding ? (
+        {adding && (
           <input
             autoFocus
             value={newName}
@@ -243,14 +243,6 @@ export default function TabBar() {
             placeholder="New session name..."
             className="mb-1 w-40 shrink-0 rounded-md border border-gold-500/50 bg-base-950 px-2 py-1.5 text-sm text-base-100 outline-none"
           />
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            title="Add new session"
-            className="mb-1 flex shrink-0 h-7 w-7 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
-          >
-            +
-          </button>
         )}
       </div>
       {/* Nút ⌄ — danh sách mọi tab đang mở (có ô tìm), nhảy thẳng tới tab bị khuất khi hàng tab tràn. */}
@@ -258,8 +250,20 @@ export default function TabBar() {
 
       <span className="mb-2 h-4 w-px shrink-0 bg-base-700" />
 
-      {/* Open/Restore thu gọn thành nút chỉ có icon (rê chuột hiện tên) — nhường chỗ cho hàng tab.
-          Open: danh sách mọi session của account (kể cả tab Closed), xem SessionsModal.tsx. */}
+      {/* Cụm 3 nút cùng kích thước (New/Open/Restore) — gộp chung 1 chỗ thay vì tách lẻ trong hàng tab,
+          dễ bấm hơn trên 1 hàng tab dài hay tràn. Open: danh sách mọi session của account (kể cả tab
+          Closed), xem SessionsModal.tsx. */}
+      <button
+        onClick={() => setAdding(true)}
+        title="Add new session"
+        aria-label="Add new session"
+        className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
+          <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+        </svg>
+      </button>
+
       <button
         onClick={() => setShowSessions(true)}
         title="Open a session"
@@ -280,7 +284,10 @@ export default function TabBar() {
         className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
-          <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" />
+          <path d="M4 7h16" strokeLinecap="round" />
+          <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+          <path d="M10 11v6M14 11v6" strokeLinecap="round" />
         </svg>
       </button>
 
