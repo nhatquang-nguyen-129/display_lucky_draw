@@ -94,10 +94,18 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
   // Cùng tinh thần: Trigger with Draw gán 1 prize đã bị xoá → không bao giờ kích hoạt, báo trong Builder.
   // Chỉ kiểm khi đã có danh sách prize (data chưa nạp xong thì không báo oan).
   const prizeIds = builderPreview && data?.prizes ? new Set(data.prizes.map((p) => p.id)) : null;
+  // Trong Builder (builderPreview): khung canvas CỐ ĐỊNH luôn là khung nét đứt trong suốt (lộ lưới
+  // mesh của LandingCanvas.tsx qua nền), KHÔNG bao giờ đổi thành đen đặc dù đã có component Background
+  // hay chưa — tránh nhầm "canvas trống" với "đã có 1 Background màu đen thật" (chính component
+  // Background mới là nơi hiện đen đặc khi chưa chọn ảnh, xem BackgroundView.tsx). Present Mode/preview
+  // luôn giữ nền đen thật (đúng với màn hình LED thật khi không có Background phủ tới).
+  const showEmptyCanvasHint = builderPreview;
 
   return (
     <div
-      className={`relative ${clip ? "overflow-hidden" : ""}`}
+      className={`relative ${clip ? "overflow-hidden" : ""} ${
+        showEmptyCanvasHint ? "border-2 border-dashed border-base-600" : ""
+      }`}
       style={{
         width,
         height,
@@ -105,7 +113,7 @@ export default function LandingRenderer({ config, data, scale, interactive, sequ
         transformOrigin: "top left",
         // Nền mặc định LUÔN đen — phần canvas không được component Background nào (loại "background",
         // xem BackgroundView.tsx) phủ tới thì giữ nguyên màu này, không còn config màu/letterbox riêng.
-        backgroundColor: "#000000",
+        backgroundColor: showEmptyCanvasHint ? undefined : "#000000",
       }}
     >
       {sorted.map((component) => {
