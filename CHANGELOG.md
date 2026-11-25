@@ -2,6 +2,15 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [2.0.1] — 2026-11-25
+
+### Fix — màn chào mừng kẹt vĩnh viễn khi login lần đầu có session rời
+
+- `Login.tsx`: `afterLogin()` không tắt `showWelcome` trước khi chuyển sang hộp thoại "Found N sessions"
+  (máy có sẵn file `.db` rời ở gốc `data/`) — màn chào mừng render đè vĩnh viễn, hộp thoại import không
+  bao giờ hiện ra. Chỉ lộ khi lần đăng nhập/tạo admin đầu tiên của 1 account trùng lúc máy đã có sẵn
+  session rời từ trước.
+
 ## [2.0.0] — 2026-11-25
 
 ### Cloud Sync — tách ảnh/video thành asset riêng, gần realtime hơn
