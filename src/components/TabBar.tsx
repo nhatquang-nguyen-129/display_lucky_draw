@@ -5,6 +5,34 @@ import { fullyLocked, inputsLocked } from "@/lib/sessionLock";
 import SessionLockMenu from "./SessionLockMenu";
 import RestoreModal from "./RestoreModal";
 import SessionsModal from "./SessionsModal";
+import CloudSyncIcon from "./CloudSyncIcon";
+import TabListMenu from "./TabListMenu";
+import { SYNC_STATUS_LABEL, useSyncStatuses } from "@/lib/syncStatus";
+import { SyncStatus } from "@/types";
+
+// Biểu tượng đồng bộ cạnh tên tab (xem electron/cloudSync.ts) — chỉ 2 trạng thái hiện ra: đang đồng bộ
+// (đám mây có mũi tên chạy lên, CloudSyncIcon.tsx) và lỗi (chấm than đỏ, sẽ tự thử lại). Đã lên cloud hoặc chỉ "có sửa chưa đồng bộ"
+// (vd đang mở Data Editor, chờ điểm chốt) thì KHÔNG hiện gì — tránh rối thanh tab.
+function SyncDot({ status }: { status?: SyncStatus }) {
+  if (status === "syncing") {
+    return (
+      <span className="shrink-0 text-teal-500">
+        <CloudSyncIcon title={SYNC_STATUS_LABEL[status]} className="h-4 w-4" />
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0 text-danger-500">
+        <title>{SYNC_STATUS_LABEL[status]}</title>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7.5v5.5" strokeLinecap="round" />
+        <circle cx="12" cy="16.5" r="0.6" fill="currentColor" />
+      </svg>
+    );
+  }
+  return null;
+}
 
 export default function TabBar() {
   const { sessions, activeSessionId, switchTab, addTab, renameTab, closeTab, reorderTabs, refresh } = useSession();
@@ -17,25 +45,17 @@ export default function TabBar() {
   const [lockMenu, setLockMenu] = useState<{ session: Session; x: number; y: number } | null>(null);
   const [showRestore, setShowRestore] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
-  // true = modal đang mở vì người dùng bấm đóng app mà còn session chưa Push (xem
-  // "cloud:quit-pending" trong main.ts) — SessionsModal hiện thêm nút Force Exit trong trường hợp này.
-  const [quitPending, setQuitPending] = useState(false);
-  useEffect(
-    () =>
-      window.api.cloud.onQuitPending(() => {
-        setQuitPending(true);
-        setShowSessions(true);
-      }),
-    []
-  );
-  // Main báo ngay sau khi vừa mở app xong mà có session lệch với cloud (xem checkCloudSyncOnStartup
-  // trong main.ts) — tự mở modal để người dùng biết sớm, KHÔNG set quitPending (chỉ là gợi ý, không có
-  // nút Force Exit/banner cảnh báo như lúc thoát app).
-  useEffect(() => window.api.cloud.onStartupPending(() => setShowSessions(true)), []);
   // Ô nhập tên tab mới nghe cả onKeyDown (Enter) lẫn onBlur — 1 số trường hợp Enter cũng kéo theo blur
   // gần như cùng lúc, khiến handleAddTab() bị gọi 2 lần trước khi newName kịp reset, tạo nhầm 2 session
   // trùng tên. Chặn bằng ref (không dùng state vì cần đọc/ghi ĐỒNG BỘ trong cùng 1 tick, tránh race).
   const addingRef = useRef(false);
+  const syncStatuses = useSyncStatuses();
+
+  // Tab đang chọn luôn nằm trong vùng nhìn thấy (vd vừa chọn 1 tab bị khuất qua nút ⌄ danh sách tab).
+  useEffect(() => {
+    if (!activeSessionId) return;
+    document.querySelector(`[data-tab-id="${activeSessionId}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeSessionId]);
 
   function handleContextMenu(e: React.MouseEvent, s: Session) {
     e.preventDefault();
@@ -120,7 +140,14 @@ export default function TabBar() {
 
   return (
     <div className="flex items-end gap-1 border-b border-base-800 bg-base-900 px-2 pt-2">
-      <div className="flex flex-1 items-end gap-1 overflow-x-auto">
+      {/* Hàng tab: vẫn cuộn ngang được (lăn chuột, kéo-thả, nút ⌄ danh sách tab) nhưng ẨN thanh cuộn
+          (no-scrollbar, index.css). Lăn chuột dọc được đổi thành cuộn ngang cho tiện. */}
+      <div
+        className="no-scrollbar flex flex-1 items-end gap-1 overflow-x-auto"
+        onWheel={(e) => {
+          if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+        }}
+      >
         {sessions.map((s) => {
           const active = s.id === activeSessionId;
           // Tab Full lock: không đổi tên (double-click) — main.ts chặn sessions:rename bằng
@@ -131,6 +158,7 @@ export default function TabBar() {
           return (
             <div
               key={s.id}
+              data-tab-id={s.id}
               // Kéo-thả đổi thứ tự (HTML5 drag & drop, không thêm thư viện). Không kéo được lúc đang sửa
               // tên tab đó (để bôi đen chữ trong ô nhập). Tab khoá vẫn kéo được — chỉ là thứ tự hiển thị.
               draggable={editingId !== s.id}
@@ -191,6 +219,7 @@ export default function TabBar() {
                     </svg>
                   )}
                   <span className="truncate">{s.name}</span>
+                  <SyncDot status={syncStatuses[s.id]} />
                 </span>
               )}
               <button
@@ -204,7 +233,7 @@ export default function TabBar() {
           );
         })}
 
-        {adding ? (
+        {adding && (
           <input
             autoFocus
             value={newName}
@@ -214,28 +243,36 @@ export default function TabBar() {
             placeholder="New session name..."
             className="mb-1 w-40 shrink-0 rounded-md border border-gold-500/50 bg-base-950 px-2 py-1.5 text-sm text-base-100 outline-none"
           />
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            title="Add new session"
-            className="mb-1 flex shrink-0 h-7 w-7 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
-          >
-            +
-          </button>
         )}
       </div>
-      {/* Danh sách MỌI session (local + cloud, cả tab Closed) để mở thẳng 1 hoặc nhiều session vào app —
-          gộp "chọn file .db qua dialog" (nay chỉ còn là lối phụ "Browse..." trong modal) với Cloud Sync
-          (Push/Pull vẫn ở đây). Xem SessionsModal.tsx. */}
+      {/* Nút ⌄ — danh sách mọi tab đang mở (có ô tìm), nhảy thẳng tới tab bị khuất khi hàng tab tràn. */}
+      <TabListMenu sessions={sessions} activeSessionId={activeSessionId} onSelect={switchTab} />
+
+      <span className="mb-2 h-4 w-px shrink-0 bg-base-700" />
+
+      {/* Cụm 3 nút cùng kích thước (New/Open/Restore) — gộp chung 1 chỗ thay vì tách lẻ trong hàng tab,
+          dễ bấm hơn trên 1 hàng tab dài hay tràn. Open: danh sách mọi session của account (kể cả tab
+          Closed), xem SessionsModal.tsx. */}
+      <button
+        onClick={() => setAdding(true)}
+        title="Add new session"
+        aria-label="Add new session"
+        className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
+          <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+        </svg>
+      </button>
+
       <button
         onClick={() => setShowSessions(true)}
-        title="Open a session — reopen a closed tab, pull one from the cloud, or browse for a file"
-        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+        title="Open a session"
+        aria-label="Open a session"
+        className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         </svg>
-        Open
       </button>
 
       {/* Session bị Delete (menu chuột phải, khác Close/nút ×) nằm ở data/.trash/, chưa xoá hẳn — xem
@@ -243,24 +280,19 @@ export default function TabBar() {
       <button
         onClick={() => setShowRestore(true)}
         title="Restore a deleted session"
-        className="mb-1 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-base-400 hover:bg-base-800 hover:text-base-100"
+        aria-label="Restore a deleted session"
+        className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base-400 hover:bg-base-800 hover:text-base-100"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-          <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-6 w-6">
+          <path d="M4 7h16" strokeLinecap="round" />
+          <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+          <path d="M10 11v6M14 11v6" strokeLinecap="round" />
         </svg>
-        Restore
       </button>
 
       {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
-      {showSessions && (
-        <SessionsModal
-          quitPending={quitPending}
-          onClose={() => {
-            setShowSessions(false);
-            setQuitPending(false);
-          }}
-        />
-      )}
+      {showSessions && <SessionsModal onClose={() => setShowSessions(false)} />}
 
       {lockMenu && (
         <SessionLockMenu

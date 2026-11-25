@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import Button from "@/components/Button";
+import ReconnectPopup from "@/components/ReconnectPopup";
 import ComponentPalette from "@/components/landing/ComponentPalette";
 import LandingCanvas, { CanvasTool } from "@/components/landing/LandingCanvas";
 import LayersPanel from "@/components/landing/LayersPanel";
@@ -862,6 +863,7 @@ export default function LandingBuilderWindow() {
           </button>
         )}
       </div>
+      <ReconnectPopup />
     </div>
     </LandingSessionContext.Provider>
   );

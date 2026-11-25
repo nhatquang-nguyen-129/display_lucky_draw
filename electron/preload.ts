@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DrawCandidate } from "./drawEngine";
+import type { SyncStatus } from "./cloudSync";
 
 const api = {
   participants: {
@@ -61,6 +62,7 @@ const api = {
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list"),
+    listAll: () => ipcRenderer.invoke("sessions:listAll"),
     get: (id: string) => ipcRenderer.invoke("sessions:get", id),
     create: (data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) =>
       ipcRenderer.invoke("sessions:create", data),
@@ -85,47 +87,63 @@ const api = {
     openDataFolder: () => ipcRenderer.invoke("sessions:openDataFolder"),
     listTrash: () => ipcRenderer.invoke("sessions:listTrash"),
     restoreFromTrash: (data: { file: string }) => ipcRenderer.invoke("sessions:restoreFromTrash", data),
-    permanentlyDelete: (data: { file: string }) => ipcRenderer.invoke("sessions:permanentlyDelete", data),
-    openFile: () => ipcRenderer.invoke("sessions:openFile"),
     setClosed: (data: { id: string; closed: boolean }) => ipcRenderer.invoke("sessions:setClosed", data),
     setTabOrder: (ids: string[]) => ipcRenderer.invoke("sessions:setTabOrder", ids),
     duplicate: (id: string) => ipcRenderer.invoke("sessions:duplicate", id),
   },
-  cloud: {
-    // Push/Pull nguyên file session qua Cloudflare Worker + R2 — xem electron/cloudSync.ts.
-    getSettings: () => ipcRenderer.invoke("cloud:getSettings"),
-    connect: (data: { workerUrl: string; readCode: string; writeToken: string }) =>
-      ipcRenderer.invoke("cloud:connect", data),
-    disconnect: () => ipcRenderer.invoke("cloud:disconnect"),
-    status: () => ipcRenderer.invoke("cloud:status"),
-    push: (sessionIds: string[]) => ipcRenderer.invoke("cloud:push", sessionIds),
-    pull: (items: { sessionId: string; file: string }[]) => ipcRenderer.invoke("cloud:pull", items),
-    // Huỷ lượt Push/Pull đang chạy (đóng modal lúc đang busy, sau khi người dùng xác nhận) — xem
-    // main.ts, biến currentCloudOp.
-    cancel: () => ipcRenderer.invoke("cloud:cancel"),
-    // Tiến độ Push/Pull đang chạy (byte đã gửi/nhận trên tổng) — main gửi qua cloud:progress trong
-    // lúc push()/pull() còn đang chạy dở, trả về hàm huỷ đăng ký để component tự cleanup lúc unmount.
-    onProgress: (cb: (p: { sessionId: string; sent: number; total: number }) => void) => {
-      const listener = (_e: unknown, p: { sessionId: string; sent: number; total: number }) => cb(p);
-      ipcRenderer.on("cloud:progress", listener);
-      return () => ipcRenderer.removeListener("cloud:progress", listener);
-    },
-    // Main báo khi người dùng bấm đóng cửa sổ chính mà còn session chưa Push (xem
-    // checkCloudSyncBeforeQuit trong main.ts) — renderer tự mở Cloud Sync kèm nút Force Exit.
-    onQuitPending: (cb: () => void) => {
+  auth: {
+    // Đăng nhập account qua Cloudflare Worker — xem electron/auth.ts, electron/cloudSync.ts.
+    getSession: () => ipcRenderer.invoke("auth:getSession"),
+    login: (data: { username: string; password: string }) => ipcRenderer.invoke("auth:login", data),
+    // Lần đầu (chưa kích hoạt): Access Code + tạo tài khoản admin, rồi đăng nhập luôn.
+    verifyAccessCode: (accessCode: string) => ipcRenderer.invoke("auth:verifyAccessCode", accessCode),
+    activate: (data: { accessCode: string; username: string; password: string }) => ipcRenderer.invoke("auth:activate", data),
+    // Quên mật khẩu admin: Access Code + mật khẩu mới.
+    resetAdminPassword: (data: { accessCode: string; password: string }) => ipcRenderer.invoke("auth:resetAdminPassword", data),
+    // Cổng vào app: đã đăng nhập / cần login / không có mạng (màn "No internet connection" + Retry).
+    getStartupStatus: () => ipcRenderer.invoke("auth:getStartupStatus"),
+    retryStartup: () => ipcRenderer.invoke("auth:retryStartup"),
+    logout: () => ipcRenderer.invoke("auth:logout"),
+    importLooseFiles: (files: string[]) => ipcRenderer.invoke("auth:importLooseFiles", files),
+    createAccount: (data: { username: string; password: string }) => ipcRenderer.invoke("auth:createAccount", data),
+    listAccounts: () => ipcRenderer.invoke("auth:listAccounts"),
+    resetAccountPassword: (data: { accountId: string; password: string }) => ipcRenderer.invoke("auth:resetAccountPassword", data),
+    listAccountSessions: (accountId: string) => ipcRenderer.invoke("auth:listAccountSessions", accountId),
+    restoreDeletedSession: (data: { accountId: string; sessionId: string }) => ipcRenderer.invoke("auth:restoreDeletedSession", data),
+    forceLogoutAccount: (accountId: string) => ipcRenderer.invoke("auth:forceLogoutAccount", accountId),
+    setAccountDisabled: (data: { accountId: string; disabled: boolean }) =>
+      ipcRenderer.invoke("auth:setAccountDisabled", data),
+    // Phiên bị thu hồi thật (401 — đăng nhập nơi khác) — main tự dọn session, renderer hiện màn Login lại.
+    onRevoked: (cb: () => void) => {
       const listener = () => cb();
-      ipcRenderer.on("cloud:quit-pending", listener);
-      return () => ipcRenderer.removeListener("cloud:quit-pending", listener);
+      ipcRenderer.on("auth:revoked", listener);
+      return () => ipcRenderer.removeListener("auth:revoked", listener);
     },
-    // "Force Exit" trong Cloud Sync — bỏ qua cảnh báo, đóng cửa sổ chính thật sự.
-    forceQuit: () => ipcRenderer.invoke("app:forceQuit"),
-    // Main báo NGAY SAU KHI vừa mở app xong mà có session lệch với cloud (xem
-    // checkCloudSyncOnStartup trong main.ts) — renderer tự mở Cloud Sync (không kèm Force Exit, khác
-    // onQuitPending — chỉ là gợi ý, không chặn gì).
-    onStartupPending: (cb: () => void) => {
+    // Mất/được lại kết nối tạm thời (mất mạng/server lỗi tạm, KHÁC bị thu hồi) — renderer hiện popup
+    // "Reconnecting..." (cửa sổ chính/Builder/Data Editor — KHÔNG gửi tới Present), không đóng gì.
+    onConnectivityChange: (cb: (offline: boolean) => void) => {
+      const listener = (_e: unknown, offline: boolean) => cb(offline);
+      ipcRenderer.on("auth:connectivity", listener);
+      return () => ipcRenderer.removeListener("auth:connectivity", listener);
+    },
+  },
+  sync: {
+    // Đồng bộ theo điểm chốt — xem electron/cloudSync.ts.
+    getStatuses: () => ipcRenderer.invoke("sync:getStatuses"),
+    // Điểm chốt từ renderer (chuyển tab): kiểm tra + đồng bộ 1 session.
+    session: (sessionId: string) => ipcRenderer.invoke("sync:session", sessionId),
+    // Nút Refresh trong SessionsModal — đồng bộ toàn bộ account.
+    all: () => ipcRenderer.invoke("sync:all"),
+    onStatus: (cb: (data: { sessionId: string; status: SyncStatus }) => void) => {
+      const listener = (_e: unknown, data: { sessionId: string; status: SyncStatus }) => cb(data);
+      ipcRenderer.on("sync:status", listener);
+      return () => ipcRenderer.removeListener("sync:status", listener);
+    },
+    // Đồng bộ vừa thêm/thay/chuyển vào Trash session (Pull, tách bản, đã xoá ở máy khác) — refresh tab.
+    onSessionsChanged: (cb: () => void) => {
       const listener = () => cb();
-      ipcRenderer.on("cloud:startup-pending", listener);
-      return () => ipcRenderer.removeListener("cloud:startup-pending", listener);
+      ipcRenderer.on("sync:sessionsChanged", listener);
+      return () => ipcRenderer.removeListener("sync:sessionsChanged", listener);
     },
   },
   draw: {

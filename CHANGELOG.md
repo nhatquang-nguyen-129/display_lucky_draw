@@ -2,6 +2,99 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [2.0.0] — 2026-11-25
+
+### Cloud Sync — tách ảnh/video thành asset riêng, gần realtime hơn
+
+Chi tiết: `docs/architecture/cloud-sync.md` mục "Lộ trình tối ưu" + `electron/cloudAssets.ts`. File
+`.db` lưu local KHÔNG đổi gì (không migration, không đổi schema) — chỉ bản chụp gửi lên cloud nhẹ hơn.
+
+- Ảnh/video (bảng `media`, `landing_config`, `prizes.display_image`/`image_path`) tách khỏi file đẩy
+  lên cloud, lưu riêng theo nội dung (content-addressed) trên R2 — đo thật 1 session: **giảm 88% dung
+  lượng mỗi lần đồng bộ** (~13MB → ~1,5MB). Asset không đổi nội dung thì không upload/kiểm tra lại ở
+  lần đồng bộ sau.
+- Upload asset lớn (video) **chịu được mạng rớt giữa chừng** — resume đúng phần còn thiếu ở lần đồng bộ
+  sau, không upload lại từ đầu.
+- **Landing Builder/Data Editor giờ tự đồng bộ trong lúc đang mở** (trước đây chỉ đồng bộ lúc đóng cửa
+  sổ) — debounce ngắn (~2,5s) cho sửa text/vị trí, dài hơn (~9s) cho Save có ảnh/video mới. Trừ khi
+  session đang có cửa sổ **Present** mở (đang chiếu cho khán giả) — giữ nguyên hành vi cũ (chỉ đồng bộ
+  lúc đóng cửa sổ), tránh đưa thao tác sửa dở lên màn hình trước khán giả.
+- Bấm **Draw** (trước Confirm) giờ cũng tự đồng bộ (gom lại) — lịch sử pick kịp lên cloud sớm hơn kể cả
+  khi app gặp sự cố ngay sau khi pick.
+
+### Cloud Sync — đổi hẳn sang mô hình Account đăng nhập, tự động Push/Pull
+
+Chi tiết: `docs/architecture/cloud-sync.md`. **Thay đổi kiến trúc** (không tương thích ngược với Space
+cũ, không có migration tự động — xem mục "Migration từ Space cũ" trong doc).
+
+- Bỏ hẳn Space ẩn danh (Read code/Write token dùng chung) — thay bằng **Account**: mỗi account dữ liệu
+  riêng hoàn toàn. Đúng 1 account admin duy nhất được tạo account khác.
+- **Settings → Accounts** cho admin: mỗi account hiện số session (còn hiện / đã xoá), dung lượng đang
+  chiếm trên cloud, lần đồng bộ gần nhất, lần cuối online; tick chọn 1 account rồi dùng thanh công cụ (**View Session**, **Reset Password**, **Logout**, **Disable** — Logout/Disable hỏi lại "Are you sure?", **Create**); View Session mở bảng mọi session của account
+  (trạng thái Active/Deleted, lần đồng bộ, số participant, dung lượng, số bản đang giữ) kèm Restore.
+- **Kích hoạt + đăng nhập username/password**: lần đầu mở app hiện màn **Activate** — nhập Access Code
+  (secret `ADMIN_TOKEN` của Worker) và tạo tài khoản admin; sau đó mọi máy chỉ thấy màn đăng nhập
+  username/password. Quên mật khẩu admin → **Forgot admin password?** + Access Code. Tài khoản team do
+  admin tạo (username + mật khẩu) và đặt lại mật khẩu trong Settings → Accounts. Sai mật khẩu 5 lần →
+  khoá 5 phút.
+- **1 account chỉ 1 thiết bị đăng nhập hoạt động tại 1 thời điểm** — Cloudflare Worker enforce bằng
+  khoá phiên độc quyền + heartbeat 30s (ngưỡng "nguội" 90s). Admin có **Force logout** để thoát khẩn,
+  **Reset password** khi team quên mật khẩu, **Disable/Enable** khi team ngừng mượn app.
+- **Đồng bộ tự động theo điểm chốt** — không còn nút bấm tay, không đồng bộ liên tục: đồng bộ khi
+  **Confirm** người trúng, khi sửa/xoá ở cửa sổ chính (prize, participant, session), khi **đóng** Landing
+  Builder / Data Editor / Present, khi chuyển tab, login và thoát app. Mỗi lần đều **kiểm tra bản trên
+  cloud trước**: cloud mới hơn thì tải về, cả 2 cùng đổi thì giữ cả 2 (bản máy này thành session
+  "(this computer)") — không bao giờ âm thầm đè bản mới hơn.
+- Đồng bộ **không tốn request thừa** (mục tiêu: cloud gần realtime nhất mà không lãng phí): trong lúc
+  đang đăng nhập, session không sửa gì thì chuyển tab/đóng cửa sổ không gọi mạng; có sửa thì đẩy thẳng
+  (Worker tự kiểm tra phiên bản), bớt 1 request mỗi lần; Worker liệt kê thư mục 1 lần thay vì 2 khi hoàn
+  tất upload.
+- Xoá session = **xoá hình thức**: session ẩn khỏi account đó (không hiện ở Open, máy khác không tải lại),
+  dữ liệu vẫn còn trên cloud. Account tự Restore từ Trash được; admin xem + khôi phục session đã xoá của
+  từng account ở Settings → Accounts (chọn account → **View Session**). Bỏ nút xoá vĩnh viễn (Delete) trong hộp thoại
+  Restore.
+- Danh sách **Open** bỏ nút "Browse..." (mở file `.db` rời trên máy) — dữ liệu nằm trên cloud của
+  account; nút **Refresh** giờ hỏi lại cloud trước khi liệt kê.
+- Trạng thái đồng bộ trên tab: đám mây có mũi tên chạy lên = đang đồng bộ, chấm than đỏ = lỗi (sẽ tự thử lại).
+- Thoát app khi còn session chưa đồng bộ: thử 5 giây, chưa xong thì hỏi **Wait / Quit anyway**.
+- App giờ **bắt buộc có mạng** — đổi khỏi định vị "100% offline" trước đây (quyết định kiến trúc đã
+  duyệt). Mở app không có mạng → màn **No internet connection** (Retry). **Thoát app = đăng xuất**: lần mở sau
+  luôn phải đăng nhập lại (app crash/tắt ngang thì lần mở sau tự nhả khoá cũ, đăng nhập lại được ngay). Mất mạng
+  lúc đang dùng KHÔNG tự đăng xuất/đóng cửa sổ nào — hiện popup **Reconnecting...** (không hiện trên cửa
+  sổ Present đang chiếu); chỉ đăng xuất khi bị máy khác chiếm/Force logout/Disable, server lỗi tạm thời
+  không làm đăng xuất.
+- Bản dev (`npm run electron:dev`) dùng Worker `dev` + R2 `lucky-draw-dev` và thư mục dữ liệu riêng — không lẫn với bản
+  cài đặt thật trên cùng máy.
+- Lần đầu 1 account đăng nhập trên 1 máy có sẵn session cũ (từ trước khi có tính năng này): hỏi 1 lần
+  có muốn nhận các session đó vào account không.
+- Session đăng nhập lưu mã hoá qua `safeStorage` (OS keychain) ở thư mục ứng dụng, KHÔNG còn trong
+  `data/` như file cấu hình Cloud Sync cũ — không đi theo khi copy `data/` sang máy/USB khác.
+
+## [1.4.1] — 2026-11-12
+
+### Session manager — gộp Open với Cloud Sync
+
+Chi tiết: `docs/architecture/cloud-sync.md`.
+
+- Nút **Open** trên thanh tab mở 1 danh sách duy nhất mọi session (trên máy + trên cloud) kèm trạng
+  thái; tick 1 hay nhiều rồi Open là vào thẳng app (chỉ có trên cloud → tự Pull rồi mở). Chọn file
+  ngoài `data/` (USB, máy khác) chuyển thành link phụ "Browse...". Dùng được cả khi chưa Connect cloud.
+- Tự kiểm tra lúc **mở app** (có session lệch với cloud → tự mở danh sách) và lúc **đóng app** (còn
+  session chưa Push → hiện danh sách kèm nút **Force Exit**). Mất mạng thì đóng bình thường.
+- Session "Changed on both" hiện rõ dòng "Recommended: Push/Pull"; hộp thoại chọn bản trùng báo rõ
+  thành công/lỗi và danh sách tự cập nhật sau khi chọn.
+
+### Landing Builder
+
+- **Line height** cho Text và Winner Name (trống = như cũ).
+- **Frame**: đặt được nhiều Frame trên 1 trang (vd nhiều cánh LED rời); bỏ tuỳ chọn Dim outside.
+
+### Khác
+
+- Tab **Full lock** giờ đóng được bằng nút × (chỉ ẩn tab, không đụng dữ liệu).
+- Data Editor: báo lỗi `Name Contains Unexpected Punctuation` (vd 2 tên dính nhau qua "/") và
+  `Missing URL` cho cột đã gán Data Type URL.
+
 ## [1.4.0] — 2026-11-02
 
 ### Cloud Sync — Push/Pull session qua Cloudflare

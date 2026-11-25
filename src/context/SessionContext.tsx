@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session } from "@/types";
 
 interface SessionContextValue {
@@ -11,7 +11,6 @@ interface SessionContextValue {
   renameTab: (id: string, name: string) => Promise<void>;
   closeTab: (id: string) => Promise<void>; // chỉ ẩn tab, file không di chuyển — khác deleteTab
   deleteTab: (id: string) => Promise<void>; // chuyển vào data/.trash/, khôi phục qua RestoreModal.tsx
-  openFile: () => Promise<void>; // chọn 1 file .db qua dialog — mở lại session Closed hoặc nạp từ ngoài
   reorderTabs: (ids: string[]) => Promise<void>; // kéo-thả tab ở TabBar.tsx, lưu ở data/.tab-order.json
   duplicateTab: (id: string) => Promise<void>; // nhân bản session (menu chuột phải), chuyển sang tab mới
   refresh: () => Promise<void>;
@@ -52,8 +51,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
 
+  // Đồng bộ vừa thêm/thay/chuyển vào Trash 1 session (Pull bản mới, tách bản "(this computer)", đã xoá ở
+  // máy khác — xem electron/cloudSync.ts) — quét lại danh sách tab ngay.
+  useEffect(() => window.api.sync.onSessionsChanged(() => void refresh()), [refresh]);
+
   useEffect(() => {
     if (activeSessionId) localStorage.setItem(LAST_ACTIVE_KEY, activeSessionId);
+  }, [activeSessionId]);
+
+  // Điểm chốt khi chuyển tab: đồng bộ session vừa RỜI (đẩy phần chưa đồng bộ) và kiểm tra session vừa
+  // MỞ (cloud có bản mới hơn thì tải về trước). Lần đầu mount không có session "vừa rời".
+  const prevActiveRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevActiveRef.current;
+    prevActiveRef.current = activeSessionId;
+    if (prev && prev !== activeSessionId) void window.api.sync.session(prev);
+    if (activeSessionId && prev !== activeSessionId) void window.api.sync.session(activeSessionId);
   }, [activeSessionId]);
 
   const switchTab = useCallback((id: string) => setActiveSessionId(id), []);
@@ -97,16 +110,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [activeSessionId, refresh]
   );
 
-  const openFile = useCallback(async () => {
-    const result = await window.api.sessions.openFile();
-    await refresh();
-    if (!result) return;
-    // Chọn trúng file của 1 session ĐÃ là tab đang mở (không phải tab Closed) — báo rõ thay vì âm thầm
-    // chuyển tab, tránh nhầm giữa các file trùng tên sự kiện nhưng khác session_id.
-    if (result.alreadyOpen) alert(`"${result.name}" is already open.`);
-    setActiveSessionId(result.id);
-  }, [refresh]);
-
   // Đổi thứ tự hiện ngay (optimistic) rồi mới lưu — kéo-thả không bị giật chờ IPC. Lưu lỗi thì
   // refresh() để quay về đúng thứ tự đang lưu thật.
   const reorderTabs = useCallback(
@@ -147,7 +150,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         renameTab,
         closeTab,
         deleteTab,
-        openFile,
         reorderTabs,
         duplicateTab,
         refresh,

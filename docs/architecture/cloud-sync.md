@@ -1,327 +1,422 @@
-# Cloud Sync — Push/Pull file session qua Cloudflare Worker + R2
+# Cloud Sync — account đăng nhập, đồng bộ theo điểm chốt qua Cloudflare Worker + R2
 
-Lời gọi network DUY NHẤT trong toàn bộ app (`electron/cloudSync.ts`) — ngoại lệ CHỦ Ý: chỉ chạy khi
-người dùng tự bấm (nút "Open" ở `TabBar.tsx` / trang Settings), không thêm dependency (`fetch`
-global), mọi tính năng khác vẫn 100% offline.
+Lời gọi network DUY NHẤT trong toàn bộ app (`electron/auth.ts` + `electron/cloudSync.ts`) — vẫn CHỦ Ý,
+nhưng giờ **bắt buộc có mạng để đăng nhập + đồng bộ**, khác hẳn mô hình "100% offline, Cloud Sync chỉ
+là ngoại lệ tuỳ chọn" trước đây (xem lịch sử ở Git nếu cần, mục này mô tả đúng hành vi HIỆN TẠI). Điều
+vẫn đúng: participant/prize/draw/landing vẫn chạy trên 1 file SQLite local để nhanh (`better-sqlite3`,
+đồng bộ) — mạng cần lúc **mở app/login** và ở các **điểm chốt đồng bộ** (xem mục "Đồng bộ theo điểm chốt"), không
+phải cho từng thao tác quay số/sửa dữ liệu.
 
 Máy hoàn toàn mới (chưa cài gì) cần chạy được app trước — xem [`docs/local/setup.md`](../local/setup.md)
-(clone, Node 20, `npm install`, `electron-rebuild`). Mục này chỉ nói phần Cloud Sync riêng.
+(clone, Node 20, `npm install`, `electron-rebuild`). Mục này chỉ nói phần Cloud Sync/Account riêng.
 
-Thay cho Drive Sync (tải 1 chiều từ thư mục Google Drive công khai + API key, đã gỡ bỏ): Cloud Sync
-**có chiều đẩy lên** (Push ngay trong app, không phải tự upload file lên Drive) và **có phiên bản**
-(mỗi Push là 1 bản mới, giữ 10 bản gần nhất mỗi session). Server là Cloudflare Worker do chủ dự án tự deploy vào tài
-khoản Cloudflare của mình — code ở `cloud/worker/`, KHÔNG phải dịch vụ dùng chung.
+## Cơ chế hoạt động (giải thích đơn giản, không cần đọc code)
 
-## Nguyên tắc — chỉ chuyển NGUYÊN file, không đồng bộ dữ liệu
+Giống **phần mềm có kích hoạt bản quyền + tài khoản đăng nhập**: lần đầu cài, chủ sở hữu nhập 1 mã kích
+hoạt (Access Code) và tạo tài khoản admin; từ đó mọi máy chỉ còn thấy màn đăng nhập username/password.
+"Server" là 1 Cloudflare Worker do chính bạn deploy, dữ liệu là các session quay số của từng tài khoản.
 
-Worker không mở file `.db`, không biết participant/prize là gì. Nó chỉ lưu và trả lại nguyên file — y
-như copy file qua USB, chỉ khác đường đi. Mọi quyết định "2 file có phải cùng 1 session không / giữ bản
-nào" vẫn nằm ở máy local, dùng đúng cơ chế đã có:
+```
+App (máy của team)  ---HTTPS--->  Cloudflare Worker  <--->  R2 bucket
+      │                            (URL cố định)                 │
+      │  lần đầu: Access Code + tạo admin ─────────────────>     │
+      │  sau đó: username + password  ─────────────────────>     │
+      │                    Worker kiểm tra mật khẩu (PBKDF2)     │
+      │  <───────────────── đúng thì cấp vé vào (sessionToken)   │
+      │  dùng "vé" đó cho mọi lần sau (lấy session, lưu bài...)  │
+      └──────────────────────────────────────────────────────────┘
+```
 
-- **Push** chụp bản sao nhất quán của session đang mở bằng `VACUUM INTO` ra file tạm
-  (`snapshotSession()` trong `db.ts`, cùng cách `duplicateSession()` làm) — an toàn kể cả lúc session
-  đang được ghi, không đụng file gốc. Không bị Session Lock chặn (chỉ đọc).
-- **Pull** KHÔNG BAO GIỜ ghi đè file có sẵn: lưu vào `data/` theo tên `<tên>__<8 ký tự id>.db`
-  (`fileNameFor()`), trùng tên thì `uniquePath()` thêm `-2`, `-3`... Sau đó `refresh()` →
-  `rescan()` → trùng `sessions.id` với session đang mở thì `SessionConflictDialog.tsx` tự hiện cho
-  người dùng chọn — không có dòng code conflict nào viết riêng cho Cloud Sync.
-- File Pull về được đặt **mtime = `modifiedAt` gốc** (thời điểm sửa cuối ở máy đã Push), không phải
-  thời điểm tải — để `listConflicts()` gợi ý ("recommended") đúng bản được sửa gần nhất thật sự.
+| Thành phần | Là gì |
+|---|---|
+| **Server URL** (`WORKER_URL` trong `electron/config/cloudEnv.ts`) | Cố định sẵn trong code theo môi trường (dev/prod), người dùng không nhập |
+| **Access Code** | CHÍNH LÀ secret `ADMIN_TOKEN` của Worker — chỉ chủ sở hữu biết. Dùng đúng 2 việc: kích hoạt lần đầu (tạo admin) và đặt lại mật khẩu admin |
+| **Username + password** | Đăng nhập hằng ngày cho MỌI tài khoản (admin lẫn tài khoản team do admin tạo) |
+| **R2 bucket** | Nơi Worker cất tài khoản (mật khẩu chỉ lưu dạng băm) + dữ liệu session của từng tài khoản |
 
-## Space và 2 loại mã
+Đăng nhập xong Worker phát 1 "vé tạm" (`sessionToken`), app dùng vé này cho các lần gọi tiếp theo. Vé
+này cũng tạo ra luật "1 tài khoản chỉ 1 máy dùng tại 1 thời điểm" — Worker chỉ phát 1 vé hoạt động cho
+mỗi tài khoản, máy khác đăng nhập khi vé cũ còn hiệu lực bị từ chối.
 
-1 **Space** = 1 không gian lưu riêng (thường là 1 sự kiện/1 khách hàng). Tạo bằng `ADMIN_TOKEN` (chỉ
-chủ dự án có, đặt bằng `wrangler secret put`), trả về đúng 1 lần 2 mã:
+## Vì sao đổi từ Space ẩn danh sang Account
 
-| Mã | Dạng | Quyền | Dùng ở đâu |
-|---|---|---|---|
-| Read code | `XXXXX-XXXXX` (Crockford base32, không phân biệt hoa thường, bỏ qua dấu gạch) | List + Pull | Máy venue, đọc qua điện thoại được |
-| Write token | Chuỗi base64url dài | List + Pull + Push | Máy chuẩn bị dữ liệu |
+Trước đây "Space" (Read code/Write token dùng chung) không ngăn được việc 2 team/2 máy cùng sửa chung
+1 dữ liệu — mỗi máy tự Push/Pull tay, dễ tạo conflict khi nhiều người mượn app cùng lúc. Giờ:
 
-Worker chỉ lưu **hash SHA-256** của mã trong R2 (`tokens/<hash>.json`) — lộ bucket cũng không lộ mã.
-Mất mã thì tạo Space mới (không có cách lấy lại).
+1. **Account thay Space** — mỗi account dữ liệu riêng hoàn toàn, tách biệt account khác.
+2. **1 account chỉ 1 thiết bị đăng nhập hoạt động tại 1 thời điểm** — server (Worker) enforce bằng
+   khoá phiên độc quyền + heartbeat, không phải app tự nhường nhau.
+3. **Đồng bộ tự động theo điểm chốt** — không còn nút bấm tay; mỗi lần đồng bộ kiểm tra phiên bản trên
+   cloud trước (khoá 1 máy chỉ đảm bảo không 2 máy ghi CÙNG LÚC, không đảm bảo máy vừa login có bản mới
+   nhất), không bao giờ âm thầm đè bản mới hơn.
+4. **Đúng 1 account admin** tạo mọi account khác (không ai tự đăng ký).
 
-**Mất mã KHÔNG lấy lại được bằng bất kỳ cách nào, kể cả tự vào xem R2 bucket trực tiếp** (Dashboard
-Cloudflare, `wrangler r2 object get`...) — R2 chỉ chứa `tokens/<hash-của-mã>.json`, 1 chiều, không suy
-ngược lại mã gốc được. 2 mã chỉ xuất hiện đúng 1 lần, trong response của lệnh `POST /v1/spaces` lúc tạo
-— lưu ngay vào trình quản lý mật khẩu lúc đó, đừng chỉ để trong terminal history.
+## Kích hoạt + đăng nhập username/password
 
-Còn cách duy nhất khi mất mã: tạo Space MỚI (`POST /v1/spaces` với `ADMIN_TOKEN`, xem mục "Deploy
-Worker" bên dưới) — ra `spaceId` khác hẳn, không đụng gì Space cũ. Nếu Space cũ CHƯA Push file nào thì
-coi như không mất gì, tạo mới xong dùng luôn. Nếu đã lỡ Push rồi, file cũ vẫn còn nguyên trong R2 dưới
-`spaces/<spaceId cũ>/` — không bị xoá, nhưng cũng không còn cách nào đọc lại được nữa vì không còn mã
-nào trỏ tới `spaceId` đó (coi như mồ côi vĩnh viễn, muốn dọn thì tự xoá tay qua Dashboard R2).
+**Màn đầu tiên** (`src/pages/Login.tsx`) phụ thuộc `GET /v1/status` (công khai, chỉ trả `activated`):
+
+| Trạng thái | Màn hiện ra |
+|---|---|
+| Chưa kích hoạt (chưa có admin trên Worker) | 2 bước: **Welcome to Lucky Draw Studio** — 1 ô Access Code, Continue → Worker chỉ kiểm tra mã (`POST /v1/admin/verify-access-code`, sai thì ô rung + báo lỗi); đúng → trượt sang **Create Admin Account** (username + mật khẩu ×2) → tạo admin (`POST /v1/admin/activate`, kiểm tra lại Access Code) rồi đăng nhập luôn |
+| Đã kích hoạt | **Sign in**: Username + Password. Máy khác KHÔNG còn thấy màn Access Code — kích hoạt lần 2 bị từ chối (409) |
+| Quên mật khẩu admin | Link **"Forgot admin password?"** → Access Code + mật khẩu mới (`POST /v1/admin/reset-password`), trả lại username admin. Máy đang đăng nhập bằng mật khẩu cũ bị đăng xuất |
+
+- **Access Code = secret `ADMIN_TOKEN`** của Worker (đặt ở Dashboard → Worker → Settings → Variables and
+  Secrets, tick **Secret**). Đổi Access Code = đổi secret đó. Không có email/SMS khôi phục.
+- **Tài khoản team** do admin tạo trong Settings → Accounts (username + mật khẩu ban đầu). Team quên mật
+  khẩu → admin bấm **Reset password** đặt mật khẩu mới.
+- Username: 3–32 ký tự (chữ, số, `.`, `-`, `_`), không phân biệt hoa thường, không trùng. Mật khẩu ≥ 8 ký
+  tự.
+- Mật khẩu lưu dạng **PBKDF2-SHA256** (salt riêng, 50.000 vòng — lưu số vòng theo từng tài khoản để tăng
+  sau được), token chỉ lưu dạng hash — lộ R2 bucket cũng không lộ mật khẩu/token dùng thật.
+- Sai mật khẩu 5 lần liên tiếp → khoá đăng nhập tài khoản đó 5 phút (HTTP 423). Sai username hay sai
+  mật khẩu đều trả cùng 1 thông báo (không lộ username có tồn tại).
+- Admin tạo theo kiểu login-code cũ (`/v1/admin/bootstrap`, `admin/bootstrapped.json`) KHÔNG được tính là
+  đã kích hoạt (marker mới là `admin/activated.json`) và bị ẩn khỏi danh sách tài khoản — chỉ ảnh hưởng
+  dữ liệu test ở Worker dev.
+
+### Khoá phiên độc quyền + heartbeat
+
+`POST /v1/login` chiếm 1 khoá độc quyền cho account đó (`accounts/<id>/active-session.json`). Máy đã
+đăng nhập gửi `POST /v1/heartbeat` mỗi 30 giây (`electron/auth.ts`) để giữ khoá "tươi". Máy khác login
+cùng account:
+
+- Khoá còn tươi (heartbeat trong vòng 90 giây gần nhất) → **401/409 bị từ chối ngay** — phải đợi máy
+  kia logout hoặc để khoá tự "nguội" (crash/mất mạng không heartbeat được trong 90s).
+- Khoá đã nguội → được cấp khoá mới bình thường, không cần admin can thiệp.
+
+Admin có lối thoát khẩn riêng (Settings → Accounts → **Force logout**) — nhả khoá ngay lập tức, không
+cần đợi 90 giây, dùng khi 1 máy bị treo/mất mà team cần vào account đó ở máy khác gấp.
+
+### Bắt buộc có mạng — mở app, mất mạng giữa buổi
+
+- **Mở app lúc không có mạng** (hoặc Worker lỗi 5xx): không vào được app — màn **"No internet
+  connection"** + nút Retry (`src/App.tsx` `<RequireAuth>`, `auth.getStartupStatus()`/`retryStartup()`).
+  Có mạng lại bấm Retry → về màn đăng nhập (mỗi lần mở app đều phải đăng nhập, xem mục dưới).
+- **Mất mạng khi ĐANG dùng app KHÔNG tự đăng xuất** (`startHeartbeat()`): hiện **popup "Connection lost —
+  reconnecting..."** (`ReconnectPopup.tsx`) ở cửa sổ chính, Landing Builder và Data Editor — KHÔNG hiện ở
+  cửa sổ Present (đang chiếu lên LED, khán giả sẽ thấy; main.ts không gửi sự kiện tới cửa sổ đó). Quay số
+  vẫn chạy bình thường, Confirm lúc mất mạng được đánh dấu "chưa đồng bộ" và tự đẩy khi có mạng lại
+  (heartbeat thành công lại → `syncAll()`). Popup tự đóng; "Hide" chỉ ẩn tới lần mất mạng kế tiếp.
+- **Chỉ đăng xuất khi server trả 401/403** (bị phiên khác chiếm, Force logout, account bị Disable —
+  `isSessionInvalid()` trong `auth.ts`). Lỗi 5xx/429 (server lỗi tạm thời) xử lý y như mất mạng. Đăng xuất
+  cục bộ (IPC `auth:revoked`) quay về màn Login ở cửa sổ chính — cửa sổ phụ đang mở vẫn chạy bình thường,
+  phần chưa đồng bộ vẫn giữ cờ trên đĩa, lần login sau tự đẩy tiếp.
+
+## Dữ liệu theo account — `data/accounts/<accountId>/`
+
+Login xong, `electron/db.ts`'s `switchAccount(accountId)` trỏ lại toàn bộ `data/` (DATA_DIR/TRASH_DIR/
+BACKUP_DIR/.tab-order.json) sang thư mục riêng của account đó — mọi session/tab vẫn hoạt động y hệt
+trước (nhiều tab trong 1 account, Session Lock, Duplicate...), chỉ khác "gốc" vật lý. Logout
+(`switchAccount(null)`) trả về thư mục gốc — **dữ liệu KHÔNG bị xoá**, máy quen (venue cố định) login
+lại không cần tải lại từ đầu.
+
+**Lần đầu 1 account login trên 1 máy**: nếu máy đó có sẵn file `.db` rời nằm thẳng trong `data/` (từ
+trước khi có tính năng Account), app hỏi 1 lần "Found N sessions on this computer" (`Login.tsx`) — chọn
+Import thì file được CHUYỂN (không copy) vào thư mục account, Skip thì để nguyên chỗ cũ, không đụng tới
+(`listRootLooseSessionFiles()`/`importLooseFileToAccount()` trong `db.ts`).
+
+## Đồng bộ theo điểm chốt (`electron/cloudSync.ts`)
+
+### Mục tiêu (định hướng cho mọi thay đổi về đồng bộ)
+
+**Cloud phải gần realtime nhất có thể so với app** — đó là mục đích của Cloud Sync: máy hỏng/mất giữa sự
+kiện thì máy khác login vào account là có ngay dữ liệu mới nhất (đặc biệt kết quả Confirm). Đi kèm 2 ràng
+buộc:
+
+1. **Không tốn request thừa** — request nào không thể làm thay đổi kết quả thì bỏ (xem "Đường nhanh" bên
+   dưới).
+2. **Không làm chậm/giật app** — file SQLite local vẫn là nguồn chạy chính; mạng chậm thì cloud trễ hơn,
+   app không bao giờ phải chờ mạng.
+
+Bất kỳ đề xuất mới nào (thêm điểm chốt, đổi debounce, đổi định dạng upload) đều đánh giá theo 3 tiêu chí:
+độ trễ dữ liệu lên cloud, số request, dung lượng mỗi lần đẩy. Ảnh/video đã tách thành asset riêng trên
+R2 (content-addressed, upload 1 lần dùng lại — xem "Lộ trình" ở cuối mục) nên Builder/Data Editor/Draw
+chưa Confirm giờ ĐÃ đồng bộ trong lúc đang mở (không còn chỉ chờ đóng cửa sổ) — điểm chốt "chỉ đánh dấu,
+đồng bộ lúc đóng cửa sổ" CÒN LẠI DUY NHẤT là khi session đang có Present mở (quyết định có chủ đích,
+không phải vì dung lượng — xem bảng dưới).
+
+Không đồng bộ liên tục, không có nút Push/Pull tay. Mọi IPC ghi dữ liệu chỉ **đánh dấu "chưa đồng bộ"**
+(`markDirty`, không gọi mạng); đồng bộ thật chạy ở các **điểm chốt**:
+
+| Điểm chốt | Cách đồng bộ |
+|---|---|
+| Bấm **Draw** (`draw:pick` — ghi 1 dòng `draw_results` chưa Confirm) | Đánh dấu + đồng bộ ngay (gom 1,5s) — redraw liên tiếp tự gộp 1 lần nhờ debounce, không tốn N request; app crash ngay sau pick (trước Confirm) vẫn kịp lên cloud |
+| **Confirm** (`draw:commit`), **Reset session** | Đồng bộ ngay (gom 1,5s) — kết quả trúng giải chính thức luôn lên cloud |
+| Edit/delete ở **cửa sổ chính**: prize, participant (kể cả Import/Replace), tạo/đổi tên/khoá/duplicate/đóng tab session | Đồng bộ ngay (gom 1,5s) |
+| Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor**, session **KHÔNG có Present đang mở** (mỗi lần Save, đổi Data type, import video) | Đồng bộ trong lúc đang mở, debounce **thích ứng**: ~2,5s cho Save chỉ đổi text/vị trí, ~9s cho Save có ảnh/video mới/lớn (tránh dehydrate/upload asset nhiều lần nếu Save liên tục lúc đang chỉnh ảnh) |
+| Cùng các IPC trên nhưng session **CÓ Present đang mở** (đang chiếu cho khán giả) | Chỉ đánh dấu → đồng bộ **1 lần lúc đóng** Builder/Data Editor đó (không đưa thao tác sửa dở lên màn LED) |
+| **Đóng** Landing Builder / Data Editor / Present | Đồng bộ session đó (không sửa gì thì 0 request) |
+| **Chuyển tab** (`sync:session` từ `SessionContext.tsx`) | Session vừa rời + session vừa mở — chỉ gọi mạng nếu session đó có sửa chưa đẩy |
+| **Xoá** session | Xoá HÌNH THỨC: file local vào Trash + gửi dấu "đã xoá" lên cloud (`POST /v1/sessions/:id/delete`). Dữ liệu (mọi bản lưu) vẫn còn nguyên trên cloud — xem mục "Xoá session = xoá hình thức" |
+| **Login**, mở app với phiên đã lưu, **có mạng lại** | `syncAll()` — toàn bộ account |
+| **Thoát app**, Logout | `flushDirty()` — xem bên dưới |
+
+Phân biệt cửa sổ gọi tới bằng `touched(e, sessionId)` trong `main.ts` (`BrowserWindow.fromWebContents(e.sender)`).
+
+### Mỗi lần đồng bộ = kiểm tra rồi mới làm (`syncSession`)
+
+Trạng thái local lưu ở `data/accounts/<id>/.sync-state.json`, mỗi session `{ baseVersion, baseHash,
+dirty }` — `baseVersion` = bản cloud (tên file `<pushedAtMs>.db`) mà file local được dựng từ đó. Không
+đổi schema SQLite. Session chưa có trong file này (vừa tạo, Duplicate, Restore, Import file rời) = "chưa
+đồng bộ".
+
+**Đường nhanh — mọi điểm chốt trong lúc đang đăng nhập** (`doSync` không có head lấy sẵn): khoá phiên
+độc quyền đảm bảo trong phiên này KHÔNG máy nào khác ghi được lên account → cloud chỉ đổi do chính máy
+này, nên:
+
+- Không sửa → **0 request** (thay đổi từ máy khác đã được bắt ở `syncAll()` lúc login).
+- Có sửa → **Push thẳng**, không hỏi head trước — bước complete của Worker tự kiểm tra `baseVersion`.
+  Nhận 409 (rất hiếm, vd bucket bị sửa tay) → rơi xuống kiểm tra đầy đủ bên dưới với head mới.
+- Sửa xong nội dung y hệt bản đã đẩy (`baseHash`) → xoá cờ, không upload.
+
+**Kiểm tra đầy đủ** — chỉ chạy ở `syncAll()` (login/có mạng lại/Refresh/Restore), session chưa có
+trạng thái, hoặc sau 409. Hỏi Worker bản mới nhất (`GET /v1/sessions/:id/head` — rất nhẹ, không tải
+file; `syncAll` dùng luôn listing, không gọi head), rồi:
+
+| Local | Cloud so với `baseVersion` | Làm gì |
+|---|---|---|
+| Không sửa | Không đổi | Không làm gì |
+| Có sửa | Không đổi | **Push** — Worker kiểm tra lại `baseVersion` ở bước complete, lệch thì 409 |
+| Không sửa | Mới hơn | **Pull** — thay file local (`replaceSessionFile`, bản cũ sao lưu vào `.backup/`) |
+| Có sửa | Mới hơn (hoặc Push nhận 409) | **Giữ cả 2**: bản local tách thành session mới "<tên> (this computer)" (`forkSessionAsLocalCopy`), bản cloud giữ id gốc. Không bao giờ âm thầm đè |
+| Không sửa | Đã bị xoá | Chuyển bản local vào Trash |
+| Có sửa | Đã bị xoá | Push (ưu tiên không mất dữ liệu — Worker tự gỡ dấu xoá) |
+
+- Session chưa có trạng thái mà nội dung y hệt bản cloud mới nhất → nhận luôn làm `baseVersion`, không
+  tách bản thừa (vd mất file `.sync-state.json`).
+- Không Pull đè/chuyển vào Trash session đang mở cửa sổ phụ (Present/Builder/Data Editor giữ dữ liệu
+  trong bộ nhớ) — giữ nguyên, làm lại lúc đóng cửa sổ đó (`setBusyCheck`).
+- Mỗi session chạy lần lượt, tối đa 1 lượt chờ phía sau lượt đang chạy — nhiều Confirm liên tiếp lúc mạng
+  chậm chỉ gộp thành 1 lượt kế tiếp, không xếp hàng N lần upload.
+- Lỗi mạng → giữ nguyên cờ, chấm trên tab báo lỗi, thử lại ở điểm chốt kế tiếp hoặc khi có mạng lại.
+- `syncAll()` dùng luôn listing `GET /v1/sessions` (kèm `deleted[]`), tải về session cloud mà máy chưa có
+  (trừ session đã bị xoá), rồi chạy đúng quy tắc trên cho từng session local.
+
+### Chi phí 1 lần đồng bộ (request lên Worker)
+
+| Việc | Request | Ghi chú |
+|---|---|---|
+| Điểm chốt, không sửa | 0 | Đường nhanh |
+| Push 1 session | 2 + số phần 5MB | Mở upload, từng phần, complete (Worker liệt kê thư mục session ĐÚNG 1 lần cho cả kiểm tra `baseVersion` lẫn dọn bản cũ) |
+| Pull 1 session | 2 | head + tải |
+| `syncAll()` | 1 + số session phải tải về | Listing `GET /v1/sessions` |
+| Heartbeat | 1 / 30 giây | Giữ khoá phiên |
+
+### Lộ trình tối ưu (theo thứ tự ưu tiên)
+
+Đo thực tế (2026-11-22, session `HCM-BE-BO-Final`): file ~17,5MB, dữ liệu thật ~13MB = video bảng
+`media` 5,5MB + ảnh nhúng trong `landing_config` 4,1MB + ảnh prize 2,2MB + participants 1,1MB, còn
+`draw_results` chỉ vài KB. → **Mỗi Confirm đẩy ~13MB dù chỉ đổi vài trăm byte** — đây là nút thắt
+chính của mục tiêu "gần realtime" (mạng upload ~3Mbps mất 30–40 giây/lần), không phải số request.
+
+1. ✅ **Bỏ request thừa** (đã làm 2026-11-22): đường nhanh ở trên + Worker gộp 2 lần liệt kê thư mục
+   ở bước complete thành 1.
+2. ✅ **Tách ảnh/video ra asset riêng trên R2** (đặt tên theo hash, upload 1 lần, dùng lại giữa các bản
+   và giữa các session — `accounts/<id>/assets/<sha256>`, xem `electron/cloudAssets.ts`) — bản `.db`
+   gửi lên chỉ giữ tham chiếu `"cloudasset:<sha256>"` → mỗi lần đẩy còn ~1MB (đo thật `HCM-BE-BO-Final`:
+   12,77MB → 1,50MB, giảm 88,3%). Tách ở TẦNG ĐỒNG BỘ — file local giữ nguyên, không đổi schema/renderer.
+   Upload asset resumable theo chunk (mạng rớt giữa chừng → resume đúng phần còn thiếu, không upload lại
+   từ đầu) — quan trọng với video lớn qua mạng sự kiện thường yếu. Chi tiết đủ ở mục TODO trong
+   `CLAUDE.md` (giai đoạn 1–3).
+3. ✅ Sau bước 2: chuyển Landing Builder/Data Editor sang **đồng bộ trong lúc đang mở** (debounce thích
+   ứng ~2,5s/~9s tuỳ có ảnh/video mới hay không — xem bảng điểm chốt ở trên), và Draw chưa Confirm cũng
+   đồng bộ ngay (gom 1,5s) — chỉ còn chờ đóng cửa sổ khi session có Present đang mở (có chủ đích, không
+   phải vì dung lượng).
+4. Giữ lịch sử theo thời gian (vd 10 bản gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất — hiện 10
+   lần Confirm là xoay hết, không lùi được về trước sự kiện.
+5. Xác thực Worker đọc 3 object R2/request (token → active session → account) — rút còn 1 để giảm độ trễ
+   mỗi request (~20–50ms), không ảnh hưởng chi phí.
+
+### Thoát app / Logout (`flushDirty`)
+
+Đồng bộ mọi session còn cờ, chờ tối đa 5 giây (Logout: 10 giây). Thoát app mà vẫn còn session chưa xong →
+hộp thoại **"Wait" / "Quit anyway"** (Wait = thử thêm tối đa 30 giây rồi hỏi lại). Chọn gì thì cờ vẫn còn
+trên đĩa — lần login sau account này trên máy này tự đẩy tiếp.
+
+### Chấm trạng thái
+
+Tab (`TabBar.tsx`) chỉ hiện 2 biểu tượng: đám mây có mũi tên chạy lên (`CloudSyncIcon.tsx`) = đang đồng bộ, chấm than đỏ = lần gần nhất lỗi (tự thử
+lại ở điểm chốt kế tiếp/khi có mạng lại). Đã lên cloud, hoặc chỉ "có sửa chưa đồng bộ" (chờ điểm chốt, vd
+đang mở Data Editor), thì không hiện gì. `SessionsModal.tsx` ghi rõ trạng thái từng session.
+Nguồn: `sync:getStatuses` + sự kiện `sync:status` (`src/lib/syncStatus.ts`).
+
+Không còn lối "Browse..." mở file `.db` rời trên máy (dữ liệu nằm trên cloud của account) — danh sách
+Open (`SessionsModal.tsx`) chỉ liệt kê session của account, nút **Refresh** = `syncAll()` rồi liệt kê lại.
+`SessionConflictDialog` vẫn còn (generic) nhưng chỉ kích hoạt khi ai đó tự copy tay 1 file trùng id vào
+thư mục dữ liệu.
+
+### Tách môi trường dev/prod trên cùng 1 máy
+
+`electron/config/cloudEnv.ts` (import ĐẦU TIÊN của `main.ts`): chạy chưa đóng gói (`npm run electron:dev`)
+→ Worker `dev` + `userData` riêng `%APPDATA%\lucky-draw-app-dev` (không dùng chung phiên đăng nhập lẫn
+`data/` với bản Setup cài trên cùng máy); bản đóng gói → Worker `prod`, `userData` mặc định. Phiên đã lưu
+có `workerUrl` khác môi trường đang chạy → bỏ qua.
+
+## Xoá session = xoá hình thức
+
+Xoá session trong app (chuột phải tab → Delete) KHÔNG xoá dữ liệu trên cloud — chỉ ẩn khỏi account đó:
+
+- Máy đang dùng: file vào Trash, dấu "đã xoá" (`accounts/<id>/deleted/<sessionId>.json`) gửi lên Worker. Session
+  không còn hiện ở danh sách Open; máy khác của account đó khi đồng bộ cũng chuyển bản local vào Trash, và
+  không bao giờ tải lại session đã xoá.
+- Account tự khôi phục được: **Restore** trong Trash → lần đồng bộ kế tiếp đẩy lên lại, Worker tự gỡ dấu xoá.
+- **Admin** xem + khôi phục session đã xoá của bất kỳ account nào: Settings → Accounts → chọn account → **View Session**
+  (bảng mọi session của account đó, lọc Deleted, nút Restore). Restore chỉ gỡ
+  dấu xoá — máy của account đó tự tải session về lại ở lần đồng bộ kế tiếp (login, Open → Refresh, có mạng
+  lại). Admin không mở được nội dung session (Worker không đọc file `.db`). Session chưa từng lên cloud thì
+  không hiện trong bảng (Worker không có bản nào).
+- Không có thao tác xoá vĩnh viễn nào trong app (hộp thoại Restore chỉ có Restore) — kể cả Trash trên máy
+  cũng không xoá hẳn. Muốn xoá hẳn dữ liệu trên cloud thì dọn tay qua Cloudflare Dashboard.
+
+## Lưu session đăng nhập local — `safeStorage`, KHÔNG phải `data/`
+
+**Thoát app = đăng xuất.** Đóng cửa sổ chính: đẩy nốt phần chưa đồng bộ (`flushDirty`, hộp thoại Wait/Quit
+anyway nếu cần) rồi `auth.logoutOnQuit()` — nhả khoá phiên trên Worker (`POST /v1/logout`, tối đa 3 giây) và
+xoá phiên đã lưu. Mở app lần sau LUÔN hiện màn đăng nhập (không tự đăng nhập lại).
+
+Phiên vẫn được lưu trong lúc app đang chạy, CHỈ để phòng app bị crash/tắt ngang (không kịp đăng xuất): lần
+mở sau `doInit()` dùng phiên sót lại đó gọi `/v1/logout` nhả khoá cũ (không phải chờ 90s mới đăng nhập lại
+được trên chính máy này) rồi xoá, vẫn hiện màn đăng nhập. Phiên của môi trường khác (dev/prod) chỉ xoá.
+
+`electron/auth.ts` lưu `{workerUrl, accountId, sessionToken}` mã hoá qua Electron `safeStorage` (OS
+keychain) ở `app.getPath("userData")/auth-session.enc` — **CỐ Ý KHÔNG** theo pattern
+`data/.cloud-sync.json` cũ (file JSON plaintext trong thư mục portable): đây là credential thật, không
+nên đi theo khi ai đó copy `data/` sang máy/USB khác. `safeStorage.isEncryptionAvailable()` là `false`
+(hiếm, vài cấu hình Linux không có keyring) → không lưu gì, bắt login lại mỗi lần mở app thay vì âm
+thầm ghi plaintext.
+
+## Quản lý account (Settings → Accounts, chỉ admin thấy)
+
+| Việc | Route Worker | Ghi chú |
+|---|---|---|
+| Tạo account mới | `POST /v1/accounts` | `{username, password}` — admin tự đưa username/mật khẩu cho team |
+| Liệt kê mọi account | `GET /v1/accounts` | Username, Online/Offline + lần cuối thấy, Disabled, **số session** (còn hiện / đã xoá), **dung lượng cloud** (mọi bản đang giữ, kể cả session đã xoá), **lần đồng bộ gần nhất** — tính từ đúng 1 lần list `accounts/`, không tốn thêm request |
+| Team quên mật khẩu | `POST /v1/accounts/:id/reset-password` | `{password}` — đặt mật khẩu mới, mở khoá nếu đang bị khoá do sai nhiều lần |
+| Xem mọi session của account + khôi phục session đã xoá | `GET /v1/accounts/:id/sessions`, `POST /v1/accounts/:id/restore-session` `{sessionId}` | Tick chọn 1 account rồi bấm **View Session** trên thanh công cụ (cạnh Reset Password / Logout / Disable / Create — Logout và Disable hỏi lại "Are you sure?"): bảng mọi session (lọc All/Active/Deleted) — tên, trạng thái, lần đồng bộ gần nhất, số participant, dung lượng bản mới nhất, dung lượng cloud + số bản đang giữ, phiên bản app; Restore cho session đã xoá |
+| Máy bị treo, cần vào gấp ở máy khác | `POST /v1/accounts/:id/force-logout` | Nhả khoá ngay, không đợi 90s |
+| Team ngừng mượn app | `POST /v1/accounts/:id/disable` / `/enable` | KHÔNG xoá dữ liệu trong R2 |
+
+Admin KHÔNG đọc được participant/prize bên trong session của account khác — Worker vẫn chỉ chuyển file
+`.db` opaque, không mở file ra xem (giống hệt nguyên tắc cũ của Space).
+
+Dữ liệu của CHÍNH account Admin không có gì đặc biệt — vẫn login bằng 1 mã, vẫn có khoá phiên độc
+quyền riêng, vẫn tự tạo session/quay số được như account thường (`accounts/<adminId>/sessions/...`).
+Khác biệt DUY NHẤT là cờ `isAdmin: true` mở khoá bảng quản lý ở trên.
 
 ## Deploy Worker (1 lần — chỉ cần làm trên MỘT máy, không phải mỗi máy)
 
-Deploy gắn với tài khoản Cloudflare, không gắn với máy nào — làm 1 lần trên máy bất kỳ là Worker chạy
-cho mọi máy sau này (`ADMIN_TOKEN` cũng vậy, chỉ là 1 secret phía server, không cần đặt lại ở máy
-khác). Trong `cloud/worker/`:
+Deploy gắn với tài khoản Cloudflare, không gắn với máy nào. **2 môi trường tách biệt hoàn toàn** (Worker
++ R2 bucket riêng, dữ liệu không lẫn vào nhau), khai báo chung 1 file `cloud/worker/wrangler.toml` qua
+`[env.dev]` — không phải 2 project/2 tài khoản Cloudflare riêng.
 
-**Windows (PowerShell)**
+**Bước 0 — đổi subdomain tài khoản (1 lần, làm TRÊN Cloudflare Dashboard, không phải file code)**: mặc
+định Cloudflare cấp 1 subdomain ngẫu nhiên dạng 1 từ liền (vd `luckydrawstudio`) — đổi sang dạng có gạch
+nối `lucky-draw-studio` cho dễ đọc, ở Dashboard → **Workers & Pages** → Overview/Account Home → mục hiện
+subdomain hiện tại, có nút đổi. Lưu ý: subdomain `workers.dev` là DUY NHẤT trên toàn Cloudflare (không
+chỉ riêng tài khoản bạn) — cần thử xem tên còn trống không; đổi xong ảnh hưởng URL của **mọi** Worker
+trong tài khoản, không chỉ riêng project này.
 
-```powershell
-npm install
-npx wrangler login                              # mở trình duyệt
-npx wrangler r2 bucket create lucky-draw-sync   # đã tồn tại (code 10004) thì bỏ qua
-npx wrangler deploy                             # in ra https://lucky-draw-sync.<subdomain>.workers.dev
-npx wrangler secret put ADMIN_TOKEN             # dán 1 chuỗi ngẫu nhiên dài, lưu lại ở trình quản lý mật khẩu
-```
+| Môi trường | Worker | R2 bucket | URL | Deploy | App nào trỏ vào |
+|---|---|---|---|---|---|
+| **prod** (mặc định, không `--env`) | `prod` | `lucky-draw-prod` | `prod.lucky-draw-studio.workers.dev` | `npx wrangler deploy` | Bản đóng gói thật (`npm run package`) |
+| **dev** | `dev` | `lucky-draw-dev` | `dev.lucky-draw-studio.workers.dev` | `npx wrangler deploy --env dev` | `npm run electron:dev` (Vite dev server) |
 
-**macOS / Linux (bash/zsh)**
+Tên Worker ngắn (`prod`/`dev`) vì nằm trong URL. Bucket có tiền tố project (`lucky-draw-prod`/
+`lucky-draw-dev`): bucket không nằm trong URL nào (chỉ hiện ở mục R2 riêng của Dashboard, tách khỏi danh
+sách Worker), tên trần `prod`/`dev` sẽ không cho biết bucket thuộc project nào nếu tài khoản có thêm
+project khác. Tạo bucket: Location **Automatic**, KHÔNG chọn jurisdiction, Storage Class **Standard**
+(Infrequent Access tính phí đọc + tối thiểu 30 ngày lưu — app đọc/ghi thường xuyên và tự xoá bản cũ),
+để **private** (chỉ Worker truy cập qua binding `BUCKET`).
+
+`src/pages/Login.tsx`'s `WORKER_URL` tự chọn theo `import.meta.env.DEV` (Vite tự phân biệt dev server
+với production build) — KHÔNG có cờ/biến nào phải nhớ truyền tay lúc build.
+
+Trong `cloud/worker/`:
 
 ```bash
 npm install
-npx wrangler login                              # mở trình duyệt
-npx wrangler r2 bucket create lucky-draw-sync   # đã tồn tại (code 10004) thì bỏ qua
-npx wrangler deploy                             # in ra https://lucky-draw-sync.<subdomain>.workers.dev
-npx wrangler secret put ADMIN_TOKEN             # dán 1 chuỗi ngẫu nhiên dài, lưu lại ở trình quản lý mật khẩu
+npx wrangler login                              # mở trình duyệt, làm 1 lần
+
+# --- Prod ---
+npx wrangler r2 bucket create lucky-draw-prod   # hoặc tạo trên Dashboard; đã tồn tại (code 10004) thì bỏ qua
+npx wrangler deploy                             # in ra https://prod.lucky-draw-studio.workers.dev
+npx wrangler secret put ADMIN_TOKEN              # dán 1 chuỗi ngẫu nhiên dài, lưu ở trình quản lý mật khẩu
+
+# --- Dev ---
+npx wrangler r2 bucket create lucky-draw-dev
+npx wrangler deploy --env dev                   # in ra https://dev.lucky-draw-studio.workers.dev
+npx wrangler secret put ADMIN_TOKEN --env dev   # nên đặt KHÁC prod — không sao nếu bị lộ, chỉ ảnh hưởng dữ liệu test
 ```
 
-- R2 cần bật trong Cloudflare Dashboard (bắt buộc khai thẻ thanh toán, kể cả khi chỉ dùng free tier 10GB).
+- R2 cần bật trong Cloudflare Dashboard (bắt buộc khai thẻ thanh toán, kể cả free tier 10GB) — làm 1 lần,
+  dùng chung cho cả 2 môi trường.
 - Phải `deploy` TRƯỚC `secret put` — secret gắn vào 1 Worker đã tồn tại.
-- Chưa đặt `ADMIN_TOKEN` thì tạo Space luôn trả 401 — Worker không bao giờ "mở cửa" vì thiếu secret.
+- Nếu subdomain `lucky-draw-studio` không đặt được (đã có người khác dùng) — đổi sang tên khác ở Bước 0,
+  rồi sửa lại `WORKER_URL` trong `electron/config/cloudEnv.ts` cho khớp.
 
-### Tạo Space
+### Kích hoạt (đúng 1 lần cho MỖI môi trường, NGAY TRONG APP)
 
-Dùng khi deploy lần đầu, hoặc khi cần tạo Space MỚI (mất `readCode`/`writeToken` của Space cũ — xem
-mục trên). Có thể chạy từ BẤT KỲ máy nào, không cần đúng máy đã `deploy` — chỉ cần đúng `ADMIN_TOKEN`.
+Không còn chạy `curl` bootstrap. Sau khi deploy + đặt secret `ADMIN_TOKEN`, mở app (bản dev → Worker dev,
+bản đóng gói → Worker prod): màn **Activate** hiện ra → nhập Access Code (= `ADMIN_TOKEN` của môi trường
+đó) + username/mật khẩu admin. prod và dev là 2 Worker/2 bucket riêng nên mỗi bên kích hoạt riêng, nên
+đặt `ADMIN_TOKEN` khác nhau.
 
-**Windows (PowerShell)**
-
-```powershell
-Invoke-RestMethod -Method Post "https://lucky-draw-sync.<subdomain>.workers.dev/v1/spaces" `
-  -Headers @{ Authorization = "Bearer <ADMIN_TOKEN>" } `
-  -ContentType "application/json" -Body '{"name":"Year End Party 2026"}'
-```
-
-Tên Space chỉ là nhãn hiện trong app sau khi Connect — nên để không dấu (PowerShell 5.1 dễ làm hỏng
-UTF-8 trong `-Body`).
-
-**macOS / Linux (bash/zsh)**
-
-```bash
-curl -X POST "https://lucky-draw-sync.<subdomain>.workers.dev/v1/spaces" \
-  -H "Authorization: Bearer <ADMIN_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Year End Party 2026"}'
-```
-
-Cả 2 cách trả về đúng 1 lần `readCode`/`writeToken` — **copy trực tiếp từ cửa sổ terminal dán thẳng
-vào Settings trong app**, đừng gõ lại tay hay chép qua trung gian (Notes/Word có thể tự đổi ký tự) —
-1 ký tự sai là Connect báo lỗi, không có cách dò ra chỗ sai bằng mắt.
-
-Chạy thử local không cần deploy: `npm run dev` với `cloud/worker/.dev.vars` chứa `ADMIN_TOKEN=...`
-(đã gitignore) — R2 giả lập nằm trong `.wrangler/state/`, URL `http://localhost:8787` (app chấp nhận
-`http://` CHỈ cho localhost, còn lại bắt buộc `https://`).
-
-## Dùng trong app
-
-1 app chỉ dùng 1 cloud — khai báo kết nối 1 lần ở trang **Settings** (sidebar), không nằm trong modal
-session.
-
-1. **Settings → Cloud Sync**: Server URL (điền sẵn `DEFAULT_WORKER_URL` trong `src/pages/Settings.tsx`)
-   + Read code (+ Write token nếu máy này cần Push) → **Connect**. App gọi `GET /v1/space` kiểm tra
-   từng mã, đúng thì lưu lại; lần sau mở Settings tự Connect lại để hiện tên Space.
-2. Nút **Open** trên thanh tab (`SessionsModal.tsx`) — **1 UI DUY NHẤT gộp "mở session" với "Cloud
-   Sync"**: mở ra là app tự so local với cloud (IPC `cloud:status`, mục bên dưới), mỗi session 1 dòng
-   kèm trạng thái + đúng nút nên bấm. Mỗi dòng có nút **Open** riêng để vào thẳng app (tab Closed → mở
-   lại; chỉ có trên cloud → tự Pull bản mới nhất rồi mở luôn — gộp 2 bước "Sync rồi tự tìm mở" thành 1
-   click); tick nhiều dòng rồi bấm **Open** ở footer để mở hàng loạt. Push (IPC `cloud:push`, chỉ máy
-   có write token) và Pull (IPC `cloud:pull`, luôn bản mới nhất) vẫn ở đây cho trường hợp cần đồng bộ
-   thật sự (không chỉ mở). Session cần xử lý xếp lên đầu.
-   `status()` KHÔNG còn bắt buộc đã Connect — **chưa khai báo kết nối vẫn dùng modal này được**, chỉ
-   để liệt kê/mở session LOCAL (mọi dòng là "On this computer"), ẩn nút Push/Pull, hiện 1 dòng hint
-   nhỏ gợi ý Connect trong Settings. File ngoài `data/` (USB, backup máy khác chưa từng Push) không
-   hiện trong danh sách thì dùng link phụ "Browse for a file not shown here..." (dialog OS, tái dùng
-   `sessions:openFile` — đây là lối MỞ FILE DUY NHẤT còn lại, trước kia là nút "Open" riêng).
-   KHÔNG có gì tự chạy nền — chỉ kiểm tra lúc mở cửa sổ/bấm Refresh (từng cân nhắc Auto sync định kỳ,
-   chủ dự án quyết định bỏ).
-
-## So sánh local ↔ cloud (`status()` trong `cloudSync.ts`)
-
-Gộp session local (`listSessionFiles()` — kể cả tab đang Close) với session trên cloud theo
-`sessions.id`:
-
-| Trạng thái | Khi nào | Gợi ý |
-|---|---|---|
-| `in-sync` "Up to date" | Local khớp bản mới nhất trên cloud | — |
-| `local-only` "Not in cloud" | Cloud chưa có session này | Push |
-| `cloud-only` "Only in cloud" | Máy này chưa có | Sync |
-| `local-newer` "Changed here" | Local khác `syncBase`, cloud vẫn = `syncBase` | Push |
-| `cloud-newer` "Newer in cloud" | Local khớp 1 bản CŨ hơn trên cloud, hoặc local = `syncBase` mà cloud đã đổi | Sync |
-| `diverged` "Changed on both" | Cả 2 cùng khác `syncBase`, hoặc chưa có `syncBase` mà không khớp bản nào | Cả 2 nút; nút chính theo bên sửa sau (so `modifiedAt`) |
-
-**`syncBase`** (lưu trong `.cloud-sync.json`, theo sessionId) = hash của bản mà 2 bên giống nhau lần
-cuối — ghi khi Push thành công hoặc khi `status()` thấy `in-sync`. KHÔNG ghi lúc Pull: nếu máy đang có
-sẵn session đó, file vừa tải chỉ là 1 bản khác chờ chọn ở `SessionConflictDialog`; người dùng giữ bản
-tải về thì lần kiểm tra sau tự thành `in-sync`.
-
-**Diverged — chỉ recommend, không tự quyết**: đây là trạng thái DUY NHẤT mà cả Push và Pull đều "hợp
-lệ" cùng lúc, nên `row.newer` (`"local" | "cloud"`, so `modifiedAt`) được hiện thành dòng "Recommended:
-Push/Pull" ngay dưới nhãn trạng thái trong `SessionsModal.tsx` (`SessionRow`) — chỉ là gợi ý hiển thị,
-người dùng vẫn tự tick + bấm nút, không có gì tự Push/Pull hộ. Nếu người dùng chọn Pull cho 1 session
-Diverged (thay vì theo gợi ý), nó tạo thêm 1 file cục bộ (xem phần Pull-never-overwrite ở trên) rồi
-`SessionConflictDialog` tự hiện để chọn giữ bản nào — resolve xong dialog gọi
-`notifyConflictResolved()` (`src/lib/cloudSyncEvents.ts`, pub/sub thuần renderer) để `SessionsModal`
-(nếu đang mở) tự `loadStatus()` lại ngay, không cần bấm Refresh tay. Lưu ý: resolve xong chỉ xử lý
-file trùng ở local — session có thể VẪN hiện Diverged/"Local newer" sau đó, vì nội dung local/cloud
-chưa chắc đã khớp; cần Push thật để về "Up to date".
-
-**Hash nội dung** (`contentHash()`): sha256 của bản chụp `VACUUM INTO` nhưng **bỏ qua 4 byte schema
-cookie** (offset 40–43 header SQLite). Đã thử trên dữ liệu thật (2026-11-02): chụp 2 lần cùng 1 file ra
-byte giống hệt, nhưng chụp lại 1 file vừa tải từ cloud (tức chụp của 1 bản chụp) lệch đúng 4 byte này
-vì mỗi lần `VACUUM INTO` tăng schema cookie lên 1 — không bỏ qua thì file vừa Sync về luôn bị coi là
-"đã sửa". Metadata `sha256` gửi lên cloud cũng là hash này. Hash local được cache theo file + mtime nên
-chỉ chụp lại session vừa có thay đổi (mỗi lần chụp đồng bộ, vài trăm ms với session nặng).
-
-## Thuật toán chi tiết — từng bước của `status()` / `push()` / `pull()`
-
-Phần trên là bức tranh tổng quát; đây là đúng trình tự code chạy trong `electron/cloudSync.ts`, để sửa
-hoặc debug không phải đọc lại code từ đầu.
-
-### `status()` — so sánh từng session (chỉ đọc, tối đa 1 lượt network)
-
-1. `isConfigured()` — chưa Connect thì BỎ QUA bước gọi network (`versions = []`), không báo lỗi — mọi
-   session local rơi thẳng xuống bước 3 với `cloud.length === 0` → `local-only`. Trả thêm
-   `cloudConfigured: false` để renderer (`SessionsModal.tsx`) biết ẩn Push/Pull, chỉ còn Open/Delete.
-2. Đã Connect: `fetchVersions()` — gọi `GET /v1/sessions` ĐÚNG 1 LẦN, lấy toàn bộ bản của toàn bộ
-   session trong Space, nhóm theo `sessionId` (`byId`); mỗi nhóm Worker đã trả sẵn mới nhất trước nên
-   `cloud[0]` luôn là bản mới nhất, không cần tự sort lại.
-3. Với MỖI session local (`listSessionFiles()` — gồm cả tab đã Close, không chỉ tab đang mở):
-   - Cloud chưa có bản nào (`cloud.length === 0`) → `local-only`, dừng ở đây.
-   - Tính `hash = localHash(...)`: bản chụp hiện tại (mục Hash nội dung bên dưới), có cache theo
-     `(file, mtimeMs)` nên session không đổi gì thì không tốn 1 lượt `VACUUM INTO` nào.
-   - `hash === latest.sha256` → **in-sync**, và NHÂN TIỆN ghi luôn `syncBase = hash` — mỗi lần
-     `status()` thấy khớp là 1 cơ hội "chốt lại gốc chung", không chỉ lúc Push thành công.
-   - Không khớp bản mới nhất, nhưng khớp 1 bản CŨ hơn bất kỳ trong `cloud` (nghĩa là local chưa đổi gì
-     kể từ lúc đó, cloud đổi tiếp sau), HOẶC khớp đúng `syncBase` đã lưu → **cloud-newer** (Pull về an
-     toàn, không mất gì vì local chưa sửa).
-   - Không khớp gì cả, nhưng bản MỚI NHẤT trên cloud lại khớp đúng `syncBase` (cloud y như lần đồng bộ
-     cuối, chỉ local đổi) → **local-newer**.
-   - Còn lại (cả 2 bên cùng đổi khác `syncBase`, hoặc chưa từng có `syncBase` để so) → **diverged**,
-     kèm `newer` = bên có `modifiedAt` sau (chỉ để gợi ý, không dùng để tự quyết gì).
-4. Session còn thừa trong `byId` sau bước 3 (có trên cloud, máy này chưa từng Pull) → `cloud-only`.
-5. Ghi lại 1 LẦN mọi `syncBase` mới phát hiện ở bước 3 (`updateCloudSettings`). Toàn bộ hàm chỉ 1 lời
-   gọi network (`GET /v1/sessions`), phần so sánh còn lại thuần cục bộ — gọi lại bao nhiều lần cũng an
-   toàn (mở modal, bấm Refresh, sau khi resolve 1 conflict).
-
-### `push()` — đẩy lên thành bản mới
-
-1. Check có `writeToken` không (`readCode` không đủ quyền) — thiếu thì báo lỗi ngay, không mở DB nào.
-2. Gọi `GET /v1/sessions` LẠI (không dùng kết quả `status()` đã có từ trước — trạng thái có thể đã đổi
-   giữa lúc mở modal và lúc bấm Push) để biết `sha256` mới nhất hiện tại của mỗi session.
-3. Với MỖI session được tick, xử lý TUẦN TỰ (không song song), theo đúng thứ tự trong danh sách:
-   - Check `cancelSignal` trước khi bắt đầu phiên này — Cancel giữa lượt thì dừng ngay, các session
-     sau trong danh sách không mở DB, không snapshot gì cả.
-   - Đọc `name` + `participantCount` (loại trừ `status = 'removed'`) trực tiếp từ DB.
-   - `snapshotToBuffer()`: `VACUUM INTO` ra file tạm trong `os.tmpdir()`, đọc vào buffer, LUÔN xoá file
-     tạm trong `finally` (dù thành công hay lỗi).
-   - Tính `hash`. Đã khớp bản mới nhất trên cloud (bước 2) → **bỏ qua upload hẳn**, chỉ cập nhật
-     `syncBase`, trả `status: "unchanged"` — không tạo bản trùng, không tốn băng thông.
-   - Khác hash → `uploadFile()` (chi tiết multipart ngay dưới).
-   - Dù "pushed" hay "unchanged", LUÔN ghi `syncBase[sessionId] = hash` sau khi xong — Push coi như
-     "chốt" lại gốc chung, bất kể có thật sự upload hay không.
-   - Lỗi ở BẤT KỲ bước nào cho 1 session → ghi `status: "error"` kèm message, KHÔNG throw ra ngoài vòng
-     lặp — session tiếp theo trong danh sách vẫn được xử lý như thường.
-
-#### `uploadFile()` — multipart lên R2
-
-1. `POST /v1/uploads` kèm metadata (`sessionId/sessionName/modifiedAt/sha256/appVersion/
-   participantCount`) → Worker trả `{ key, uploadId, partSize }`.
-2. Chia buffer thành từng phần `CLIENT_PART_SIZE` = 5MB (mức TỐI THIỂU R2 multipart cho mọi phần trừ
-   phần cuối) — không dùng `partSize` 32MB Worker gợi ý, để có nhiều mốc báo tiến độ hơn cho 1 file vài
-   chục MB (session nhiều ảnh nhúng trong Landing Builder).
-3. Từng phần: `PUT /v1/uploads/<uploadId>/parts/<n>`, timeout = 0 (không tự abort) — mạng upload chậm
-   ở Việt Nam có thể khiến 1 phần "treo" rất lâu (đã thấy > 15 phút) nhưng vẫn qua được nếu đợi đủ (xác
-   nhận bằng test thật); retry tối đa 3 lần CHỈ khi lỗi là timeout/network thật (không retry lỗi Cancel
-   hoặc lỗi server trả về rõ ràng kiểu validation), backoff tăng dần (`attempt × 5s`).
-4. Mọi phần xong → `POST .../complete` với `{partNumber, etag}` của từng phần → Worker ghép thành 1
-   object, tự xoá bản cũ vượt quá 10 (`pruneOldVersions()`, phía Worker, app không gọi gì thêm).
-5. Lỗi ở bước nào (hết retry, hoặc throw khác) → `DELETE /v1/uploads/<uploadId>` dọn phần upload dở
-   trên R2 TRƯỚC KHI throw tiếp ra `push()` — tránh rác chiếm dung lượng R2.
-
-### `pull()` — tải về, không bao giờ ghi đè
-
-1. Gọi `GET /v1/sessions` 1 lần, lấy danh sách bản hiện có (tra `name`/`sha256` đúng từng mục được
-   chọn).
-2. Với MỖI `{sessionId, file}` được chọn, xử lý TUẦN TỰ:
-   - Check `cancelSignal` trước khi bắt đầu mục này.
-   - Tra `pulledVersions["<sessionId>/<file>"]` — ĐÃ tải đúng bản này trước đó rồi và file vẫn còn
-     trong `data/` → trả `already-pulled`, KHÔNG tải lại (chống Pull lặp tạo thêm `-2`, `-3`... vô ích
-     cho đúng 1 bản).
-   - Bản không còn tồn tại trên cloud nữa (đã bị `pruneOldVersions` dọn, hoặc ai đó Push đè) → lỗi rõ
-     "refresh the list", không tải gì.
-   - `GET /v1/objects/<sessionId>/<file>` — tải streaming (`readBodyWithProgress`), báo tiến độ theo
-     `Content-Length` nếu có; `cancelSignal` được tự kiểm tra lại trong lúc đọc stream (không chỉ lúc
-     bắt đầu) để dừng kịp giữa lúc đang tải dở 1 file lớn.
-   - **Xác minh checksum**: so hash tính lại từ buffer vừa tải với header `X-Sha256` (hoặc
-     `version.sha256` nếu thiếu header) — lệch thì BÁO LỖI NGAY, KHÔNG ghi file xuống đĩa (tránh lưu
-     file hỏng do lỗi mạng giữa đường).
-   - Ghi an toàn: viết ra `<dest>.downloading` rồi `renameSync` sang tên thật — `rescan()` lọc đúng
-     đuôi `.db` nên không bao giờ thấy file đang tải dở nằm giữa `data/`.
-   - Đặt lại `mtime` của file = `modifiedAt` GỐC (thời điểm sửa ở máy đã Push), KHÔNG phải thời điểm
-     tải về — để lần `status()`/`SessionConflictDialog` sau gợi ý đúng bản nào mới hơn thật sự.
-   - Ghi `pulledVersions[manifestKey] = savedAs`. **KHÔNG ghi `syncBase` ở đây** — xem lý do ở mục "So
-     sánh local ↔ cloud" phía trên (chờ người dùng tự chọn giữ bản nào qua `SessionConflictDialog` nếu
-     trùng `sessions.id` với session đang có).
-   - Lỗi ở bước nào cũng không chặn các mục còn lại trong lượt.
-
-### Cách ly lỗi & huỷ giữa chừng (áp dụng chung cho Push và Pull)
-
-- Mỗi session/mỗi bản trong 1 lượt được xử lý tuần tự, ĐỘC LẬP — lỗi 1 cái (mất mạng giữa chừng, file
-  bị xoá ngoài ý muốn, server trả lỗi) chỉ đánh dấu `status: "error"` cho đúng cái đó; các mục còn lại
-  trong danh sách vẫn tiếp tục chạy hết, không bị kéo theo.
-- `cancelSignal` (bấm Cancel hoặc đóng modal lúc đang chạy) được kiểm tra ở 2 chỗ: trước khi bắt đầu xử
-  lý 1 session/bản MỚI (dừng cả lượt ngay, không mở thêm gì nữa), và bên trong request/stream ĐANG chạy
-  (abort ngay, không đợi tải/upload xong mới dừng).
-- Timeout tách biệt theo loại lời gọi: JSON nhỏ (status/connect/list/start-upload/complete-upload) =
-  30s cố định; riêng PUT từng phần upload KHÔNG có timeout tự động (chỉ dừng bằng Cancel tay) — vì 1
-  phần 5MB qua mạng upload chậm ở Việt Nam hoàn toàn có thể mất hơn 30s dù vẫn đang truyền bình thường,
-  không phải treo.
-
-## Lưu cấu hình — `data/.cloud-sync.json`
-
-Cùng pattern `.tab-order.json` (đọc try/catch fallback, ghi tmp-rồi-rename): `workerUrl`, `readCode`,
-`writeToken`, `pulledVersions` (`"<sessionId>/<file>"` → tên đã lưu, chống Pull lặp), `syncBase`
-(mục trên). Đặt TRONG `data/`
-để đi theo bản portable sang máy khác.
-
-Đánh đổi: **write token nằm plaintext** — ai cầm được thư mục `data/` là Push được vào Space đó (không
-xoá được bản cũ ngoài cơ chế giữ 10 bản). Máy venue chỉ cần Pull thì **để trống Write token**. Bấm
-**Disconnect** xoá sạch cả 3 mã khỏi file.
+Chạy thử Worker local không cần deploy: `npm run dev` trong `cloud/worker/` với `.dev.vars` chứa
+`ADMIN_TOKEN=...` (đã gitignore) — R2 giả lập nằm trong `.wrangler/state/`, URL `http://localhost:8787`.
 
 ## API Worker (`cloud/worker/src/index.ts`)
 
-Mọi request (trừ tạo Space) gửi `Authorization: Bearer <read code | write token>`.
+Mọi request (trừ status/activate/reset-password admin/login) gửi `Authorization: Bearer <sessionToken>`.
 
-| Method + path | Quyền | Việc |
+| Method + path | Auth | Việc |
 |---|---|---|
-| `POST /v1/spaces` | `ADMIN_TOKEN` | Tạo Space, trả `readCode` + `writeToken` (1 lần duy nhất) |
-| `GET /v1/space` | read | `{ name, createdAt, role }` |
-| `GET /v1/sessions` | read | Mọi bản mọi session, mới nhất trước, kèm metadata |
-| `GET /v1/objects/<sessionId>/<pushedAtMs>.db` | read | Tải 1 bản, header `X-Sha256` |
-| `POST /v1/uploads` | write | Bắt đầu multipart upload, body = metadata → `{ key, uploadId, partSize }` |
-| `PUT /v1/uploads/<uploadId>/parts/<n>` | write | 1 phần (≤ 32MB), header `X-Upload-Key` |
-| `POST /v1/uploads/<uploadId>/complete` | write | Ghép phần → xoá bản cũ quá 10 |
-| `DELETE /v1/uploads/<uploadId>` | write | Huỷ upload dở (app gọi khi 1 phần lỗi) |
+| `GET /v1/status` | — | `{activated}` — app chọn màn Activate hay Sign in |
+| `POST /v1/admin/verify-access-code` | `{accessCode}` | Chỉ kiểm tra Access Code (bước 1 màn kích hoạt), không tạo gì. 401 sai mã, 409 đã kích hoạt |
+| `POST /v1/admin/activate` | `{accessCode, username, password}` | Tạo admin (chỉ khi chưa kích hoạt; 401 sai Access Code, 409 đã kích hoạt) |
+| `POST /v1/admin/reset-password` | `{accessCode, password}` | Đặt mật khẩu admin mới, trả `username`, nhả khoá phiên admin đang giữ |
+| `POST /v1/login` | `{username, password, deviceId}` | Chiếm khoá phiên, trả `sessionToken` + `isAdmin`. 401 sai thông tin, 423 bị khoá do sai nhiều lần, 409 nếu máy khác giữ khoá còn tươi, 403 nếu bị Disable |
+| `POST /v1/logout` | sessionToken | Nhả khoá (chỉ khi token còn khớp) |
+| `POST /v1/heartbeat` | sessionToken | Làm mới khoá, trả lại `name`/`isAdmin` hiện tại |
+| `GET /v1/sessions` | sessionToken | Mọi bản mọi session CỦA ACCOUNT ĐÓ, mới nhất trước, kèm metadata + `deleted[]` (session đã bị xoá) |
+| `GET /v1/sessions/:id/head` | sessionToken | Bản mới nhất của 1 session (`version`, `sha256`) + cờ `deleted` — không tải file |
+| `POST /v1/sessions/:id/delete` | sessionToken | Đánh dấu đã xoá (tombstone), KHÔNG xoá các bản đã lưu |
+| `GET /v1/accounts/:id/sessions` | sessionToken (`isAdmin`) | Mọi session của 1 account: `status` (active/deleted), `deletedAt`, `lastSyncedAt`, `participantCount`, `appVersion`, `versions`, `latestSize`, `totalSize` (từ metadata bản mới nhất, không mở file; 2 lần list, không GET từng object) |
+| `POST /v1/accounts/:id/restore-session` | sessionToken (`isAdmin`) | `{sessionId}` — gỡ dấu đã xoá |
+| `GET /v1/objects/<sessionId>/<pushedAtMs>.db` | sessionToken | Tải 1 bản, header `X-Sha256` |
+| `POST /v1/uploads` → `PUT .../parts/<n>` → `POST .../complete` / `DELETE` | sessionToken | Multipart upload. `complete` nhận `baseVersion`: cloud đã có bản khác `baseVersion` → huỷ upload, 409. Thành công trả `version` + gỡ dấu đã xoá |
+| `POST /v1/accounts` | sessionToken (`isAdmin`) | Tạo account thường mới `{username, password}` |
+| `GET /v1/accounts` | sessionToken (`isAdmin`) | Liệt kê mọi account |
+| `POST /v1/accounts/:id/reset-password` \| `/force-logout` \| `/disable` \| `/enable` | sessionToken (`isAdmin`) | Xem bảng ở mục "Quản lý account" |
 
-Metadata mỗi bản (R2 `customMetadata`): `sessionName` (URL-encoded để giữ tiếng Việt), `modifiedAt`,
-`sha256` (= `contentHash()`), `appVersion`, `participantCount`. App kiểm tra lại hash sau khi tải — lệch thì báo lỗi,
-không ghi file.
+R2 layout: `accounts/<id>/account.json` (username, mật khẩu PBKDF2, isAdmin, disabled), `usernames/<username>.json`,
+`admin/activated.json`, `accounts/<id>/active-session.json`,
+`sessionTokens/<hash>.json`, `accounts/<id>/sessions/<sessionId>/<pushedAtMs>.db` (giữ 10 bản gần nhất
+mỗi session, không đổi so với Space cũ — `pruneOldVersions()`), `accounts/<id>/deleted/<sessionId>.json`
+(dấu đã xoá).
+
+## Migration từ Space cũ
+
+**Không có đường chuyển tự động.** Team nào đang dùng Read/Write code cũ cần được admin tạo account
+mới (Settings → Accounts) với username/mật khẩu — chi phí 1 lần, đã được chủ dự án chấp nhận khi duyệt
+thiết kế này. Dữ liệu từng Push lên Space cũ vẫn còn nguyên trong R2 dưới `spaces/<spaceId cũ>/` (không
+tự xoá) nhưng không còn route nào đọc lại được qua app — dọn tay qua Cloudflare Dashboard nếu cần.
 
 ## File liên quan
 
 | File | Vai trò |
 |---|---|
 | `cloud/worker/` | Cloudflare Worker + `wrangler.toml` (binding R2 `BUCKET`) — project riêng, `npm install` riêng |
-| `electron/cloudSync.ts` | Connect/status/push/pull, `contentHash()`, đọc/ghi `.cloud-sync.json` |
-| `electron/main.ts` | IPC `cloud:getSettings`/`connect`/`disconnect`/`status`/`push`/`pull` |
-| `electron/db.ts` | `snapshotSession()` (VACUUM INTO), `listSessionFiles()`, `fileNameFor()`, `uniquePath()`, `rescan()`/`listConflicts()` |
-| `src/pages/Settings.tsx` | Khai báo kết nối (Connect/Disconnect) — route `/settings`, mục "Settings" ở `Sidebar.tsx` |
-| `src/components/SessionsModal.tsx` | 1 UI DUY NHẤT: liệt kê + Open mọi session (local/cloud), Push/Pull theo gợi ý, Browse phụ cho file ngoài `data/` |
-| `src/components/TabBar.tsx` | Nút "Open" cạnh "Restore" (đã gộp "Cloud" vào đây) |
-| `src/components/SessionConflictDialog.tsx` | Tự hiện khi Pull về trùng `sessions.id` — không đổi gì cho Cloud Sync |
-
-File `data/.drive-sync.json` còn sót trên máy từng dùng Drive Sync không còn ai đọc — để nguyên vô
-hại, xoá tay được.
+| `electron/auth.ts` | Login/logout/heartbeat, lưu session qua `safeStorage`, quản lý account (admin) |
+| `electron/config/cloudEnv.ts` | Chọn môi trường dev/prod (`WORKER_URL`) + `userData` riêng cho bản dev — import ĐẦU TIÊN của `main.ts` |
+| `electron/cloudSync.ts` | `markDirty`/`syncSoon`/`syncSession`/`syncAll`/`flushDirty`/`markSessionDeleted`, `.sync-state.json`, `contentHash()`, multipart upload/download |
+| `electron/db.ts` | `switchAccount()`, `listRootLooseSessionFiles()`/`importLooseFileToAccount()`, `snapshotSession()`, `listSessionFiles()`, `replaceSessionFile()`, `forkSessionAsLocalCopy()` |
+| `electron/main.ts` | IPC `auth:*`/`sync:*`, `touched()` ở cuối các handler ghi dữ liệu, đồng bộ lúc đóng cửa sổ phụ, hộp thoại Wait/Quit anyway |
+| `src/App.tsx` | `<RequireAuth>`: đã đăng nhập / màn Login / màn "No internet connection" |
+| `src/pages/Login.tsx` | Màn đăng nhập (chỉ gửi mã, địa chỉ Worker do main process chọn) |
+| `src/pages/Settings.tsx` | Bảng quản lý Accounts (chỉ admin) |
+| `src/components/Sidebar.tsx` | Nút Log out dưới cùng menu trái (popup xác nhận trong app) |
+| `src/components/SessionsModal.tsx` | Liệt kê + mở session của account đang login, trạng thái đồng bộ từng session, Refresh = `sync:all` |
+| `src/components/ReconnectPopup.tsx` | Popup mất kết nối — dùng ở `Layout.tsx`, `LandingBuilderWindow.tsx`, `DataEditorWindow.tsx` (KHÔNG ở Present) |
+| `src/components/TabBar.tsx`, `src/lib/syncStatus.ts` | Chấm trạng thái đồng bộ trên tab |
+| `src/components/SessionConflictDialog.tsx` | Vẫn generic — chỉ kích hoạt khi có file trùng id bị copy tay vào thư mục dữ liệu |

@@ -3,6 +3,7 @@ import Sidebar from "./Sidebar";
 import TabBar from "./TabBar";
 import { SessionProvider } from "@/context/SessionContext";
 import SessionConflictDialog from "./SessionConflictDialog";
+import ReconnectPopup from "./ReconnectPopup";
 
 export default function Layout() {
   // Landing Page Builder cần toàn bộ chiều rộng/cao cho canvas 3 cột — không dùng khung
@@ -36,6 +37,7 @@ export default function Layout() {
         </div>
       </div>
       <SessionConflictDialog />
+      <ReconnectPopup />
     </SessionProvider>
   );
 }

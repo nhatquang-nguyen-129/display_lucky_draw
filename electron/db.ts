@@ -109,11 +109,17 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
 }
 
 const LEGACY_DIR = resolveLegacyDir();
-export const DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
-const TRASH_DIR = path.join(DATA_DIR, ".trash");
+// Thư mục data/ "gốc" của máy này — cố định theo bản portable/cài đặt, KHÔNG đổi khi chuyển account.
+// DATA_DIR thật sự dùng (bên dưới) trỏ vào 1 thư mục con riêng của account đang login
+// (`accounts/<accountId>/`, xem switchAccount()) — null (chưa login) = chính gốc này, giữ đúng hành vi
+// cũ (dữ liệu nằm thẳng trong data/) cho tới khi tính năng Account được bật.
+const ROOT_DATA_DIR = folderBuildBaseDir() ? LEGACY_DIR : path.join(LEGACY_DIR, "data");
+ensureWritableDir(ROOT_DATA_DIR);
+
+export let DATA_DIR = ROOT_DATA_DIR;
 // Bản sao lưu file TRƯỚC khi bị cấp id mới (xem giveNewSessionId) — thư mục ẩn, rescan() không quét.
-const BACKUP_DIR = path.join(DATA_DIR, ".backup");
-ensureWritableDir(DATA_DIR);
+let TRASH_DIR = path.join(DATA_DIR, ".trash");
+let BACKUP_DIR = path.join(DATA_DIR, ".backup");
 
 /* ---------------- Schema + migration (áp cho TỪNG file) ---------------- */
 
@@ -209,7 +215,7 @@ CREATE TABLE IF NOT EXISTS media (
   // bảo mật, chỉ tránh nhầm lẫn chỉnh sửa sau khi đã quay xong. Không có password/khôi phục.
   addColumnIfMissing(db, "sessions", "locked", "locked INTEGER NOT NULL DEFAULT 0");
   // Đóng tab (nút ×) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác hẳn Delete/.trash). Mở lại
-  // bằng nút Open (chọn file .db, mặc định mở ngay data/). Xem listSessions()/openDbFile() bên dưới.
+  // từ danh sách Open (SessionsModal.tsx → sessions:setClosed). Xem listSessions() bên dưới.
   addColumnIfMissing(db, "sessions", "closed", "closed INTEGER NOT NULL DEFAULT 0");
   // Danh sách tên cột của lần Import/Replace gần nhất (JSON string[]) — Dashboard dùng để hiện lại
   // đúng dữ liệu gốc đã import, phân biệt với cột tự tạo sau này qua Generate (cùng nằm trong
@@ -237,7 +243,7 @@ function getLockLevel(sessionId: string): number {
 }
 
 // Đóng tab = chỉ ẩn khỏi listSessions(), file KHÔNG di chuyển (khác deleteSession, chuyển vào
-// data/.trash/). Mở lại: openDbFile() với đúng file đó (còn nguyên trong data/) tự đặt closed = 0.
+// data/.trash/). Mở lại: danh sách Open (SessionsModal.tsx) gọi lại hàm này với closed = 0.
 export function setSessionClosed(sessionId: string, closed: boolean) {
   getDb(sessionId).prepare(`UPDATE sessions SET closed = ? WHERE id = ?`).run(closed ? 1 : 0, sessionId);
 }
@@ -518,7 +524,8 @@ function readSessionIds(file: string): { id: string; name: string }[] | null {
     } finally {
       db.close();
     }
-  } catch {
+  } catch (err) {
+    console.warn(`[db] readSessionIds failed for ${file}:`, err);
     return null; // không phải DB hợp lệ / thiếu bảng sessions → bỏ qua
   }
 }
@@ -571,7 +578,65 @@ export function rescan() {
   }
 }
 
-// Khởi động: tách lucky-draw.db kiểu cũ (nếu còn) rồi quét data/.
+/** true nếu account này đã có thư mục riêng trên máy (đã login ở đây trước đó) — dùng để biết đây có
+ *  phải lần đầu login account này trên máy, cần hỏi nhận file rời ở gốc hay không (xem
+ *  listRootLooseSessionFiles()/importLooseFileToAccount() bên dưới). */
+export function accountFolderExists(accountId: string): boolean {
+  return fs.existsSync(path.join(ROOT_DATA_DIR, "accounts", accountId));
+}
+
+export interface LooseSessionFile {
+  file: string; // đường dẫn đầy đủ
+  id: string;
+  name: string;
+}
+
+/** File `.db` rời còn nằm thẳng trong thư mục gốc (trước khi có tính năng Account, hoặc chưa ai nhận) —
+ *  dùng cho hộp thoại "Tìm thấy N session trên máy này, thêm vào account không?" lúc login lần đầu.
+ *  KHÔNG đệ quy vào accounts/ (readdirSync không tự xuống thư mục con) nên tự động không lẫn session
+ *  đã thuộc về account khác. */
+export function listRootLooseSessionFiles(): LooseSessionFile[] {
+  return fs
+    .readdirSync(ROOT_DATA_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".db") && !f.startsWith("."))
+    .map((f) => path.join(ROOT_DATA_DIR, f))
+    .map((file) => {
+      const rows = readSessionIds(file);
+      return rows && rows.length === 1 ? { file, id: rows[0].id, name: rows[0].name } : null;
+    })
+    .filter((x): x is LooseSessionFile => x !== null);
+}
+
+/** Chuyển 1 file rời ở gốc (xem listRootLooseSessionFiles) vào thư mục account — gọi TRƯỚC
+ *  switchAccount(accountId) cho account đó (thư mục đích lúc này còn trống hoặc chưa tồn tại). */
+export function importLooseFileToAccount(file: string, accountId: string) {
+  const destDir = path.join(ROOT_DATA_DIR, "accounts", accountId);
+  fs.mkdirSync(destDir, { recursive: true });
+  fs.renameSync(file, path.join(destDir, path.basename(file)));
+}
+
+/**
+ * Chuyển `data/` đang thao tác sang thư mục RIÊNG của 1 account (lúc login), hoặc về đúng thư mục gốc
+ * (`accountId = null`, lúc logout hoặc trước khi có tính năng Account) — đóng hết kết nối đang mở, xoá
+ * sạch registry, trỏ lại DATA_DIR/TRASH_DIR/BACKUP_DIR/TAB_ORDER_FILE rồi rescan() thư mục mới. Build
+ * Electron main là CommonJS nên `export let DATA_DIR` là live binding — main.ts/cloudSync.ts đọc giá trị
+ * mới ngay, không cần sửa gì ở 2 file đó. Gọi bởi `electron/auth.ts` (login/logout), KHÔNG tự gọi ở đây
+ * lúc khởi động (giữ nguyên hành vi cũ: `rescan()` bên dưới chạy thẳng trên ROOT_DATA_DIR).
+ */
+export function switchAccount(accountId: string | null) {
+  closeAll();
+  entries.clear();
+  conflictFiles.clear();
+
+  DATA_DIR = accountId ? path.join(ROOT_DATA_DIR, "accounts", accountId) : ROOT_DATA_DIR;
+  TRASH_DIR = path.join(DATA_DIR, ".trash");
+  BACKUP_DIR = path.join(DATA_DIR, ".backup");
+  TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
+  ensureWritableDir(DATA_DIR);
+  rescan();
+}
+
+// Khởi động: tách lucky-draw.db kiểu cũ (nếu còn) rồi quét data/ gốc (chưa login tài khoản nào).
 const legacyFile = path.join(LEGACY_DIR, "lucky-draw.db");
 if (fs.existsSync(legacyFile)) splitMultiSessionFile(legacyFile);
 rescan();
@@ -612,7 +677,7 @@ export function listSessions(): any[] {
 // thuộc tính của cả thư mục data/, không của riêng 1 session), không phải localStorage (để bản portable
 // mang data/ sang máy khác vẫn giữ thứ tự). Dấu "." đầu tên giống .trash/.backup: rescan() bỏ qua.
 // Hỏng/thiếu file → coi như chưa sắp xếp, không lỗi.
-const TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
+let TAB_ORDER_FILE = path.join(DATA_DIR, ".tab-order.json");
 
 function readTabOrder(): string[] {
   try {
@@ -888,7 +953,7 @@ export function listTrash(): TrashEntry[] {
 }
 
 /** Đưa 1 file từ data/.trash/ trở lại data/ — bỏ hậu tố "__deleted-<thời điểm>" khỏi tên file, tự
- *  thêm số thứ tự nếu trùng tên. Trả về đường dẫn file đích (data/), để openDbFile() peek lấy id.
+ *  thêm số thứ tự nếu trùng tên. Trả về đường dẫn file đích (data/).
  *  rescan() ở lần gọi listSessions()/refresh() kế tiếp sẽ tự thấy nó. */
 export function restoreFromTrash(fileName: string): string {
   const file = path.join(TRASH_DIR, fileName);
@@ -902,65 +967,6 @@ export function restoreFromTrash(fileName: string): string {
   return target;
 }
 
-/** Xoá VĨNH VIỄN 1 file khỏi data/.trash/ — KHÔNG còn đường lấy lại (khác restoreFromTrash). Renderer
- *  (RestoreModal.tsx) phải tự hỏi xác nhận trước khi gọi, giống các thao tác không hoàn tác khác. */
-export function permanentlyDelete(fileName: string) {
-  const file = path.join(TRASH_DIR, fileName);
-  if (!fs.existsSync(file)) return;
-  fs.unlinkSync(file);
-  for (const suffix of ["-wal", "-shm", "-journal"]) {
-    if (fs.existsSync(file + suffix)) fs.unlinkSync(file + suffix);
-  }
-}
-
-export interface OpenDbFileResult {
-  id: string;
-  name: string;
-  // true = session này ĐÃ là 1 tab đang mở (closed = 0) từ TRƯỚC khi gọi hàm này — renderer dùng để
-  // báo rõ "session này đang mở rồi" thay vì âm thầm switchTab, tránh nhầm lẫn giữa các file trùng tên
-  // khác session_id (đã gặp thật — 2 file cùng tên sự kiện, khác id, tưởng đang mở nhầm).
-  alreadyOpen: boolean;
-}
-
-/** Nút "Open" (electron/main.ts, dialog chọn 1 file .db) — 3 trường hợp, trả về session để renderer tự
- *  switchTab tới đúng session vừa mở (null nếu không xác định được, vd file hỏng):
- *  1. File đang ở data/.trash/: coi như bấm Restore (restoreFromTrash), bỏ hậu tố "__deleted-...".
- *  2. File đã nằm trong data/ (session đang Closed, hoặc hiếm khi app chưa kịp rescan): chỉ đặt
- *     closed = 0, KHÔNG di chuyển file.
- *  3. File ở ngoài data/ (USB, backup máy khác...): copy vào data/, giữ nguyên bản gốc. Trùng id với
- *     session đang có sẵn thì rescan() ở lần listSessions() kế tiếp tự phát hiện thành conflict
- *     (SessionConflictDialog.tsx), không cần xử lý riêng ở đây. */
-export function openDbFile(filePath: string): OpenDbFileResult | null {
-  if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
-  const dir = path.dirname(filePath);
-  let target: string;
-
-  if (sameFile(dir, DATA_DIR)) {
-    rescan();
-    const found = [...entries.entries()].find(([, e]) => sameFile(e.file, filePath));
-    if (!found) return null;
-    const [id, entry] = found;
-    const row = entry.db.prepare(`SELECT name, closed FROM sessions LIMIT 1`).get() as {
-      name: string;
-      closed: number | null;
-    };
-    const alreadyOpen = !row.closed;
-    setSessionClosed(id, false);
-    return { id, name: row.name, alreadyOpen };
-  } else if (sameFile(dir, TRASH_DIR)) {
-    target = restoreFromTrash(path.basename(filePath));
-  } else {
-    target = uniquePath(DATA_DIR, path.basename(filePath));
-    fs.copyFileSync(filePath, target);
-  }
-
-  rescan();
-  const entry = [...entries.values()].find((e) => sameFile(e.file, target));
-  if (!entry) return null;
-  const row = entry.db.prepare(`SELECT id, name FROM sessions LIMIT 1`).get() as { id: string; name: string } | undefined;
-  return row ? { id: row.id, name: row.name, alreadyOpen: false } : null;
-}
-
 /**
  * Bản sao NHẤT QUÁN của 1 session đang mở ra `destFile` (VACUUM INTO, giống duplicateSession — an toàn
  * ngay cả khi session đang được ghi), không đụng file gốc. Dùng cho Push lên Cloud Sync (cloudSync.ts).
@@ -971,6 +977,48 @@ export function snapshotSession(sessionId: string, destFile: string): { modified
   if (!entry) throw new Error(`Session not found: ${sessionId}`);
   entry.db.prepare(`VACUUM INTO ?`).run(destFile);
   return { modifiedAt: fs.statSync(entry.file).mtime.toISOString() };
+}
+
+/**
+ * Thay NỘI DUNG 1 session đang đăng ký bằng bản tải từ cloud (cloudSync.ts — cloud có bản mới hơn, local
+ * không sửa gì). Giữ nguyên đường dẫn file + id; bản local cũ sao lưu vào data/.backup/ trước khi thay
+ * (phòng xa — có đường lấy lại nếu đồng bộ quyết định sai).
+ */
+export function replaceSessionFile(sessionId: string, buffer: Buffer) {
+  const entry = entries.get(sessionId);
+  if (!entry) throw new Error(`Session not found: ${sessionId}`);
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  entry.db.close();
+  try {
+    fs.copyFileSync(entry.file, uniquePath(BACKUP_DIR, `${path.basename(entry.file, ".db")}__before-pull-${stamp}.db`));
+    const tmp = `${entry.file}.downloading`;
+    fs.writeFileSync(tmp, buffer);
+    for (const suffix of ["-wal", "-shm", "-journal"]) fs.rmSync(entry.file + suffix, { force: true });
+    fs.renameSync(tmp, entry.file);
+  } finally {
+    entry.db = openFile(entry.file);
+  }
+}
+
+/**
+ * Cả local lẫn cloud cùng đổi kể từ lần đồng bộ trước (hiếm — chỉ khi mất mạng lâu, khoá phiên nguội,
+ * máy khác đã login và Push): KHÔNG đè bên nào. Tách bản local hiện tại thành 1 session MỚI (id mới,
+ * tên "<tên> (this computer)") để người dùng tự xem/xoá, rồi người gọi thay bản gốc bằng bản cloud
+ * (replaceSessionFile). Trả về id mới.
+ */
+export function forkSessionAsLocalCopy(sessionId: string): string {
+  const entry = entries.get(sessionId);
+  if (!entry) throw new Error(`Session not found: ${sessionId}`);
+  const name = (entry.db.prepare(`SELECT name FROM sessions WHERE id = ?`).get(sessionId) as { name: string }).name;
+  const copyName = `${name} (this computer)`;
+  const target = uniquePath(DATA_DIR, fileNameFor(copyName, randomUUID()));
+  entry.db.prepare(`VACUUM INTO ?`).run(target);
+  const newId = giveNewSessionId(target, sessionId);
+  const db = openFile(target);
+  db.prepare(`UPDATE sessions SET name = ?, closed = 0 WHERE id = ?`).run(copyName, newId);
+  entries.set(newId, { file: target, db });
+  return newId;
 }
 
 /** Mọi session đang đăng ký (KỂ CẢ tab đang Close — file vẫn nằm trong data/) kèm file + mtime — Cloud

@@ -20,3 +20,107 @@ body {
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
+
+/* Màn kích hoạt (Login.tsx): chuyển bước Welcome → Create Admin Account — trượt nhẹ + hiện dần. */
+@keyframes login-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.login-step-in {
+  animation: login-step-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.login-shake {
+  animation: login-shake 320ms ease-in-out;
+}
+
+/* Nền màn đăng nhập/kích hoạt: các đốm màu thương hiệu mờ trôi rất chậm phía sau card. */
+@keyframes auth-blob-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -30px) scale(1.08); }
+  100% { transform: translate(-30px, 25px) scale(0.95); }
+}
+.auth-blob {
+  animation: auth-blob-drift 22s ease-in-out infinite alternate;
+}
+
+/* Riêng màn Welcome (AuthBackground variant="welcome") — dùng CHUNG cho cả 3 màn Access Code/Create
+   Admin Account/chào mừng sau khi tạo admin (cố định y hệt nhau theo yêu cầu) — trôi XA + RÕ hẳn, kiểu
+   bong bóng lơ lửng: biên
+   độ di chuyển RỘNG (tính theo % kích thước màn hình, không phải px cố định, để luôn rộng tương ứng
+   mọi kích thước cửa sổ), nhiều mốc đổi hướng KHÔNG đối xứng (không phải lặp lại 1 chiều) để không có
+   cảm giác "qua lại" máy móc. Mỗi đốm 1 animation-duration khác hẳn nhau (set inline ở AuthShell.tsx,
+   9s/11s/14s) nên không đồng bộ — cộng với 5 mốc lệch pha, trong ~3s màn Welcome hiển thị gần như không
+   bao giờ thấy lặp y hệt. */
+@keyframes welcome-blob-float {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.75; }
+  20%  { transform: translate(18vw, -14vh) scale(1.2); opacity: 0.9; }
+  40%  { transform: translate(-13vw, 10vh) scale(0.88); opacity: 0.55; }
+  60%  { transform: translate(15vw, 16vh) scale(1.15); opacity: 0.85; }
+  80%  { transform: translate(-17vw, -9vh) scale(0.92); opacity: 0.65; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.75; }
+}
+.welcome-blob {
+  animation-name: welcome-blob-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Màn Welcome sau khi tạo admin thành công (Login.tsx) — "WELCOME" hiện NGUYÊN KHỐI (không tách ký tự,
+   tách ra nhìn giật) bằng mép hiện dần trái→phải (clip-path) + fade cùng lúc. */
+@keyframes welcome-heading-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+.welcome-heading {
+  animation-name: welcome-heading-in;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-blob,
+  .welcome-blob,
+  .login-step-in,
+  .login-shake,
+  .welcome-heading {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    clip-path: none;
+  }
+}
+
+/* CloudSyncIcon.tsx: mũi tên trong đám mây chạy lên liên tục khi đang đồng bộ lên cloud. */
+@keyframes cloud-arrow-up {
+  0% { transform: translateY(5px); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateY(-4px); opacity: 0; }
+}
+.cloud-arrow-up {
+  animation: cloud-arrow-up 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloud-arrow-up {
+    animation: none;
+  }
+}
+
+/* Ẩn thanh cuộn nhưng vẫn cuộn được (hàng tab ở TabBar.tsx — đã có nút ⌄ danh sách tab để nhảy tới tab khuất). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

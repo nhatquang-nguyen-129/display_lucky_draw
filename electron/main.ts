@@ -1,3 +1,5 @@
+// PHẢI là import đầu tiên — đặt userData riêng cho bản dev TRƯỚC khi db.ts/auth.ts tính đường dẫn.
+import "./config/cloudEnv";
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -10,10 +12,9 @@ import {
   deleteSession,
   getDb,
   listConflicts,
+  listSessionFiles,
   listSessions,
   listTrash,
-  openDbFile,
-  permanentlyDelete,
   renameSession,
   resolveConflict,
   keepBothConflict,
@@ -28,6 +29,8 @@ import {
 import { commitDraw, DrawCandidate, drawOne, pickWinner, recordPendingDraw, resetSession } from "./drawEngine";
 import { computeActiveCoreFields, resolveParticipantField } from "./participantFields";
 import * as cloudSync from "./cloudSync";
+import * as cloudAssets from "./cloudAssets";
+import * as auth from "./auth";
 import { APP_NAME, IS_DEV, getWindowTitle } from "./config/appConfig";
 import { importVideo, purgeUnusedMedia, registerMediaProtocol, registerMediaScheme } from "./media";
 
@@ -59,68 +62,79 @@ function getSessionName(sessionId: string): string {
   }
 }
 
-// Chặn đóng cửa sổ chính nếu còn session chưa Push lên Cloud Sync — xem checkCloudSyncBeforeQuit().
-// `allowQuit`: đặt true khi đã kiểm tra xong (hoặc Force Exit) để lần "close" kế tiếp cho qua thật,
-// không hỏi lại vòng 2. `checkingQuit`: tránh bấm đóng liên tục trong lúc đang chờ status() (network)
-// kích thêm nhiều lượt kiểm tra chồng lên nhau.
-let allowQuit = false;
-let checkingQuit = false;
+// Thoát app: đồng bộ mọi session còn cờ "chưa đồng bộ" (xem cloudSync.flushDirty), tối đa
+// QUIT_FLUSH_MS — chưa xong thì hỏi "Wait / Quit anyway". Chọn gì thì cờ vẫn còn trên đĩa, lần login sau
+// tự đẩy tiếp.
+let quitting = false;
+const QUIT_FLUSH_MS = 5_000;
+const QUIT_WAIT_MORE_MS = 30_000;
 
-async function checkCloudSyncBeforeQuit() {
-  if (checkingQuit) return;
-  checkingQuit = true;
-  try {
-    const settings = cloudSync.readCloudSettings();
-    const configured = !!settings.workerUrl && !!(settings.readCode || settings.writeToken);
-    if (!configured) {
-      allowQuit = true;
-      mainWindow?.close();
-      return;
-    }
-    const result = await cloudSync.status();
-    // Lỗi mạng lúc thoát (vd rút mạng, server tạm thời không phản hồi) không nên giữ chân người dùng —
-    // chỉ cảnh báo khi THỰC SỰ biết có thay đổi chưa đẩy lên.
-    if ("error" in result) {
-      allowQuit = true;
-      mainWindow?.close();
-      return;
-    }
-    const pending = result.sessions.filter(
-      (s) => s.state === "local-only" || s.state === "local-newer" || s.state === "diverged"
-    );
-    if (pending.length === 0) {
-      allowQuit = true;
-      mainWindow?.close();
-      return;
-    }
-    // Có thay đổi local chưa lên cloud — báo renderer tự mở Cloud Sync (kèm nút Force Exit) thay vì
-    // đóng luôn, để người dùng cân nhắc Push trước khi rời sự kiện.
-    mainWindow?.webContents.send("cloud:quit-pending");
-  } finally {
-    checkingQuit = false;
+async function confirmQuit(): Promise<boolean> {
+  let remaining = await cloudSync.flushDirty(QUIT_FLUSH_MS);
+  while (remaining.length > 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) return true;
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      buttons: ["Wait", "Quit anyway"],
+      defaultId: 0,
+      cancelId: 0,
+      message: `${remaining.length} session${remaining.length === 1 ? " has" : "s have"} not been synced to the cloud yet`,
+      detail:
+        "Check the internet connection and choose Wait to try again. If you quit now, the changes stay on this " +
+        "computer and will sync the next time this account logs in here.",
+    });
+    if (choice === 1) return true;
+    remaining = await cloudSync.flushDirty(QUIT_WAIT_MORE_MS);
   }
+  return true;
 }
 
-// Check tương tự lúc vừa MỞ app lên (khác hẳn checkCloudSyncBeforeQuit — không chặn gì cả, chỉ chạy
-// NGẦM 1 lần sau khi renderer load xong rồi báo renderer tự mở Cloud Sync nếu thấy cần chú ý, để
-// người dùng biết sớm có session nào lệch với cloud TRƯỚC khi bắt đầu sửa dữ liệu — đặc biệt hữu ích
-// cho trường hợp máy khác đã Push 1 bản mới hơn (cloud-newer) mà máy này chưa Pull, tránh sửa tiếp lên
-// 1 bản cũ rồi Push đè mất thay đổi đó). Mọi trạng thái khác "in-sync" đều tính là "cần chú ý" —
-// "cloud-only" (session mới chỉ có trên cloud) cũng đáng được biết ngay, không chỉ 3 trạng thái
-// local-only/local-newer/diverged như lúc thoát (lúc thoát chỉ quan tâm "có gì CHƯA PUSH", lúc mở lại
-// quan tâm CẢ "có gì mới ở cloud").
-async function checkCloudSyncOnStartup() {
-  try {
-    const settings = cloudSync.readCloudSettings();
-    const configured = !!settings.workerUrl && !!(settings.readCode || settings.writeToken);
-    if (!configured) return;
-    const result = await cloudSync.status();
-    if ("error" in result) return;
-    const needsAttention = result.sessions.some((s) => s.state !== "in-sync");
-    if (needsAttention) mainWindow?.webContents.send("cloud:startup-pending");
-  } catch {
-    // Im lặng bỏ qua — đây là 1 gợi ý tiện lợi lúc mở app, không phải bước bắt buộc.
+// Popup "Reconnecting..." hiện ở cửa sổ chính + Landing Builder + Data Editor — KHÔNG gửi tới cửa sổ
+// Present (đang chiếu lên LED, khán giả sẽ thấy). Present vẫn quay bình thường khi mất mạng, Confirm được
+// đánh dấu "chưa đồng bộ" và tự đẩy khi có mạng lại.
+function sendToOperatorWindows(channel: string, ...args: unknown[]) {
+  const windows = [mainWindow, ...landingBuilderWindows.values(), ...dataEditorWindows.values()];
+  for (const w of windows) if (w && !w.isDestroyed()) w.webContents.send(channel, ...args);
+}
+
+// Báo renderer khi phiên đăng nhập bị thu hồi (401/403 — bị phiên khác chiếm, Force logout, Disable;
+// KHÁC mất mạng tạm thời, xem auth.ts's startHeartbeat) hoặc khi mất/được lại kết nối tạm thời — KHÔNG
+// đóng cửa sổ phụ nào (Present/Builder/Data Editor), app chạy live tại sự kiện.
+auth.onRevoked(() => mainWindow?.webContents.send("auth:revoked"));
+auth.onConnectivityChange((offline) => sendToOperatorWindows("auth:connectivity", offline));
+cloudSync.onStatusChange((sessionId, status) => mainWindow?.webContents.send("sync:status", { sessionId, status }));
+cloudSync.onSessionsChanged(() => mainWindow?.webContents.send("sync:sessionsChanged"));
+// Không Pull đè/chuyển vào Trash session đang mở cửa sổ phụ (renderer giữ dữ liệu trong bộ nhớ).
+cloudSync.setBusyCheck(
+  (sessionId) => presentWindows.has(sessionId) || landingBuilderWindows.has(sessionId) || dataEditorWindows.has(sessionId)
+);
+
+// Giai đoạn 4 (CLAUDE.md): debounce THÍCH ỨNG cho Landing Builder/Data Editor — Save chỉ đổi text/vị trí
+// (không có data: URI mới/lớn) đồng bộ gần như ngay; Save có ảnh/video lớn (sẽ phải dehydrate + có thể
+// upload asset lúc đồng bộ) đợi lâu hơn, tránh làm lại việc đó nhiều lần nếu người dùng Save liên tục
+// trong lúc đang chỉnh ảnh (resize/crop/đổi ảnh khác...).
+const SYNC_SOON_EDIT_WINDOW_FAST_MS = 2_500;
+const SYNC_SOON_EDIT_WINDOW_SLOW_MS = 9_000;
+
+// Điểm chốt đồng bộ cho MỌI IPC ghi dữ liệu: luôn đánh dấu "chưa đồng bộ"; gọi từ cửa sổ chính/Present
+// (thao tác edit/delete rời rạc, Confirm) thì đồng bộ ngay (gom 1,5s).
+//
+// Gọi từ Landing Builder/Data Editor: nếu session đang có cửa sổ Present mở (đang chiếu cho khán giả) —
+// CHỈ đánh dấu, đồng bộ 1 lần lúc đóng cửa sổ đó như trước (quyết định giai đoạn 0 — tránh thao tác sửa
+// dở lên màn LED trước khán giả). Nếu KHÔNG có Present nào mở — cũng đồng bộ trong lúc đang sửa, debounce
+// dài hơn cửa sổ chính (`heavy` = Save vừa rồi có khả năng kéo theo dehydrate/upload asset, xem
+// cloudAssets.hasLargeInlineAsset).
+function touched(e: Electron.IpcMainInvokeEvent, sessionId: string, opts?: { heavy?: boolean }) {
+  cloudSync.markDirty(sessionId);
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const fromEditWindow =
+    !!win && ([...landingBuilderWindows.values()].includes(win) || [...dataEditorWindows.values()].includes(win));
+  if (!fromEditWindow) {
+    cloudSync.syncSoon(sessionId);
+    return;
   }
+  if (presentWindows.has(sessionId)) return;
+  cloudSync.syncSoon(sessionId, opts?.heavy ? SYNC_SOON_EDIT_WINDOW_SLOW_MS : SYNC_SOON_EDIT_WINDOW_FAST_MS);
 }
 
 function createMainWindow() {
@@ -144,15 +158,15 @@ function createMainWindow() {
   mainWindow.on("page-title-updated", (e) => e.preventDefault());
 
   mainWindow.on("close", (e) => {
-    if (allowQuit) return;
+    if (quitting) return;
     e.preventDefault();
-    void checkCloudSyncBeforeQuit();
-  });
-
-  // Chỉ 1 lần mỗi lần mở app (không lặp lại mỗi khi reload DevTools) — renderer lúc "did-finish-load"
-  // chắc chắn đã gắn xong listener "cloud:startup-pending" (xem useEffect trong TabBar.tsx).
-  mainWindow.webContents.once("did-finish-load", () => {
-    void checkCloudSyncOnStartup();
+    quitting = true;
+    // Thoát app = đăng xuất: đẩy nốt phần chưa đồng bộ (confirmQuit) rồi nhả khoá phiên + xoá phiên đã lưu
+    // (auth.logoutOnQuit, tối đa 3 giây) — lần mở sau luôn phải đăng nhập lại.
+    void confirmQuit()
+      .catch(() => true)
+      .then(() => auth.logoutOnQuit(3_000).catch(() => undefined))
+      .then(() => mainWindow?.close());
   });
 
   if (IS_DEV) {
@@ -161,6 +175,13 @@ function createMainWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
+
+  // Mỗi lần trang tải xong (mở app, reload sau Log out) — trả focus bàn phím về nội dung trang. Trên
+  // Windows, sau hộp thoại native (confirm/alert) hoặc reload, Electron đôi khi để trang mất focus: màn
+  // Sign in hiện ra nhưng không gõ được vào ô nhập cho tới khi cửa sổ được focus lại.
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) mainWindow.webContents.focus();
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -237,6 +258,8 @@ function openPresentWindow(sessionId: string) {
 
   win.on("closed", () => {
     presentWindows.delete(sessionId);
+    // Điểm chốt: kết thúc lượt trình chiếu — đẩy nốt lượt Draw chưa Confirm/phần còn lại.
+    void cloudSync.syncSession(sessionId);
   });
 }
 
@@ -318,6 +341,8 @@ function openLandingBuilderWindow(sessionId: string) {
   win.on("closed", () => {
     landingBuilderWindows.delete(sessionId);
     landingBuilderDirty.delete(win);
+    // Điểm chốt: mọi lần Save trong Builder chỉ đánh dấu — đồng bộ 1 lần lúc đóng cửa sổ.
+    void cloudSync.syncSession(sessionId);
   });
 }
 
@@ -393,6 +418,8 @@ function openDataEditorWindow(sessionId: string) {
   win.on("closed", () => {
     dataEditorWindows.delete(sessionId);
     dataEditorDirty.delete(win);
+    // Điểm chốt: mọi lần Save trong Data Editor chỉ đánh dấu — đồng bộ 1 lần lúc đóng cửa sổ.
+    void cloudSync.syncSession(sessionId);
   });
 }
 
@@ -489,6 +516,7 @@ ipcMain.handle(
       data.extra && Object.keys(data.extra).length ? JSON.stringify(data.extra) : null,
       nextSortOrder(data.sessionId)
     );
+    touched(_e, data.sessionId);
     return id;
   }
 );
@@ -518,6 +546,7 @@ ipcMain.handle(
       data.extra && Object.keys(data.extra).length ? JSON.stringify(data.extra) : null,
       data.id
     );
+    touched(_e, data.sessionId);
   }
 );
 
@@ -567,6 +596,7 @@ ipcMain.handle(
     const columns = new Set<string>();
     for (const row of rows) if (row.extra) for (const key of Object.keys(row.extra)) columns.add(key);
     db.prepare(`UPDATE sessions SET imported_columns = ? WHERE id = ?`).run(JSON.stringify([...columns]), sessionId);
+    touched(_e, sessionId);
     return result;
   }
 );
@@ -576,6 +606,7 @@ ipcMain.handle(
 ipcMain.handle("participants:delete", (_e, sessionId: string, id: string) => {
   assertInputsUnlocked(sessionId);
   getDb(sessionId).prepare(`UPDATE participants SET status = 'removed' WHERE id = ?`).run(id);
+  touched(_e, sessionId);
 });
 
 ipcMain.handle("participants:bulkDelete", (_e, sessionId: string, ids: string[]) => {
@@ -587,7 +618,9 @@ ipcMain.handle("participants:bulkDelete", (_e, sessionId: string, ids: string[])
     for (const id of items) deleted += del.run(id).changes;
     return deleted;
   });
-  return tx(ids);
+  const result = tx(ids);
+  touched(_e, sessionId);
+  return result;
 });
 
 // Ghi lại thứ tự dòng sau khi kéo-thả sắp xếp trong Data Editor — orderedIds đã đúng thứ tự mong muốn.
@@ -599,6 +632,7 @@ ipcMain.handle("participants:reorder", (_e, sessionId: string, orderedIds: strin
     ids.forEach((id, index) => update.run(index, id));
   });
   tx(orderedIds);
+  touched(_e, sessionId);
 });
 
 /* ---------------- IPC: Prizes (thuộc về 1 session) ---------------- */
@@ -644,6 +678,7 @@ ipcMain.handle("prizes:create", (_e, data: PrizeInput) => {
     data.maxWinCount ?? 1,
     data.displayImage ?? null
   );
+  touched(_e, data.sessionId);
   return id;
 });
 
@@ -679,11 +714,13 @@ ipcMain.handle("prizes:update", (_e, data: PrizeInput & { id: string }) => {
     data.displayImage ?? null,
     data.id
   );
+  touched(_e, data.sessionId);
 });
 
 ipcMain.handle("prizes:delete", (_e, sessionId: string, id: string) => {
   assertInputsUnlocked(sessionId);
   getDb(sessionId).prepare(`DELETE FROM prizes WHERE id = ?`).run(id);
+  touched(_e, sessionId);
 });
 
 /* ---------------- IPC: Sessions (= tab, đơn vị chứa 1 sự kiện quay số độc lập) ---------------- */
@@ -691,6 +728,9 @@ ipcMain.handle("prizes:delete", (_e, sessionId: string, id: string) => {
 // Mỗi session = 1 file trong data/ (xem db.ts) — mỗi lần gọi quét lại thư mục, nên file vừa copy vào
 // data/ lúc app đang mở tự hiện thành tab mới (renderer gọi lại khi cửa sổ chính được focus).
 ipcMain.handle("sessions:list", () => listSessions());
+// Mọi session đang đăng ký, KỂ CẢ tab Closed — dùng cho SessionsModal.tsx (nút "Open" ở TabBar.tsx),
+// khác sessions:list (chỉ trả tab đang mở, cho TabBar chính).
+ipcMain.handle("sessions:listAll", () => listSessionFiles());
 
 // Session nào đang có ≥ 2 bản (cùng id, khác file) trong data/ — renderer hiện hộp thoại cho chọn.
 ipcMain.handle("sessions:conflicts", () => listConflicts());
@@ -698,86 +738,51 @@ ipcMain.handle("sessions:resolveConflict", (_e, data: { sessionId: string; keepF
   resolveConflict(data.sessionId, data.keepFile)
 );
 // "Keep both" — cấp id mới cho đúng bản được chọn, giữ mọi bản (xem keepBothConflict trong db.ts).
-ipcMain.handle("sessions:keepBothConflict", (_e, data: { sessionId: string; file: string }) =>
-  keepBothConflict(data.sessionId, data.file)
-);
+ipcMain.handle("sessions:keepBothConflict", (_e, data: { sessionId: string; file: string }) => {
+  const newId = keepBothConflict(data.sessionId, data.file);
+  touched(_e, newId);
+  return newId;
+});
 ipcMain.handle("sessions:openDataFolder", () => shell.openPath(DATA_DIR));
 ipcMain.handle("sessions:listTrash", () => listTrash());
-ipcMain.handle("sessions:restoreFromTrash", (_e, data: { file: string }) => restoreFromTrash(data.file));
-ipcMain.handle("sessions:permanentlyDelete", (_e, data: { file: string }) => permanentlyDelete(data.file));
-
-// Nút "Open" ở TabBar.tsx — chọn 1 file .db bất kỳ (mặc định mở ngay data/, nơi session đang Closed
-// vẫn nằm nguyên) rồi giao cho openDbFile() xử lý 3 trường hợp (đang trong .trash/, đã trong data/,
-// hay ở ngoài hẳn — vd USB). Không trả sessionId: renderer refresh() rồi tự tìm tab mới/được mở lại.
-ipcMain.handle("sessions:openFile", async () => {
-  const result = await dialog.showOpenDialog({
-    title: "Open session",
-    defaultPath: DATA_DIR,
-    properties: ["openFile"],
-    filters: [{ name: "Lucky Draw session", extensions: ["db"] }],
-  });
-  if (result.canceled || result.filePaths.length === 0) return null;
-  return openDbFile(result.filePaths[0]);
+ipcMain.handle("sessions:restoreFromTrash", (_e, data: { file: string }) => {
+  const target = restoreFromTrash(data.file);
+  // Session vừa khôi phục chưa có trạng thái đồng bộ = "chưa đồng bộ" — Push lên (Worker tự gỡ dấu đã xoá).
+  void cloudSync.syncAll();
+  return target;
 });
 
-// Cloud Sync — Push/Pull nguyên file session qua Cloudflare Worker + R2 (cloud/worker/), lời gọi
-// network DUY NHẤT trong app, xem electron/cloudSync.ts. KHÔNG assertSessionUnlocked/
-// assertInputsUnlocked: Push chỉ đọc session (VACUUM INTO ra file tạm), Pull chỉ thêm file mới vào
-// data/, không đụng session nào đang mở.
-ipcMain.handle("cloud:getSettings", () => {
-  const { workerUrl, readCode, writeToken } = cloudSync.readCloudSettings();
-  return { workerUrl, readCode, writeToken };
-});
-ipcMain.handle("cloud:connect", (_e, data: { workerUrl: string; readCode: string; writeToken: string }) =>
-  cloudSync.connect(data)
+// Account/Auth — đăng nhập qua Cloudflare Worker (cloud/worker/), thay mô hình Space ẩn danh cũ. Lời
+// gọi network DUY NHẤT trong app vẫn như trước (xem electron/auth.ts + electron/cloudSync.ts), chỉ
+// khác: đồng bộ theo điểm chốt (touched() ở cuối các handler ghi dữ liệu, đóng cửa sổ phụ, thoát app —
+// xem cloudSync.ts), không còn nút Push/Pull/Connect tay.
+ipcMain.handle("auth:getSession", () => auth.getSession());
+ipcMain.handle("auth:login", (_e, data: { username: string; password: string }) => auth.login(data));
+// Lần đầu (chưa kích hoạt): Access Code (= ADMIN_TOKEN) + tạo admin. Quên mật khẩu admin: Access Code + mật khẩu mới.
+ipcMain.handle("auth:verifyAccessCode", (_e, accessCode: string) => auth.verifyAccessCode(accessCode));
+ipcMain.handle("auth:activate", (_e, data: { accessCode: string; username: string; password: string }) => auth.activate(data));
+ipcMain.handle("auth:resetAdminPassword", (_e, data: { accessCode: string; password: string }) => auth.resetAdminPassword(data));
+ipcMain.handle("auth:getStartupStatus", () => auth.getStartupStatus());
+ipcMain.handle("auth:retryStartup", () => auth.retryStartup());
+ipcMain.handle("auth:logout", () => auth.logout());
+ipcMain.handle("auth:importLooseFiles", (_e, files: string[]) => auth.importLooseFiles(files));
+// Trạng thái đồng bộ (chấm trên tab, SessionsModal.tsx) + điểm chốt từ renderer (chuyển/mở tab).
+ipcMain.handle("sync:getStatuses", () => cloudSync.getStatuses());
+ipcMain.handle("sync:session", (_e, sessionId: string) => cloudSync.syncSession(sessionId));
+ipcMain.handle("sync:all", () => cloudSync.syncAll());
+
+// Quản lý account — chỉ account isAdmin mới gọi được (Worker tự chặn 403 nếu không phải, xem
+// cloud/worker/src/index.ts requireAdmin()); renderer chỉ hiện mục này khi auth.getSession().isAdmin.
+ipcMain.handle("auth:createAccount", (_e, data: { username: string; password: string }) => auth.createAccount(data));
+ipcMain.handle("auth:listAccounts", () => auth.listAccounts());
+ipcMain.handle("auth:resetAccountPassword", (_e, data: { accountId: string; password: string }) => auth.resetAccountPassword(data));
+// Admin: mọi session của 1 account (kèm tình trạng, dung lượng cloud) + khôi phục session đã xoá hình thức.
+ipcMain.handle("auth:listAccountSessions", (_e, accountId: string) => auth.listAccountSessions(accountId));
+ipcMain.handle("auth:restoreDeletedSession", (_e, data: { accountId: string; sessionId: string }) => auth.restoreDeletedSession(data));
+ipcMain.handle("auth:forceLogoutAccount", (_e, accountId: string) => auth.forceLogoutAccount(accountId));
+ipcMain.handle("auth:setAccountDisabled", (_e, data: { accountId: string; disabled: boolean }) =>
+  auth.setAccountDisabled(data.accountId, data.disabled)
 );
-ipcMain.handle("cloud:disconnect", () => cloudSync.disconnect());
-// So local với cloud từng session → renderer gợi ý Push/Sync (xem status() trong cloudSync.ts).
-ipcMain.handle("cloud:status", () => cloudSync.status());
-// Báo tiến độ Push/Pull về đúng cửa sổ vừa gọi (webContents.send) — renderer nghe qua
-// cloud.onProgress(). File session vài chục MB (ảnh nhúng Landing Builder) upload/download đủ lâu để
-// cần báo tiến độ cụ thể, không chỉ 1 dòng chữ "Pushing..." đứng yên.
-//
-// Modal cho đóng được dù đang Push/Pull (xác nhận "sẽ hủy quy trình" trước) — giữ đúng 1
-// AbortController của lượt đang chạy để "cloud:cancel" hủy được, dọn lại = null lúc xong (kể cả lỗi)
-// để không hủy nhầm 1 lượt MỚI bắt đầu sau đó. Chỉ 1 lượt chạy tại 1 thời điểm (UI chặn bấm 2 lần).
-let currentCloudOp: AbortController | null = null;
-ipcMain.handle("cloud:push", async (e, sessionIds: string[]) => {
-  const controller = new AbortController();
-  currentCloudOp = controller;
-  try {
-    return await cloudSync.push(
-      sessionIds,
-      (sessionId, sent, total) => e.sender.send("cloud:progress", { sessionId, sent, total }),
-      controller.signal
-    );
-  } finally {
-    if (currentCloudOp === controller) currentCloudOp = null;
-  }
-});
-ipcMain.handle("cloud:pull", async (e, items: { sessionId: string; file: string }[]) => {
-  const controller = new AbortController();
-  currentCloudOp = controller;
-  try {
-    return await cloudSync.pull(
-      items,
-      (sessionId, sent, total) => e.sender.send("cloud:progress", { sessionId, sent, total }),
-      controller.signal
-    );
-  } finally {
-    if (currentCloudOp === controller) currentCloudOp = null;
-  }
-});
-ipcMain.handle("cloud:cancel", () => {
-  currentCloudOp?.abort();
-  return true;
-});
-// Nút "Force Exit" trong Cloud Sync (chỉ hiện khi modal tự mở do "cloud:quit-pending") — bỏ qua cảnh
-// báo còn session chưa Push, đóng cửa sổ chính thật sự. Xem checkCloudSyncBeforeQuit() ở trên.
-ipcMain.handle("app:forceQuit", () => {
-  allowQuit = true;
-  mainWindow?.close();
-});
 
 // Lấy 1 session theo id — cần riêng vì PresentMode chạy trong BrowserWindow/route tách biệt,
 // không có SessionProvider nên không thể lấy activeSession qua context như các trang chính.
@@ -791,12 +796,17 @@ ipcMain.handle("sessions:get", (_e, id: string) => {
 
 ipcMain.handle(
   "sessions:create",
-  (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => createSession(data)
+  (_e, data: { name: string; allowDuplicatePrize?: boolean; excludePreviousWinners?: boolean }) => {
+    const id = createSession(data);
+    touched(_e, id);
+    return id;
+  }
 );
 
 ipcMain.handle("sessions:rename", (_e, data: { id: string; name: string }) => {
   assertSessionUnlocked(data.id);
   renameSession(data.id, data.name);
+  touched(_e, data.id);
 });
 
 // Khoá/mở khoá session — không phải bảo mật (không có password), chỉ tránh nhầm lẫn chỉnh sửa sau khi
@@ -816,6 +826,7 @@ ipcMain.handle("sessions:setLocked", (_e, data: { id: string; locked: SessionLoc
     if (openWindows.length > 0) return { ok: false, openWindows };
   }
   setSessionLocked(data.id, data.locked);
+  touched(_e, data.id);
   return { ok: true, openWindows: [] };
 });
 
@@ -828,6 +839,7 @@ ipcMain.handle(
       data.excludePreviousWinners ? 1 : 0,
       data.id
     );
+    touched(_e, data.id);
   }
 );
 
@@ -841,6 +853,7 @@ ipcMain.handle(
       JSON.stringify(data.columnTypes),
       data.id
     );
+    touched(_e, data.id);
   }
 );
 
@@ -854,6 +867,7 @@ ipcMain.handle(
       JSON.stringify(data.columnLabels),
       data.id
     );
+    touched(_e, data.id);
   }
 );
 
@@ -866,6 +880,7 @@ ipcMain.handle(
       JSON.stringify(data.landingConfig),
       data.id
     );
+    touched(_e, data.id, { heavy: cloudAssets.hasLargeInlineAsset(data.landingConfig) });
   }
 );
 
@@ -874,14 +889,18 @@ ipcMain.handle(
 ipcMain.handle("sessions:delete", (_e, id: string) => {
   assertInputsUnlocked(id);
   deleteSession(id);
+  // Gửi dấu "đã xoá" lên cloud — máy khác login sẽ chuyển session này vào Trash thay vì tải về lại.
+  void cloudSync.markSessionDeleted(id);
 });
 
 // "Close" (nút × ở TabBar.tsx) — chỉ ẩn khỏi thanh tab, KHÔNG di chuyển file (khác sessions:delete ở
-// trên), KHÔNG đụng dữ liệu/trạng thái khoá gì cả — mở lại bất cứ lúc nào qua "Open" (sessions:openFile)
+// trên), KHÔNG đụng dữ liệu/trạng thái khoá gì cả — mở lại bất cứ lúc nào qua danh sách "Open"
 // vẫn còn nguyên y hệt. Vì vậy KHÔNG assertSessionUnlocked ở đây (khác sessions:rename) — Full lock vẫn
 // cho đóng tab để gọn thanh tab, chỉ chặn các thao tác thật sự đổi dữ liệu/metadata.
 ipcMain.handle("sessions:setClosed", (_e, data: { id: string; closed: boolean }) => {
   setSessionClosed(data.id, data.closed);
+  // Điểm chốt: đóng/mở lại tab — đồng bộ session đó (trạng thái Close cũng nằm trong file session).
+  touched(_e, data.id);
 });
 
 // Kéo-thả đổi thứ tự tab (TabBar.tsx) — `ids` = toàn bộ tab đang hiện theo thứ tự mới. Không gọi
@@ -892,7 +911,11 @@ ipcMain.handle("sessions:setTabOrder", (_e, ids: string[]) => {
 
 // Nhân bản session (menu chuột phải tab) → id session mới. Không assert khoá: chỉ ĐỌC session gốc,
 // bản mới luôn mở khoá + sạch kết quả quay (xem duplicateSession trong db.ts).
-ipcMain.handle("sessions:duplicate", (_e, id: string) => duplicateSession(id));
+ipcMain.handle("sessions:duplicate", (_e, id: string) => {
+  const newId = duplicateSession(id);
+  touched(_e, newId);
+  return newId;
+});
 
 // Chỉ trả dòng confirmed = 1 — đây là nguồn dữ liệu SỐNG cho Present Mode (Scoreboard/WinnerName...,
 // xem useLandingData.ts), phải luôn khớp đúng "ai đã thật sự trúng" như hành vi trước khi có cột
@@ -974,6 +997,11 @@ ipcMain.handle(
     // Ghi ngay ở trạng thái chưa Confirm — để lại lịch sử kể cả khi candidate này bị Redo bỏ dở
     // (xem doc-comment recordPendingDraw trong drawEngine.ts, dùng cho Dashboard).
     recordPendingDraw(candidate, data.sessionId);
+    // Giai đoạn 4: đẩy luôn (gom 1,5s, giống cửa sổ chính) thay vì chỉ đánh dấu — pick nhiều lần liên
+    // tiếp (redraw) tự gộp vào 1 lần đồng bộ nhờ debounce, không tốn N request; nhưng app crash ngay sau
+    // pick (trước khi Confirm) thì lịch sử vẫn kịp lên cloud thay vì chờ tới Confirm/đóng Present.
+    cloudSync.markDirty(data.sessionId);
+    cloudSync.syncSoon(data.sessionId);
     return candidate;
   }
 );
@@ -982,6 +1010,7 @@ ipcMain.handle(
 ipcMain.handle("draw:commit", (_e, data: { candidate: DrawCandidate; sessionId: string }) => {
   assertSessionUnlocked(data.sessionId);
   commitDraw(data.candidate, data.sessionId);
+  touched(_e, data.sessionId);
 });
 
 // Xoá hết draw_results + trả remaining mọi prize về quantity gốc — dùng cho Button "Reset Session"
@@ -989,9 +1018,11 @@ ipcMain.handle("draw:commit", (_e, data: { candidate: DrawCandidate; sessionId: 
 ipcMain.handle("draw:resetSession", (_e, sessionId: string) => {
   assertSessionUnlocked(sessionId);
   resetSession(sessionId);
+  touched(_e, sessionId);
 });
 
-ipcMain.handle("present:open", (_e, sessionId: string) => {
+ipcMain.handle("present:open", async (_e, sessionId: string) => {
+  if (!(await auth.getSession())) throw new Error("Not logged in.");
   assertSessionUnlocked(sessionId);
   openPresentWindow(sessionId);
 });
@@ -1008,7 +1039,8 @@ ipcMain.handle("present:toggleFullscreen", (e) => {
   return next;
 });
 
-ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {
+ipcMain.handle("landingBuilder:open", async (_e, sessionId: string) => {
+  if (!(await auth.getSession())) throw new Error("Not logged in.");
   assertSessionUnlocked(sessionId);
   openLandingBuilderWindow(sessionId);
 });
@@ -1017,10 +1049,14 @@ ipcMain.handle("landingBuilder:open", (_e, sessionId: string) => {
 // và không nên chuyển vài trăm MB qua IPC), ghi BLOB vào bảng media, chỉ trả id về. Xem media.ts.
 ipcMain.handle("media:importVideo", (e, sessionId: string) => {
   assertSessionUnlocked(sessionId);
-  return importVideo(sessionId, BrowserWindow.fromWebContents(e.sender));
+  const result = importVideo(sessionId, BrowserWindow.fromWebContents(e.sender));
+  // Import video = luôn có asset mới, lớn — debounce dài như mọi Save có data: URI lớn (xem touched()).
+  touched(e, sessionId, { heavy: true });
+  return result;
 });
 
-ipcMain.handle("dataEditor:open", (_e, sessionId: string) => {
+ipcMain.handle("dataEditor:open", async (_e, sessionId: string) => {
+  if (!(await auth.getSession())) throw new Error("Not logged in.");
   assertInputsUnlocked(sessionId);
   openDataEditorWindow(sessionId);
 });
