@@ -2,7 +2,7 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
-## [Unreleased]
+## [2.0.0] — 2026-11-25
 
 ### Cloud Sync — tách ảnh/video thành asset riêng, gần realtime hơn
 
