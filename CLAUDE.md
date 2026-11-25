@@ -105,17 +105,6 @@ file, đổi thành `export`) để `main.ts` dùng khi prune.
 0–4) ĐÃ XONG**, không còn cần nhắc đầu phiên nữa. Giai đoạn 5–7 (bên dưới) đã đánh giá là **chưa cần làm
 ngay** — chờ tín hiệu thật rồi mới làm, không phải việc dang dở cần tiếp tục ngay.
 
-**[NHẮC CHỦ DỰ ÁN — chưa làm, xoá dòng này sau khi test xong] Tự tay test hiệu năng giai đoạn 0–4 trong
-app dev thật** (chỉ mới test bằng mock Worker trong bộ nhớ + mock network, chưa test qua UI/network thật) —
-mở DevTools (`Cmd+Option+I`) → tab Network, lọc `workers.dev`, rồi theo checklist: (A1) sửa 1 participant
-ở session có video/ảnh → đồng bộ chỉ đẩy ~1-2MB (không phải ~13MB); (A2) sửa tiếp (ảnh không đổi) → không
-có request `/v1/assets/*` nào; (A3) đổi ảnh trong Builder → đúng 1 lượt `/v1/assets/check`→`uploads`→
-`complete`; (A4) import video lớn, tắt Wi-Fi giữa lúc đang upload `parts`, bật lại → resume đúng phần
-còn thiếu, không upload lại từ đầu; (B1) sửa text trong Builder (không mở Present) → tự đồng bộ ~2-3s
-mà không cần đóng cửa sổ; (B2) mở thêm Present rồi sửa tiếp → KHÔNG tự đồng bộ tới khi đóng Builder;
-(B3) đổi ảnh trong Builder (không mở Present) → tự đồng bộ chậm hơn B1, ~9s; (B4) bấm Draw nhiều lần
-liên tiếp (redraw) → chỉ 1 lượt upload, không phải N lượt.
-
 Vì sao: mỗi lần Confirm đang đẩy NGUYÊN file session ~13MB (đo `HCM-BE-BO-Final`: video bảng `media`
 5,5MB + ảnh base64 trong `landing_config` 4,1MB + `prizes.display_image` 2,2MB + participants 1,1MB,
 `draw_results` chỉ vài KB) → mạng upload ~3Mbps mất 30–40s/lần. Tách xong còn ~1MB/lần. Bối cảnh đầy đủ:
@@ -210,12 +199,30 @@ Giai đoạn (mỗi giai đoạn 1 phiên, xong thì đánh ✅ ở đây):
    UPLOAD (Push) — phía DOWNLOAD asset lúc Pull (`ensureAssetLocal`) vẫn tải nguyên cục trong 1 lần GET,
    mạng rớt giữa lúc tải 1 video lớn phải tải lại từ đầu. Có thể làm sau bằng HTTP Range nếu thấy cần
    (R2 hỗ trợ Range tự nhiên), chưa làm vì CLAUDE.md chỉ nêu rõ "upload" ở giai đoạn này.
-4. Gần realtime: `touched()` trong `main.ts` cho Landing Builder/Data Editor cũng `syncSoon`, debounce
-   **thích ứng theo loại thay đổi** (không phải 1 số cố định) — sửa text/vị trí component (không sinh
-   `data:` URI mới) debounce ngắn (~2-3s); kéo-thả/resize ảnh (sinh `data:` URI liên tục) debounce dài
-   hơn (~8-10s) để tránh re-upload asset nhiều lần giữa lúc đang kéo. Áp dụng quyết định giai đoạn 0:
-   auto-push/autosave Builder-Data Editor chỉ chạy khi session không có Present đang mở. Cân nhắc đẩy
-   cả `draw:pick`. Cập nhật bảng điểm chốt trong `cloud-sync.md`.
+4. ✅ Gần realtime: `touched()` trong `main.ts` cho Landing Builder/Data Editor giờ cũng gọi `syncSoon`
+   (trước đây chỉ `markDirty`, đồng bộ lúc đóng cửa sổ) — debounce **thích ứng theo loại thay đổi**:
+   `SYNC_SOON_EDIT_WINDOW_FAST_MS` = 2,5s cho Save chỉ đổi text/vị trí; `SYNC_SOON_EDIT_WINDOW_SLOW_MS` =
+   9s cho Save có `data:` URI mới/lớn (`sessions:updateLandingConfig` tự dò qua
+   `cloudAssets.hasLargeInlineAsset(data.landingConfig)`; `media:importVideo` luôn coi là nặng — import
+   video chắc chắn sinh asset lớn). Áp dụng quyết định giai đoạn 0: nếu session đang có cửa sổ Present
+   mở thì bỏ qua hoàn toàn (giữ hành vi cũ, chỉ đồng bộ lúc đóng Builder/Data Editor). `draw:pick` cũng
+   đổi từ chỉ `markDirty` sang thêm `syncSoon` (gom 1,5s, giống cửa sổ chính) — redraw liên tiếp tự gộp
+   1 lần, không tốn N request. `cloudSync.ts`'s `syncSoon()` nhận thêm tham số debounce tuỳ chọn để
+   `main.ts` truyền 2 mốc trên.
+   Đã cập nhật bảng điểm chốt + mục "Lộ trình tối ưu" trong `cloud-sync.md`.
+   **Đã test**: `npx tsc -b` sạch, `npm run electron:dev` khởi động sạch không lỗi runtime (import
+   `cloudAssets` trong `main.ts`, đường dẫn `presentWindows`/`landingBuilderWindows` tham chiếu trước khi
+   khai báo trong `touched()` — forward reference hợp lệ vì chỉ đọc lúc gọi, không lúc load module).
+   **Đã test qua UI/network thật** (log tạm timestamp gắn trực tiếp vào main process, xem terminal chạy
+   `npm run electron:dev`, đã xoá sau khi test xong): A1 giảm 12.77MB→1.50MB; A2 ảnh không đổi → 0 lần
+   gọi lại `/v1/assets/check`; A3 đổi ảnh mới → đúng 1 lượt check→uploads→parts→complete; A4 tắt/bật
+   Wi-Fi giữa chừng → `sync failed` log gọn không crash, tự retry đúng ở điểm chốt sau (chuyển tab/đóng
+   cửa sổ), không upload lại phần đã xong; B1 Save trong Builder không mở Present → tự đồng bộ sau đúng
+   2,5s (FAST); B2 mở Present rồi sửa tiếp → log "KHÔNG syncSoon", chỉ đẩy khi đóng Present/Builder; B3
+   đổi ảnh → debounce 9s (SLOW), đo được tổng ~11-13s từ Save tới cloud có bản mới; B4 xác nhận qua đọc
+   code `cloudSync.ts` (`syncSession`/`chains`/`queued`) — mỗi session tối đa 1 lượt đồng bộ đang chạy +
+   1 lượt chờ kế tiếp, nhiều `syncSoon()` gọi chồng lên nhau trong lúc 1 lượt đang chạy chỉ gộp thành
+   đúng 1 lượt kế tiếp (không bao giờ N lượt dù bấm Draw nhiều lần liên tiếp).
 5. **[HOÃN — đánh giá 2026-11-24, có thể sau này sẽ cần] Lịch sử theo thời gian trên Worker** (10 bản
    gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất. Lý do hoãn: KHÔNG có UI nào trong app cho chọn
    khôi phục 1 version cũ cụ thể — `versions` hiện chỉ là SỐ LƯỢNG hiển thị ở panel admin, mọi logic
