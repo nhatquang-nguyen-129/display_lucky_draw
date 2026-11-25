@@ -65,7 +65,7 @@ export default function BackgroundView({
               }}
             />
           ) : (
-            <span className="flex h-full w-full items-center justify-center text-xs text-base-500">No image</span>
+            <span className="flex h-full w-full items-center justify-center text-xs text-base-500">Select an image</span>
           )}
           <div
             className="pointer-events-none absolute inset-0 bg-black"
