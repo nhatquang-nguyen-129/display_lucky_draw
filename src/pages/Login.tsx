@@ -88,6 +88,7 @@ export default function Login({ activated, onSuccess }: { activated: boolean; on
   }
 
   function afterLogin(r: LoginResult) {
+    setShowWelcome(false);
     const { looseFiles, ...session } = r;
     if (looseFiles.length > 0) {
       setLoose({ session, files: looseFiles });
