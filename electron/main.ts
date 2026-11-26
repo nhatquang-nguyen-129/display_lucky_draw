@@ -161,11 +161,16 @@ function createMainWindow() {
     e.preventDefault();
     quitting = true;
     // Thoát app = đăng xuất: đẩy nốt phần chưa đồng bộ (confirmQuit) rồi nhả khoá phiên + xoá phiên đã lưu
-    // (auth.logoutOnQuit, tối đa 3 giây) — lần mở sau luôn phải đăng nhập lại.
+    // (auth.logoutOnQuit, tối đa 3 giây) — lần mở sau luôn phải đăng nhập lại. Đóng Main Display = thoát
+    // HẲN cả app (app.quit(), không chỉ mainWindow?.close()) — tự đóng luôn mọi cửa sổ Present/Builder/
+    // Data Editor còn mở (vẫn tôn trọng hộp thoại "unsaved changes" của Builder/Data Editor nếu đang có,
+    // xem landingBuilderWindows/dataEditorWindows's "close" guard — cửa sổ nào bị huỷ đóng thì app.quit()
+    // dừng theo, không thoát mất dữ liệu). Đóng các cửa sổ phụ đó RIÊNG LẺ (không qua đây) vẫn không ảnh
+    // hưởng gì tới mainWindow/toàn app, như trước giờ.
     void confirmQuit()
       .catch(() => true)
       .then(() => auth.logoutOnQuit(3_000).catch(() => undefined))
-      .then(() => mainWindow?.close());
+      .then(() => app.quit());
   });
 
   if (IS_DEV) {

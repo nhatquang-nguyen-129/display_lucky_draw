@@ -270,9 +270,13 @@ Xoá session trong app (chuột phải tab → Delete) KHÔNG xoá dữ liệu t
 
 ## Lưu session đăng nhập local — `safeStorage`, KHÔNG phải `data/`
 
-**Thoát app = đăng xuất.** Đóng cửa sổ chính: đẩy nốt phần chưa đồng bộ (`flushDirty`, hộp thoại Wait/Quit
-anyway nếu cần) rồi `auth.logoutOnQuit()` — nhả khoá phiên trên Worker (`POST /v1/logout`, tối đa 3 giây) và
-xoá phiên đã lưu. Mở app lần sau LUÔN hiện màn đăng nhập (không tự đăng nhập lại).
+**Thoát app = đăng xuất.** Đóng cửa sổ chính (Main Display): đẩy nốt phần chưa đồng bộ (`flushDirty`, hộp
+thoại Wait/Quit anyway nếu cần) rồi `auth.logoutOnQuit()` — nhả khoá phiên trên Worker (`POST /v1/logout`,
+tối đa 3 giây) và xoá phiên đã lưu, rồi `app.quit()` **thoát HẲN cả app** — tự đóng theo mọi cửa sổ
+Present/Builder/Data Editor còn mở (Builder/Data Editor vẫn hỏi "unsaved changes" nếu đang dở, chặn quit
+cho tới khi người dùng chọn Cancel/Close and discard). Đóng RIÊNG LẺ 1 cửa sổ Present/Builder/Data Editor
+(không qua Main Display) chỉ đóng đúng cửa sổ đó, không ảnh hưởng gì tới các cửa sổ khác hay toàn app. Mở
+app lần sau LUÔN hiện màn đăng nhập (không tự đăng nhập lại).
 
 Phiên vẫn được lưu trong lúc app đang chạy, CHỈ để phòng app bị crash/tắt ngang (không kịp đăng xuất): lần
 mở sau `doInit()` dùng phiên sót lại đó gọi `/v1/logout` nhả khoá cũ (không phải chờ 90s mới đăng nhập lại
