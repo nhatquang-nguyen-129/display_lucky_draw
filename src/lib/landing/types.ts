@@ -129,6 +129,13 @@ export interface DrawCycleConfig {
 // type, KHÔNG được đọc/dùng ở đâu khi `syncWithDraw` tắt (xem ImageView.tsx).
 export const DEFAULT_DRAW_CYCLE: DrawCycleConfig = { idleState: "disappear", drawAction: "none", redrawAction: "none" };
 
+// 2 hằng số thời gian THẬT SỰ chạy trong drawRevealHooks.ts (useRevealed/useDrawCycleVisibility) —
+// khai báo Ở ĐÂY (không phải trong drawRevealHooks.ts) để computeDrawCycleRevealDelayMs bên dưới dùng
+// lại ĐÚNG giá trị đang chạy thay vì chép tay 1 bản số khác dễ lệch theo thời gian; drawRevealHooks.ts
+// import ngược lại 2 hằng số này thay vì tự khai báo.
+export const TRANSITION_MS = 500; // khớp đúng 0.5s khai báo cho winner-transition-*-in/out trong landingEffects.css
+export const MIN_REDRAW_REVEAL_GAP_MS = 1000;
+
 export interface ImageProps {
   srcDataUrl: string | null; // base64, giống cách PrizeFormModal lưu display_image
   fit: "cover" | "contain" | "stretch";
@@ -1106,6 +1113,62 @@ export function computeWheelRevealDelayMs(components: LandingComponent[]): numbe
   const wheels = components.filter((c): c is LuckyWheelComponent => c.type === "luckyWheel");
   if (wheels.length === 0) return 0;
   return Math.max(...wheels.map((w) => wheelRevealDurationMs(w.props)));
+}
+
+/** Khoảng (ms) cần CỘNG THÊM vào `multipleDrawPaceMs` giữa 2 lượt Draw liên tiếp để lượt VỪA hiện (từ
+ * lượt thứ 2 trở đi — kịch bản LẶP LẠI mỗi lượt, khác lượt đầu tiên không có gì để ẩn trước) có đúng
+ * `multipleDrawPaceMs` thời gian hiện trọn vẹn trước khi bị lượt kế tiếp ẩn đi, với MỌI component
+ * "Trigger with Draw" trên trang — không phải tổng thời gian cơ chế hiện/ẩn chạy xong (bước ẨN của lượt
+ * N tự được "bù" bởi chính bước ẩn của lượt N+1, nó luôn đợi đủ `disappearDelayMs`/`redrawEffect.
+ * delayMs` của RIÊNG nó trước khi ẩn bất cứ thứ gì đang hiện — nên phần delay ẩn không cần cộng vào đây,
+ * chỉ còn khoảng đệm cố định `MIN_REDRAW_REVEAL_GAP_MS` + phần delay HIỆN lại `appearDelayMs`/
+ * `drawEffect.delayMs`). Xem useRevealed/useDrawCycleVisibility trong drawRevealHooks.ts cho công thức
+ * thật đang chạy — công thức ở đây PHẢI khớp, đổi 1 chỗ nhớ đổi chỗ còn lại. Dùng bởi Multiple Draw
+ * (useDrawSequence.ts's runMultipleDrawInternal): `sleep(paceMs + computeDrawCycleRevealDelayMs(...))`
+ * sau mỗi lần Confirm — thiếu phần này thì lượt vừa hiện chỉ kịp "chớp" 1 cái rồi bị ẩn ngay (bug người
+ * dùng báo lại, xem CLAUDE.md). Component có `redrawAction` (hoặc tương đương) là "none" — không
+ * re-trigger gì ở các lượt sau — bị BỎ QUA hoàn toàn (tránh làm Multiple Draw chậm vô ích khi hiệu ứng
+ * không thật sự lặp lại mỗi lượt). Trang không có component nào như vậy → 0. */
+export function computeDrawCycleRevealDelayMs(components: LandingComponent[]): number {
+  let maxMs = 0;
+  for (const c of components) {
+    if (c.type === "winnerName") {
+      // Winner Name luôn đồng bộ theo Draw (không có `syncWithDraw` để tắt, khác mọi component khác).
+      const props = c.props as { appearDelayMs?: number };
+      maxMs = Math.max(maxMs, MIN_REDRAW_REVEAL_GAP_MS + Math.max(0, props.appearDelayMs ?? 0));
+      continue;
+    }
+    if (c.type === "video") {
+      const props = c.props as { syncWithDraw?: boolean; drawCycle?: VideoCycleConfig };
+      const cycle = props.syncWithDraw ? props.drawCycle : undefined;
+      if (!cycle || cycle.redrawAction === "none") continue;
+      // drawAction === "none": Redraw không nối tiếp sang bước hiện riêng nào — chính redrawDelayMs MỚI
+      // là mốc "hiện" duy nhất, không có bước ẩn nào trước nó để mà tự bù (khác nhánh drawAction thật).
+      const gapMs =
+        cycle.drawAction === "none"
+          ? Math.max(0, cycle.redrawDelayMs ?? 0)
+          : MIN_REDRAW_REVEAL_GAP_MS + Math.max(0, cycle.drawDelayMs ?? 0);
+      maxMs = Math.max(maxMs, gapMs);
+      continue;
+    }
+    // Mọi component còn lại dùng `DrawCycleConfig` chung (Image/Text/Background/Confetti/OrbitLights...
+    // — xem doc-comment DrawCycleConfig phía trên).
+    const props = c.props as { syncWithDraw?: boolean; drawCycle?: DrawCycleConfig };
+    const cycle = props.syncWithDraw ? props.drawCycle : undefined;
+    if (!cycle || cycle.redrawAction === "none") continue;
+    let gapMs: number;
+    if (cycle.drawAction === "none") {
+      // Cùng lý do nhánh video ở trên: redrawEffect.delayMs (+ TRANSITION_MS nếu nó thật sự ẨN có hiệu
+      // ứng) là mốc duy nhất, không có bước ẩn nào khác đứng trước để tự bù.
+      const redrawVisible = cycle.redrawAction !== "disappear";
+      const redrawHasEffect = (cycle.redrawEffect?.effect ?? "none") !== "none";
+      gapMs = Math.max(0, cycle.redrawEffect?.delayMs ?? 0) + (!redrawVisible && redrawHasEffect ? TRANSITION_MS : 0);
+    } else {
+      gapMs = MIN_REDRAW_REVEAL_GAP_MS + Math.max(0, cycle.drawEffect?.delayMs ?? 0);
+    }
+    maxMs = Math.max(maxMs, gapMs);
+  }
+  return maxMs;
 }
 
 /** Trang có ÍT NHẤT 1 component cho phép chọn giải để Draw (Prize Image — LUÔN cho chọn, không có

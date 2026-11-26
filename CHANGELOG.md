@@ -2,6 +2,23 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [Unreleased]
+
+### Multiple Draw — tự tính độ nghỉ cho đủ thời gian hiện hiệu ứng Trigger with Draw
+
+Chi tiết công thức: `docs/landing/button.md` mục "Công thức nghỉ giữa 2 người trong Multiple Draw".
+
+- Trước đây Multiple Draw chỉ nghỉ đúng `multipleDrawPaceMs` cố định giữa mỗi người — nếu trang có
+  component Trigger with Draw (vd Winner Name) đặt `appearDelayMs` dài hơn tổng thời gian đó, hiệu ứng
+  bị lượt kế tiếp cắt ngang: lượt đầu còn kịp hiện (được "lợi" thêm thời gian), lượt 2 trở đi chỉ kịp
+  hiện chớp nhoáng rồi biến mất ngay — bug người dùng báo lại khi dùng thật.
+- `computeDrawCycleRevealDelayMs` (`types.ts`) quét mọi component đang bật Trigger with Draw trên trang,
+  tính khoảng cần thiết (`1000ms cố định + delay hiện lớn nhất` trong số đó), `multipleDrawPaceMs` giờ
+  là mức SÀN — tổng thời gian nghỉ thực tế luôn ≥ mức cần để lượt vừa hiện có đúng `multipleDrawPaceMs`
+  thời gian hiện trọn vẹn trước khi lượt kế bắt đầu ẩn nó, không bao giờ rút ngắn lại.
+- Không ảnh hưởng gì nếu trang không có component Trigger with Draw nào, hoặc hiệu ứng đã đủ nhanh so
+  với `multipleDrawPaceMs` đang đặt — hành vi giữ nguyên như cũ trong các trường hợp đó.
+
 ## [2.0.2] — 2026-11-26
 
 ### Cloud Sync — Builder/Data Editor đồng bộ ngay cả khi Present đang mở

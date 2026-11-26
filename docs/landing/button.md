@@ -15,7 +15,7 @@ Chỉ có **Basic options**:
 |---|---|---|---|
 | Action | `action` | None | Dropdown tự dựng (mục dưới) |
 | Source | `urlField` | — | Chỉ khi action = Open Link |
-| Multiple Draw delay (ms) | `multipleDrawPaceMs` | 600 | Chỉ khi action = Draw — nghỉ giữa 2 người trong Multiple Draw, đọc ngay lúc bấm nên sửa có hiệu lực từ lượt kế |
+| Multiple Draw delay (ms) | `multipleDrawPaceMs` | 600 | Chỉ khi action = Draw — nghỉ giữa 2 người trong Multiple Draw, đọc ngay lúc bấm nên sửa có hiệu lực từ lượt kế. Đây là mức SÀN tối thiểu — thực tế tự kéo dài hơn nếu trang có component Trigger with Draw cần nhiều thời gian hơn để hiện/ẩn hết chu trình (xem `computeDrawCycleRevealDelayMs` trong `types.ts`), không bao giờ rút ngắn lại |
 | Font size | `fontSize` | 22 | |
 | Text color | `color` | `#0B0B10` | |
 | Background | `backgroundColor` | `#FFCA2D` | |
@@ -159,8 +159,20 @@ theo đúng chế độ đã ARM (`sequence.drawMode`/`drawCount`, chạy qua `s
 | Chế độ | Chọn trong dropdown | Khi bấm nút Draw chính |
 |---|---|---|
 | **Single Draw** | Set thẳng, không hỏi gì | Y hệt hành vi Draw gốc: đang có candidate chờ Confirm thì `redo()`, chưa có gì thì `pick()` |
-| **Multiple Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua popup (`DrawModeCountPopup.tsx`) | Lặp lại ĐÚNG quy trình Single Draw (pick → chờ Wheel hiện xong → tự Confirm) N lần liên tiếp, nghỉ ngắn giữa mỗi người |
+| **Multiple Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua popup (`DrawModeCountPopup.tsx`) | Lặp lại ĐÚNG quy trình Single Draw (pick → chờ Wheel hiện xong → tự Confirm) N lần liên tiếp, nghỉ giữa mỗi người ít nhất `multipleDrawPaceMs`, tự kéo dài thêm nếu cần để mọi component Trigger with Draw kịp hiện/ẩn hết chu trình (xem mục "Multiple Draw delay" ở trên) |
 | **Quick Draw** | Hỏi số lượng N (≤ remaining của giải đang chọn) qua cùng 1 popup | Quay + Confirm ĐÚNG N người NGAY LẬP TỨC (không nghỉ giữa các lượt), tự mở Scoreboard khi xong |
+
+**Công thức nghỉ giữa 2 người trong Multiple Draw** (`runMultipleDrawInternal`, `useDrawSequence.ts`):
+sau khi Confirm xong 1 người, đợi `paceMs + drawCycleRevealDelayMs` rồi mới pick() người kế —
+`drawCycleRevealDelayMs` (`computeDrawCycleRevealDelayMs` trong `types.ts`) = `MIN_REDRAW_REVEAL_GAP_MS`
+(hằng số cố định 1000ms, dùng chung với cơ chế reveal của CẢ Single Draw — xem `drawRevealHooks.ts`,
+không cấu hình được) **cộng** giá trị LỚN NHẤT trong số `appearDelayMs`/`drawEffect.delayMs` của MỌI
+component đang bật Trigger with Draw trên trang (lấy max vì chỉ có 1 khoảng nghỉ chung — không đủ dài
+cho component chậm nhất thì đúng component đó bị cắt ngang, dù các component khác đã đủ). Quan trọng:
+`spinDurationMs` của Lucky Wheel KHÔNG nằm trong công thức này — nó là khoảng chờ RIÊNG, tính TRƯỚC
+Confirm (`winnerRevealDelayMs`, xem `computeWheelRevealDelayMs`), phục vụ mục đích khác hẳn (chờ Wheel
+quay xong trước khi công bố, không phải nghỉ sau khi đã công bố) — không trùng/thay thế cho nhau được,
+2 khoảng này CỘNG DỒN để ra tổng thời gian 1 vòng (xem CHANGELOG.md).
 
 Multiple/Quick đều BẮT BUỘC đã chọn 1 giải qua Prize Image (`sequence.selectedPrizeId`)
 NGAY TỪ LÚC chọn mục trong dropdown — không phụ thuộc trang có UI chọn giải hay không (khác Single

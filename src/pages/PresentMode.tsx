@@ -8,6 +8,7 @@ import { COMPONENT_REGISTRY } from "@/components/landing/componentRegistry";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
+  computeDrawCycleRevealDelayMs,
   computeWheelRevealDelayMs,
   hasSelectablePrizeUI,
   LandingConfig,
@@ -29,12 +30,14 @@ export default function PresentMode() {
   // `config` có thể chưa tải xong (null) ở lần render đầu — 0/false lúc đó là an toàn (chưa biết
   // Wheel/component nào cả), tự tính lại đúng ngay khi `config` có giá trị thật.
   const winnerRevealDelayMs = config ? computeWheelRevealDelayMs(config.components) : 0;
+  const drawCycleRevealDelayMs = config ? computeDrawCycleRevealDelayMs(config.components) : 0;
   const requiresPrizeSelection = config ? hasSelectablePrizeUI(config.components) : false;
   const sequence = useDrawSequence(
     sessionId ?? null,
     data,
     data.refresh,
     winnerRevealDelayMs,
+    drawCycleRevealDelayMs,
     requiresPrizeSelection,
     participantColumnTypesJson
   );

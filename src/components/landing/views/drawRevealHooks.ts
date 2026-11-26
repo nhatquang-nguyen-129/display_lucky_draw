@@ -3,6 +3,8 @@ import {
   DrawCycleConfig,
   DrawPhaseEffectConfig,
   DrawRestState,
+  MIN_REDRAW_REVEAL_GAP_MS,
+  TRANSITION_MS,
   VideoCycleConfig,
   VideoPlayState,
   WinnerTransitionEffect,
@@ -21,17 +23,15 @@ import {
 // trạng thái nghỉ duy nhất (`idleState`). Cả 2 model CÙNG TỒN TẠI trong file này — Winner Name (nội
 // dung đổi theo lượt) sẽ KHÔNG BAO GIỜ migrate sang model dưới, đây không phải việc "chưa làm tới".
 
-// Phải khớp đúng 0.5s khai báo cho các class winner-transition-*-in/out trong landingEffects.css —
-// đổi 1 trong 2 chỗ thì phải đổi luôn chỗ còn lại.
-export const TRANSITION_MS = 500;
-
-// Khoảng đệm CỐ ĐỊNH (không cho người dùng cấu hình) dùng CHUNG bởi cả `useRevealed` VÀ
-// `useDrawCycleVisibility` bên dưới — chèn giữa lúc bước ẩn của Redraw thật sự chạy xong (disappear
-// state đã set/`onDone` gọi) và lúc bắt đầu tính delay của bước reveal (appearDelayMs/drawEffect.
-// delayMs). Đảm bảo LUÔN có tối thiểu 1s giữa "ẩn xong" và "hiện lại" bất kể người dùng đặt delay đó
-// là bao nhiêu (kể cả 0), thay vì bắt Properties Panel validate field này — người dùng chỉ cần biết:
-// cứ sau đúng 1s (window cố định) rồi mới tới delay họ tự đặt, rồi mới chạy hiệu ứng.
-const MIN_REDRAW_REVEAL_GAP_MS = 1000;
+// TRANSITION_MS/MIN_REDRAW_REVEAL_GAP_MS giờ khai báo ở lib/landing/types.ts (computeDrawCycleRevealDelayMs
+// cần dùng lại đúng 2 giá trị này để tính trước thời gian cần đợi cho Multiple Draw, xem useDrawSequence.ts)
+// — import lại thay vì khai báo riêng ở đây. MIN_REDRAW_REVEAL_GAP_MS: khoảng đệm CỐ ĐỊNH (không cho người
+// dùng cấu hình) dùng CHUNG bởi cả `useRevealed` VÀ `useDrawCycleVisibility` bên dưới — chèn giữa lúc bước
+// ẩn của Redraw thật sự chạy xong (disappear state đã set/`onDone` gọi) và lúc bắt đầu tính delay của bước
+// reveal (appearDelayMs/drawEffect.delayMs). Đảm bảo LUÔN có tối thiểu 1s giữa "ẩn xong" và "hiện lại" bất
+// kể người dùng đặt delay đó là bao nhiêu (kể cả 0), thay vì bắt Properties Panel validate field này —
+// người dùng chỉ cần biết: cứ sau đúng 1s (window cố định) rồi mới tới delay họ tự đặt, rồi mới chạy hiệu
+// ứng.
 
 export const DISAPPEAR_CLASS: Record<WinnerTransitionEffect, string> = {
   none: "",

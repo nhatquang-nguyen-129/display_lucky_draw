@@ -86,6 +86,11 @@ export function useDrawSequence(
   // không có). Dùng để tự khoá `spinning` đúng
   // khoảng thời gian Wheel đang quay — xem startSpinLock() bên dưới.
   winnerRevealDelayMs: number,
+  // Khoảng CHỜ (ms) tối thiểu để MỌI component "Trigger with Draw" trên trang kịp hiện/ẩn hết chu trình
+  // của nó (xem computeDrawCycleRevealDelayMs trong types.ts), tính sẵn ở PresentMode.tsx cùng chỗ với
+  // winnerRevealDelayMs. CHỈ dùng trong Multiple Draw (runMultipleDrawInternal bên dưới) — Single/Quick
+  // Draw không có lượt kế tiếp tự động nên không cần quan tâm.
+  drawCycleRevealDelayMs: number,
   // Trang có ít nhất 1 UI chọn giải (Prize Gallery/Prize Image selectable — xem hasSelectablePrizeUI
   // trong types.ts), tính sẵn ở PresentMode.tsx — true thì Draw BẮT BUỘC phải chọn giải trước (xem
   // pick() bên dưới), tránh quay "trống" không ai biết đang nhắm giải nào trong khi rõ ràng trang có
@@ -315,12 +320,13 @@ export function useDrawSequence(
   }
 
   // Lặp lại ĐÚNG quy trình Single Draw (pick → chờ Wheel hiện xong đúng winnerRevealDelayMs → tự
-  // Confirm → nghỉ ngắn `paceMs`, xem ButtonProps.multipleDrawPaceMs trong types.ts) `count` lần liên
-  // tiếp — KHÔNG tái dùng nội bộ pick()/confirm() (tự gọi thẳng window.api.draw.pick/commit, y hệt
-  // logic bên trong 2 hàm đó) để không có rủi ro động vào luồng thủ công đã ổn định. `spinning = true`
-  // SUỐT cả vòng lặp (không chỉ 1 winnerRevealDelayMs mỗi lượt như startSpinLock()) — tái dùng
-  // NGUYÊN VẸN mọi điểm khoá đã đọc spinning (ButtonView.tsx, PrizeImageView.tsx...) mà không cần sửa
-  // gì thêm ở đó, đúng tinh thần "batch draw là 1 dạng mở rộng của đang quay".
+  // Confirm → nghỉ `paceMs + drawCycleRevealDelayMs`, xem ButtonProps.multipleDrawPaceMs trong
+  // types.ts) `count` lần liên tiếp — KHÔNG tái dùng nội bộ
+  // pick()/confirm() (tự gọi thẳng window.api.draw.pick/commit, y hệt logic bên trong 2 hàm đó) để
+  // không có rủi ro động vào luồng thủ công đã ổn định. `spinning = true` SUỐT cả vòng lặp (không chỉ 1
+  // winnerRevealDelayMs mỗi lượt như startSpinLock()) — tái dùng NGUYÊN VẸN mọi điểm khoá đã đọc
+  // spinning (ButtonView.tsx, PrizeImageView.tsx...) mà không cần sửa gì thêm ở đó, đúng tinh thần
+  // "batch draw là 1 dạng mở rộng của đang quay".
   async function runMultipleDrawInternal(count: number, paceMs: number) {
     if (!sessionId || busy || spinning || batchProgress) return;
     const prize = requireSelectedPrizeForBatch();
@@ -360,7 +366,14 @@ export function useDrawSequence(
         break;
       }
       setBusy(false);
-      if (i < count - 1) await sleep(paceMs);
+      // `paceMs` LẺ không đủ — nó chỉ là thời gian NGHỈ, không tính tới việc lượt vừa hiện cần đứng yên
+      // đủ lâu thì lượt kế mới được phép bắt đầu ẩn nó đi. `drawCycleRevealDelayMs` (xem types.ts) là
+      // phần CỘNG THÊM để đảm bảo đúng `paceMs` đó là thời gian HIỆN TRỌN VẸN, không bị lượt kế cắt
+      // ngang giữa chừng (bug người dùng báo lại: lượt 2 trở đi chỉ kịp "chớp" 1 cái rồi biến mất) —
+      // CỘNG DỒN với `paceMs`, không phải lấy max (lấy max từng khiến lượt vừa hiện bị ẩn gần như ngay
+      // khi vừa xong, vì khi đó "thời gian để cơ chế hiện chạy xong" và "thời gian để người xem kịp đọc"
+      // bị tính trùng vào nhau).
+      if (i < count - 1) await sleep(paceMs + drawCycleRevealDelayMs);
     }
     setBatchProgress(null);
     setSpinning(false);
