@@ -119,11 +119,11 @@ const SYNC_SOON_EDIT_WINDOW_SLOW_MS = 9_000;
 // Điểm chốt đồng bộ cho MỌI IPC ghi dữ liệu: luôn đánh dấu "chưa đồng bộ"; gọi từ cửa sổ chính/Present
 // (thao tác edit/delete rời rạc, Confirm) thì đồng bộ ngay (gom 1,5s).
 //
-// Gọi từ Landing Builder/Data Editor: nếu session đang có cửa sổ Present mở (đang chiếu cho khán giả) —
-// CHỈ đánh dấu, đồng bộ 1 lần lúc đóng cửa sổ đó như trước (quyết định giai đoạn 0 — tránh thao tác sửa
-// dở lên màn LED trước khán giả). Nếu KHÔNG có Present nào mở — cũng đồng bộ trong lúc đang sửa, debounce
-// dài hơn cửa sổ chính (`heavy` = Save vừa rồi có khả năng kéo theo dehydrate/upload asset, xem
-// cloudAssets.hasLargeInlineAsset).
+// Gọi từ Landing Builder/Data Editor: luôn đồng bộ ngay trong lúc đang sửa (debounce thích ứng), KỂ CẢ
+// khi session đang có cửa sổ Present mở — đã bỏ quyết định giai đoạn 0 (đợi đóng cửa sổ mới đồng bộ khi
+// Present đang chiếu): thực tế vận hành hay mở nhiều cửa sổ cùng lúc (Builder/Present ở 2 máy khác nhau
+// để so sánh), bấm Save là cần thấy bản mới trên cloud ngay, không đợi đóng cửa sổ. (`heavy` = Save vừa
+// rồi có khả năng kéo theo dehydrate/upload asset, xem cloudAssets.hasLargeInlineAsset).
 function touched(e: Electron.IpcMainInvokeEvent, sessionId: string, opts?: { heavy?: boolean }) {
   cloudSync.markDirty(sessionId);
   const win = BrowserWindow.fromWebContents(e.sender);
@@ -133,7 +133,6 @@ function touched(e: Electron.IpcMainInvokeEvent, sessionId: string, opts?: { hea
     cloudSync.syncSoon(sessionId);
     return;
   }
-  if (presentWindows.has(sessionId)) return;
   cloudSync.syncSoon(sessionId, opts?.heavy ? SYNC_SOON_EDIT_WINDOW_SLOW_MS : SYNC_SOON_EDIT_WINDOW_FAST_MS);
 }
 
