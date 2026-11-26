@@ -148,6 +148,12 @@ Giai đoạn (mỗi giai đoạn 1 phiên, xong thì đánh ✅ ở đây):
    định (soạn landing cho lượt sau trong khi lượt này đang chiếu) chưa có bằng chứng người dùng thật cần
    — thêm schema + migration cho nhu cầu chưa xác nhận đi ngược nguyên tắc "không thêm phức tạp phòng
    khi cần" ở mục Định hướng công nghệ phía trên. Nâng (a) lên (b) sau vẫn làm được nếu thực tế đòi hỏi.
+   **[2026-11-26] ĐẢO LẠI, phần "đợi đóng cửa sổ mới đồng bộ khi Present đang mở"**: vận hành thực tế hay
+   mở nhiều cửa sổ cùng lúc (Builder + Present, hoặc nhiều máy) để so sánh ngay khi Save — bấm Save ở
+   Builder/Data Editor giờ tự đồng bộ ngay (debounce thích ứng như bình thường) BẤT KỂ session có Present
+   đang mở hay không, bỏ hẳn điều kiện `presentWindows.has(sessionId)` trong `touched()` (`main.ts`). Phần
+   còn lại của quyết định giai đoạn 0 (không tách bản nháp/bản chiếu riêng, không đổi schema) vẫn giữ
+   nguyên, chỉ riêng chỗ "chờ đóng cửa sổ" bị bỏ.
 1. ✅ Worker: route asset (check/upload/get theo sha256) + thống kê dung lượng — `POST /v1/assets/check`,
    `POST /v1/assets/uploads` (start, reuse `PUT /v1/uploads/:id/parts/:n` + `DELETE /v1/uploads/:id` sẵn
    có cho part/abort), `POST /v1/assets/uploads/:id/complete`, `GET /v1/assets/:sha256`; `listAccounts`/
@@ -204,8 +210,9 @@ Giai đoạn (mỗi giai đoạn 1 phiên, xong thì đánh ✅ ở đây):
    `SYNC_SOON_EDIT_WINDOW_FAST_MS` = 2,5s cho Save chỉ đổi text/vị trí; `SYNC_SOON_EDIT_WINDOW_SLOW_MS` =
    9s cho Save có `data:` URI mới/lớn (`sessions:updateLandingConfig` tự dò qua
    `cloudAssets.hasLargeInlineAsset(data.landingConfig)`; `media:importVideo` luôn coi là nặng — import
-   video chắc chắn sinh asset lớn). Áp dụng quyết định giai đoạn 0: nếu session đang có cửa sổ Present
-   mở thì bỏ qua hoàn toàn (giữ hành vi cũ, chỉ đồng bộ lúc đóng Builder/Data Editor). `draw:pick` cũng
+   video chắc chắn sinh asset lớn). **[2026-11-26] Đã bỏ** phần "nếu session đang có cửa sổ Present mở
+   thì bỏ qua hoàn toàn" (quyết định giai đoạn 0 cũ) — giờ `touched()` luôn `syncSoon` bất kể Present có
+   đang mở hay không, xem ghi chú đảo quyết định ở giai đoạn 0 phía trên. `draw:pick` cũng
    đổi từ chỉ `markDirty` sang thêm `syncSoon` (gom 1,5s, giống cửa sổ chính) — redraw liên tiếp tự gộp
    1 lần, không tốn N request. `cloudSync.ts`'s `syncSoon()` nhận thêm tham số debounce tuỳ chọn để
    `main.ts` truyền 2 mốc trên.

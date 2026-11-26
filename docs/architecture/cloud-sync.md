@@ -144,8 +144,7 @@ Không đồng bộ liên tục, không có nút Push/Pull tay. Mọi IPC ghi d�
 | Bấm **Draw** (`draw:pick` — ghi 1 dòng `draw_results` chưa Confirm) | Đánh dấu + đồng bộ ngay (gom 1,5s) — redraw liên tiếp tự gộp 1 lần nhờ debounce, không tốn N request; app crash ngay sau pick (trước Confirm) vẫn kịp lên cloud |
 | **Confirm** (`draw:commit`), **Reset session** | Đồng bộ ngay (gom 1,5s) — kết quả trúng giải chính thức luôn lên cloud |
 | Edit/delete ở **cửa sổ chính**: prize, participant (kể cả Import/Replace), tạo/đổi tên/khoá/duplicate/đóng tab session | Đồng bộ ngay (gom 1,5s) |
-| Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor**, session **KHÔNG có Present đang mở** (mỗi lần Save, đổi Data type, import video) | Đồng bộ trong lúc đang mở, debounce **thích ứng**: ~2,5s cho Save chỉ đổi text/vị trí, ~9s cho Save có ảnh/video mới/lớn (tránh dehydrate/upload asset nhiều lần nếu Save liên tục lúc đang chỉnh ảnh) |
-| Cùng các IPC trên nhưng session **CÓ Present đang mở** (đang chiếu cho khán giả) | Chỉ đánh dấu → đồng bộ **1 lần lúc đóng** Builder/Data Editor đó (không đưa thao tác sửa dở lên màn LED) |
+| Cùng các IPC trên nhưng gọi từ **Landing Builder/Data Editor** (mỗi lần Save, đổi Data type, import video) — **KỂ CẢ khi session đang có Present mở** | Đồng bộ trong lúc đang mở, debounce **thích ứng**: ~2,5s cho Save chỉ đổi text/vị trí, ~9s cho Save có ảnh/video mới/lớn (tránh dehydrate/upload asset nhiều lần nếu Save liên tục lúc đang chỉnh ảnh). Đã bỏ quyết định giai đoạn 0 (đợi đóng cửa sổ mới đồng bộ khi Present đang chiếu) — vận hành thực tế hay mở nhiều cửa sổ cùng lúc để so sánh, bấm Save cần thấy ngay trên cloud, không đợi đóng cửa sổ |
 | **Đóng** Landing Builder / Data Editor / Present | Đồng bộ session đó (không sửa gì thì 0 request) |
 | **Chuyển tab** (`sync:session` từ `SessionContext.tsx`) | Session vừa rời + session vừa mở — chỉ gọi mạng nếu session đó có sửa chưa đẩy |
 | **Xoá** session | Xoá HÌNH THỨC: file local vào Trash + gửi dấu "đã xoá" lên cloud (`POST /v1/sessions/:id/delete`). Dữ liệu (mọi bản lưu) vẫn còn nguyên trên cloud — xem mục "Xoá session = xoá hình thức" |
@@ -221,8 +220,8 @@ chính của mục tiêu "gần realtime" (mạng upload ~3Mbps mất 30–40 gi
    `CLAUDE.md` (giai đoạn 1–3).
 3. ✅ Sau bước 2: chuyển Landing Builder/Data Editor sang **đồng bộ trong lúc đang mở** (debounce thích
    ứng ~2,5s/~9s tuỳ có ảnh/video mới hay không — xem bảng điểm chốt ở trên), và Draw chưa Confirm cũng
-   đồng bộ ngay (gom 1,5s) — chỉ còn chờ đóng cửa sổ khi session có Present đang mở (có chủ đích, không
-   phải vì dung lượng).
+   đồng bộ ngay (gom 1,5s) — kể cả khi session đang có Present đang mở (đã bỏ quyết định giai đoạn 0 chờ
+   đóng cửa sổ, xem CLAUDE.md giai đoạn 0/4).
 4. Giữ lịch sử theo thời gian (vd 10 bản gần nhất + 1 bản/giờ) thay vì chỉ 10 bản gần nhất — hiện 10
    lần Confirm là xoay hết, không lùi được về trước sự kiện.
 5. Xác thực Worker đọc 3 object R2/request (token → active session → account) — rút còn 1 để giảm độ trễ
@@ -271,9 +270,13 @@ Xoá session trong app (chuột phải tab → Delete) KHÔNG xoá dữ liệu t
 
 ## Lưu session đăng nhập local — `safeStorage`, KHÔNG phải `data/`
 
-**Thoát app = đăng xuất.** Đóng cửa sổ chính: đẩy nốt phần chưa đồng bộ (`flushDirty`, hộp thoại Wait/Quit
-anyway nếu cần) rồi `auth.logoutOnQuit()` — nhả khoá phiên trên Worker (`POST /v1/logout`, tối đa 3 giây) và
-xoá phiên đã lưu. Mở app lần sau LUÔN hiện màn đăng nhập (không tự đăng nhập lại).
+**Thoát app = đăng xuất.** Đóng cửa sổ chính (Main Display): đẩy nốt phần chưa đồng bộ (`flushDirty`, hộp
+thoại Wait/Quit anyway nếu cần) rồi `auth.logoutOnQuit()` — nhả khoá phiên trên Worker (`POST /v1/logout`,
+tối đa 3 giây) và xoá phiên đã lưu, rồi `app.quit()` **thoát HẲN cả app** — tự đóng theo mọi cửa sổ
+Present/Builder/Data Editor còn mở (Builder/Data Editor vẫn hỏi "unsaved changes" nếu đang dở, chặn quit
+cho tới khi người dùng chọn Cancel/Close and discard). Đóng RIÊNG LẺ 1 cửa sổ Present/Builder/Data Editor
+(không qua Main Display) chỉ đóng đúng cửa sổ đó, không ảnh hưởng gì tới các cửa sổ khác hay toàn app. Mở
+app lần sau LUÔN hiện màn đăng nhập (không tự đăng nhập lại).
 
 Phiên vẫn được lưu trong lúc app đang chạy, CHỈ để phòng app bị crash/tắt ngang (không kịp đăng xuất): lần
 mở sau `doInit()` dùng phiên sót lại đó gọi `/v1/logout` nhả khoá cũ (không phải chờ 90s mới đăng nhập lại
