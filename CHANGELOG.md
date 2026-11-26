@@ -2,6 +2,15 @@
 
 Ghi lại các thay đổi đáng chú ý theo từng bản phát hành. Mục mới nhất ở trên cùng.
 
+## [2.0.2] — 2026-11-26
+
+### Cloud Sync — Builder/Data Editor đồng bộ ngay cả khi Present đang mở
+
+- Bấm Save ở Landing Builder/Data Editor giờ tự đồng bộ ngay (debounce thích ứng ~2,5s/~9s như cũ) bất kể
+  session đang có cửa sổ Present mở hay không — trước đây phải đóng cửa sổ Builder/Data Editor mới đồng
+  bộ nếu Present đang chiếu. Đảo lại 1 phần quyết định giai đoạn 0: vận hành thực tế hay mở nhiều cửa sổ
+  cùng lúc để so sánh, cần thấy thay đổi trên cloud ngay sau khi Save.
+
 ## [2.0.1] — 2026-11-25
 
 ### Fix — màn chào mừng kẹt vĩnh viễn khi login lần đầu có session rời
